@@ -1,0 +1,10 @@
+[package]
+name = "arch_tests"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+toml = { workspace = true }

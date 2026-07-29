@@ -1,0 +1,11 @@
+[registries.crates-io]
+protocol = "sparse"
+
+[profile.release]
+opt-level = 0
+debug = "line-tables-only"
+strip = "none"
+codegen-units = 256
+
+[profile.release.package."*"]
+opt-level = 3
