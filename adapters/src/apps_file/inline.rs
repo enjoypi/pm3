@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write as _};
 
 use super::file::{AppEntry, AppsFile, AppsFileError, SandboxEntry};
-use crate::program::fold_home;
+use crate::program::{fold_home, fold_svc_cwd};
 
 const ENV_SEPARATOR: char = '=';
 const REMOVED_PREFIX: char = '-';
@@ -31,7 +31,7 @@ pub fn inline_apps_file(request: &InlineRequest<'_>) -> Result<AppsFile, AppsFil
     let args = request
         .args
         .iter()
-        .map(|value| fold_home(value, request.home))
+        .map(|value| fold_svc_cwd(&fold_home(value, request.home)))
         .collect();
     let entry = AppEntry {
         name: request.name.to_string(),

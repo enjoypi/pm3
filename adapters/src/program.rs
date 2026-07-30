@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 pub const PATH_SEPARATOR: char = ':';
 pub const HOME_PLACEHOLDER: &str = "${HOME}";
+pub const SVC_CWD_NAME: &str = "PM3_SVC_CWD";
+pub const SVC_CWD_PLACEHOLDER: &str = "${PM3_SVC_CWD}";
 
 #[must_use]
 pub fn program_available(program: &str, path_env: Option<&str>) -> bool {
@@ -35,6 +37,14 @@ pub fn fold_home(value: &str, home: Option<&str>) -> String {
         return value.to_string();
     };
     format!("{HOME_PLACEHOLDER}/{relative}")
+}
+
+#[must_use]
+pub fn fold_svc_cwd(value: &str) -> String {
+    if value.contains(SVC_CWD_PLACEHOLDER) {
+        return value.to_string();
+    }
+    value.replace(SVC_CWD_NAME, SVC_CWD_PLACEHOLDER)
 }
 
 #[cfg(test)]

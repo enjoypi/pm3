@@ -28,6 +28,7 @@
 - `dump.yaml` 只存 `services[].runtime`，启动参数全在 `cfg_dir/<name>.yaml`；`YamlDumpStore::load()` 经 `SpecSource` 把两者缝起来，服务文件缺失/损坏只 `warn` 跳过该条
 - 服务配置里 MUST NOT 出现绝对路径：`$HOME/` 前缀折成 `${HOME}/`（加载时由 `substitute_env_vars` 展开）、`cwd` 不写（daemon 用 `<pm3.home>/<name>` 推导并建目录）、`script` 存裸名
 - 写 `~/.pm3/config.yaml` 与 `cfg_dir/<name>.yaml` 共用 `svc::reconcile`：内容相同静默通过、不同则打 diff 并拒绝、`--force` 才覆盖；`service uninstall` 不删配置
+- args 里指代「该服务自己的可写工作目录」MUST 用 `${PM3_SVC_CWD}`（命令行写裸 `PM3_SVC_CWD`，CLI 折叠成带花括号形式），MUST NOT 写 `${HOME}/.pm3/<name>`（那把 pm3 布局烧进了参数）；只在 args 生效，`cwd`/`writable_roots`/`script` 里写它不展开、会被相对路径校验直接拒；`pm3 describe` 显示的是展开后的真实路径，不能拿它当「配置无绝对路径」的证据
 - `pm3.search_path` 是单一来源：既写进 launchd/systemd unit 的 PATH，也是 daemon 解析 app 程序名的搜索路径；CLI 早期校验必须用它而非 `std::env::var("PATH")`
 - 子进程环境默认为空（`tokio_launcher` 有 `env_clear()`），所以 spawn 前必须已解析出绝对路径
 - 给 `Pm3Config` 加字段要同步 6 处：根 `config.yaml`、`adapters/test_support/config_sections.rs`、`adapters/src/test_helpers/config_schema_test_helpers.rs`、`frameworks/test_support/config_fixtures.rs`、`frameworks/tests/common/mod.rs`、校验函数与 `every_error_variant` 表

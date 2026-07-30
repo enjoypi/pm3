@@ -191,6 +191,18 @@ fn substitute_placeholder_spans_multiline_only_first_line() {
 }
 
 #[test]
+fn substitute_keeps_the_reserved_service_cwd_placeholder() {
+    let result = substitute_fake("args: [\"${PM3_SVC_CWD}/data\"]");
+    assert_eq!(result, "args: [\"${PM3_SVC_CWD}/data\"]");
+}
+
+#[test]
+fn substitute_keeps_the_reserved_placeholder_next_to_a_resolved_one() {
+    let result = substitute_fake("a: ${PM3_SVC_CWD}\nb: ${TEST_SKEL_SET}");
+    assert_eq!(result, "a: ${PM3_SVC_CWD}\nb: 192.168.1.1");
+}
+
+#[test]
 fn substitute_env_vars_reads_process_env() {
     let result = substitute_env_vars("host: ${TEST_SKEL_NEVER_DEFINED:-localhost}")
         .expect("absent env var must fall back to the default");

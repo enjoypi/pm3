@@ -49,7 +49,10 @@ pub use self::{
         EMPTY_NOTICE, NOTHING_STARTED, render_describe, render_reply, render_started, render_table,
     },
     process::{KILL_PROGRAM, KillSignaler, SystemClock, TokioProcessLauncher},
-    program::{HOME_PLACEHOLDER, fold_home, program_available, resolve_program},
+    program::{
+        HOME_PLACEHOLDER, SVC_CWD_NAME, SVC_CWD_PLACEHOLDER, fold_home, fold_svc_cwd,
+        program_available, resolve_program,
+    },
     sandbox::{SandboxBackend, SandboxCommandWrapper, seatbelt_profile},
     service::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, ServiceCommandError, ServiceKind,
@@ -61,7 +64,7 @@ pub use self::{
         DaemonCommand, DaemonError, DaemonFailure, DaemonHandle, DaemonOutcome, DaemonReply,
         DaemonRequest,
     },
-    workspace::materialise_workspace,
+    workspace::{expand_svc_cwd, materialise_workspace},
 };
 
 #[derive(Debug, Error)]

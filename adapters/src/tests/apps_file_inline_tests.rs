@@ -61,6 +61,15 @@ fn the_program_arguments_are_carried_verbatim() {
 }
 
 #[test]
+fn a_bare_service_cwd_token_is_stored_braced() {
+    let args = ["-d".to_string(), "PM3_SVC_CWD".to_string()];
+    let mut asked = request(&[], &[]);
+    asked.args = &args;
+    let apps = inline_apps_file(&asked).expect("the request should resolve");
+    assert_eq!(only_entry(&apps).args, ["-d", "${PM3_SVC_CWD}"]);
+}
+
+#[test]
 fn the_network_switch_reaches_the_sandbox_section() {
     let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
     let sandbox = only_entry(&apps)
