@@ -9,6 +9,7 @@ pub const CONFIG_FILE: &str = "config.yaml";
 pub const DUMP_FILE: &str = "dump.yaml";
 pub const DAEMON_LOG_FILE: &str = "pm3.log";
 pub const LOGS_DIR: &str = "logs";
+pub const DEFAULT_HOME: &str = "~/.pm3";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Pm3Paths {
@@ -60,6 +61,10 @@ pub fn expand_home(raw: &str, home_env: Option<&str>) -> Result<PathBuf, PathErr
         return Ok(PathBuf::from(raw));
     }
     Err(PathError::NotAbsolute(raw.to_string()))
+}
+
+pub fn default_config_path(home_env: Option<&str>) -> Result<PathBuf, PathError> {
+    Ok(expand_home(DEFAULT_HOME, home_env)?.join(CONFIG_FILE))
 }
 
 #[must_use]

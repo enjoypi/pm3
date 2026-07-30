@@ -1,11 +1,12 @@
+use adapters::{CONFIG_FILE, default_config_path};
 use clap::{Args, Parser, Subcommand};
 
 use crate::{
     Error, Result, commands,
+    layout::host_home,
     svc::{AMBIGUOUS_TARGET, InlineStart},
 };
 
-pub const DEFAULT_CONFIG: &str = "config.yaml";
 pub const DEFAULT_LOG_LINES: usize = 20;
 
 #[derive(Debug, Parser)]
@@ -15,7 +16,7 @@ pub const DEFAULT_LOG_LINES: usize = 20;
     about = "极简进程管理器，每个服务跑在严格沙盒中"
 )]
 pub struct Cli {
-    #[arg(long, global = true, default_value = DEFAULT_CONFIG)]
+    #[arg(long, global = true, default_value_t = default_config(host_home().as_deref()))]
     pub config: String,
 
     #[command(subcommand)]
@@ -164,6 +165,14 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
             Ok(None)
         }
     }
+}
+
+#[must_use]
+pub fn default_config(home_env: Option<&str>) -> String {
+    default_config_path(home_env).map_or_else(
+        |_unresolved| CONFIG_FILE.to_string(),
+        |path| path.to_string_lossy().into_owned(),
+    )
 }
 
 async fn run_start(config: &str, args: &StartArgs) -> Result<String> {

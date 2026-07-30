@@ -38,7 +38,10 @@ pub use self::{
     },
     http::{APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, StartRequestDto, router},
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
-    paths::{CONFIG_FILE, PathError, Pm3Paths, expand_home, logs_dir_of, resolve_paths},
+    paths::{
+        CONFIG_FILE, DEFAULT_HOME, PathError, Pm3Paths, default_config_path, expand_home,
+        logs_dir_of, resolve_paths,
+    },
     persistence::{
         DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state, encode_states,
     },
