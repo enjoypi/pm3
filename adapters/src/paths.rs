@@ -1,0 +1,69 @@
+use std::path::{Path, PathBuf};
+
+use thiserror::Error;
+
+pub const SOCKET_FILE: &str = "pm3.sock";
+pub const PID_FILE: &str = "pm3.pid";
+pub const LOCK_FILE: &str = "pm3.lock";
+pub const DUMP_FILE: &str = "dump.yaml";
+pub const DAEMON_LOG_FILE: &str = "pm3.log";
+pub const LOGS_DIR: &str = "logs";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Pm3Paths {
+    pub root: PathBuf,
+    pub socket: PathBuf,
+    pub pid_file: PathBuf,
+    pub lock_file: PathBuf,
+    pub dump_file: PathBuf,
+    pub logs_dir: PathBuf,
+    pub daemon_log: PathBuf,
+}
+
+#[derive(Debug, Error, Eq, PartialEq)]
+pub enum PathError {
+    #[error("cannot resolve pm3.home '{0}': no HOME in the environment to expand '~'")]
+    MissingHome(String),
+
+    #[error("cannot resolve pm3.home '{0}': must be absolute or start with '~'")]
+    NotAbsolute(String),
+}
+
+#[must_use]
+pub fn resolve_paths(root: &Path) -> Pm3Paths {
+    Pm3Paths {
+        root: root.to_path_buf(),
+        socket: root.join(SOCKET_FILE),
+        pid_file: root.join(PID_FILE),
+        lock_file: root.join(LOCK_FILE),
+        dump_file: root.join(DUMP_FILE),
+        logs_dir: root.join(LOGS_DIR),
+        daemon_log: root.join(DAEMON_LOG_FILE),
+    }
+}
+
+pub fn expand_home(raw: &str, home_env: Option<&str>) -> Result<PathBuf, PathError> {
+    if let Some(suffix) = raw.strip_prefix('~') {
+        let Some(home) = home_env.filter(|value| !value.is_empty()) else {
+            return Err(PathError::MissingHome(raw.to_string()));
+        };
+        let trimmed = suffix.trim_start_matches('/');
+        if trimmed.is_empty() {
+            return Ok(PathBuf::from(home));
+        }
+        return Ok(Path::new(home).join(trimmed));
+    }
+    if raw.starts_with('/') {
+        return Ok(PathBuf::from(raw));
+    }
+    Err(PathError::NotAbsolute(raw.to_string()))
+}
+
+#[must_use]
+pub fn logs_dir_of(root: &Path) -> String {
+    root.join(LOGS_DIR).to_string_lossy().into_owned()
+}
+
+#[cfg(test)]
+#[path = "tests/paths_tests.rs"]
+mod tests;

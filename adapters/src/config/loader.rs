@@ -26,17 +26,6 @@ pub enum ConfigLoadError {
 
 type EnvLookup = fn(&str) -> Result<Option<String>, ConfigLoadError>;
 
-const REDACTED_VALUE: &str = "***";
-const SECRET_QUERY_KEY_MARKERS: &[&str] = &[
-    "auth",
-    "credential",
-    "key",
-    "passwd",
-    "password",
-    "secret",
-    "token",
-];
-
 pub fn load_config(path: &str) -> Result<String, ConfigLoadError> {
     fs::read_to_string(path).map_err(|e| ConfigLoadError::IoError {
         path: path.to_string(),
@@ -46,72 +35,6 @@ pub fn load_config(path: &str) -> Result<String, ConfigLoadError> {
 
 pub fn substitute_env_vars(raw: &str) -> Result<String, ConfigLoadError> {
     substitute_with(raw, lookup_process_env)
-}
-
-#[must_use]
-pub fn redact_url(url: &str) -> String {
-    let without_userinfo = redact_userinfo(url);
-    redact_query_secrets(&without_userinfo)
-}
-
-#[expect(
-    clippy::string_slice,
-    clippy::option_if_let_else,
-    reason = "切片边界来自 find 的 ASCII 定界符；map_or closure 形态被 llvm-cov 当作独立未覆盖 fn"
-)]
-fn redact_userinfo(url: &str) -> String {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return url.to_string();
-    };
-    let authority_end = match rest.find(['/', '?', '#']) {
-        Some(index) => index,
-        None => rest.len(),
-    };
-    let Some((_credentials, host)) = rest[..authority_end].rsplit_once('@') else {
-        return url.to_string();
-    };
-    let tail = &rest[authority_end..];
-    format!("{scheme}://{REDACTED_VALUE}@{host}{tail}")
-}
-
-fn redact_query_secrets(url: &str) -> String {
-    let Some((base, query)) = url.split_once('?') else {
-        return url.to_string();
-    };
-    let mut out = String::with_capacity(url.len());
-    out.push_str(base);
-    out.push('?');
-    let mut separator = "";
-    for pair in query.split('&') {
-        out.push_str(separator);
-        separator = "&";
-        push_redacted_pair(&mut out, pair);
-    }
-    out
-}
-
-fn push_redacted_pair(out: &mut String, pair: &str) {
-    let Some((key, _value)) = pair.split_once('=') else {
-        out.push_str(pair);
-        return;
-    };
-    if !is_secret_query_key(key) {
-        out.push_str(pair);
-        return;
-    }
-    out.push_str(key);
-    out.push('=');
-    out.push_str(REDACTED_VALUE);
-}
-
-fn is_secret_query_key(key: &str) -> bool {
-    let lowercased = key.to_ascii_lowercase();
-    for marker in SECRET_QUERY_KEY_MARKERS {
-        if lowercased.contains(marker) {
-            return true;
-        }
-    }
-    false
 }
 
 fn ensure_yaml_safe(name: &str, value: &str) -> Result<(), ConfigLoadError> {

@@ -1,27 +1,29 @@
+pub mod process;
+pub mod sandbox;
+
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+pub use self::{
+    process::{
+        AppSpec, DependencyError, DependencyNode, ProcessRuntime, ProcessStatus, RestartDecision,
+        RestartPolicy, SpecError, decide_restart, topo_sort, validate_spec,
+    },
+    sandbox::{PolicyError, SandboxMode, SandboxPolicy, validate_policy},
+};
+
+#[derive(Debug, Error, Eq, PartialEq)]
 pub enum EntityError {
-    #[error("cannot accept empty example name")]
-    EmptyName,
+    #[error(transparent)]
+    Spec(#[from] SpecError),
+
+    #[error(transparent)]
+    Dependency(#[from] DependencyError),
+
+    #[error(transparent)]
+    Policy(#[from] PolicyError),
 }
 
 pub type Result<T> = std::result::Result<T, EntityError>;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Example {
-    pub id: i64,
-    pub name: String,
-}
-
-impl Example {
-    pub fn validate_name(name: &str) -> Result<()> {
-        if name.trim().is_empty() {
-            return Err(EntityError::EmptyName);
-        }
-        Ok(())
-    }
-}
 
 #[cfg(test)]
 #[path = "tests/lib_tests.rs"]

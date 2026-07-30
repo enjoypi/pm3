@@ -1,8 +1,7 @@
 set positional-arguments
 
-features := env_var_or_default("FEATURES", "http,sqlite")
 cargo_locked := "--locked"
-cargo_common_flags := "--features=" + features + " --all-targets --workspace --release"
+cargo_common_flags := "--all-targets --workspace --release"
 half_of_cpus := shell('n=$(( $(getconf _NPROCESSORS_ONLN) / 2 )); [ "$n" -ge 1 ] || n=1; echo "$n"')
 forbidden_ts_syntax := ':\s*any\b|\bas\s+any\b|<\s*any\s*[,>]|,\s*any\s*>|\bany\s*\[\]|[\w\)\]]!\s*([.\[;,)}]|$)|@ts-(ignore|expect-error|nocheck)'
 

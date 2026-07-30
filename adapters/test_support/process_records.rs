@@ -1,0 +1,58 @@
+use usecases::{AppSpec, ProcessRecord, ProcessRuntime, ProcessStatus, SandboxMode, SandboxPolicy};
+
+pub const CREATED_AT_MS: u64 = 1_700_000_000_000;
+pub const STARTED_AT_MS: u64 = 1_700_000_001_000;
+pub const SAMPLE_PID: u32 = 4242;
+
+pub fn sample_spec(name: &str) -> AppSpec {
+    AppSpec {
+        name: name.to_string(),
+        script: "/usr/bin/node".to_string(),
+        args: vec!["server.js".to_string(), "--port=8080".to_string()],
+        cwd: "/srv/web".to_string(),
+        env: vec![("PORT".to_string(), "8080".to_string())],
+        autorestart: true,
+        min_uptime_ms: 1000,
+        max_restarts: 15,
+        restart_delay_ms: 40,
+        depends_on: vec!["db".to_string()],
+        sandbox: SandboxPolicy {
+            mode: SandboxMode::WorkspaceWrite,
+            network: false,
+            writable_roots: vec!["/srv/web".to_string()],
+        },
+    }
+}
+
+pub fn sample_runtime(name: &str) -> ProcessRuntime {
+    ProcessRuntime {
+        pm_id: 3,
+        name: name.to_string(),
+        pid: Some(SAMPLE_PID),
+        status: ProcessStatus::Online,
+        restart_time: 2,
+        unstable_restarts: 1,
+        created_at_ms: CREATED_AT_MS,
+        started_at_ms: Some(STARTED_AT_MS),
+        pending_restart: false,
+    }
+}
+
+pub fn sample_record(name: &str) -> ProcessRecord {
+    ProcessRecord {
+        spec: sample_spec(name),
+        runtime: sample_runtime(name),
+    }
+}
+
+pub fn stopped_record(name: &str) -> ProcessRecord {
+    ProcessRecord {
+        spec: sample_spec(name),
+        runtime: ProcessRuntime {
+            pid: None,
+            status: ProcessStatus::Stopped,
+            started_at_ms: None,
+            ..sample_runtime(name)
+        },
+    }
+}

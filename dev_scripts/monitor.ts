@@ -7,7 +7,7 @@ const patternByKind: Record<MonitorKind, RegExp> = {
     /panicked at|stack backtrace|fatal runtime error|stack overflow|SIGABRT|SIGSEGV|thread .* panicked/u,
 };
 
-const defaultServiceLog = "scratchpad/skel_rs.log";
+const defaultServiceLog = "scratchpad/pm3.log";
 
 function exitWithUsage(): never {
   process.stderr.write("用法: just monitor {crash|business}\n");

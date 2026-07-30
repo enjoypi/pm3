@@ -1,24 +1,18 @@
-server:
-  host: "0.0.0.0"
-  port: 9229
-  drain_timeout_secs: 20
-
-health_check:
-  host: "127.0.0.1"
-  connect_timeout_secs: 2
+pm3:
+  home: "${PM3_HOME:-~/.pm3}"
+  kill_timeout_ms: 1600
+  start_timeout_ms: 5000
+  drain_timeout_secs: 5
+  daemon_poll_interval_ms: 50
+  restart:
+    min_uptime_ms: 1000
+    max_restarts: 15
+    restart_delay_ms: 0
+  sandbox:
+    mode: "workspace-write"
+    network: false
 
 telemetry:
-  service_name: "skel_rs"
+  service_name: "pm3"
   log_level: "info"
   log_format: "json"
-
-database:
-  url: "${DATABASE_URL}"
-  migrations_path: "./migrations"
-  pool:
-    max_connections: 10
-    min_connections: 1
-    acquire_timeout_secs: 5
-    idle_timeout_secs: 300
-    max_lifetime_secs: 1800
-    health_check_timeout_secs: 3

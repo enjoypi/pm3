@@ -1,5 +1,5 @@
 ARG BUILDER_IMAGE=docker.io/library/rust:1.95-trixie
-ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian13:nonroot
+ARG RUNTIME_IMAGE=docker.io/library/debian:trixie-slim
 
 FROM --platform=$BUILDPLATFORM ${BUILDER_IMAGE} AS builder
 
@@ -39,22 +39,30 @@ RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/r
       export "CARGO_TARGET_$(echo "${triple_snake}" | tr 'a-z' 'A-Z')_LINKER=${cc}"; \
       export "CC_${triple_snake}=${cc}"; \
     fi; \
-    cargo install --locked --path frameworks --features http,sqlite --target "${triple}" --root /out
+    cargo install --locked --path frameworks --target "${triple}" --root /out
 
 FROM ${RUNTIME_IMAGE}
 
+# bubblewrap 是 pm3 在 Linux 上的沙盒后端，缺失时 pm3 start 会 fail-closed 拒绝启动。
+# 容器内 bwrap 需要 user namespace 权限：以 --cap-add SYS_ADMIN 或
+# --security-opt seccomp=unconfined 运行，否则沙盒无法创建 namespace。
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends bubblewrap; \
+    rm -rf /var/lib/apt/lists/*; \
+    useradd --create-home --uid 65532 --user-group nonroot
+
 WORKDIR /
 
-COPY --from=builder --chown=nonroot:nonroot /out/bin/* /entrypoint
+COPY --from=builder /out/bin/pm3 /usr/local/bin/pm3
 COPY --from=builder --chown=nonroot:nonroot /app/config.yaml /config.yaml
-COPY --from=builder --chown=nonroot:nonroot /app/migrations /migrations
 
-ENV DATABASE_URL=sqlite:///home/nonroot/data.db?mode=rwc
+ENV PM3_HOME=/home/nonroot/.pm3
 
-EXPOSE 9229
+USER nonroot
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD ["/entrypoint", "--config", "/config.yaml", "health-check"]
+    CMD ["/usr/local/bin/pm3", "--config", "/config.yaml", "list"]
 
-ENTRYPOINT ["/entrypoint", "--config", "/config.yaml"]
-CMD ["serve"]
+ENTRYPOINT ["/usr/local/bin/pm3", "--config", "/config.yaml"]
+CMD ["daemon"]

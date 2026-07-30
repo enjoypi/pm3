@@ -12,20 +12,22 @@ fn workspace_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-const DEPENDENCY_TABLES: &[&str] = &["dependencies", "dev-dependencies", "build-dependencies"];
+const ALL_DEPENDENCY_TABLES: &[&str] = &["dependencies", "dev-dependencies", "build-dependencies"];
+const RUNTIME_DEPENDENCY_TABLES: &[&str] = &["dependencies"];
 
-fn read_dependency_names(cargo_toml_path: &str) -> HashSet<String> {
+fn read_dependency_names(cargo_toml_path: &str, tables: &[&str]) -> HashSet<String> {
     let full_path = workspace_root().join(cargo_toml_path);
     let content = std::fs::read_to_string(&full_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", full_path.display()));
-    dependency_names(&content).unwrap_or_else(|e| panic!("failed to parse {cargo_toml_path}: {e}"))
+    dependency_names(&content, tables)
+        .unwrap_or_else(|e| panic!("failed to parse {cargo_toml_path}: {e}"))
 }
 
-fn dependency_names(cargo_toml: &str) -> Result<HashSet<String>, toml::de::Error> {
+fn dependency_names(cargo_toml: &str, tables: &[&str]) -> Result<HashSet<String>, toml::de::Error> {
     let table: toml::Table = cargo_toml.parse()?;
     let mut deps = HashSet::new();
 
-    for &dependency_table in DEPENDENCY_TABLES {
+    for &dependency_table in tables {
         if let Some(dependencies) = table.get(dependency_table).and_then(|v| v.as_table()) {
             for (alias, spec) in dependencies {
                 deps.insert(alias.clone());
@@ -41,19 +43,40 @@ fn dependency_names(cargo_toml: &str) -> Result<HashSet<String>, toml::de::Error
 
 #[test]
 fn dependency_names_expose_package_rename_behind_alias() {
-    let names = dependency_names("[dependencies]\nent = { package = \"entities\" }\n")
-        .expect("fixture parses");
+    let names = dependency_names(
+        "[dependencies]\nent = { package = \"entities\" }\n",
+        ALL_DEPENDENCY_TABLES,
+    )
+    .expect("fixture parses");
     assert!(names.contains("entities"), "got: {names:?}");
 }
 
+#[test]
+fn dependency_names_ignore_dev_table_when_scoped_to_runtime() {
+    let names = dependency_names(
+        "[dev-dependencies]\ntokio = \"1\"\n",
+        RUNTIME_DEPENDENCY_TABLES,
+    )
+    .expect("fixture parses");
+    assert!(names.is_empty(), "got: {names:?}");
+}
+
 fn assert_no_dependency(cargo_toml: &str, forbidden: &[&str]) {
+    assert_forbidden(cargo_toml, forbidden, ALL_DEPENDENCY_TABLES);
+}
+
+fn assert_no_runtime_dependency(cargo_toml: &str, forbidden: &[&str]) {
+    assert_forbidden(cargo_toml, forbidden, RUNTIME_DEPENDENCY_TABLES);
+}
+
+fn assert_forbidden(cargo_toml: &str, forbidden: &[&str], tables: &[&str]) {
     let crate_name = Path::new(cargo_toml)
         .parent()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
 
-    let deps = read_dependency_names(cargo_toml);
+    let deps = read_dependency_names(cargo_toml, tables);
 
     for &forbidden_dep in forbidden {
         assert!(
@@ -76,13 +99,23 @@ fn frameworks_must_not_depend_on_entities() {
 }
 
 #[test]
-fn usecases_must_not_depend_on_sqlx() {
-    assert_no_dependency("usecases/Cargo.toml", &["sqlx"]);
+fn entities_must_not_depend_on_serde() {
+    assert_no_dependency("entities/Cargo.toml", &["serde"]);
 }
 
 #[test]
-fn entities_must_not_depend_on_sqlx() {
-    assert_no_dependency("entities/Cargo.toml", &["sqlx"]);
+fn entities_must_not_depend_on_tokio() {
+    assert_no_dependency("entities/Cargo.toml", &["tokio"]);
+}
+
+#[test]
+fn usecases_must_not_depend_on_tokio_at_runtime() {
+    assert_no_runtime_dependency("usecases/Cargo.toml", &["tokio"]);
+}
+
+#[test]
+fn usecases_must_not_depend_on_axum() {
+    assert_no_dependency("usecases/Cargo.toml", &["axum"]);
 }
 
 #[test]

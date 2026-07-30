@@ -1,8 +1,4 @@
-use super::{
-    AppConfig, ConfigError, load_config, redact_url, substitute_env_vars, validate_config,
-};
-#[cfg(has_http)]
-use crate::AdapterError;
+use super::{AppConfig, ConfigError, load_config, substitute_env_vars, validate_config};
 use crate::Result;
 
 pub fn parse_config(yaml: &str) -> std::result::Result<AppConfig, ConfigError> {
@@ -14,12 +10,6 @@ pub fn load_and_parse_config(path: &str) -> Result<AppConfig> {
     let substituted = substitute_env_vars(&raw)?;
     let cfg = parse_config(&substituted)?;
     validate_config(&cfg)?;
-
-    #[cfg(has_http)]
-    if cfg.server.is_some() && cfg.health_check.is_none() {
-        return Err(AdapterError::MissingHealthCheckSection);
-    }
-
     Ok(cfg)
 }
 
@@ -33,10 +23,7 @@ pub fn check_config(path: &str) -> Result<String> {
     reason = "AppConfig 序列化 Err 不可达（纯数据 derive Serialize），expect 消除永假 `?` region"
 )]
 pub fn show_config(path: &str) -> Result<String> {
-    let mut cfg = load_and_parse_config(path)?;
-    if let Some(db) = cfg.database.as_mut() {
-        db.url = redact_url(&db.url);
-    }
+    let cfg = load_and_parse_config(path)?;
     let yaml = serde_yaml2::to_string(&cfg)
         .expect("internal error: AppConfig serialization is infallible");
     Ok(yaml)

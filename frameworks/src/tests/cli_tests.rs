@@ -1,330 +1,315 @@
+use clap::Parser as _;
+
 use super::*;
-#[cfg(has_http)]
-use crate::test_helpers::{
-    serve_immediate_shutdown_retrying_bind, server_and_health_check_yaml, server_only_yaml,
-    server_without_health_check_yaml,
-};
-use crate::test_helpers::{telemetry_only_yaml, tokio_block_on, write_config};
 
-#[cfg(any(has_http, has_database))]
-#[test]
-fn require_section_present_returns_value() {
-    let v = require_section(Some(42_i32), "server", "/x.yaml").expect("present");
-    assert_eq!(v, 42);
-}
-
-#[cfg(any(has_http, has_database))]
-#[test]
-fn require_section_missing_returns_error() {
-    let err = require_section::<i32>(None, "database", "/x.yaml").unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("database"), "got: {msg}");
-    assert!(msg.contains("/x.yaml"), "got: {msg}");
+fn parse(args: &[&str]) -> Cli {
+    Cli::parse_from(args)
 }
 
 #[test]
-fn run_config_check_ok() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &telemetry_only_yaml());
-    run_config_check(&path).expect("ok");
+fn the_config_path_defaults_to_the_working_directory() {
+    assert_eq!(parse(&["pm3", "list"]).config, DEFAULT_CONFIG);
 }
 
 #[test]
-fn run_config_check_invalid_returns_error() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, "not: valid: yaml: structure");
-    assert!(run_config_check(&path).is_err());
+fn the_config_path_can_be_overridden() {
+    let cli = parse(&["pm3", "--config", "/srv/pm3.yaml", "list"]);
+    assert_eq!(cli.config, "/srv/pm3.yaml");
 }
 
 #[test]
-fn run_config_show_ok() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &telemetry_only_yaml());
-    run_config_show(&path).expect("ok");
+fn start_takes_an_apps_file() {
+    let cli = parse(&["pm3", "start", "apps.yaml"]);
+    assert!(
+        matches!(&cli.command, Commands::Start { apps_file } if apps_file == "apps.yaml"),
+        "got: {:?}",
+        cli.command
+    );
 }
 
 #[test]
-fn run_config_show_missing_file_returns_error() {
-    assert!(run_config_show("/nonexistent/path/config.yaml").is_err());
+fn stop_takes_a_selector() {
+    let cli = parse(&["pm3", "stop", "web"]);
+    assert!(
+        matches!(&cli.command, Commands::Stop { selector } if selector == "web"),
+        "got: {:?}",
+        cli.command
+    );
 }
 
-#[cfg(has_http)]
+#[test]
+fn restart_takes_a_selector() {
+    let cli = parse(&["pm3", "restart", "3"]);
+    assert!(
+        matches!(&cli.command, Commands::Restart { selector } if selector == "3"),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn delete_takes_a_selector() {
+    let cli = parse(&["pm3", "delete", "web"]);
+    assert!(
+        matches!(&cli.command, Commands::Delete { selector } if selector == "web"),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn describe_takes_a_selector() {
+    let cli = parse(&["pm3", "describe", "web"]);
+    assert!(
+        matches!(&cli.command, Commands::Describe { selector } if selector == "web"),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn list_takes_no_argument() {
+    assert!(matches!(parse(&["pm3", "list"]).command, Commands::List));
+}
+
+#[test]
+fn logs_default_to_a_bounded_tail_without_following() {
+    let cli = parse(&["pm3", "logs", "web"]);
+    assert!(
+        matches!(
+            &cli.command,
+            Commands::Logs { name, lines, follow }
+                if name == "web" && *lines == DEFAULT_LOG_LINES && !follow
+        ),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn logs_accept_a_line_count_and_the_follow_flag() {
+    let cli = parse(&["pm3", "logs", "web", "-n", "5", "-f"]);
+    assert!(
+        matches!(
+            &cli.command,
+            Commands::Logs { name: _, lines, follow } if *lines == 5 && *follow
+        ),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn config_check_is_a_subcommand_of_config() {
+    let cli = parse(&["pm3", "config", "check"]);
+    assert!(
+        matches!(
+            &cli.command,
+            Commands::Config {
+                command: ConfigCommands::Check
+            }
+        ),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn config_show_is_a_subcommand_of_config() {
+    let cli = parse(&["pm3", "config", "show"]);
+    assert!(
+        matches!(
+            &cli.command,
+            Commands::Config {
+                command: ConfigCommands::Show
+            }
+        ),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn the_daemon_runs_in_the_foreground() {
+    assert!(matches!(
+        parse(&["pm3", "daemon"]).command,
+        Commands::Daemon
+    ));
+}
+
+#[test]
+fn the_hidden_sleep_target_takes_a_duration() {
+    let cli = parse(&["pm3", "__sleep", "25"]);
+    assert!(
+        matches!(&cli.command, Commands::Sleep { ms } if *ms == 25),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn an_unknown_subcommand_is_rejected() {
+    assert!(Cli::try_parse_from(["pm3", "teleport"]).is_err());
+}
+
 #[tokio::test]
-async fn run_serve_dry_run_ok() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_only_yaml("127.0.0.1", 38900));
-    run_serve(&path, true)
+async fn the_sleep_target_returns_nothing_to_print() {
+    let printed = execute(parse(&["pm3", "__sleep", "1"]))
         .await
-        .expect("dry-run should succeed");
+        .expect("should sleep");
+    assert_eq!(printed, None);
 }
 
-#[cfg(has_http)]
 #[tokio::test]
-async fn run_serve_no_server_section_returns_error() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &telemetry_only_yaml());
-    let err = run_serve(&path, false).await.unwrap_err();
-    assert!(err.to_string().contains("server"), "got: {err}");
-}
-
-#[cfg(has_http)]
-#[tokio::test]
-async fn run_serve_dry_run_no_server_section_returns_error() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &telemetry_only_yaml());
-    let err = run_serve(&path, true).await.unwrap_err();
-    assert!(err.to_string().contains("server"), "got: {err}");
-}
-
-#[cfg(has_http)]
-#[tokio::test]
-async fn run_serve_invalid_config_returns_error() {
-    assert!(run_serve("/nonexistent/path/x.yaml", true).await.is_err());
-}
-
-#[cfg(has_http)]
-#[tokio::test]
-async fn run_serve_with_shutdown_immediate_no_db() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    serve_immediate_shutdown_retrying_bind(&dir, |port| server_only_yaml("127.0.0.1", port))
-        .await
-        .expect("immediate shutdown ok");
-}
-
-#[cfg(has_http)]
-#[tokio::test]
-async fn serve_retries_on_a_fresh_port_when_the_first_one_is_taken() {
-    let occupied = std::net::TcpListener::bind("127.0.0.1:0").expect("occupy a port");
-    let taken_port = occupied.local_addr().expect("local addr").port();
-    let dir = tempfile::tempdir().expect("tempdir");
-    let first_attempt = std::cell::Cell::new(true);
-
-    serve_immediate_shutdown_retrying_bind(&dir, |fresh_port| {
-        let port = if first_attempt.replace(false) {
-            taken_port
-        } else {
-            fresh_port
-        };
-        server_only_yaml("127.0.0.1", port)
-    })
+async fn dispatching_a_command_prints_its_output() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = crate::test_support::write_config(dir.path(), "/tmp/pm3-cli-check");
+    dispatch(parse(&[
+        "pm3",
+        "--config",
+        config.to_str().expect("path"),
+        "config",
+        "check",
+    ]))
     .await
-    .expect("bind conflict on the first port must be retried, not surfaced");
-
-    assert!(
-        !first_attempt.get(),
-        "the occupied port should have been attempted first"
-    );
+    .expect("should dispatch");
 }
 
-#[cfg(has_http)]
 #[tokio::test]
-async fn run_serve_dry_run_via_with_shutdown() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_only_yaml("127.0.0.1", 38911));
-    run_serve_with_shutdown(&path, true, async {})
+async fn dispatching_a_silent_command_prints_nothing() {
+    dispatch(parse(&["pm3", "__sleep", "1"]))
         .await
-        .expect("dry-run via with_shutdown ok");
+        .expect("should dispatch");
 }
 
-#[cfg(has_http)]
 #[tokio::test]
-async fn run_serve_with_shutdown_bind_failure_returns_error() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let yaml = server_and_health_check_yaml("this-is-not.a.valid.host.ever-", 1, "127.0.0.1");
-    let path = write_config(&dir, &yaml);
+async fn showing_a_config_returns_the_resolved_document() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = crate::test_support::write_config(dir.path(), "/tmp/pm3-cli-show");
+    let printed = execute(parse(&[
+        "pm3",
+        "--config",
+        config.to_str().expect("path"),
+        "config",
+        "show",
+    ]))
+    .await
+    .expect("should show");
     assert!(
-        run_serve_with_shutdown(&path, false, async {})
-            .await
-            .is_err()
+        printed.unwrap_or_default().contains("pm3-cli-show"),
+        "the resolved document should carry the home"
     );
 }
 
-#[cfg(has_http)]
 #[tokio::test]
-async fn run_health_check_connect_ok() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+async fn checking_a_missing_config_fails() {
+    let outcome = execute(parse(&[
+        "pm3",
+        "--config",
+        "/nonexistent/pm3.yaml",
+        "config",
+        "check",
+    ]))
+    .await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
+async fn every_app_subcommand_reaches_the_daemon() {
+    let fixture = crate::daemon_fixture::running_daemon().await;
+    let apps_file = crate::daemon_fixture::sleeper_apps_file(&fixture);
+    let config = fixture.config_path.clone();
+
+    let started = execute(parse(&["pm3", "--config", &config, "start", &apps_file]))
         .await
-        .expect("bind ephemeral port");
-    let port = listener.local_addr().expect("local addr").port();
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_only_yaml("127.0.0.1", port));
-    run_health_check(&path).expect("connect should succeed");
-    drop(listener);
-}
-
-#[cfg(has_http)]
-#[test]
-fn run_health_check_connect_fail() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_only_yaml("127.0.0.1", 1));
-    let err = run_health_check(&path).unwrap_err();
+        .expect("should start");
     assert!(
-        err.to_string().contains("health check failed"),
-        "got: {err}"
+        started.unwrap_or_default().contains("started web"),
+        "start should report the app"
     );
-}
 
-#[cfg(has_http)]
-#[test]
-fn run_health_check_no_server_section_returns_error() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &telemetry_only_yaml());
-    assert!(run_health_check(&path).is_err());
-}
-
-#[cfg(has_http)]
-#[test]
-fn run_health_check_no_health_check_section_returns_error() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_without_health_check_yaml("127.0.0.1", 9229));
-    let err = run_health_check(&path).unwrap_err();
-    assert!(err.to_string().contains("health_check"), "got: {err}");
-}
-
-#[cfg(has_http)]
-#[test]
-fn run_health_check_invalid_config_returns_error() {
-    assert!(run_health_check("/nonexistent/health.yaml").is_err());
-}
-
-#[cfg(has_http)]
-#[test]
-fn health_check_target_wraps_bare_ipv6_literal() {
-    assert_eq!(health_check_target("::1", 9229), "[::1]:9229");
-}
-
-#[cfg(has_http)]
-#[test]
-fn health_check_target_keeps_already_bracketed_ipv6() {
-    assert_eq!(health_check_target("[::1]", 9229), "[::1]:9229");
-}
-
-#[cfg(has_http)]
-#[test]
-fn health_check_target_keeps_plain_host() {
-    assert_eq!(health_check_target("127.0.0.1", 9229), "127.0.0.1:9229");
-}
-
-#[cfg(has_http)]
-#[test]
-fn per_address_timeout_splits_budget_across_addresses() {
-    assert_eq!(
-        per_address_timeout(Duration::from_secs(2), 2),
-        Duration::from_secs(1)
-    );
-}
-
-#[cfg(has_http)]
-#[test]
-fn per_address_timeout_keeps_whole_budget_for_single_address() {
-    assert_eq!(
-        per_address_timeout(Duration::from_secs(2), 1),
-        Duration::from_secs(2)
-    );
-}
-
-#[cfg(has_http)]
-#[test]
-fn per_address_timeout_never_divides_by_zero() {
-    assert_eq!(
-        per_address_timeout(Duration::from_secs(2), 0),
-        Duration::from_secs(2)
-    );
-}
-
-#[cfg(has_http)]
-#[test]
-fn health_check_failure_without_attempts_names_the_address() {
-    let err = health_check_failure("localhost:9229", None);
+    let listed = execute(parse(&["pm3", "--config", &config, "list"]))
+        .await
+        .expect("should list");
     assert!(
-        err.to_string().contains("resolved to no socket address"),
-        "got: {err}"
+        listed.unwrap_or_default().contains("web"),
+        "list should show the app"
     );
-}
 
-#[cfg(has_http)]
-#[test]
-fn run_health_check_invalid_host_address_maps_error() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let yaml = server_and_health_check_yaml("127.0.0.1", 9229, "this-is-not.a.valid.host.ever-");
-    let path = write_config(&dir, &yaml);
-    let err = run_health_check(&path).unwrap_err();
+    let described = execute(parse(&["pm3", "--config", &config, "describe", "web"]))
+        .await
+        .expect("should describe");
     assert!(
-        err.to_string().contains("invalid health check address"),
-        "got: {err}"
+        described.unwrap_or_default().contains("/bin/sh"),
+        "describe should show the script"
     );
+
+    let restarted = execute(parse(&["pm3", "--config", &config, "restart", "web"]))
+        .await
+        .expect("should restart");
+    assert_eq!(restarted.as_deref(), Some("restarted web"));
+
+    let stopped = execute(parse(&["pm3", "--config", &config, "stop", "web"]))
+        .await
+        .expect("should stop");
+    assert_eq!(stopped.as_deref(), Some("stopped web"));
+
+    let deleted = execute(parse(&["pm3", "--config", &config, "delete", "web"]))
+        .await
+        .expect("should delete");
+    assert_eq!(deleted.as_deref(), Some("deleted web"));
+
+    crate::daemon_fixture::stop_daemon(fixture).await;
 }
 
-#[cfg(has_http)]
-#[test]
-fn run_health_check_ipv6_already_bracketed_host_passes_through() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_and_health_check_yaml("127.0.0.1", 1, "[::1]"));
-    let err = run_health_check(&path).unwrap_err();
-    assert!(
-        err.to_string().contains("health check failed"),
-        "got: {err}"
-    );
+#[tokio::test]
+async fn reading_logs_returns_the_tail() {
+    let fixture = crate::daemon_fixture::running_daemon().await;
+    crate::daemon_fixture::seed_log(&fixture, "web", "first\nsecond\n");
+    let printed = execute(parse(&[
+        "pm3",
+        "--config",
+        &fixture.config_path,
+        "logs",
+        "web",
+        "-n",
+        "1",
+    ]))
+    .await
+    .expect("should read the log");
+    assert_eq!(printed.as_deref(), Some("second"));
+    crate::daemon_fixture::stop_daemon(fixture).await;
 }
 
-#[cfg(has_http)]
-#[test]
-fn run_health_check_ipv6_literal_host_wraps_brackets() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_and_health_check_yaml("127.0.0.1", 1, "::1"));
-    let err = run_health_check(&path).unwrap_err();
-    assert!(
-        err.to_string().contains("health check failed"),
-        "got: {err}"
-    );
+#[tokio::test]
+async fn following_logs_prints_and_returns_nothing() {
+    let fixture = crate::daemon_fixture::running_daemon().await;
+    crate::daemon_fixture::seed_log(&fixture, "web", "first\n");
+    let printed = run_logs(&fixture.config_path, "web", 1, true, 1)
+        .await
+        .expect("should follow the log");
+    assert_eq!(printed, None);
+    crate::daemon_fixture::stop_daemon(fixture).await;
 }
 
-#[test]
-fn dispatch_config_check() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &telemetry_only_yaml());
-    let cli = Cli {
-        config: path,
-        command: Commands::Config {
-            command: ConfigCommands::Check,
-        },
-    };
-    tokio_block_on(dispatch(cli)).expect("ok");
+#[tokio::test]
+async fn following_a_missing_log_fails_the_command() {
+    let fixture = crate::daemon_fixture::running_daemon().await;
+    let outcome = run_logs(&fixture.config_path, "ghost", 1, true, 1).await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+    crate::daemon_fixture::stop_daemon(fixture).await;
 }
 
-#[test]
-fn dispatch_config_show() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &telemetry_only_yaml());
-    let cli = Cli {
-        config: path,
-        command: Commands::Config {
-            command: ConfigCommands::Show,
-        },
-    };
-    tokio_block_on(dispatch(cli)).expect("ok");
-}
-
-#[cfg(has_http)]
-#[test]
-fn dispatch_serve_dry_run() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_only_yaml("127.0.0.1", 38905));
-    let cli = Cli {
-        config: path,
-        command: Commands::Serve { dry_run: true },
-    };
-    tokio_block_on(dispatch(cli)).expect("ok");
-}
-
-#[cfg(has_http)]
-#[test]
-fn dispatch_health_check_fail() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = write_config(&dir, &server_only_yaml("127.0.0.1", 1));
-    let cli = Cli {
-        config: path,
-        command: Commands::HealthCheck,
-    };
-    assert!(tokio_block_on(dispatch(cli)).is_err());
+#[tokio::test]
+async fn following_a_log_that_turns_undecodable_fails_the_command() {
+    let fixture = crate::daemon_fixture::running_daemon().await;
+    let path = crate::daemon_fixture::seed_log(&fixture, "web", "old\n");
+    let writer = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+        std::fs::write(&path, [b'o', b'l', b'd', b'\n', 0xff, 0xfe, b'\n']).expect("append");
+    });
+    let outcome = run_logs(&fixture.config_path, "web", 1, true, 3).await;
+    writer.await.expect("join the writer");
+    assert!(outcome.is_err(), "got: {outcome:?}");
+    crate::daemon_fixture::stop_daemon(fixture).await;
 }

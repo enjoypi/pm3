@@ -27,10 +27,7 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
-uuid = { version = "1", features = ["v4"] }
 clap = { version = "4", features = ["derive"] }
-
-sqlx = { version = "0.8", features = ["runtime-tokio", "migrate"] }
 
 toml = "1"
 tower = { version = "0.5", features = ["util"] }
