@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "adapters"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "axum",
  "serde",
@@ -97,7 +97,7 @@ dependencies = [
 
 [[package]]
 name = "arch_tests"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "toml",
 ]
@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "entities"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "thiserror 2.0.19",
 ]
@@ -279,7 +279,7 @@ dependencies = [
 
 [[package]]
 name = "frameworks"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "adapters",
  "axum",
@@ -1072,7 +1072,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "usecases"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "entities",
  "thiserror 2.0.19",

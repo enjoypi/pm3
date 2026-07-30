@@ -7,9 +7,22 @@ fn every_pm3_file_lives_under_the_root() {
     assert_eq!(paths.socket, Path::new("/home/u/.pm3/pm3.sock"));
     assert_eq!(paths.pid_file, Path::new("/home/u/.pm3/pm3.pid"));
     assert_eq!(paths.lock_file, Path::new("/home/u/.pm3/pm3.lock"));
+    assert_eq!(paths.config_file, Path::new("/home/u/.pm3/config.yaml"));
     assert_eq!(paths.dump_file, Path::new("/home/u/.pm3/dump.yaml"));
     assert_eq!(paths.logs_dir, Path::new("/home/u/.pm3/logs"));
     assert_eq!(paths.daemon_log, Path::new("/home/u/.pm3/pm3.log"));
+}
+
+#[test]
+fn the_default_config_lives_in_the_default_home() {
+    let path = default_config_path(Some("/home/u")).expect("the default config path resolves");
+    assert_eq!(path, Path::new("/home/u/.pm3/config.yaml"));
+}
+
+#[test]
+fn the_default_config_needs_a_home_environment() {
+    let err = default_config_path(None).unwrap_err().to_string();
+    assert!(err.contains("no HOME in the environment"), "got: {err}");
 }
 
 #[test]
