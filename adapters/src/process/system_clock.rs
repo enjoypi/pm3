@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use usecases::Clock;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct SystemClock;
 
 impl Clock for SystemClock {

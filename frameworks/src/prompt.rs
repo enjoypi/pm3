@@ -1,12 +1,10 @@
 use std::io::{BufRead, Write};
 
-use adapters::already_running_marker;
-
 #[must_use]
-pub fn stale_running<'n>(changed: &'n [String], start_response: &str) -> Vec<&'n str> {
+pub fn stale_running<'n>(changed: &'n [String], already_running: &[String]) -> Vec<&'n str> {
     changed
         .iter()
-        .filter(|name| start_response.contains(&already_running_marker(name)))
+        .filter(|name| already_running.contains(name))
         .map(String::as_str)
         .collect()
 }

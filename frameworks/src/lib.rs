@@ -83,6 +83,18 @@ pub enum Error {
 
     #[error("cannot read the pm3 daemon pid from '{path}'")]
     DaemonPidUnknown { path: String },
+
+    #[error("cannot decode the pm3 daemon reply: {reason}")]
+    Undecodable { reason: String },
+
+    #[error(
+        "cannot confirm the pm3 daemon (pid {pid}) stopped: '{path}' is still there after {timeout_ms} ms"
+    )]
+    DaemonLingering {
+        pid: u32,
+        path: String,
+        timeout_ms: u64,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -8,12 +8,16 @@ use tower::ServiceExt;
 
 use super::*;
 use crate::{
-    http::routes::router,
+    http::{dto::ReplyDto, routes::router},
     response_body::{body_json, body_text},
     state::{DaemonCommand, DaemonOutcome},
 };
 
 const CHANNEL_DEPTH: usize = 1;
+
+pub fn reply_of(body: &str) -> ReplyDto {
+    serde_json::from_str(body).expect("an accepted request answers with a reply envelope")
+}
 
 pub struct Exchange {
     pub status: StatusCode,

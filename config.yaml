@@ -2,10 +2,14 @@ pm3:
   home: "${PM3_HOME:-~/.pm3}"
   cfg_dir: "${PM3_CFG_DIR:-~/.config/pm3}"
   search_path: "${PM3_SEARCH_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+  stop_signal: "TERM"
   kill_timeout_ms: 1600
   start_timeout_ms: 5000
   drain_timeout_secs: 5
+  request_timeout_ms: 30000
+  command_timeout_ms: 5000
   daemon_poll_interval_ms: 50
+  log_follow_interval_ms: 200
   restart:
     min_uptime_ms: 1000
     max_restarts: 15

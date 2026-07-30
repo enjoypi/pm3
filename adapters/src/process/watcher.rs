@@ -4,18 +4,17 @@ use usecases::{ExitOutcome, ProcessProbe as _};
 
 use super::{ps_probe::PsProcessProbe, tokio_launcher::TokioProcessLauncher};
 
-pub const RELEASE_POLL_INTERVAL_MS: u64 = 20;
-
 const UNKNOWN_EXIT: ExitOutcome = ExitOutcome { exit_code: None };
 
-pub async fn wait_until_released(path: &Path, timeout_ms: u64) -> bool {
+pub async fn wait_until_released(path: &Path, timeout_ms: u64, poll_interval_ms: u64) -> bool {
+    let step_ms = poll_interval_ms.max(1);
     let mut waited_ms = 0;
     while path.exists() {
         if waited_ms >= timeout_ms {
             return false;
         }
-        tokio::time::sleep(Duration::from_millis(RELEASE_POLL_INTERVAL_MS)).await;
-        waited_ms = waited_ms.saturating_add(RELEASE_POLL_INTERVAL_MS);
+        tokio::time::sleep(Duration::from_millis(step_ms)).await;
+        waited_ms = waited_ms.saturating_add(step_ms);
     }
     true
 }

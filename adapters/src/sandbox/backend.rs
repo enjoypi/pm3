@@ -1,7 +1,7 @@
 pub const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
 pub const BWRAP_PROGRAM: &str = "bwrap";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SandboxBackend {
     Seatbelt,
     Bwrap,

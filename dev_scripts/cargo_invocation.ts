@@ -11,8 +11,12 @@ export function cargoFlagsFromEnvironment(): string[] {
   return parseCargoFlags(Bun.env[cargoFlagsVariable]);
 }
 
-export async function runCargo(args: readonly string[]): Promise<number> {
+export async function runCargo(
+  args: readonly string[],
+  env: Readonly<Record<string, string>> = {},
+): Promise<number> {
   const cargo = Bun.spawn(["cargo", ...args], {
+    env: { ...Bun.env, ...env },
     stderr: "inherit",
     stdin: "inherit",
     stdout: "inherit",

@@ -4,7 +4,8 @@ use adapters::{
     AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
     ExitOutcome, ProcessStatus, ProcessTable, RestartOutcome, SpecSource, StartOutcome,
     UsecaseError, delete_app, describe_app, handle_child_exit, list_apps, load_apps_file,
-    materialise_workspace, resolve_specs, restart_app, resurrect, start_apps, stop_app, topo_sort,
+    materialise_workspace, resolve_specs, restart_app, resurrect, start_apps, stop_all_apps,
+    stop_app,
 };
 use tokio::sync::mpsc;
 
@@ -39,7 +40,7 @@ pub struct Daemon {
     next_generation: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Flow {
     Continue,
     Stop,
@@ -132,13 +133,28 @@ impl Daemon {
         )
         .await
         {
-            Ok(RestartOutcome::Started(started)) => self.watch(&started),
-            Ok(RestartOutcome::AwaitingExit {
-                pm_id: _,
-                name: app,
-                force_kill_pid,
-            }) => self.schedule_force_kill(&app, force_kill_pid),
+            Ok(outcome) => {
+                self.dispatch_restart(outcome);
+            }
             Err(error) => log_failure("restart", name, &error),
+        }
+    }
+
+    fn dispatch_restart(&mut self, outcome: RestartOutcome) -> String {
+        match outcome {
+            RestartOutcome::Started(started) => {
+                let name = started.name.clone();
+                self.watch(&started);
+                name
+            }
+            RestartOutcome::AwaitingExit {
+                pm_id: _,
+                name,
+                force_kill_pid,
+            } => {
+                self.schedule_force_kill(&name, force_kill_pid);
+                name
+            }
         }
     }
 
@@ -168,14 +184,7 @@ impl Daemon {
     }
 
     async fn stop_all(&mut self) -> DaemonOutcome {
-        let order = topo_sort(&self.table.dependency_nodes()).unwrap_or_default();
-        let stopped = self.running_names();
-        for name in order.iter().rev() {
-            let selector = AppSelector::Name(name.clone());
-            stop_app(&mut self.table, &selector, &*self.ports)
-                .await
-                .ok();
-        }
+        let stopped = stop_all_apps(&mut self.table, &*self.ports).await?;
         tokio::time::sleep(Duration::from_millis(self.specs.config.kill_timeout_ms)).await;
         for pid in self.ports.tracked_pids().await {
             self.ports.force_kill(pid).await.ok();
@@ -258,21 +267,7 @@ impl Daemon {
             &*self.ports,
         )
         .await?;
-        let name = match outcome {
-            RestartOutcome::Started(started) => {
-                let name = started.name.clone();
-                self.watch(&started);
-                name
-            }
-            RestartOutcome::AwaitingExit {
-                pm_id: _,
-                name,
-                force_kill_pid,
-            } => {
-                self.schedule_force_kill(&name, force_kill_pid);
-                name
-            }
-        };
+        let name = self.dispatch_restart(outcome);
         Ok(DaemonReply::Restarted { name })
     }
 

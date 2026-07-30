@@ -21,8 +21,20 @@ pub enum ConfigError {
     #[error("cannot accept pm3.drain_timeout_secs {0}: must be >= 1")]
     InvalidDrainTimeout(u64),
 
+    #[error("cannot accept pm3.request_timeout_ms {0}: must be >= 1")]
+    InvalidRequestTimeout(u64),
+
+    #[error("cannot accept pm3.command_timeout_ms {0}: must be >= 1")]
+    InvalidCommandTimeout(u64),
+
     #[error("cannot accept pm3.daemon_poll_interval_ms {0}: must be >= 1")]
     InvalidPollInterval(u64),
+
+    #[error("cannot accept pm3.log_follow_interval_ms {0}: must be >= 1")]
+    InvalidFollowInterval(u64),
+
+    #[error("cannot accept pm3.stop_signal {0}: must be one of TERM, INT, QUIT, HUP, USR1, USR2")]
+    InvalidStopSignal(String),
 
     #[error("cannot accept pm3.restart.min_uptime_ms {0}: must be >= 1")]
     InvalidMinUptime(u64),
@@ -61,16 +73,20 @@ pub struct Pm3Config {
     pub home: String,
     pub cfg_dir: String,
     pub search_path: String,
+    pub stop_signal: String,
     pub kill_timeout_ms: u64,
     pub start_timeout_ms: u64,
     pub drain_timeout_secs: u64,
+    pub request_timeout_ms: u64,
+    pub command_timeout_ms: u64,
     pub daemon_poll_interval_ms: u64,
+    pub log_follow_interval_ms: u64,
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
     pub service: ServiceConfig,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct RestartConfig {
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
@@ -98,12 +114,15 @@ pub struct TelemetryConfig {
 pub const LOG_FORMAT_JSON: &str = "json";
 pub const LOG_FORMAT_PRETTY: &str = "pretty";
 
+pub const STOP_SIGNAL_TERM: &str = "TERM";
+
 pub const SANDBOX_MODE_READ_ONLY: &str = "read-only";
 pub const SANDBOX_MODE_WORKSPACE_WRITE: &str = "workspace-write";
 pub const SANDBOX_MODE_DANGER_FULL_ACCESS: &str = "danger-full-access";
 
 const VALID_LOG_LEVELS: &[&str] = &["trace", "debug", "info", "warn", "error"];
 const VALID_LOG_FORMATS: &[&str] = &[LOG_FORMAT_JSON, LOG_FORMAT_PRETTY];
+const VALID_STOP_SIGNALS: &[&str] = &[STOP_SIGNAL_TERM, "INT", "QUIT", "HUP", "USR1", "USR2"];
 const VALID_SANDBOX_MODES: &[&str] = &[
     SANDBOX_MODE_READ_ONLY,
     SANDBOX_MODE_WORKSPACE_WRITE,
@@ -134,10 +153,24 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.drain_timeout_secs < 1 {
         return Err(ConfigError::InvalidDrainTimeout(pm3.drain_timeout_secs));
     }
+    if pm3.request_timeout_ms < 1 {
+        return Err(ConfigError::InvalidRequestTimeout(pm3.request_timeout_ms));
+    }
+    if pm3.command_timeout_ms < 1 {
+        return Err(ConfigError::InvalidCommandTimeout(pm3.command_timeout_ms));
+    }
     if pm3.daemon_poll_interval_ms < 1 {
         return Err(ConfigError::InvalidPollInterval(
             pm3.daemon_poll_interval_ms,
         ));
+    }
+    if pm3.log_follow_interval_ms < 1 {
+        return Err(ConfigError::InvalidFollowInterval(
+            pm3.log_follow_interval_ms,
+        ));
+    }
+    if !VALID_STOP_SIGNALS.contains(&pm3.stop_signal.as_str()) {
+        return Err(ConfigError::InvalidStopSignal(pm3.stop_signal.clone()));
     }
     if pm3.restart.min_uptime_ms < 1 {
         return Err(ConfigError::InvalidMinUptime(pm3.restart.min_uptime_ms));

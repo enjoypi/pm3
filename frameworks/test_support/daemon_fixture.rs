@@ -12,7 +12,7 @@ use crate::{
     client::UdsClient,
     commands::stdout_log,
     daemon::run_daemon_with_shutdown,
-    test_support::{write_apps_file, write_config},
+    test_support::{REQUEST_TIMEOUT_MS, write_apps_file, write_config},
 };
 
 const PROBE_INTERVAL: Duration = Duration::from_millis(20);
@@ -44,7 +44,7 @@ pub async fn running_daemon() -> Fixture {
         .await
     });
 
-    let client = UdsClient::new(paths.socket.clone());
+    let client = UdsClient::new(paths.socket.clone(), REQUEST_TIMEOUT_MS);
     loop {
         if client.daemon_is_healthy().await {
             break;

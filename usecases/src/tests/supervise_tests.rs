@@ -36,7 +36,7 @@ async fn a_stable_crash_schedules_a_restart_after_the_configured_delay() {
 async fn repeated_fast_crashes_trip_the_breaker_into_errored() {
     let ports = FakePorts::new(1000);
     let candidate = AppSpec {
-        max_restarts: 1,
+        max_restarts: 2,
         ..spec("api")
     };
     let mut table = running_table(&ports, candidate).await;

@@ -63,6 +63,57 @@ async fn dependencies_start_before_their_dependents() {
 }
 
 #[tokio::test]
+async fn a_dependency_already_in_the_table_satisfies_an_incremental_start() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports)
+        .await
+        .expect("the dependency should start");
+    start_apps(
+        &mut table,
+        &[spec_with_deps("web", &["api"])],
+        LOGS_DIR,
+        &ports,
+    )
+    .await
+    .expect("an incremental start should reuse the table for dependencies");
+    assert_eq!(ports.spawned_names(), vec!["api", "web"]);
+}
+
+#[tokio::test]
+async fn a_dependency_missing_everywhere_still_blocks_the_start() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let err = start_apps(
+        &mut table,
+        &[spec_with_deps("web", &["ghost"])],
+        LOGS_DIR,
+        &ports,
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, UsecaseError::Dependency(_)), "got: {err}");
+    assert!(ports.spawned_names().is_empty());
+}
+
+#[tokio::test]
+async fn an_incremental_start_only_starts_the_apps_it_was_given() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    table.upsert(spec("api"), 1000);
+    let outcomes = start_apps(
+        &mut table,
+        &[spec_with_deps("web", &["api"])],
+        LOGS_DIR,
+        &ports,
+    )
+    .await
+    .expect("start should succeed");
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(ports.spawned_names(), vec!["web"]);
+}
+
+#[tokio::test]
 async fn a_dependency_cycle_is_rejected_before_spawning_anything() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();

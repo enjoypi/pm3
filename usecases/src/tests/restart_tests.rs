@@ -67,6 +67,29 @@ async fn restarting_a_running_record_without_a_pid_needs_no_force_kill() {
 }
 
 #[tokio::test]
+async fn restarting_an_app_that_is_already_stopping_spawns_no_second_instance() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports)
+        .await
+        .expect("start should succeed");
+    let selector = AppSelector::Id(0);
+    restart_app(&mut table, &selector, LOGS_DIR, &ports)
+        .await
+        .expect("first restart should succeed");
+    let outcome = restart_app(&mut table, &selector, LOGS_DIR, &ports)
+        .await
+        .expect("second restart should succeed");
+    assert!(
+        matches!(outcome, RestartOutcome::AwaitingExit { .. }),
+        "got: {outcome:?}"
+    );
+    assert_eq!(ports.spawned_names(), vec!["api".to_string()]);
+    let record = table.find(&selector).expect("record present");
+    assert_eq!(record.runtime.pid, Some(100));
+}
+
+#[tokio::test]
 async fn restarting_an_unknown_selector_reports_not_found() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();

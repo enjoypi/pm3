@@ -27,7 +27,7 @@ pub async fn restart_app(
         .find_mut(selector)
         .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
 
-    if !record.runtime.status.is_running() {
+    if record.runtime.status.is_settled() {
         let name = record.runtime.name.clone();
         let started = start_one(table, &name, logs_dir, ports).await?;
         save_table(table, ports).await?;

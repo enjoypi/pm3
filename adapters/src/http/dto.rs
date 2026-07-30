@@ -7,6 +7,17 @@ pub struct StartRequestDto {
     pub apps_file: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct ReplyDto {
+    pub report: String,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub already_running: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HealthDto {
     pub status: String,

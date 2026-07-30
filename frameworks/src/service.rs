@@ -8,7 +8,7 @@ use adapters::{
 use crate::{
     Error, Result,
     cli::ServiceCommands,
-    layout::{ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
+    layout::{canonicalize, ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
     svc,
 };
 
@@ -127,9 +127,9 @@ fn build_spec(
 }
 
 fn canonical_config_path(config_path: &str) -> Result<PathBuf> {
-    std::fs::canonicalize(config_path).map_err(|error| Error::ServiceConfig {
+    canonicalize(config_path, |reason| Error::ServiceConfig {
         path: config_path.to_string(),
-        reason: error.to_string(),
+        reason,
     })
 }
 

@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, fmt::Write as _};
 
-use super::file::{AppEntry, AppsFile, AppsFileError, SandboxEntry};
+use super::{
+    file::{AppEntry, AppsFile, AppsFileError, SandboxEntry},
+    roots::dedup_roots,
+};
 use crate::program::{fold_home, fold_svc_cwd};
 
 const ENV_SEPARATOR: char = '=';
@@ -162,14 +165,11 @@ fn writable_roots(cwd: Option<&str>, extra: &[String], home: Option<&str>) -> Op
     if extra.is_empty() {
         return None;
     }
-    let mut roots: Vec<String> = cwd.map(ToString::to_string).into_iter().collect();
-    for dir in extra {
-        let folded = fold_home(dir, home);
-        if !roots.iter().any(|known| known == &folded) {
-            roots.push(folded);
-        }
-    }
-    Some(roots)
+    let declared = cwd
+        .map(ToString::to_string)
+        .into_iter()
+        .chain(extra.iter().map(|dir| fold_home(dir, home)));
+    Some(dedup_roots(declared))
 }
 
 fn parse_env_pairs(pairs: &[String]) -> Result<BTreeMap<String, String>, AppsFileError> {

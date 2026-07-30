@@ -21,7 +21,7 @@ pub use usecases::{
     ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode, SandboxPolicy,
     SignalError, Signaler, StartKind, StartOutcome, StopOutcome, UsecaseError, WrappedCommand,
     delete_app, describe_app, handle_child_exit, list_apps, log_paths, restart_app, resurrect,
-    start_apps, stop_app, topo_sort,
+    start_apps, stop_all_apps, stop_app, topo_sort,
 };
 
 pub use self::{
@@ -33,13 +33,13 @@ pub use self::{
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,
         RestartConfig, SANDBOX_MODE_DANGER_FULL_ACCESS, SANDBOX_MODE_READ_ONLY,
-        SANDBOX_MODE_WORKSPACE_WRITE, SandboxConfig, ServiceConfig, TelemetryConfig, check_config,
-        load_and_parse_config, load_config_file, parse_config, show_config, validate_config,
-        validate_pm3_config, validate_telemetry_config,
+        SANDBOX_MODE_WORKSPACE_WRITE, STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig,
+        TelemetryConfig, check_config, load_and_parse_config, load_config_file, parse_config,
+        show_config, validate_config, validate_pm3_config, validate_telemetry_config,
     },
     http::{
-        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, SERVICES_STOP_ALL_PATH, StartRequestDto,
-        router,
+        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, ReplyDto, SERVICES_STOP_ALL_PATH,
+        StartRequestDto, router,
     },
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
     paths::{
@@ -50,8 +50,8 @@ pub use self::{
         DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state, encode_states,
     },
     presenter::{
-        EMPTY_NOTICE, NOTHING_STARTED, already_running_marker, render_describe, render_reply,
-        render_started, render_table,
+        EMPTY_NOTICE, NOTHING_STARTED, affected_service, already_running_names, render_describe,
+        render_reply, render_started, render_table,
     },
     process::{
         KILL_PROGRAM, KillSignaler, PS_PROGRAM, PsProcessProbe, Sha256Fingerprinter, SystemClock,

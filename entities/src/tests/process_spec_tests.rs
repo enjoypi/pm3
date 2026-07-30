@@ -16,6 +16,25 @@ fn validate_rejects_blank_name() {
 }
 
 #[test]
+fn validate_rejects_an_all_digit_name() {
+    let candidate = AppSpec {
+        name: "3".to_string(),
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(err, SpecError::NumericName("3".to_string()));
+}
+
+#[test]
+fn validate_accepts_a_name_that_merely_contains_digits() {
+    let candidate = AppSpec {
+        name: "api2".to_string(),
+        ..spec("api")
+    };
+    validate_spec(&candidate).expect("a name mixing letters and digits should validate");
+}
+
+#[test]
 fn validate_rejects_blank_script() {
     let candidate = AppSpec {
         script: "  ".to_string(),
@@ -125,6 +144,7 @@ fn dependency_node_borrows_name_and_dependencies() {
 fn every_spec_error_renders_a_message() {
     let errors = [
         SpecError::EmptyName,
+        SpecError::NumericName("3".to_string()),
         SpecError::EmptyScript("api".to_string()),
         SpecError::RelativeCwd {
             app: "api".to_string(),

@@ -5,7 +5,7 @@ use crate::{
     persist::save_table, ports::LaunchSpec, table::ProcessTable,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum StartKind {
     Spawned,
     AlreadyRunning,
@@ -36,8 +36,7 @@ pub async fn start_apps(
     for spec in specs {
         validate_spec(spec)?;
     }
-    let nodes: Vec<DependencyNode<'_>> = specs.iter().map(AppSpec::dependency_node).collect();
-    let order = topo_sort(&nodes)?;
+    let order = start_order(table, specs)?;
 
     let now_ms = ports.now_ms();
     for spec in specs {
@@ -52,6 +51,24 @@ pub async fn start_apps(
     Ok(outcomes)
 }
 
+fn start_order(table: &ProcessTable, specs: &[AppSpec]) -> Result<Vec<String>> {
+    let known = table.dependency_nodes();
+    let mut nodes: Vec<DependencyNode<'_>> = specs.iter().map(AppSpec::dependency_node).collect();
+    nodes.extend(
+        known
+            .into_iter()
+            .filter(|node| !names_include(specs, node.name)),
+    );
+    Ok(topo_sort(&nodes)?
+        .into_iter()
+        .filter(|name| names_include(specs, name))
+        .collect())
+}
+
+fn names_include(specs: &[AppSpec], candidate: &str) -> bool {
+    specs.iter().any(|spec| spec.name == candidate)
+}
+
 pub(crate) async fn start_one(
     table: &mut ProcessTable,
     name: &str,
@@ -62,7 +79,7 @@ pub(crate) async fn start_one(
         return Err(UsecaseError::NotFound(name.to_string()));
     };
 
-    if record.runtime.status.is_running() {
+    if !record.runtime.status.is_settled() {
         return Ok(StartOutcome {
             pm_id: record.runtime.pm_id,
             name: name.to_string(),

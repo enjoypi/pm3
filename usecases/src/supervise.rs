@@ -4,7 +4,7 @@ use crate::{
     Ports, Result, UsecaseError, persist::save_table, ports::ExitOutcome, table::ProcessTable,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ExitAction {
     RestartAfter { delay_ms: u64 },
     Settled { status: ProcessStatus },

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct DependencyNode<'a> {
     pub name: &'a str,
     pub depends_on: &'a [String],

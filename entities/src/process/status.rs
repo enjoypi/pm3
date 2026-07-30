@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ProcessStatus {
     Launching,
     Online,
@@ -39,6 +39,11 @@ impl ProcessStatus {
     #[must_use]
     pub const fn is_shutting_down(self) -> bool {
         matches!(self, Self::Stopping)
+    }
+
+    #[must_use]
+    pub const fn is_settled(self) -> bool {
+        matches!(self, Self::Stopped | Self::Errored)
     }
 }
 

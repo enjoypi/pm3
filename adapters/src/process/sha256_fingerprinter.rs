@@ -4,7 +4,7 @@ use sha2::{Digest as _, Sha256};
 use tokio::fs;
 use usecases::{FingerprintError, Fingerprinter};
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Sha256Fingerprinter;
 
 impl Fingerprinter for Sha256Fingerprinter {

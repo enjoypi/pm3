@@ -220,7 +220,7 @@ async fn offer_restarts(
     report: &commands::StartReport,
     confirm: &mut (dyn FnMut(&str) -> bool + Send),
 ) -> Result<Option<String>> {
-    let pending = prompt::stale_running(&report.changed, &report.response);
+    let pending = prompt::stale_running(&report.changed, &report.already_running);
     let mut lines: Vec<String> = Vec::new();
     for name in pending {
         if confirm(name) {

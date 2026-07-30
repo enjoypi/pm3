@@ -23,6 +23,7 @@ fn running_web_report() -> commands::StartReport {
     commands::StartReport {
         response: "web is already running (id 0, pid 1)".to_string(),
         changed: vec!["web".to_string()],
+        already_running: vec!["web".to_string()],
     }
 }
 
@@ -69,6 +70,7 @@ async fn nothing_changed_offers_nothing() {
     let report = commands::StartReport {
         response: "started web (id 0, pid 1)".to_string(),
         changed: Vec::new(),
+        already_running: Vec::new(),
     };
     let offered = offer_restarts("/nonexistent/pm3.yaml", &report, &mut |_| true)
         .await

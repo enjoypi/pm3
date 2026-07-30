@@ -17,6 +17,7 @@ pub struct DaemonLaunch<'l> {
     pub program: PathBuf,
     pub attempts: u32,
     pub interval_ms: u64,
+    pub request_timeout_ms: u64,
 }
 
 impl<'l> DaemonLaunch<'l> {
@@ -37,12 +38,13 @@ impl<'l> DaemonLaunch<'l> {
             program,
             attempts,
             interval_ms,
+            request_timeout_ms: pm3.request_timeout_ms,
         }
     }
 }
 
 pub async fn ensure_daemon_running(launch: &DaemonLaunch<'_>) -> Result<()> {
-    let client = UdsClient::new(launch.paths.socket.clone());
+    let client = UdsClient::new(launch.paths.socket.clone(), launch.request_timeout_ms);
     if client.daemon_is_healthy().await {
         return Ok(());
     }

@@ -13,6 +13,10 @@ pub fn resolve_cfg_dir(pm3: &Pm3Config, home_env: Option<&str>) -> Result<PathBu
     Ok(expand_home(&pm3.cfg_dir, home_env)?)
 }
 
+pub fn canonicalize<F: FnOnce(String) -> Error>(path: &str, wrap: F) -> Result<PathBuf> {
+    std::fs::canonicalize(path).map_err(|error| wrap(error.to_string()))
+}
+
 pub async fn ensure_layout(paths: &Pm3Paths, cfg_dir: &Path) -> Result<()> {
     tokio::fs::create_dir_all(&paths.logs_dir)
         .await
@@ -35,8 +39,8 @@ pub async fn read_pid_file(paths: &Pm3Paths) -> Option<u32> {
 }
 
 pub async fn clear_runtime_files(paths: &Pm3Paths) {
-    tokio::fs::remove_file(&paths.socket).await.ok();
     tokio::fs::remove_file(&paths.pid_file).await.ok();
+    tokio::fs::remove_file(&paths.socket).await.ok();
 }
 
 #[must_use]

@@ -417,6 +417,16 @@ async fn stopping_everything_on_an_empty_table_reports_nothing() {
 }
 
 #[tokio::test]
+async fn stopping_everything_reports_a_dump_it_cannot_write() {
+    let mut harness = harness();
+    std::fs::create_dir_all(&harness.paths.dump_file).expect("block the dump path");
+    std::fs::write(harness.paths.dump_file.join("occupied"), "state")
+        .expect("fill the blocked dump path");
+    let outcome = harness.daemon.handle(DaemonRequest::StopAll).await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
 async fn shutting_down_leaves_every_app_running() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;

@@ -71,7 +71,6 @@ async fn serve_supervised(
         paths.dump_file.clone(),
         specs.clone(),
         detect_host_backend(),
-        specs.config.daemon_poll_interval_ms,
     ));
     let (commands, command_queue) = mpsc::channel(CHANNEL_DEPTH);
     let (events, event_queue) = mpsc::channel(CHANNEL_DEPTH);
