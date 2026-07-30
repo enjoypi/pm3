@@ -19,7 +19,7 @@ pub enum ServiceCommandError {
     #[error("cannot complete '{program}': {reason}")]
     Failed { program: String, reason: String },
 
-    #[error("cannot write the service unit '{path}': {reason}")]
+    #[error("cannot write '{path}': {reason}")]
     Io { path: String, reason: String },
 }
 
@@ -50,13 +50,13 @@ async fn run_step(step: &ServiceStep) -> Result<(), ServiceCommandError> {
             dir,
             path,
             contents,
-        } => write_unit(dir, path, contents).await,
-        ServiceStep::Remove { path } => remove_unit(path).await,
+        } => write_file(dir, path, contents).await,
+        ServiceStep::Remove { path } => remove_path(path).await,
         ServiceStep::Run(command) => run_command(command).await,
     }
 }
 
-async fn write_unit(dir: &Path, path: &Path, contents: &str) -> Result<(), ServiceCommandError> {
+async fn write_file(dir: &Path, path: &Path, contents: &str) -> Result<(), ServiceCommandError> {
     tokio::fs::create_dir_all(dir)
         .await
         .map_err(|error| io_error(dir, &error))?;
@@ -65,7 +65,7 @@ async fn write_unit(dir: &Path, path: &Path, contents: &str) -> Result<(), Servi
         .map_err(|error| io_error(path, &error))
 }
 
-async fn remove_unit(path: &Path) -> Result<(), ServiceCommandError> {
+async fn remove_path(path: &Path) -> Result<(), ServiceCommandError> {
     tokio::fs::remove_file(path)
         .await
         .map_err(|error| io_error(path, &error))

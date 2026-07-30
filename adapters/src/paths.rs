@@ -5,6 +5,7 @@ use thiserror::Error;
 pub const SOCKET_FILE: &str = "pm3.sock";
 pub const PID_FILE: &str = "pm3.pid";
 pub const LOCK_FILE: &str = "pm3.lock";
+pub const CONFIG_FILE: &str = "config.yaml";
 pub const DUMP_FILE: &str = "dump.yaml";
 pub const DAEMON_LOG_FILE: &str = "pm3.log";
 pub const LOGS_DIR: &str = "logs";
@@ -15,6 +16,7 @@ pub struct Pm3Paths {
     pub socket: PathBuf,
     pub pid_file: PathBuf,
     pub lock_file: PathBuf,
+    pub config_file: PathBuf,
     pub dump_file: PathBuf,
     pub logs_dir: PathBuf,
     pub daemon_log: PathBuf,
@@ -36,6 +38,7 @@ pub fn resolve_paths(root: &Path) -> Pm3Paths {
         socket: root.join(SOCKET_FILE),
         pid_file: root.join(PID_FILE),
         lock_file: root.join(LOCK_FILE),
+        config_file: root.join(CONFIG_FILE),
         dump_file: root.join(DUMP_FILE),
         logs_dir: root.join(LOGS_DIR),
         daemon_log: root.join(DAEMON_LOG_FILE),

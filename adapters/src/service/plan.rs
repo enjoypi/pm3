@@ -33,7 +33,16 @@ pub fn render_unit_contents(spec: &ServiceUnitSpec) -> String {
 }
 
 #[must_use]
-pub fn install_plan(spec: &ServiceUnitSpec, programs: &ServiceProgramSet) -> Vec<ServiceStep> {
+pub fn install_plan(
+    spec: &ServiceUnitSpec,
+    programs: &ServiceProgramSet,
+    config_contents: &str,
+) -> Vec<ServiceStep> {
+    let settle = ServiceStep::Write {
+        dir: spec.working_directory.clone(),
+        path: spec.config_path.clone(),
+        contents: config_contents.to_string(),
+    };
     let write = ServiceStep::Write {
         dir: spec.unit_dir.clone(),
         path: spec.unit_path(),
@@ -41,10 +50,12 @@ pub fn install_plan(spec: &ServiceUnitSpec, programs: &ServiceProgramSet) -> Vec
     };
     match spec.kind {
         ServiceKind::Launchd => vec![
+            settle,
             write,
             ServiceStep::Run(launchctl_load(programs, &spec.unit_path())),
         ],
         ServiceKind::Systemd => vec![
+            settle,
             write,
             ServiceStep::Run(systemctl_daemon_reload(programs)),
             ServiceStep::Run(systemctl_enable_now(programs, &spec.unit_name())),

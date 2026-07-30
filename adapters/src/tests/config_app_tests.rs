@@ -39,6 +39,16 @@ fn show_config_rejects_an_incomplete_document() {
 }
 
 #[test]
+fn load_config_file_keeps_the_source_text_unsubstituted() {
+    let (_dir, path) = write_valid_config();
+    let loaded = load_config_file(&path).expect("should succeed");
+    assert_eq!(
+        loaded.source,
+        std::fs::read_to_string(&path).expect("read the source back")
+    );
+}
+
+#[test]
 fn load_and_parse_config_accepts_a_valid_file() {
     let (_dir, path) = write_valid_config();
     let cfg = load_and_parse_config(&path).expect("should succeed");

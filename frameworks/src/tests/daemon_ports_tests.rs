@@ -1,8 +1,9 @@
 use std::path::Path;
 
-use adapters::{AppSpec, ProcessRuntime, SandboxMode};
+use adapters::{AppSpec, ProcessRuntime, SandboxMode, SpecSource, service_file_of};
 
 use super::*;
+use crate::test_support::pm3_config_with_home;
 
 const EPOCH_2023_MS: u64 = 1_700_000_000_000;
 
@@ -15,7 +16,27 @@ fn unconfined_policy() -> SandboxPolicy {
 }
 
 fn ports_in(dir: &Path) -> DaemonPorts {
-    DaemonPorts::new(dir.join("dump.yaml"), None)
+    DaemonPorts::new(dir.join("dump.yaml"), spec_source_in(dir), None)
+}
+
+fn spec_source_in(dir: &Path) -> SpecSource {
+    let cfg_dir = dir.join("svc");
+    std::fs::create_dir_all(&cfg_dir).expect("create the service directory");
+    SpecSource {
+        cfg_dir,
+        config: pm3_config_with_home(&dir.to_string_lossy()),
+        home_dir: dir.to_string_lossy().into_owned(),
+        logs_dir: dir.join("logs").to_string_lossy().into_owned(),
+        tmp_dir: None,
+    }
+}
+
+fn register_service(dir: &Path, name: &str) {
+    std::fs::write(
+        service_file_of(&dir.join("svc"), name),
+        format!("apps:\n  - name: {name}\n    script: /bin/echo\n"),
+    )
+    .expect("write the service file");
 }
 
 fn launch_spec(dir: &Path, program: &str, args: &[&str]) -> LaunchSpec {
@@ -65,11 +86,13 @@ async fn an_unconfined_app_is_wrapped_by_nothing() {
 }
 
 #[tokio::test]
-async fn the_dump_store_round_trips_records() {
+async fn the_dump_store_rejoins_the_saved_state_with_its_service_file() {
     let dir = tempfile::tempdir().expect("temp dir");
     let ports = ports_in(dir.path());
+    register_service(dir.path(), "web");
     ports.save(&[stored_record()]).await.expect("save");
-    assert_eq!(ports.load().await.expect("load"), vec![stored_record()]);
+    let loaded = ports.load().await.expect("load");
+    assert_eq!(loaded[0].runtime, stored_record().runtime);
 }
 
 #[tokio::test]

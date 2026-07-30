@@ -82,6 +82,9 @@ pub enum AppsFileError {
     #[error("cannot accept environment entry '{0}': expected KEY=VALUE")]
     InvalidEnvPair(String),
 
+    #[error("cannot find app '{0}' in its own service file")]
+    MissingApp(String),
+
     #[error("cannot find '{program}' for app '{app}' on pm3.search_path")]
     ProgramNotFound { app: String, program: String },
 

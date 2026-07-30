@@ -1,5 +1,6 @@
 mod file;
 mod inline;
+mod source;
 
 pub use self::{
     file::{
@@ -7,4 +8,5 @@ pub use self::{
         load_apps_file, parse_apps_file, resolve_specs,
     },
     inline::{InlineRequest, diff_lines, encode_apps_file, inline_apps_file},
+    source::{SERVICE_FILE_SUFFIX, SpecSource, service_file_of},
 };

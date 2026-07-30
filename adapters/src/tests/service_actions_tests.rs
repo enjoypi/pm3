@@ -8,6 +8,7 @@ use crate::{
 
 const TRUE_PROGRAM: &str = "/usr/bin/true";
 const FALSE_PROGRAM: &str = "/usr/bin/false";
+const CONFIG_BODY: &str = "pm3:\n  home: \"~/.pm3\"\n";
 
 fn installed_spec(home: &Path, kind: ServiceKind) -> ServiceUnitSpec {
     let spec = spec_for(kind, home);
@@ -20,7 +21,7 @@ fn installed_spec(home: &Path, kind: ServiceKind) -> ServiceUnitSpec {
 async fn a_dry_run_install_prints_the_plan_and_leaves_the_disk_alone() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(ServiceKind::Launchd, dir.path());
-    let report = install_service(&spec, &program_set(FALSE_PROGRAM), true)
+    let report = install_service(&spec, &program_set(FALSE_PROGRAM), CONFIG_BODY, true)
         .await
         .expect("a dry run should never fail");
     assert!(report.contains("<key>RunAtLoad</key>"), "got: {report}");
@@ -35,7 +36,7 @@ async fn a_dry_run_install_prints_the_plan_and_leaves_the_disk_alone() {
 async fn an_install_writes_the_unit_and_activates_it() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(ServiceKind::Systemd, dir.path());
-    let report = install_service(&spec, &program_set(TRUE_PROGRAM), false)
+    let report = install_service(&spec, &program_set(TRUE_PROGRAM), CONFIG_BODY, false)
         .await
         .expect("the install should succeed");
     assert!(report.contains("installed pm3-test"), "got: {report}");
@@ -50,11 +51,24 @@ async fn an_install_writes_the_unit_and_activates_it() {
 async fn an_install_reports_a_manager_refusal() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(ServiceKind::Launchd, dir.path());
-    let err = install_service(&spec, &program_set(FALSE_PROGRAM), false)
+    let err = install_service(&spec, &program_set(FALSE_PROGRAM), CONFIG_BODY, false)
         .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("exited with status 1"), "got: {err}");
+}
+
+#[tokio::test]
+async fn an_install_settles_the_config_into_the_pm3_home() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(ServiceKind::Systemd, dir.path());
+    install_service(&spec, &program_set(TRUE_PROGRAM), CONFIG_BODY, false)
+        .await
+        .expect("the install should succeed");
+    assert_eq!(
+        std::fs::read_to_string(&spec.config_path).expect("read the settled config"),
+        CONFIG_BODY
+    );
 }
 
 #[tokio::test]

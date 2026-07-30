@@ -1,7 +1,7 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use adapters::{
-    AppConfig, DaemonHandle, Pm3Paths, load_and_parse_config, log_startup_banner, logs_dir_of,
+    DaemonHandle, Pm3Paths, SpecSource, load_and_parse_config, log_startup_banner, logs_dir_of,
     router,
 };
 use tokio::{net::UnixListener, sync::mpsc};
@@ -49,35 +49,36 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
         env!("CARGO_PKG_VERSION"),
         &paths.socket.to_string_lossy(),
     );
-    let served = serve_supervised(&config, &paths, listener, shutdown).await;
+    let specs = SpecSource {
+        cfg_dir,
+        config: config.pm3.clone(),
+        home_dir: paths.root.to_string_lossy().into_owned(),
+        logs_dir: logs_dir_of(&paths.root),
+        tmp_dir: std::env::var(TMPDIR_VARIABLE).ok(),
+    };
+    let served = serve_supervised(specs, &paths, listener, shutdown).await;
     clear_runtime_files(&paths).await;
     served
 }
 
 async fn serve_supervised(
-    config: &AppConfig,
+    specs: SpecSource,
     paths: &Pm3Paths,
     listener: UnixListener,
     shutdown: ShutdownFuture,
 ) -> Result<()> {
     let ports = Arc::new(DaemonPorts::new(
         paths.dump_file.clone(),
+        specs.clone(),
         detect_host_backend(),
     ));
     let (commands, command_queue) = mpsc::channel(CHANNEL_DEPTH);
     let (events, event_queue) = mpsc::channel(CHANNEL_DEPTH);
-    let mut daemon = Daemon::new(
-        config.pm3.clone(),
-        paths.root.to_string_lossy().into_owned(),
-        logs_dir_of(&paths.root),
-        std::env::var(TMPDIR_VARIABLE).ok(),
-        ports,
-        events.clone(),
-    );
+    let drain_timeout = Duration::from_secs(specs.config.drain_timeout_secs);
+    let mut daemon = Daemon::new(specs, ports, events.clone());
     daemon.resurrect_saved_apps().await;
 
     let supervisor = tokio::spawn(actor::run(daemon, command_queue, event_queue));
-    let drain_timeout = Duration::from_secs(config.pm3.drain_timeout_secs);
     let served = serve_listener(
         listener,
         router(DaemonHandle::new(commands.clone())),

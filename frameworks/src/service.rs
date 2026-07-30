@@ -2,13 +2,14 @@ use std::path::{Path, PathBuf};
 
 use adapters::{
     AppConfig, Pm3Paths, ServiceKind, ServiceProgramSet, ServiceUnitSpec, install_service,
-    load_and_parse_config, status_report, uninstall_service, unit_dir_of,
+    load_config_file, status_report, uninstall_service, unit_dir_of,
 };
 
 use crate::{
     Error, Result,
     cli::ServiceCommands,
     layout::{ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
+    svc,
 };
 
 #[cfg(target_os = "macos")]
@@ -29,6 +30,7 @@ pub struct ServiceSession {
     pub paths: Pm3Paths,
     pub cfg_dir: PathBuf,
     pub spec: ServiceUnitSpec,
+    pub source: String,
 }
 
 pub async fn run_service(config_path: &str, command: Option<&ServiceCommands>) -> Result<String> {
@@ -51,7 +53,9 @@ pub async fn dispatch_service(
     let session = open_service_session(config_path, context)?;
     match command {
         None => Ok(status_report(&session.spec, context.programs).await?),
-        Some(ServiceCommands::Install { dry_run }) => install(&session, context, *dry_run).await,
+        Some(ServiceCommands::Install { dry_run, force }) => {
+            install(&session, context, *dry_run, *force).await
+        }
         Some(ServiceCommands::Uninstall { dry_run }) => {
             Ok(uninstall_service(&session.spec, context.programs, *dry_run).await?)
         }
@@ -63,14 +67,15 @@ pub fn open_service_session(
     context: &ServiceContext<'_>,
 ) -> Result<ServiceSession> {
     let absolute = canonical_config_path(config_path)?;
-    let config = load_and_parse_config(&absolute.to_string_lossy())?;
-    let paths = resolve_layout(&config.pm3, context.home_env)?;
-    let cfg_dir = resolve_cfg_dir(&config.pm3, context.home_env)?;
-    let spec = build_spec(&config, &paths, context, absolute)?;
+    let loaded = load_config_file(&absolute.to_string_lossy())?;
+    let paths = resolve_layout(&loaded.config.pm3, context.home_env)?;
+    let cfg_dir = resolve_cfg_dir(&loaded.config.pm3, context.home_env)?;
+    let spec = build_spec(&loaded.config, &paths, context)?;
     Ok(ServiceSession {
         paths,
         cfg_dir,
         spec,
+        source: loaded.source,
     })
 }
 
@@ -78,18 +83,19 @@ async fn install(
     session: &ServiceSession,
     context: &ServiceContext<'_>,
     dry_run: bool,
+    force: bool,
 ) -> Result<String> {
     if !dry_run {
         ensure_layout(&session.paths, &session.cfg_dir).await?;
+        svc::reconcile(&session.spec.config_path, &session.source, force).await?;
     }
-    Ok(install_service(&session.spec, context.programs, dry_run).await?)
+    Ok(install_service(&session.spec, context.programs, &session.source, dry_run).await?)
 }
 
 fn build_spec(
     config: &AppConfig,
     paths: &Pm3Paths,
     context: &ServiceContext<'_>,
-    config_path: PathBuf,
 ) -> Result<ServiceUnitSpec> {
     let home = context.home_env.ok_or(Error::ServiceHome)?;
     let program = context
@@ -103,6 +109,7 @@ fn build_spec(
     let label = config.pm3.service.label.clone();
     let search_path = config.pm3.search_path.clone();
     let unit_dir = unit_dir_of(kind, Path::new(home));
+    let config_path = paths.config_file.clone();
     let working_directory = paths.root.clone();
     let log_path = paths.daemon_log.clone();
     let home_dir = home.to_string();

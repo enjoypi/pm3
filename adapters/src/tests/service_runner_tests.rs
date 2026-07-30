@@ -90,10 +90,7 @@ async fn a_unit_directory_blocked_by_a_file_stops_the_plan() {
         .await
         .unwrap_err()
         .to_string();
-    assert!(
-        err.starts_with("cannot write the service unit"),
-        "got: {err}"
-    );
+    assert!(err.starts_with("cannot write "), "got: {err}");
 }
 
 #[tokio::test]

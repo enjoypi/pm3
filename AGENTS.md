@@ -45,4 +45,6 @@ pm3 的踩坑清单。改代码前先读，能省掉重复试错。任务清单�
 - 测「调用外部服务管理器」（`launchctl`/`systemctl`/`loginctl`）用临时目录里的 `#!/bin/sh` 脚本 + `set_permissions(0o755)` 当替身，可同时控制 stdout 与退出码；真实二进制只用 `/usr/bin/true`、`/usr/bin/false`、`/nonexistent/...`，**绝不**在测试里调真的 `launchctl`/`systemctl`
 - 服务 unit 文件位置由 OS 约定在 adapters 里派生（`~/Library/LaunchAgents/{label}.plist` / `~/.config/systemd/user/{label}.service`），不进配置——单个配置项无法同时对两个平台正确；`$HOME` 由 frameworks 注入，测试传 tempdir 就不会碰真实 `~`
 - 断言「子进程环境已清空」MUST 探 `$HOME` 不能探 `$PATH`：`/bin/sh` 在 PATH 缺失时会自己合成一个默认值
+- fixture 里的 `create_dir_all` 会把「测试想要它缺失」的父目录造出来（`save_reports_a_missing_parent_directory` 一度失效）→ 造错误路径的 store/source fixture 必须接一个独立 root，别从被测路径 `parent()` 反推
+- e2e 会泄漏 daemon 进程（tempdir 已删、进程仍在）：排查真机状态前先 `pgrep -f 'pm3 daemon --config /var/folders'` 清一遍，否则 `pgrep`/端口结果会误导
 - 文件 IO 错误分支稳定触发：`create_dir_all` 失败 → 目标预置为文件；`rename` 失败 → 目标预置为 non-empty 目录；`remove_file` 失败 → path 是目录；`write` 失败 → 父目录 ENOENT

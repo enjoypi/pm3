@@ -303,8 +303,23 @@ async fn resurrecting_restores_the_saved_apps() {
     start_one(&mut origin, "web", SLEEPER).await;
     let mut revived = harness();
     std::fs::copy(&origin.paths.dump_file, &revived.paths.dump_file).expect("copy the dump");
+    std::fs::copy(
+        origin.cfg_dir.join("web.yaml"),
+        revived.cfg_dir.join("web.yaml"),
+    )
+    .expect("copy the service file");
     revived.daemon.resurrect_saved_apps().await;
     assert_eq!(listed(&mut revived).await, 1);
+}
+
+#[tokio::test]
+async fn resurrecting_skips_an_app_without_a_service_file() {
+    let mut origin = harness();
+    start_one(&mut origin, "web", SLEEPER).await;
+    let mut revived = harness();
+    std::fs::copy(&origin.paths.dump_file, &revived.paths.dump_file).expect("copy the dump");
+    revived.daemon.resurrect_saved_apps().await;
+    assert_eq!(listed(&mut revived).await, 0);
 }
 
 #[tokio::test]
@@ -364,6 +379,7 @@ async fn the_supervisor_answers_commands() {
     let Harness {
         dir: _dir,
         paths: _paths,
+        cfg_dir: _cfg_dir,
         daemon,
         events,
         sender,
@@ -387,6 +403,7 @@ async fn the_supervisor_keeps_running_when_the_command_queue_closes() {
     let Harness {
         dir: _dir,
         paths: _paths,
+        cfg_dir: _cfg_dir,
         daemon,
         events,
         sender,
@@ -408,6 +425,7 @@ async fn the_supervisor_stops_on_a_shutdown_event() {
     let Harness {
         dir: _dir,
         paths: _paths,
+        cfg_dir: _cfg_dir,
         daemon,
         events,
         sender,
@@ -426,6 +444,7 @@ async fn the_supervisor_handles_internal_events() {
     let Harness {
         dir: _dir,
         paths: _paths,
+        cfg_dir: _cfg_dir,
         daemon,
         events,
         sender,
