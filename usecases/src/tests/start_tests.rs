@@ -3,8 +3,37 @@ use entities::{ProcessStatus, SandboxMode, SandboxPolicy};
 use super::*;
 use crate::{
     AppSelector,
-    ports_test_helpers::{FakePorts, LOGS_DIR, SANDBOX_PREFIX, spec, spec_with_deps},
+    fingerprint::render_launch,
+    ports::Fingerprinter as _,
+    ports_test_helpers::{FakePorts, LOGS_DIR, SANDBOX_PREFIX, live_token, spec, spec_with_deps},
 };
+
+async fn started(ports: &FakePorts) -> ProcessTable {
+    let mut table = ProcessTable::new();
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, ports)
+        .await
+        .expect("start should succeed");
+    table
+}
+
+fn recorded_identity(table: &ProcessTable) -> entities::ProcessIdentity {
+    table
+        .find(&AppSelector::Name("api".to_string()))
+        .expect("record present")
+        .runtime
+        .identity
+        .clone()
+        .expect("a launched service carries an identity")
+}
+
+fn has_identity(table: &ProcessTable) -> bool {
+    table
+        .find(&AppSelector::Name("api".to_string()))
+        .expect("record present")
+        .runtime
+        .identity
+        .is_some()
+}
 
 #[tokio::test]
 async fn starting_one_app_marks_it_online_with_a_pid() {
@@ -15,7 +44,7 @@ async fn starting_one_app_marks_it_online_with_a_pid() {
         .expect("start should succeed");
     assert_eq!(outcomes.len(), 1);
     assert_eq!(outcomes[0].pid, Some(100));
-    assert!(!outcomes[0].already_running);
+    assert_eq!(outcomes[0].kind, StartKind::Spawned);
     let record = table
         .find(&AppSelector::Name("api".to_string()))
         .expect("record present");
@@ -120,7 +149,7 @@ async fn starting_an_already_running_app_is_idempotent() {
     let outcomes = start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports)
         .await
         .expect("second start");
-    assert!(outcomes[0].already_running);
+    assert_eq!(outcomes[0].kind, StartKind::AlreadyRunning);
     assert_eq!(outcomes[0].pid, Some(100));
     assert_eq!(ports.spawned_names().len(), 1);
 }
@@ -166,6 +195,53 @@ async fn an_unconfined_app_runs_without_a_sandbox_wrapper() {
     let launch = launched.first().expect("one spawn recorded");
     assert_eq!(launch.program, "/usr/bin/true");
     assert!(launch.args.is_empty());
+}
+
+#[tokio::test]
+async fn a_started_app_records_the_identity_of_the_process_it_launched() {
+    let ports = FakePorts::new(1000);
+    let table = started(&ports).await;
+    let identity = recorded_identity(&table);
+    assert_eq!(identity.token, live_token(100));
+}
+
+#[tokio::test]
+async fn a_started_app_records_the_digest_of_what_it_was_launched_with() {
+    let ports = FakePorts::new(1000);
+    let table = started(&ports).await;
+    let identity = recorded_identity(&table);
+    let launched = ports.spawned();
+    let launch = launched.first().expect("one spawn recorded");
+    assert_eq!(identity.launch_digest, ports.digest(&render_launch(launch)));
+}
+
+#[tokio::test]
+async fn a_started_app_records_the_digest_of_its_program() {
+    let ports = FakePorts::new(1000);
+    ports.seed_file_digest("/usr/bin/true", "cafe");
+    let table = started(&ports).await;
+    let identity = recorded_identity(&table);
+    assert_eq!(identity.binary_digest, "cafe");
+}
+
+#[tokio::test]
+async fn a_process_that_vanished_before_it_could_be_probed_records_no_identity() {
+    let ports = FakePorts::new(1000);
+    ports.hide_from_probe(100);
+    let table = started(&ports).await;
+    assert!(!has_identity(&table));
+}
+
+#[tokio::test]
+async fn an_undigestable_program_records_no_identity_but_still_starts() {
+    let ports = FakePorts::new(1000);
+    ports.fail_file_digest_for("/usr/bin/true");
+    let table = started(&ports).await;
+    let record = table
+        .find(&AppSelector::Name("api".to_string()))
+        .expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Online);
+    assert_eq!(record.runtime.identity, None);
 }
 
 #[tokio::test]

@@ -16,11 +16,12 @@ pub mod workspace;
 use thiserror::Error;
 pub use usecases::{
     AppSelector, AppSpec, Clock, CommandWrapper, DeleteOutcome, DumpError, DumpStore, ExitAction,
-    ExitOutcome, LaunchError, LaunchSpec, LaunchedProcess, Ports, ProcessLauncher, ProcessRecord,
-    ProcessRuntime, ProcessStatus, ProcessTable, ProcessView, RestartOutcome, SandboxError,
-    SandboxMode, SandboxPolicy, SignalError, Signaler, StartOutcome, StopOutcome, UsecaseError,
-    WrappedCommand, delete_app, describe_app, handle_child_exit, list_apps, log_paths, restart_app,
-    resurrect, start_apps, stop_app, topo_sort,
+    ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Ports,
+    ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus,
+    ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode, SandboxPolicy,
+    SignalError, Signaler, StartKind, StartOutcome, StopOutcome, UsecaseError, WrappedCommand,
+    delete_app, describe_app, handle_child_exit, list_apps, log_paths, restart_app, resurrect,
+    start_apps, stop_app, topo_sort,
 };
 
 pub use self::{
@@ -36,7 +37,10 @@ pub use self::{
         load_and_parse_config, load_config_file, parse_config, show_config, validate_config,
         validate_pm3_config, validate_telemetry_config,
     },
-    http::{APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, StartRequestDto, router},
+    http::{
+        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, SERVICES_STOP_ALL_PATH, StartRequestDto,
+        router,
+    },
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
     paths::{
         CONFIG_FILE, DEFAULT_HOME, PathError, Pm3Paths, default_config_path, expand_home,
@@ -49,7 +53,10 @@ pub use self::{
         EMPTY_NOTICE, NOTHING_STARTED, already_running_marker, render_describe, render_reply,
         render_started, render_table,
     },
-    process::{KILL_PROGRAM, KillSignaler, SystemClock, TokioProcessLauncher},
+    process::{
+        KILL_PROGRAM, KillSignaler, PS_PROGRAM, PsProcessProbe, Sha256Fingerprinter, SystemClock,
+        TokioProcessLauncher, wait_for_exit, wait_until_released,
+    },
     program::{
         HOME_PLACEHOLDER, SVC_CWD_NAME, SVC_CWD_PLACEHOLDER, fold_home, fold_svc_cwd,
         program_available, resolve_program,

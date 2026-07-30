@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
 use adapters::{
-    Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, KillSignaler, LaunchError,
-    LaunchSpec, LaunchedProcess, Ports, ProcessLauncher, ProcessRecord, SandboxBackend,
-    SandboxCommandWrapper, SandboxError, SandboxPolicy, SignalError, Signaler, SpecSource,
-    SystemClock, TokioProcessLauncher, WrappedCommand, YamlDumpStore,
+    Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,
+    KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Ports, ProcessLauncher, ProcessProbe,
+    ProcessRecord, PsProcessProbe, SandboxBackend, SandboxCommandWrapper, SandboxError,
+    SandboxPolicy, Sha256Fingerprinter, SignalError, Signaler, SpecSource, SystemClock,
+    TokioProcessLauncher, WrappedCommand, YamlDumpStore, wait_for_exit,
 };
 
 #[derive(Debug)]
@@ -14,22 +15,33 @@ pub struct DaemonPorts {
     wrapper: SandboxCommandWrapper,
     store: YamlDumpStore,
     clock: SystemClock,
+    probe: PsProcessProbe,
+    fingerprinter: Sha256Fingerprinter,
+    poll_interval_ms: u64,
 }
 
 impl DaemonPorts {
     #[must_use]
-    pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<SandboxBackend>) -> Self {
+    pub fn new(
+        dump_file: PathBuf,
+        specs: SpecSource,
+        backend: Option<SandboxBackend>,
+        poll_interval_ms: u64,
+    ) -> Self {
         Self {
             launcher: TokioProcessLauncher::default(),
             signaler: KillSignaler::default(),
             wrapper: SandboxCommandWrapper::new(backend),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
+            probe: PsProcessProbe::default(),
+            fingerprinter: Sha256Fingerprinter,
+            poll_interval_ms,
         }
     }
 
     pub async fn wait(&self, pid: u32) -> Option<ExitOutcome> {
-        self.launcher.wait(pid).await
+        wait_for_exit(&self.launcher, &self.probe, pid, self.poll_interval_ms).await
     }
 
     pub async fn tracked_pids(&self) -> Vec<u32> {
@@ -69,9 +81,29 @@ impl DumpStore for DaemonPorts {
     }
 }
 
+impl Fingerprinter for DaemonPorts {
+    fn digest(&self, text: &str) -> String {
+        self.fingerprinter.digest(text)
+    }
+
+    async fn file_digest(&self, path: &str) -> Result<String, FingerprintError> {
+        self.fingerprinter.file_digest(path).await
+    }
+}
+
 impl ProcessLauncher for DaemonPorts {
     async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
         self.launcher.spawn(spec).await
+    }
+
+    async fn adopt(&self, pid: u32) {
+        self.launcher.adopt(pid).await;
+    }
+}
+
+impl ProcessProbe for DaemonPorts {
+    async fn identity(&self, pid: u32) -> Option<String> {
+        self.probe.identity(pid).await
     }
 }
 

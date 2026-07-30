@@ -1,8 +1,22 @@
-use usecases::{AppSpec, ProcessRecord, ProcessRuntime, ProcessStatus, SandboxMode, SandboxPolicy};
+use usecases::{
+    AppSpec, ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus, SandboxMode,
+    SandboxPolicy,
+};
 
 pub const CREATED_AT_MS: u64 = 1_700_000_000_000;
 pub const STARTED_AT_MS: u64 = 1_700_000_001_000;
 pub const SAMPLE_PID: u32 = 4242;
+pub const SAMPLE_TOKEN: &str = "Tue Jul 28 14:06:28 2026";
+pub const SAMPLE_LAUNCH_DIGEST: &str = "1111111111111111";
+pub const SAMPLE_BINARY_DIGEST: &str = "2222222222222222";
+
+pub fn sample_identity() -> ProcessIdentity {
+    ProcessIdentity {
+        token: SAMPLE_TOKEN.to_string(),
+        launch_digest: SAMPLE_LAUNCH_DIGEST.to_string(),
+        binary_digest: SAMPLE_BINARY_DIGEST.to_string(),
+    }
+}
 
 pub fn sample_spec(name: &str) -> AppSpec {
     AppSpec {
@@ -34,6 +48,7 @@ pub fn sample_runtime(name: &str) -> ProcessRuntime {
         unstable_restarts: 1,
         created_at_ms: CREATED_AT_MS,
         started_at_ms: Some(STARTED_AT_MS),
+        identity: Some(sample_identity()),
         pending_restart: false,
     }
 }
@@ -52,6 +67,7 @@ pub fn stopped_record(name: &str) -> ProcessRecord {
             pid: None,
             status: ProcessStatus::Stopped,
             started_at_ms: None,
+            identity: None,
             ..sample_runtime(name)
         },
     }

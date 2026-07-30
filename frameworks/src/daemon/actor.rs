@@ -107,6 +107,7 @@ impl Daemon {
             DaemonRequest::Stop(selector) => self.stop(&selector).await,
             DaemonRequest::Restart(selector) => self.restart(&selector).await,
             DaemonRequest::Delete(selector) => self.delete(&selector).await,
+            DaemonRequest::StopAll => self.stop_all().await,
         }
     }
 
@@ -151,8 +152,24 @@ impl Daemon {
         self.ports.force_kill(pid).await.ok();
     }
 
-    pub async fn shutdown(&mut self) {
+    pub async fn tracked_pids(&self) -> Vec<u32> {
+        self.ports.tracked_pids().await
+    }
+
+    pub fn shutdown(&self) {
+        let survivors = self.running_names().len();
+        tracing::info!(
+            feature = "lifecycle",
+            operation = "shutdown",
+            mode = "preserve",
+            survivors,
+            "pm3 daemon is leaving its services running for the next daemon to reclaim",
+        );
+    }
+
+    async fn stop_all(&mut self) -> DaemonOutcome {
         let order = topo_sort(&self.table.dependency_nodes()).unwrap_or_default();
+        let stopped = self.running_names();
         for name in order.iter().rev() {
             let selector = AppSelector::Name(name.clone());
             stop_app(&mut self.table, &selector, &*self.ports)
@@ -163,6 +180,16 @@ impl Daemon {
         for pid in self.ports.tracked_pids().await {
             self.ports.force_kill(pid).await.ok();
         }
+        Ok(DaemonReply::StoppedAll { names: stopped })
+    }
+
+    fn running_names(&self) -> Vec<String> {
+        self.table
+            .records()
+            .iter()
+            .filter(|record| record.runtime.status.is_running())
+            .map(|record| record.runtime.name.clone())
+            .collect()
     }
 
     async fn apply(&mut self, event: DaemonEvent) -> Flow {
@@ -194,7 +221,7 @@ impl Daemon {
                 Flow::Continue
             }
             DaemonEvent::Shutdown => {
-                self.shutdown().await;
+                self.shutdown();
                 Flow::Stop
             }
         }
@@ -262,7 +289,7 @@ impl Daemon {
     }
 
     fn watch(&mut self, started: &StartOutcome) {
-        let (Some(pid), false) = (started.pid, started.already_running) else {
+        let (Some(pid), true) = (started.pid, started.kind.needs_watching()) else {
             return;
         };
         let generation = self.bump(&started.name);

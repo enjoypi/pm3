@@ -4,5 +4,5 @@ mod routes;
 
 pub use self::{
     dto::{HEALTH_OK, HealthDto, StartRequestDto},
-    routes::{APPS_PATH, HEALTH_PATH, router},
+    routes::{APPS_PATH, HEALTH_PATH, SERVICES_STOP_ALL_PATH, router},
 };

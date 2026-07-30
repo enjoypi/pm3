@@ -1,16 +1,30 @@
-use entities::{AppSpec, DependencyNode, topo_sort, validate_spec};
+use entities::{AppSpec, DependencyNode, ProcessIdentity, topo_sort, validate_spec};
 
 use crate::{
-    Ports, Result, UsecaseError, log_paths::log_paths, persist::save_table, ports::LaunchSpec,
-    table::ProcessTable,
+    Ports, Result, UsecaseError, fingerprint::render_launch, log_paths::log_paths,
+    persist::save_table, ports::LaunchSpec, table::ProcessTable,
 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StartKind {
+    Spawned,
+    AlreadyRunning,
+    Adopted,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartOutcome {
     pub pm_id: u32,
     pub name: String,
     pub pid: Option<u32>,
-    pub already_running: bool,
+    pub kind: StartKind,
+}
+
+impl StartKind {
+    #[must_use]
+    pub const fn needs_watching(self) -> bool {
+        matches!(self, Self::Spawned | Self::Adopted)
+    }
 }
 
 pub async fn start_apps(
@@ -53,25 +67,61 @@ pub(crate) async fn start_one(
             pm_id: record.runtime.pm_id,
             name: name.to_string(),
             pid: record.runtime.pid,
-            already_running: true,
+            kind: StartKind::AlreadyRunning,
         });
     }
 
     let launch = build_launch_spec(&record.spec, logs_dir, ports)?;
     let launched = ports.spawn(&launch).await?;
     let now_ms = ports.now_ms();
+    let identity = capture_identity(&launch, &record.spec.script, launched.pid, ports).await;
 
     record.runtime.mark_launched(launched.pid, now_ms);
     record.runtime.mark_online();
+    record.runtime.record_identity(identity);
     Ok(StartOutcome {
         pm_id: record.runtime.pm_id,
         name: name.to_string(),
         pid: Some(launched.pid),
-        already_running: false,
+        kind: StartKind::Spawned,
     })
 }
 
-fn build_launch_spec(spec: &AppSpec, logs_dir: &str, ports: &impl Ports) -> Result<LaunchSpec> {
+pub(crate) async fn capture_identity(
+    launch: &LaunchSpec,
+    script: &str,
+    pid: u32,
+    ports: &impl Ports,
+) -> Option<ProcessIdentity> {
+    let token = ports.identity(pid).await?;
+    let launch_digest = ports.digest(&render_launch(launch));
+    let binary_digest = ports
+        .file_digest(script)
+        .await
+        .inspect_err(|error| log_unusable_identity(&launch.name, &error.to_string()))
+        .ok()?;
+    Some(ProcessIdentity {
+        token,
+        launch_digest,
+        binary_digest,
+    })
+}
+
+fn log_unusable_identity(app: &str, reason: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "identity",
+        app,
+        reason,
+        "pm3 cannot fingerprint a launched service, so a daemon restart will restart it",
+    );
+}
+
+pub(crate) fn build_launch_spec(
+    spec: &AppSpec,
+    logs_dir: &str,
+    ports: &impl Ports,
+) -> Result<LaunchSpec> {
     let wrapped = ports.wrap(&spec.name, &spec.sandbox, &spec.script, &spec.args)?;
     let paths = log_paths(logs_dir, &spec.name);
     Ok(LaunchSpec {

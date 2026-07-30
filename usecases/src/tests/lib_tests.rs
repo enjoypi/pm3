@@ -67,6 +67,16 @@ fn dump_errors_render_transparently() {
 }
 
 #[test]
+fn fingerprint_errors_render_transparently() {
+    let source = FingerprintError::Read {
+        path: "/usr/bin/node".to_string(),
+        reason: "boom".to_string(),
+    };
+    let expected = source.to_string();
+    assert_transparent(&UsecaseError::from(source), &expected);
+}
+
+#[test]
 fn not_found_names_the_selector() {
     let err = UsecaseError::NotFound("api".to_string());
     assert_eq!(err.to_string(), "cannot find app 'api'");

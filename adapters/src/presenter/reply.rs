@@ -1,9 +1,10 @@
-use usecases::StartOutcome;
+use usecases::{StartKind, StartOutcome};
 
 use super::{describe::render_describe, fields::format_pid, table::render_table};
 use crate::state::DaemonReply;
 
 pub const NOTHING_STARTED: &str = "no apps were started";
+pub const NOTHING_TO_STOP: &str = "no services were running";
 
 #[must_use]
 pub fn already_running_marker(name: &str) -> String {
@@ -19,7 +20,16 @@ pub fn render_reply(reply: &DaemonReply) -> String {
         DaemonReply::Stopped { name } => format!("stopped {name}"),
         DaemonReply::Restarted { name } => format!("restarted {name}"),
         DaemonReply::Deleted { name } => format!("deleted {name}"),
+        DaemonReply::StoppedAll { names } => render_stopped_all(names),
     }
+}
+
+#[must_use]
+pub fn render_stopped_all(names: &[String]) -> String {
+    if names.is_empty() {
+        return NOTHING_TO_STOP.to_string();
+    }
+    format!("stopped {}", names.join(", "))
 }
 
 #[must_use]
@@ -32,20 +42,21 @@ pub fn render_started(outcomes: &[StartOutcome]) -> String {
 }
 
 fn describe_start(outcome: &StartOutcome) -> String {
+    use StartKind as Sk;
+
     let StartOutcome {
         pm_id,
         name,
         pid,
-        already_running,
+        kind,
     } = outcome;
     let pid_text = format_pid(*pid);
-    if *already_running {
-        return format!(
-            "{} (id {pm_id}, pid {pid_text})",
-            already_running_marker(name)
-        );
-    }
-    format!("started {name} (id {pm_id}, pid {pid_text})")
+    let headline = match kind {
+        Sk::Spawned => format!("started {name}"),
+        Sk::AlreadyRunning => already_running_marker(name),
+        Sk::Adopted => format!("reclaimed {name}"),
+    };
+    format!("{headline} (id {pm_id}, pid {pid_text})")
 }
 
 #[cfg(test)]

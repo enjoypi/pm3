@@ -2,7 +2,8 @@ use usecases::ProcessStatus;
 
 use super::*;
 use crate::process_records::{
-    CREATED_AT_MS, SAMPLE_PID, STARTED_AT_MS, sample_record, stopped_record,
+    CREATED_AT_MS, SAMPLE_BINARY_DIGEST, SAMPLE_LAUNCH_DIGEST, SAMPLE_PID, SAMPLE_TOKEN,
+    STARTED_AT_MS, sample_identity, sample_record, stopped_record,
 };
 
 fn encoded(name: &str) -> StateDto {
@@ -48,6 +49,46 @@ fn encode_leaves_an_idle_service_without_a_pid() {
     let dto = doc.services.pop().expect("one encoded service");
     assert_eq!(dto.runtime.pid, None);
     assert_eq!(dto.runtime.started_at_ms, None);
+}
+
+#[test]
+fn encode_carries_the_identity_of_the_running_process() {
+    let dto = encoded("web");
+    let identity = dto
+        .runtime
+        .identity
+        .expect("a running service has an identity");
+    assert_eq!(identity.token, SAMPLE_TOKEN);
+    assert_eq!(identity.launch_digest, SAMPLE_LAUNCH_DIGEST);
+    assert_eq!(identity.binary_digest, SAMPLE_BINARY_DIGEST);
+}
+
+#[test]
+fn encode_leaves_an_idle_service_without_an_identity() {
+    let mut doc = encode_states(&[stopped_record("web")]);
+    let dto = doc.services.pop().expect("one encoded service");
+    assert!(dto.runtime.identity.is_none());
+}
+
+#[test]
+fn an_idle_service_writes_no_identity_key_at_all() {
+    let doc = encode_states(&[stopped_record("web")]);
+    let yaml = serde_yaml2::to_string(&doc).expect("the dump document serializes");
+    assert!(!yaml.contains("identity"), "got: {yaml}");
+}
+
+#[test]
+fn decode_restores_the_identity() {
+    let runtime = decoded(encoded("web"));
+    assert_eq!(runtime.identity, Some(sample_identity()));
+}
+
+#[test]
+fn decode_accepts_a_dump_written_before_identities_existed() {
+    let mut dto = encoded("web");
+    dto.runtime.identity = None;
+    let runtime = decode_state(dto).expect("an identity-less dump stays readable");
+    assert_eq!(runtime.identity, None);
 }
 
 #[test]

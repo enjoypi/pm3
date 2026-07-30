@@ -20,8 +20,11 @@ fn argv(network: bool, writable_roots: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn the_sandbox_dies_with_its_parent() {
-    assert!(argv(false, &[]).contains(&"--die-with-parent".to_string()));
+fn the_sandbox_outlives_its_parent_so_a_daemon_restart_can_reclaim_it() {
+    assert!(
+        !argv(false, &[]).contains(&"--die-with-parent".to_string()),
+        "a confined service must survive the daemon it was launched from"
+    );
 }
 
 #[test]

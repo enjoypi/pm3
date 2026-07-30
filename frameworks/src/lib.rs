@@ -42,6 +42,9 @@ pub enum Error {
     #[error(transparent)]
     Apps(#[from] adapters::AppsFileError),
 
+    #[error(transparent)]
+    Signal(#[from] adapters::SignalError),
+
     #[error("cannot determine the pm3 binary path: {reason}")]
     ServiceProgram { reason: String },
 
@@ -77,6 +80,9 @@ pub enum Error {
 
     #[error("pm3 daemon refused the request with status {status}: {body}")]
     Refused { status: u16, body: String },
+
+    #[error("cannot read the pm3 daemon pid from '{path}'")]
+    DaemonPidUnknown { path: String },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

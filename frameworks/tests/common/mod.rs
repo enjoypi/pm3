@@ -14,6 +14,7 @@ pub const PM3: &str = env!("CARGO_BIN_EXE_pm3");
 pub const SERVICE_LABEL: &str = "pm3-e2e-never-installed";
 pub const READY_BUDGET: Duration = Duration::from_secs(15);
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(50);
+pub const START_TIMEOUT_MS: u64 = 8000;
 
 pub struct Home {
     pub dir: tempfile::TempDir,
@@ -33,27 +34,52 @@ pub fn verbose_home() -> Home {
     home_with("danger-full-access", true, "debug")
 }
 
+pub fn impatient_home() -> Home {
+    home_with_timeout("danger-full-access", true, "info", 200)
+}
+
 pub fn home_with(mode: &str, network: bool, log_level: &str) -> Home {
+    home_with_timeout(mode, network, log_level, START_TIMEOUT_MS)
+}
+
+pub fn home_with_timeout(
+    mode: &str,
+    network: bool,
+    log_level: &str,
+    start_timeout_ms: u64,
+) -> Home {
     let dir = tempfile::tempdir().expect("temp dir");
     let root = dir.path().join("home");
     std::fs::create_dir_all(root.join("logs")).expect("prepare the pm3 home");
     let config = dir.path().join("config.yaml");
     std::fs::write(
         &config,
-        config_yaml(&root.to_string_lossy(), mode, network, log_level),
+        config_yaml(
+            &root.to_string_lossy(),
+            mode,
+            network,
+            log_level,
+            start_timeout_ms,
+        ),
     )
     .expect("write the pm3 config");
     Home { dir, root, config }
 }
 
-pub fn config_yaml(home: &str, sandbox_mode: &str, network: bool, log_level: &str) -> String {
+pub fn config_yaml(
+    home: &str,
+    sandbox_mode: &str,
+    network: bool,
+    log_level: &str,
+    start_timeout_ms: u64,
+) -> String {
     format!(
         r#"pm3:
   home: "{home}"
   cfg_dir: "{home}/svc"
   search_path: "/usr/bin:/bin:/opt/homebrew/bin"
   kill_timeout_ms: 400
-  start_timeout_ms: 8000
+  start_timeout_ms: {start_timeout_ms}
   drain_timeout_secs: 2
   daemon_poll_interval_ms: 40
   restart:
@@ -173,12 +199,39 @@ pub fn signal(pid: u32, name: &str) {
 }
 
 pub fn shutdown_daemon(home: &Home) {
+    let listed = pm3(home, &["list"]);
+    assert!(listed.status.success(), "{}", stdout_of(&listed));
+    let killed = pm3(home, &["kill", "--with-services"]);
+    assert!(killed.status.success(), "{}", stdout_of(&killed));
+    wait_until_gone(&home.root.join("pm3.sock"));
+}
+
+pub fn detach_daemon(home: &Home) {
     let socket = home.root.join("pm3.sock");
-    if !socket.exists() {
-        return;
-    }
     signal(daemon_pid(home), "-TERM");
     wait_until_gone(&socket);
+}
+
+pub fn process_is_alive(pid: u32) -> bool {
+    std::process::Command::new("/bin/kill")
+        .args(["-0", &pid.to_string()])
+        .output()
+        .expect("should probe the process")
+        .status
+        .success()
+}
+
+pub fn described_pid(home: &Home, name: &str) -> u32 {
+    let described = pm3(home, &["describe", name]);
+    let text = stdout_of(&described);
+    let line = text
+        .lines()
+        .find(|line| line.trim_start().starts_with("pid"))
+        .unwrap_or_else(|| panic!("describe should report a pid, got: {text}"));
+    line.rsplit_once(' ')
+        .map(|(_label, pid)| pid.trim())
+        .and_then(|pid| pid.parse().ok())
+        .unwrap_or_else(|| panic!("describe should report a numeric pid, got: {line}"))
 }
 
 pub fn app_log(home: &Home, name: &str) -> PathBuf {

@@ -1,4 +1,4 @@
-use usecases::{DumpError, SpecError, StartOutcome};
+use usecases::{DumpError, SpecError, StartKind, StartOutcome};
 
 use super::{test_helpers::*, *};
 use crate::{apps_file::AppsFileError, http::HEALTH_OK, process_views::running_view};
@@ -44,7 +44,7 @@ async fn starting_apps_returns_the_start_summary() {
         pm_id: 0,
         name: "web".to_string(),
         pid: Some(4242),
-        already_running: false,
+        kind: StartKind::Spawned,
     }]));
     let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
     assert_eq!(exchange.body, "started web (id 0, pid 4242)");
@@ -188,4 +188,20 @@ async fn a_daemon_that_stopped_listening_answers_unavailable() {
 async fn a_daemon_that_abandoned_the_request_answers_unavailable() {
     let exchange = exchange_with_an_abandoned_request(get_from("/apps")).await;
     assert_eq!(exchange.status, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn stopping_everything_asks_the_daemon_to_stop_all_services() {
+    let outcome = Ok(DaemonReply::StoppedAll { names: Vec::new() });
+    let exchange = exchange(outcome, post_to("/services/stop-all", "")).await;
+    assert_eq!(exchange.request, Some(DaemonRequest::StopAll));
+}
+
+#[tokio::test]
+async fn stopping_everything_returns_the_list_of_stopped_services() {
+    let outcome = Ok(DaemonReply::StoppedAll {
+        names: vec!["web".to_string()],
+    });
+    let exchange = exchange(outcome, post_to("/services/stop-all", "")).await;
+    assert_eq!(exchange.body, "stopped web");
 }
