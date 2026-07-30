@@ -46,7 +46,8 @@ pub use self::{
         DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state, encode_states,
     },
     presenter::{
-        EMPTY_NOTICE, NOTHING_STARTED, render_describe, render_reply, render_started, render_table,
+        EMPTY_NOTICE, NOTHING_STARTED, already_running_marker, render_describe, render_reply,
+        render_started, render_table,
     },
     process::{KILL_PROGRAM, KillSignaler, SystemClock, TokioProcessLauncher},
     program::{

@@ -6,6 +6,11 @@ use crate::state::DaemonReply;
 pub const NOTHING_STARTED: &str = "no apps were started";
 
 #[must_use]
+pub fn already_running_marker(name: &str) -> String {
+    format!("{name} is already running")
+}
+
+#[must_use]
 pub fn render_reply(reply: &DaemonReply) -> String {
     match reply {
         DaemonReply::Started(outcomes) => render_started(outcomes),
@@ -35,7 +40,10 @@ fn describe_start(outcome: &StartOutcome) -> String {
     } = outcome;
     let pid_text = format_pid(*pid);
     if *already_running {
-        return format!("{name} is already running (id {pm_id}, pid {pid_text})");
+        return format!(
+            "{} (id {pm_id}, pid {pid_text})",
+            already_running_marker(name)
+        );
     }
     format!("started {name} (id {pm_id}, pid {pid_text})")
 }

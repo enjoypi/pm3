@@ -4,6 +4,7 @@
 )]
 
 use std::{
+    io::Write as _,
     path::{Path, PathBuf},
     process::Output,
     time::Duration,
@@ -97,6 +98,23 @@ pub fn pm3(home: &Home, args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("pm3 should run")
+}
+
+pub fn pm3_with_stdin(home: &Home, args: &[&str], input: &str) -> Output {
+    let mut child = std::process::Command::new(PM3)
+        .arg("--config")
+        .arg(&home.config)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("pm3 should run");
+    {
+        let mut stdin = child.stdin.take().expect("stdin is piped");
+        stdin.write_all(input.as_bytes()).expect("write the answer");
+    }
+    child.wait_with_output().expect("pm3 should exit")
 }
 
 pub fn stdout_of(output: &Output) -> String {

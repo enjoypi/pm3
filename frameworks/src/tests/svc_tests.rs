@@ -41,7 +41,7 @@ fn shell_target() -> Vec<String> {
     vec![SHELL.to_string(), "-c".to_string(), "sleep 1".to_string()]
 }
 
-async fn prepared(home: &Home, force: bool) -> PathBuf {
+async fn prepared(home: &Home, force: bool) -> PreparedSvc {
     prepare_inline(&context(home), &request(&shell_target(), None, force))
         .await
         .expect("the inline request should resolve")
@@ -50,17 +50,18 @@ async fn prepared(home: &Home, force: bool) -> PathBuf {
 #[tokio::test]
 async fn an_inline_request_writes_one_config_file() {
     let home = home();
-    let path = prepared(&home, false).await;
-    assert_eq!(path, home.cfg_dir.join("sleeper.yaml"));
-    let written = std::fs::read_to_string(&path).expect("read the config file");
-    assert!(written.contains("name: \"sleeper\""), "got: {written}");
-    assert!(written.contains(SHELL), "got: {written}");
+    let written = prepared(&home, false).await;
+    assert_eq!(written.path, home.cfg_dir.join("sleeper.yaml"));
+    assert_eq!(written.reconciled, Reconciled::Stale);
+    let contents = std::fs::read_to_string(&written.path).expect("read the config file");
+    assert!(contents.contains("name: \"sleeper\""), "got: {contents}");
+    assert!(contents.contains(SHELL), "got: {contents}");
 }
 
 #[tokio::test]
 async fn an_inline_request_leaves_the_working_directory_to_the_daemon() {
     let home = home();
-    let path = prepared(&home, false).await;
+    let path = prepared(&home, false).await.path;
     let written = std::fs::read_to_string(&path).expect("read the config file");
     assert!(!written.contains("cwd:"), "got: {written}");
 }
@@ -71,7 +72,8 @@ async fn a_bare_program_is_stored_without_resolving_it() {
     let target = vec!["sh".to_string()];
     let path = prepare_inline(&context(&home), &request(&target, None, false))
         .await
-        .expect("the inline request should resolve");
+        .expect("the inline request should resolve")
+        .path;
     let written = std::fs::read_to_string(&path).expect("read the config file");
     assert!(written.contains("script: \"sh\""), "got: {written}");
 }
@@ -83,7 +85,8 @@ async fn an_explicit_working_directory_folds_the_home_away() {
     let asked = request(&target, Some("/home/dev/work"), false);
     let path = prepare_inline(&context(&home), &asked)
         .await
-        .expect("the inline request should resolve");
+        .expect("the inline request should resolve")
+        .path;
     let written = std::fs::read_to_string(&path).expect("read the config file");
     assert!(written.contains("cwd: \"${HOME}/work\""), "got: {written}");
 }
@@ -95,7 +98,8 @@ async fn program_arguments_fold_the_home_away() {
     target.push("/home/dev/.config/mihomo/rule.yaml".to_string());
     let path = prepare_inline(&context(&home), &request(&target, None, false))
         .await
-        .expect("the inline request should resolve");
+        .expect("the inline request should resolve")
+        .path;
     let written = std::fs::read_to_string(&path).expect("read the config file");
     assert!(
         written.contains("${HOME}/.config/mihomo/rule.yaml"),
@@ -110,7 +114,8 @@ async fn a_bare_service_cwd_token_is_stored_as_a_braced_placeholder() {
     target.push("PM3_SVC_CWD".to_string());
     let path = prepare_inline(&context(&home), &request(&target, None, false))
         .await
-        .expect("the inline request should resolve");
+        .expect("the inline request should resolve")
+        .path;
     let written = std::fs::read_to_string(&path).expect("read the config file");
     assert!(written.contains("\"${PM3_SVC_CWD}\""), "got: {written}");
 }
@@ -124,9 +129,10 @@ async fn splitting_an_apps_file_folds_the_service_cwd_token() {
         "apps:\n  - name: web\n    script: /bin/sh\n    args:\n      - \"PM3_SVC_CWD/data\"\n",
     )
     .expect("write the apps file");
-    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
+    assert_eq!(changed, vec!["web".to_string()]);
     let written =
         std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
     assert!(
@@ -176,19 +182,33 @@ async fn an_unparsable_environment_entry_is_reported() {
 async fn writing_the_same_config_twice_changes_nothing() {
     let home = home();
     let first = prepared(&home, false).await;
-    let before = std::fs::read_to_string(&first).expect("read the config file");
+    let before = std::fs::read_to_string(&first.path).expect("read the config file");
     let second = prepared(&home, false).await;
-    assert_eq!(first, second);
+    assert_eq!(first.path, second.path);
+    assert_eq!(second.reconciled, Reconciled::Unchanged);
     assert_eq!(
-        std::fs::read_to_string(&second).expect("read the config file"),
+        std::fs::read_to_string(&second.path).expect("read the config file"),
         before
     );
 }
 
 #[tokio::test]
+async fn a_forced_rewrite_reports_a_stale_config() {
+    let home = home();
+    prepared(&home, false).await;
+    std::fs::write(
+        home.cfg_dir.join("sleeper.yaml"),
+        "apps:\n  - name: sleeper\n    script: /bin/echo\n",
+    )
+    .expect("edit the config file");
+    let rewritten = prepared(&home, true).await;
+    assert_eq!(rewritten.reconciled, Reconciled::Stale);
+}
+
+#[tokio::test]
 async fn a_changed_config_needs_force() {
     let home = home();
-    let path = prepared(&home, false).await;
+    let path = prepared(&home, false).await.path;
     std::fs::write(&path, "apps:\n  - name: sleeper\n    script: /bin/echo\n")
         .expect("edit the config file");
     let err = prepare_inline(&context(&home), &request(&shell_target(), None, false))
@@ -202,7 +222,7 @@ async fn a_changed_config_needs_force() {
 #[tokio::test]
 async fn force_overwrites_a_changed_config() {
     let home = home();
-    let path = prepared(&home, false).await;
+    let path = prepared(&home, false).await.path;
     std::fs::write(&path, "apps: []\n").expect("edit the config file");
     prepared(&home, true).await;
     let written = std::fs::read_to_string(&path).expect("read the config file");
@@ -237,11 +257,27 @@ async fn an_apps_file_is_split_into_one_config_file_per_app() {
         "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
     )
     .expect("write the apps file");
+    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    assert_eq!(changed, vec!["web".to_string(), "db".to_string()]);
+    assert!(home.cfg_dir.join("web.yaml").is_file());
+    assert!(home.cfg_dir.join("db.yaml").is_file());
+}
+
+#[tokio::test]
+async fn splitting_an_unchanged_apps_file_reports_no_changes() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
+        .expect("write the apps file");
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
-    assert!(home.cfg_dir.join("web.yaml").is_file());
-    assert!(home.cfg_dir.join("db.yaml").is_file());
+    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split again");
+    assert!(changed.is_empty(), "got: {changed:?}");
 }
 
 #[tokio::test]
@@ -253,9 +289,10 @@ async fn splitting_folds_the_home_out_of_every_app() {
         "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"/home/dev/web\"\n    args:\n      - \"/home/dev/app.js\"\n",
     )
     .expect("write the apps file");
-    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
+    assert_eq!(changed, vec!["web".to_string()]);
     let written =
         std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
     assert!(written.contains("cwd: \"${HOME}/web\""), "got: {written}");
@@ -289,7 +326,7 @@ async fn splitting_over_a_changed_config_needs_force() {
 #[tokio::test]
 async fn forgetting_a_service_removes_its_config() {
     let home = home();
-    let path = prepared(&home, false).await;
+    let path = prepared(&home, false).await.path;
     forget(&home.cfg_dir, NAME).await;
     assert!(!path.exists(), "the config file should be gone");
 }
