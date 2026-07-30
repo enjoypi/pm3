@@ -27,7 +27,7 @@ fn the_unit_describes_itself_with_the_label() {
 #[test]
 fn the_unit_quotes_every_exec_start_token() {
     let expected =
-        "ExecStart=\"/usr/local/bin/pm3\" \"daemon\" \"--config\" \"/etc/pm3/config.yaml\"";
+        "ExecStart=\"/usr/local/bin/pm3\" \"daemon\" \"--config\" \"/home/dev/.pm3/config.yaml\"";
     assert!(rendered().contains(expected), "got: {}", rendered());
 }
 

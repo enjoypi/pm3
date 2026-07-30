@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use adapters::{
-    AppSelector, AppSpec, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest,
-    ExitAction, ExitOutcome, Pm3Config, ProcessStatus, ProcessTable, RestartOutcome, SpecDefaults,
-    StartOutcome, UsecaseError, delete_app, describe_app, handle_child_exit, list_apps,
-    load_apps_file, resolve_specs, restart_app, resurrect, start_apps, stop_app, topo_sort,
+    AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
+    ExitOutcome, ProcessStatus, ProcessTable, RestartOutcome, SpecSource, StartOutcome,
+    UsecaseError, delete_app, describe_app, handle_child_exit, list_apps, load_apps_file,
+    materialise_workspace, resolve_specs, restart_app, resurrect, start_apps, stop_app, topo_sort,
 };
 use tokio::sync::mpsc;
 
@@ -33,10 +33,7 @@ pub enum DaemonEvent {
 pub struct Daemon {
     table: ProcessTable,
     ports: Arc<DaemonPorts>,
-    config: Pm3Config,
-    home_dir: String,
-    logs_dir: String,
-    tmp_dir: Option<String>,
+    specs: SpecSource,
     events: mpsc::Sender<DaemonEvent>,
     generations: HashMap<String, u64>,
     next_generation: u64,
@@ -78,20 +75,14 @@ async fn forward_commands(
 impl Daemon {
     #[must_use]
     pub fn new(
-        config: Pm3Config,
-        home_dir: String,
-        logs_dir: String,
-        tmp_dir: Option<String>,
+        specs: SpecSource,
         ports: Arc<DaemonPorts>,
         events: mpsc::Sender<DaemonEvent>,
     ) -> Self {
         Self {
             table: ProcessTable::new(),
             ports,
-            config,
-            home_dir,
-            logs_dir,
-            tmp_dir,
+            specs,
             events,
             generations: HashMap::new(),
             next_generation: 0,
@@ -99,7 +90,7 @@ impl Daemon {
     }
 
     pub async fn resurrect_saved_apps(&mut self) {
-        match resurrect(&mut self.table, &self.logs_dir, &*self.ports).await {
+        match resurrect(&mut self.table, &self.specs.logs_dir, &*self.ports).await {
             Ok(outcomes) => self.watch_all(&outcomes),
             Err(error) => log_failure("resurrect", "-", &error),
         }
@@ -132,7 +123,14 @@ impl Daemon {
 
     pub async fn on_restart(&mut self, name: &str) {
         let selector = AppSelector::Name(name.to_string());
-        match restart_app(&mut self.table, &selector, &self.logs_dir, &*self.ports).await {
+        match restart_app(
+            &mut self.table,
+            &selector,
+            &self.specs.logs_dir,
+            &*self.ports,
+        )
+        .await
+        {
             Ok(RestartOutcome::Started(started)) => self.watch(&started),
             Ok(RestartOutcome::AwaitingExit {
                 pm_id: _,
@@ -161,7 +159,7 @@ impl Daemon {
                 .await
                 .ok();
         }
-        tokio::time::sleep(Duration::from_millis(self.config.kill_timeout_ms)).await;
+        tokio::time::sleep(Duration::from_millis(self.specs.config.kill_timeout_ms)).await;
         for pid in self.ports.tracked_pids().await {
             self.ports.force_kill(pid).await.ok();
         }
@@ -204,16 +202,12 @@ impl Daemon {
 
     async fn start(&mut self, apps_file: &str) -> DaemonOutcome {
         let apps = load_apps_file(apps_file)?;
-        let defaults = SpecDefaults::from_config(
-            &self.config,
-            &self.home_dir,
-            &self.logs_dir,
-            self.tmp_dir.as_deref(),
-        )?;
-        let mut specs = resolve_specs(&defaults, &apps)?;
-        prepare_workspaces(&specs).await;
-        resolve_real_paths(&mut specs);
-        let outcomes = start_apps(&mut self.table, &specs, &self.logs_dir, &*self.ports).await?;
+        let mut specs = resolve_specs(&self.specs.defaults()?, &apps)?;
+        for spec in &mut specs {
+            materialise_workspace(spec).await;
+        }
+        let outcomes =
+            start_apps(&mut self.table, &specs, &self.specs.logs_dir, &*self.ports).await?;
         self.watch_all(&outcomes);
         Ok(DaemonReply::Started(outcomes))
     }
@@ -230,7 +224,13 @@ impl Daemon {
     }
 
     async fn restart(&mut self, selector: &AppSelector) -> DaemonOutcome {
-        let outcome = restart_app(&mut self.table, selector, &self.logs_dir, &*self.ports).await?;
+        let outcome = restart_app(
+            &mut self.table,
+            selector,
+            &self.specs.logs_dir,
+            &*self.ports,
+        )
+        .await?;
         let name = match outcome {
             RestartOutcome::Started(started) => {
                 let name = started.name.clone();
@@ -301,7 +301,7 @@ impl Daemon {
         let events = self.events.clone();
         let name = name.to_string();
         let generation = self.current_generation(&name);
-        let delay = Duration::from_millis(self.config.kill_timeout_ms);
+        let delay = Duration::from_millis(self.specs.config.kill_timeout_ms);
         tokio::spawn(async move {
             tokio::time::sleep(delay).await;
             events
@@ -329,28 +329,6 @@ impl Daemon {
     fn is_current(&self, name: &str, generation: u64) -> bool {
         self.current_generation(name) == generation
     }
-}
-
-async fn prepare_workspaces(specs: &[AppSpec]) {
-    for spec in specs {
-        tokio::fs::create_dir_all(&spec.cwd).await.ok();
-    }
-}
-
-fn resolve_real_paths(specs: &mut [AppSpec]) {
-    for spec in specs {
-        spec.cwd = real_path(&spec.cwd);
-        for root in &mut spec.sandbox.writable_roots {
-            *root = real_path(root);
-        }
-    }
-}
-
-fn real_path(path: &str) -> String {
-    std::fs::canonicalize(path).map_or_else(
-        |_unresolved| path.to_string(),
-        |resolved| resolved.to_string_lossy().into_owned(),
-    )
 }
 
 fn log_settled(app: &str, status: ProcessStatus) {

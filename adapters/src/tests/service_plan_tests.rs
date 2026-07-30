@@ -4,12 +4,13 @@ use super::*;
 use crate::service_specs::{program_set, spec_for};
 
 const FAKE: &str = "/tmp/pm3-fake-manager";
+const CONFIG_BODY: &str = "pm3:\n  home: \"~/.pm3\"\n";
 
 fn plan_for(kind: ServiceKind, install: bool) -> Vec<ServiceStep> {
     let spec = spec_for(kind, Path::new("/home/dev"));
     let programs = program_set(FAKE);
     if install {
-        return install_plan(&spec, &programs);
+        return install_plan(&spec, &programs, CONFIG_BODY);
     }
     uninstall_plan(&spec, &programs)
 }
@@ -35,6 +36,7 @@ fn a_launchd_install_writes_the_plist_before_loading_it() {
     assert_eq!(
         described(&steps),
         [
+            "write /home/dev/.pm3/config.yaml",
             "write /home/dev/Library/LaunchAgents/pm3-test.plist",
             "run load -w /home/dev/Library/LaunchAgents/pm3-test.plist",
         ]
@@ -47,6 +49,7 @@ fn a_systemd_install_reloads_enables_and_lingers() {
     assert_eq!(
         described(&steps),
         [
+            "write /home/dev/.pm3/config.yaml",
             "write /home/dev/.config/systemd/user/pm3-test.service",
             "run --user daemon-reload",
             "run --user enable --now pm3-test.service",
@@ -101,6 +104,21 @@ fn a_systemd_install_carries_the_rendered_unit() {
 }
 
 #[test]
+fn an_install_settles_the_config_next_to_the_runtime_state() {
+    let steps = plan_for(ServiceKind::Launchd, true);
+    let ServiceStep::Write {
+        dir,
+        path: _,
+        contents,
+    } = &steps[0]
+    else {
+        panic!("an install plan should start by writing the config")
+    };
+    assert_eq!(dir, Path::new("/home/dev/.pm3"));
+    assert_eq!(contents, CONFIG_BODY);
+}
+
+#[test]
 fn launchd_status_asks_for_the_agent_listing() {
     let spec = spec_for(ServiceKind::Launchd, Path::new("/home/dev"));
     let command = status_command(&spec, &program_set(FAKE));
@@ -118,9 +136,10 @@ fn contents_of(steps: &[ServiceStep]) -> String {
     for step in steps {
         if let ServiceStep::Write {
             dir: _,
-            path: _,
+            path,
             contents,
         } = step
+            && path.extension().is_some_and(|suffix| suffix != "yaml")
         {
             return contents.clone();
         }

@@ -1,16 +1,26 @@
 use super::{AppConfig, ConfigError, load_config, substitute_env_vars, validate_config};
 use crate::Result;
 
+#[derive(Clone, Debug)]
+pub struct LoadedConfig {
+    pub source: String,
+    pub config: AppConfig,
+}
+
 pub fn parse_config(yaml: &str) -> std::result::Result<AppConfig, ConfigError> {
     serde_yaml2::from_str(yaml).map_err(|e| ConfigError::ParseError(e.to_string()))
 }
 
+pub fn load_config_file(path: &str) -> Result<LoadedConfig> {
+    let source = load_config(path)?;
+    let substituted = substitute_env_vars(&source)?;
+    let config = parse_config(&substituted)?;
+    validate_config(&config)?;
+    Ok(LoadedConfig { source, config })
+}
+
 pub fn load_and_parse_config(path: &str) -> Result<AppConfig> {
-    let raw = load_config(path)?;
-    let substituted = substitute_env_vars(&raw)?;
-    let cfg = parse_config(&substituted)?;
-    validate_config(&cfg)?;
-    Ok(cfg)
+    Ok(load_config_file(path)?.config)
 }
 
 pub fn check_config(path: &str) -> Result<String> {

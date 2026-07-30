@@ -7,24 +7,25 @@ use crate::{ServiceKind, ServiceProgramSet, ServiceUnitSpec, service::unit_dir_o
 
 pub const LABEL: &str = "pm3-test";
 pub const PROGRAM: &str = "/usr/local/bin/pm3";
-pub const CONFIG_PATH: &str = "/etc/pm3/config.yaml";
-pub const WORKING_DIRECTORY: &str = "/home/dev/.pm3";
-pub const LOG_PATH: &str = "/home/dev/.pm3/pm3.log";
 pub const SEARCH_PATH: &str = "/usr/bin:/bin";
-pub const HOME: &str = "/home/dev";
 pub const MISSING_PROGRAM: &str = "/nonexistent/pm3-service-manager";
 
+const ROOT_DIR: &str = ".pm3";
+const CONFIG_FILE: &str = "config.yaml";
+const LOG_FILE: &str = "pm3.log";
+
 pub fn spec_for(kind: ServiceKind, home: &Path) -> ServiceUnitSpec {
+    let root = home.join(ROOT_DIR);
     ServiceUnitSpec {
         kind,
         label: LABEL.to_string(),
         unit_dir: unit_dir_of(kind, home),
         program: PathBuf::from(PROGRAM),
-        config_path: PathBuf::from(CONFIG_PATH),
-        working_directory: PathBuf::from(WORKING_DIRECTORY),
-        log_path: PathBuf::from(LOG_PATH),
+        config_path: root.join(CONFIG_FILE),
+        working_directory: root.clone(),
+        log_path: root.join(LOG_FILE),
         search_path: SEARCH_PATH.to_string(),
-        home: HOME.to_string(),
+        home: home.to_string_lossy().into_owned(),
     }
 }
 

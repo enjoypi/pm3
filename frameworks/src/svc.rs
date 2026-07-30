@@ -2,15 +2,20 @@ use std::path::{Path, PathBuf};
 
 use adapters::{
     AppsFile, InlineRequest, diff_lines, encode_apps_file, fold_home, inline_apps_file,
-    load_apps_file, resolve_program,
+    load_apps_file, resolve_program, service_file_of,
 };
 
 use crate::{Error, Result};
 
-pub const SVC_SUFFIX: &str = "yaml";
 pub const MISSING_COMMAND: &str = "--name needs a program to run after it";
 pub const AMBIGUOUS_TARGET: &str =
     "without --name, start takes exactly one apps file; pm3 options must come before the program";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Reconciled {
+    Unchanged,
+    Stale,
+}
 
 pub struct InlineStart<'s> {
     pub name: &'s str,
@@ -53,7 +58,7 @@ pub async fn prepare_inline(
         writable_dirs: request.writable_dirs,
     })?;
     let contents = encode_apps_file(&apps);
-    let path = svc_path(context.cfg_dir, request.name);
+    let path = service_file_of(context.cfg_dir, request.name);
     write_svc(&path, &contents, request.force).await?;
     Ok(path)
 }
@@ -71,30 +76,39 @@ pub async fn split_apps_file(context: &SvcContext<'_>, apps_file: &str, force: b
             .collect();
         let single = AppsFile { apps: vec![folded] };
         let contents = encode_apps_file(&single);
-        write_svc(&svc_path(context.cfg_dir, &entry.name), &contents, force).await?;
+        write_svc(
+            &service_file_of(context.cfg_dir, &entry.name),
+            &contents,
+            force,
+        )
+        .await?;
     }
     Ok(())
 }
 
 pub async fn forget(cfg_dir: &Path, name: &str) {
-    tokio::fs::remove_file(svc_path(cfg_dir, name)).await.ok();
+    tokio::fs::remove_file(service_file_of(cfg_dir, name))
+        .await
+        .ok();
 }
 
-#[must_use]
-pub fn svc_path(cfg_dir: &Path, name: &str) -> PathBuf {
-    cfg_dir.join(format!("{name}.{SVC_SUFFIX}"))
+pub async fn reconcile(path: &Path, contents: &str, force: bool) -> Result<Reconciled> {
+    let existing = tokio::fs::read_to_string(path).await.unwrap_or_default();
+    if existing == contents {
+        return Ok(Reconciled::Unchanged);
+    }
+    if existing.is_empty() || force {
+        return Ok(Reconciled::Stale);
+    }
+    Err(Error::SvcConflict {
+        path: path.to_string_lossy().into_owned(),
+        diff: diff_lines(&existing, contents).join("\n"),
+    })
 }
 
 async fn write_svc(path: &Path, contents: &str, force: bool) -> Result<()> {
-    let existing = tokio::fs::read_to_string(path).await.unwrap_or_default();
-    if existing == contents {
+    if reconcile(path, contents, force).await? == Reconciled::Unchanged {
         return Ok(());
-    }
-    if !existing.is_empty() && !force {
-        return Err(Error::SvcConflict {
-            path: path.to_string_lossy().into_owned(),
-            diff: diff_lines(&existing, contents).join("\n"),
-        });
     }
     tokio::fs::write(path, contents)
         .await

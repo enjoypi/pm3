@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use adapters::{
     Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, KillSignaler, LaunchError,
     LaunchSpec, LaunchedProcess, Ports, ProcessLauncher, ProcessRecord, SandboxBackend,
-    SandboxCommandWrapper, SandboxError, SandboxPolicy, SignalError, Signaler, SystemClock,
-    TokioProcessLauncher, WrappedCommand, YamlDumpStore,
+    SandboxCommandWrapper, SandboxError, SandboxPolicy, SignalError, Signaler, SpecSource,
+    SystemClock, TokioProcessLauncher, WrappedCommand, YamlDumpStore,
 };
 
 #[derive(Debug)]
@@ -18,12 +18,12 @@ pub struct DaemonPorts {
 
 impl DaemonPorts {
     #[must_use]
-    pub fn new(dump_file: PathBuf, backend: Option<SandboxBackend>) -> Self {
+    pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<SandboxBackend>) -> Self {
         Self {
             launcher: TokioProcessLauncher::default(),
             signaler: KillSignaler::default(),
             wrapper: SandboxCommandWrapper::new(backend),
-            store: YamlDumpStore::new(dump_file),
+            store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
         }
     }

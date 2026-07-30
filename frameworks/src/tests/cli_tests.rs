@@ -389,7 +389,10 @@ fn service_install_defaults_to_a_real_run() {
         matches!(
             &cli.command,
             Commands::Service {
-                command: Some(ServiceCommands::Install { dry_run: false })
+                command: Some(ServiceCommands::Install {
+                    dry_run: false,
+                    force: false
+                })
             }
         ),
         "got: {:?}",
@@ -404,7 +407,10 @@ fn service_install_takes_a_dry_run_flag() {
         matches!(
             &cli.command,
             Commands::Service {
-                command: Some(ServiceCommands::Install { dry_run: true })
+                command: Some(ServiceCommands::Install {
+                    dry_run: true,
+                    force: false
+                })
             }
         ),
         "got: {:?}",

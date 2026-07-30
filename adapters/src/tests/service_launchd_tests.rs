@@ -27,7 +27,7 @@ fn the_plist_carries_the_label() {
 
 #[test]
 fn the_plist_spells_out_the_daemon_invocation() {
-    let expected = "        <string>/usr/local/bin/pm3</string>\n        <string>daemon</string>\n        <string>--config</string>\n        <string>/etc/pm3/config.yaml</string>\n";
+    let expected = "        <string>/usr/local/bin/pm3</string>\n        <string>daemon</string>\n        <string>--config</string>\n        <string>/home/dev/.pm3/config.yaml</string>\n";
     assert!(rendered().contains(expected), "got: {}", rendered());
 }
 

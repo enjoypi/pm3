@@ -42,7 +42,7 @@ fn the_daemon_args_carry_the_absolute_config_path() {
         [
             "daemon".to_string(),
             "--config".to_string(),
-            "/etc/pm3/config.yaml".to_string()
+            "/home/dev/.pm3/config.yaml".to_string()
         ]
     );
 }

@@ -109,6 +109,9 @@ pub enum ServiceCommands {
     Install {
         #[arg(long)]
         dry_run: bool,
+
+        #[arg(long)]
+        force: bool,
     },
 
     #[command(about = "Deactivate and remove the pm3 auto-start service")]

@@ -2,9 +2,6 @@ mod dto;
 mod yaml_store;
 
 pub use self::{
-    dto::{
-        DecodeError, DumpDocument, RecordDto, RuntimeDto, SandboxDto, decode_records,
-        encode_records,
-    },
+    dto::{DecodeError, DumpDocument, RuntimeDto, StateDto, decode_state, encode_states},
     yaml_store::YamlDumpStore,
 };

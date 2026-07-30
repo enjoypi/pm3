@@ -6,24 +6,43 @@ use std::{
 use tokio::fs;
 use usecases::{DumpError, DumpStore, ProcessRecord};
 
-use super::dto::{DumpDocument, decode_records, encode_records};
+use super::dto::{DumpDocument, StateDto, decode_state, encode_states};
+use crate::{
+    apps_file::{AppsFileError, SpecSource},
+    workspace::materialise_workspace,
+};
 
 const TMP_SUFFIX: &str = ".tmp";
 
 #[derive(Clone, Debug)]
 pub struct YamlDumpStore {
     path: PathBuf,
+    specs: SpecSource,
 }
 
 impl YamlDumpStore {
     #[must_use]
-    pub const fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub const fn new(path: PathBuf, specs: SpecSource) -> Self {
+        Self { path, specs }
     }
 
     #[must_use]
     pub fn path(&self) -> &Path {
         self.path.as_path()
+    }
+
+    async fn rejoin(&self, state: StateDto) -> Result<Option<ProcessRecord>, DumpError> {
+        let runtime = decode_state(state).map_err(|e| read_error(&self.path, &e.to_string()))?;
+        match self.specs.resolve_service(&runtime.name) {
+            Ok(mut spec) => {
+                materialise_workspace(&mut spec).await;
+                Ok(Some(ProcessRecord { spec, runtime }))
+            }
+            Err(error) => {
+                warn_unusable(&runtime.name, &error);
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -34,11 +53,17 @@ impl DumpStore for YamlDumpStore {
         };
         let doc: DumpDocument =
             serde_yaml2::from_str(&raw).map_err(|e| read_error(&self.path, &e.to_string()))?;
-        decode_records(doc).map_err(|e| read_error(&self.path, &e.to_string()))
+        let mut records = Vec::with_capacity(doc.services.len());
+        for state in doc.services {
+            if let Some(record) = self.rejoin(state).await? {
+                records.push(record);
+            }
+        }
+        Ok(records)
     }
 
     async fn save(&self, records: &[ProcessRecord]) -> Result<(), DumpError> {
-        let yaml = serde_yaml2::to_string(encode_records(records))
+        let yaml = serde_yaml2::to_string(encode_states(records))
             .expect("internal error: DumpDocument serialization is infallible");
         write_atomically(&self.path, &yaml).await
     }
@@ -66,6 +91,17 @@ fn staging_path(path: &Path) -> PathBuf {
     let mut staged = path.as_os_str().to_os_string();
     staged.push(TMP_SUFFIX);
     PathBuf::from(staged)
+}
+
+fn warn_unusable(app: &str, error: &AppsFileError) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "persistence",
+        action = "rejoin",
+        app,
+        reason,
+        "pm3 cannot restore a saved app from its service file",
+    );
 }
 
 fn read_error(path: &Path, reason: &str) -> DumpError {

@@ -11,6 +11,7 @@ pub mod sandbox;
 pub mod service;
 pub mod startup;
 pub mod state;
+pub mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
@@ -24,21 +25,22 @@ pub use usecases::{
 
 pub use self::{
     apps_file::{
-        AppEntry, AppsFile, AppsFileError, InlineRequest, SandboxEntry, SpecDefaults, diff_lines,
-        encode_apps_file, inline_apps_file, load_apps_file, parse_apps_file, resolve_specs,
+        AppEntry, AppsFile, AppsFileError, InlineRequest, SERVICE_FILE_SUFFIX, SandboxEntry,
+        SpecDefaults, SpecSource, diff_lines, encode_apps_file, inline_apps_file, load_apps_file,
+        parse_apps_file, resolve_specs, service_file_of,
     },
     config::{
-        AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
-        SANDBOX_MODE_DANGER_FULL_ACCESS, SANDBOX_MODE_READ_ONLY, SANDBOX_MODE_WORKSPACE_WRITE,
-        SandboxConfig, ServiceConfig, TelemetryConfig, check_config, load_and_parse_config,
-        parse_config, show_config, validate_config, validate_pm3_config, validate_telemetry_config,
+        AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,
+        RestartConfig, SANDBOX_MODE_DANGER_FULL_ACCESS, SANDBOX_MODE_READ_ONLY,
+        SANDBOX_MODE_WORKSPACE_WRITE, SandboxConfig, ServiceConfig, TelemetryConfig, check_config,
+        load_and_parse_config, load_config_file, parse_config, show_config, validate_config,
+        validate_pm3_config, validate_telemetry_config,
     },
     http::{APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, StartRequestDto, router},
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
-    paths::{PathError, Pm3Paths, expand_home, logs_dir_of, resolve_paths},
+    paths::{CONFIG_FILE, PathError, Pm3Paths, expand_home, logs_dir_of, resolve_paths},
     persistence::{
-        DecodeError, DumpDocument, RecordDto, RuntimeDto, SandboxDto, YamlDumpStore,
-        decode_records, encode_records,
+        DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state, encode_states,
     },
     presenter::{
         EMPTY_NOTICE, NOTHING_STARTED, render_describe, render_reply, render_started, render_table,
@@ -56,6 +58,7 @@ pub use self::{
         DaemonCommand, DaemonError, DaemonFailure, DaemonHandle, DaemonOutcome, DaemonReply,
         DaemonRequest,
     },
+    workspace::materialise_workspace,
 };
 
 #[derive(Debug, Error)]
@@ -87,3 +90,6 @@ pub(crate) mod response_body;
 #[cfg(test)]
 #[path = "../test_support/service_specs.rs"]
 pub(crate) mod service_specs;
+#[cfg(test)]
+#[path = "../test_support/spec_sources.rs"]
+pub(crate) mod spec_sources;

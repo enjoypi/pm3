@@ -10,17 +10,19 @@ pub const NOTHING_INSTALLED: &str = "no pm3 service is installed";
 pub async fn install_service(
     spec: &ServiceUnitSpec,
     programs: &ServiceProgramSet,
+    config_contents: &str,
     dry_run: bool,
 ) -> Result<String, ServiceCommandError> {
-    let steps = install_plan(spec, programs);
+    let steps = install_plan(spec, programs, config_contents);
     if dry_run {
         return Ok(render_plan(&steps));
     }
     execute_plan(&steps).await?;
     Ok(format!(
-        "installed {} as a {} service\n{}",
+        "installed {} as a {} service\n{}\n{}",
         spec.label,
         spec.kind.as_str(),
+        spec.config_path.display(),
         spec.unit_path().display()
     ))
 }

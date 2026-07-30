@@ -3,7 +3,10 @@ mod loader;
 mod schema;
 
 pub use self::{
-    app::{check_config, load_and_parse_config, parse_config, show_config},
+    app::{
+        LoadedConfig, check_config, load_and_parse_config, load_config_file, parse_config,
+        show_config,
+    },
     loader::{ConfigLoadError, load_config, substitute_env_vars},
     schema::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
