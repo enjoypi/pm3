@@ -14,6 +14,8 @@
 - `.cargo/config.toml` 把 `release` 的 `opt-level` 设成 0（本地迭代用）→ 装到真机前 MUST `CARGO_PROFILE_RELEASE_OPT_LEVEL=3 cargo build -p frameworks --release --locked`
 - `pm3 service install` 用 `current_exe()` 渲染 unit → MUST NOT 在仓库目录执行（会把 plist 钉在 `target/release/pm3`，一次 `cargo clean` 就起不来）；先把二进制 `cp` 到最终位置，再用**那个**二进制执行 install
 - `service install` 后 `launchctl list` 的 PID 列可能是 `-`（job 已载入但 launchd 未监管、KeepAlive 形同失效）→ `pm3 kill` 停掉自启的实例，再 `launchctl kickstart gui/$(id -u)/<label>` 交回 launchd
+- `just install` 装到真机（`dev_scripts/install.ts`）：opt-level 3 构建 → 备份 → 原子换二进制 → uninstall+kill+等退出 → `install --force` → 等 launchd 真接管 → 比对前后 pid；备份清单从 `service install --dry-run` 的 `write <path>` 行派生，不重复 pm3 的路径推导
+- 任何 pm3 CLI 命令都会经 `ensure_daemon_running` 自动拉起一个**非 launchd 托管**的 daemon：它扛不住 `launchctl unload`，且会抢赢 socket 竞争让 launchd 那份直接退出（`launchctl list` PID 列变 `-`）→ 换代顺序 MUST 是 `service uninstall` → `pm3 kill` → 等 `pgrep -f "<bin> daemon"` 归零 → `service install --force`；install 后 MUST 等「launchd 报的 pid == `pm3.pid` 内容」再跑任何 CLI 命令，否则又会拉起竞争者
 - 手工验证要另建 pm3 home：scratchpad 路径太长，unix socket 会撞 macOS `SUN_LEN`（>104 字节，报 `path must be shorter than SUN_LEN`）→ 用 `mktemp -d`
 
 ## 覆盖率门禁（`just cov`，四指标 100%）
@@ -26,6 +28,8 @@
 - tail-return（`f().await` 直接作返回值）不产生 Err region，改成 `let x = f().await?;` 就新增一条；收尾处可用 `f().await.map(|x| ...)`（Err 直传不产生 region，closure 是独立 fn 随 Ok 路径覆盖）；真的失败路径则注入依赖让单测能打
 - 定位缺口：`cargo +nightly llvm-cov report --release --summary-only | awk 'NR>2 && $3+0>0'` 找文件；再 `--show-missing-lines`，若它无输出而 summary 有缺口：lines 也缺 → 缺口在 bin 副本（lib+bin 双编译，region 按实例化计数，补 e2e 走真实 binary 或让分支只存在于一处）；lines 100% → 缺的是 `?`/短路的纯 region，重点怀疑新加的 `?`
 - `frameworks` 里「只经真实 binary 驱动」的函数 MUST NOT 再补 lib 侧单测：lib 测试会新增一个实例化，函数其余 region 在该实例化里永不可达 → 门禁挂（症状：加测试反而多出 missed region，`--show-missing-lines` 无输出而 lines/branches 均 100%）。修法是删掉 lib 单测、失败路径也走 e2e（如 `pm3 --config /nonexistent kill`）。注意 `main.rs` 只调 `frameworks::cli`、无重复 mod 编译，llvm-cov 仍按「lib test 二进制 + pm3 bin」算两份实例化
+- `just cov` 失败但一行文件明细都没打 = 缺的是 **region**（lcov 不含 region 数据，`findFilesBelowFullCoverage` 自然无输出）→ 用上一条的 `--summary-only` 定位，且 MUST 紧跟在一次 `just cov --fresh` 之后跑，查完再回到 `--fresh`
+- frameworks 新增的错误分支要走真实 binary：e2e 里 `UnixListener::bind(socket)` 起个假 daemon 回 `200` + 非 JSON body，即可驱动 CLI 的解码失败路径（`frameworks/tests/stale_socket.rs`）；这类假服务器 MUST 用 `while let Ok(..) = accept()` 且 MUST NOT `join()`（只回固定条数会把测试挂住）
 - `tracing::debug!(field = <表达式>)` 的表达式只在 subscriber 启用时求值，测试无 subscriber → 该行 region 不覆盖；MUST 先 `let x = <表达式>;` 再 `tracing::debug!(x)`
 - `if cond { ... }` 块尾的 `}` 会生成一条独立 region，只有「进入块又走完」才算命中；若该路径不可达就改写成 `if !cond { return ... }` 的早返形式
 - 轮询循环的 fall-through `}` 不产生计数（`for _ in 0..=n` 尤甚）→ 让函数返回值并在循环后以 `true` 收尾（`while cond { if 超预算 { return false } ... } true`），fall-through 才有可命中的 region
@@ -60,6 +64,13 @@
 - `materialise_workspace` 里展开 `${PM3_SVC_CWD}` MUST 排在 `spec.cwd = real_path(...)` 之后：提前替换会把未 canonicalize 的 cwd 写进 args，正好复现上一条陷阱（回归测试：`adapters/src/tests/workspace_tests.rs::a_placeholder_expands_to_the_real_path_not_the_symlink` 与 `frameworks/tests/sandbox_isolation.rs::a_confined_app_can_write_through_the_cwd_placeholder`）
 - 新增 `${...}` 占位符 MUST 在 `substitute_env_vars` 里登记为保留名（`SVC_CWD_NAME` 那个分支），否则加载 cfg 文件时因「变量未设置且无默认值」直接报 `EnvVarNotSet`；保留名不支持 `:-` 默认值
 - `TokioProcessLauncher::wait` 会先把 `Child` 从 map 里 remove 再 await，所以「是否存活」必须另用一个 `live: HashSet<u32>` 跟踪（spawn 时插入、wait 返回后删除）
+- 服务身份指纹 MUST NOT 含任何宿主环境派生值：`SandboxPolicy` 分 `writable_roots`（运维声明，进指纹）与 `derived_roots`（pm3 从 cwd/logs_dir/`$TMPDIR` 推导，不进指纹），沙箱授予 `granted_roots()` 并集；`render_identity(&AppSpec)` 渲染声明而非包装后的 argv。踩过的坑：launchd 起的 daemon 有 `TMPDIR`、shell 起的没有 → 每次换代都误判 respawn
+- `clear_runtime_files` MUST 先删 `pm3.pid` 再删 socket：`pm3 kill` 与 e2e 都以「socket 消失」判定 daemon 收尾完成，反序会让「socket 已没、pid 文件还在」被观测到（症状：`signal_semantics` e2e 约 25% 概率挂在 pid 文件断言）
+- 停止/强杀 MUST 先对进程组发信号（`/bin/kill -<SIG> -- -<pid>`）、失败再退回单 pid：spawn 时 `process_group(0)` 让子进程自成组，只杀单 pid 会漏掉它 fork 的孙进程；adopt 来的进程可能不是组长，故回退分支必须保留
+- `Stopping` 不是「已停止」：判「pm3 是否还持有进程」用 `ProcessStatus::is_settled()`（仅 Stopped|Errored），用 `!is_running()` 会让重复 `stop` 清空 pid、让 `restart` 再 spawn 一个同名实例
+- 熔断判定用 `unstable_restarts >= max_restarts`（对齐 pm2 `God.js`），MUST NOT 改回 `>`
+- daemon↔CLI 是 JSON envelope `ReplyDto { report, service, already_running }`：新增命令走 `ask_report`（只要文案）或 `ask`（要结构化字段）；MUST NOT 靠 `.contains(渲染文本)` 反解业务状态
+- start 被 daemon 拒绝时 MUST 回滚已写的 `cfg_dir/<name>.yaml`（`svc::SvcUndo` 记前态：原本不存在→删、原本存在→写回）；写盘 MUST NOT 挪到 `ask` 之后——daemon 落 `dump.yaml` 时服务文件必须已在
 - 身份指纹 MUST 在 `start_one` spawn 成功那一刻采集：shutdown 时算会把「磁盘上的新哈希」当成旧进程的，重启后误判未变更 → 接管到跑着旧二进制的进程
 - 防 pid 复用的身份令牌固定用 `LC_ALL=C ps -ww -o lstart= -p <pid>`（管道下不截断、`LC_ALL=C` 消 locale 漂移）；MUST NOT 换 `etime`（时长需容差）或加 `command=`（`spawn()` 返回时可能尚未 exec，拿到的是旧 argv）
 - `resurrect` 判定 respawn 且旧进程仍存活（token 已匹配）时 MUST 先 `terminate` 掉它，否则孤儿与新实例重复运行（症状：`just cov` 跑完残留 `pm3 __sleep`）
@@ -83,6 +94,9 @@
 - args 里指代「该服务自己的可写工作目录」MUST 用 `${PM3_SVC_CWD}`（命令行写裸 `PM3_SVC_CWD`，CLI 折叠成带花括号形式），MUST NOT 写 `${HOME}/.pm3/<name>`（那把 pm3 布局烧进了参数）；只在 args 生效，`cwd`/`writable_roots`/`script` 里写它不展开、会被相对路径校验直接拒；`pm3 describe` 显示的是展开后的真实路径，不能拿它当「配置无绝对路径」的证据
 - `pm3.search_path` 是单一来源：既写进 launchd/systemd unit 的 PATH，也是 daemon 解析 app 程序名的搜索路径；CLI 早期校验必须用它而非 `std::env::var("PATH")`
 - 子进程环境默认为空（`tokio_launcher` 有 `env_clear()`），所以 spawn 前必须已解析出绝对路径
+- 服务名 MUST NOT 能被 `parse::<u32>()` 解析（`validate_spec` 拒绝）：`AppSelector::parse` 把纯数字读成 pm_id，否则 `pm3 stop 3` 会误伤 pm_id=3 的**另一个**服务
+- 给 `SandboxPolicy` 加字段会波及 ~13 处字面量（四层的 test_helpers/test_support）→ 加完先 `cargo build --workspace` 靠 E0063 逐个补齐
+- dev_scripts TS：`Bun.env.X` 触发 TS4111 → 写 `Bun.env["X"]`；`Bun.spawn` 不收 `readonly string[]` → 传 `[...command]`
 - 给 `Pm3Config` 加字段要同步 6 处：根 `config.yaml`、`adapters/test_support/config_sections.rs`、`adapters/src/test_helpers/config_schema_test_helpers.rs`、`frameworks/test_support/config_fixtures.rs`、`frameworks/tests/common/mod.rs`、校验函数与 `every_error_variant` 表
 
 ## 分层
