@@ -21,10 +21,68 @@ fn the_config_path_can_be_overridden() {
 fn start_takes_an_apps_file() {
     let cli = parse(&["pm3", "start", "apps.yaml"]);
     assert!(
-        matches!(&cli.command, Commands::Start { apps_file } if apps_file == "apps.yaml"),
+        matches!(&cli.command, Commands::Start(args) if args.target == ["apps.yaml"] && args.name.is_none()),
         "got: {:?}",
         cli.command
     );
+}
+
+#[test]
+fn start_keeps_the_program_flags_for_the_program() {
+    let cli = parse(&[
+        "pm3",
+        "start",
+        "--name",
+        "mihomo-rule",
+        "--network",
+        "mihomo",
+        "-d",
+        "/data",
+        "-f",
+        "/etc/rule.yaml",
+    ]);
+    let Commands::Start(args) = &cli.command else {
+        panic!(
+            "start should parse into its own arguments: {:?}",
+            cli.command
+        )
+    };
+    assert_eq!(args.name.as_deref(), Some("mihomo-rule"));
+    assert!(args.network, "--network belongs to pm3");
+    assert_eq!(
+        args.target,
+        ["mihomo", "-d", "/data", "-f", "/etc/rule.yaml"]
+    );
+}
+
+#[test]
+fn start_collects_repeated_pm3_options() {
+    let cli = parse(&[
+        "pm3",
+        "start",
+        "--name",
+        "app",
+        "--env",
+        "A=1",
+        "--env",
+        "B=2",
+        "--writable-dir",
+        "/srv",
+        "--cwd",
+        "/work",
+        "--force",
+        "/bin/sh",
+    ]);
+    let Commands::Start(args) = &cli.command else {
+        panic!(
+            "start should parse into its own arguments: {:?}",
+            cli.command
+        )
+    };
+    assert_eq!(args.env, ["A=1", "B=2"]);
+    assert_eq!(args.writable_dirs, ["/srv"]);
+    assert_eq!(args.cwd.as_deref(), Some("/work"));
+    assert!(args.force, "--force belongs to pm3");
 }
 
 #[test]
@@ -380,4 +438,35 @@ async fn the_service_subcommand_reaches_the_status_report() {
         printed.expect("a report").contains("not installed"),
         "an unknown service should read as not installed"
     );
+}
+
+#[test]
+fn a_successful_command_reports_success() {
+    assert_eq!(report(Ok(())), std::process::ExitCode::SUCCESS);
+}
+
+#[test]
+fn a_failing_command_reports_failure() {
+    let error = crate::Error::InlineUsage {
+        reason: "no program".to_string(),
+    };
+    assert_eq!(report(Err(error)), std::process::ExitCode::FAILURE);
+}
+
+#[tokio::test]
+async fn starting_without_a_target_explains_the_usage() {
+    let err = execute(parse(&["pm3", "start"]))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("exactly one apps file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn starting_two_apps_files_is_rejected() {
+    let err = execute(parse(&["pm3", "start", "a.yaml", "b.yaml"]))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("exactly one apps file"), "got: {err}");
 }

@@ -34,6 +34,7 @@ pub struct Daemon {
     table: ProcessTable,
     ports: Arc<DaemonPorts>,
     config: Pm3Config,
+    home_dir: String,
     logs_dir: String,
     tmp_dir: Option<String>,
     events: mpsc::Sender<DaemonEvent>,
@@ -78,6 +79,7 @@ impl Daemon {
     #[must_use]
     pub fn new(
         config: Pm3Config,
+        home_dir: String,
         logs_dir: String,
         tmp_dir: Option<String>,
         ports: Arc<DaemonPorts>,
@@ -87,6 +89,7 @@ impl Daemon {
             table: ProcessTable::new(),
             ports,
             config,
+            home_dir,
             logs_dir,
             tmp_dir,
             events,
@@ -201,9 +204,14 @@ impl Daemon {
 
     async fn start(&mut self, apps_file: &str) -> DaemonOutcome {
         let apps = load_apps_file(apps_file)?;
-        let defaults =
-            SpecDefaults::from_config(&self.config, &self.logs_dir, self.tmp_dir.as_deref())?;
+        let defaults = SpecDefaults::from_config(
+            &self.config,
+            &self.home_dir,
+            &self.logs_dir,
+            self.tmp_dir.as_deref(),
+        )?;
         let mut specs = resolve_specs(&defaults, &apps)?;
+        prepare_workspaces(&specs).await;
         resolve_real_paths(&mut specs);
         let outcomes = start_apps(&mut self.table, &specs, &self.logs_dir, &*self.ports).await?;
         self.watch_all(&outcomes);
@@ -320,6 +328,12 @@ impl Daemon {
 
     fn is_current(&self, name: &str, generation: u64) -> bool {
         self.current_generation(name) == generation
+    }
+}
+
+async fn prepare_workspaces(specs: &[AppSpec]) {
+    for spec in specs {
+        tokio::fs::create_dir_all(&spec.cwd).await.ok();
     }
 }
 

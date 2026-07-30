@@ -1,5 +1,7 @@
 pm3:
   home: "${PM3_HOME:-~/.pm3}"
+  cfg_dir: "${PM3_CFG_DIR:-~/.config/pm3}"
+  search_path: "${PM3_SEARCH_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
   kill_timeout_ms: 1600
   start_timeout_ms: 5000
   drain_timeout_secs: 5
@@ -13,7 +15,6 @@ pm3:
     network: false
   service:
     label: "com.enjoypi.pm3"
-    search_path: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 telemetry:
   service_name: "pm3"

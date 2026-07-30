@@ -153,3 +153,19 @@ async fn a_relative_home_stops_the_daemon() {
         .to_string();
     assert!(err.contains("must be absolute"), "got: {err}");
 }
+
+#[tokio::test]
+async fn a_relative_service_directory_stops_the_daemon() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    let config = crate::test_support::write_config_with_cfg_dir(
+        dir.path(),
+        &home.to_string_lossy(),
+        "relative/svc",
+    );
+    let err = run_daemon_with_shutdown(config.to_str().expect("path"), Box::pin(async {}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("must be absolute"), "got: {err}");
+}

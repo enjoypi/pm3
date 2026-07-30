@@ -56,6 +56,14 @@ async fn spawn_passes_the_declared_environment() {
 }
 
 #[tokio::test]
+async fn spawn_hides_every_variable_the_spec_did_not_declare() {
+    let dir = temp_dir();
+    let spec = spec_in(dir.path(), SHELL_PROGRAM, &["-c", "echo \"[$HOME]\""]);
+    run_to_completion(&spec).await.expect("should reap");
+    assert_eq!(read_log(dir.path(), OUT_LOG).await, "[]\n");
+}
+
+#[tokio::test]
 async fn spawn_runs_in_the_requested_directory() {
     let dir = temp_dir();
     let expected = dir.path().canonicalize().expect("canonical temp dir");

@@ -352,3 +352,21 @@ async fn the_host_service_query_reaches_the_real_platform_manager() {
         .expect("an absent unit needs no manager");
     assert!(report.contains("not installed"), "got: {report}");
 }
+
+#[test]
+fn a_relative_service_directory_stops_the_session() {
+    let fixture = fixture(TRUE_PROGRAM);
+    let home = home_of(&fixture);
+    let config = crate::test_support::write_config_with_cfg_dir(
+        fixture.dir.path(),
+        "/tmp/pm3-svc",
+        "relative/svc",
+    );
+    let err = open_service_session(
+        &config.to_string_lossy(),
+        &context(&fixture, ServiceKind::Launchd, &home),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("must be absolute"), "got: {err}");
+}

@@ -9,6 +9,9 @@ pub enum ConfigError {
     #[error("cannot accept empty pm3.home")]
     InvalidHome,
 
+    #[error("cannot accept empty pm3.cfg_dir")]
+    InvalidCfgDir,
+
     #[error("cannot accept pm3.kill_timeout_ms {0}: must be >= 1")]
     InvalidKillTimeout(u64),
 
@@ -32,8 +35,8 @@ pub enum ConfigError {
     #[error("cannot accept empty pm3.service.label")]
     InvalidServiceLabel,
 
-    #[error("cannot accept empty pm3.service.search_path")]
-    InvalidServiceSearchPath,
+    #[error("cannot accept empty pm3.search_path")]
+    InvalidSearchPath,
 
     #[error("cannot accept empty telemetry.service_name")]
     InvalidServiceName,
@@ -56,6 +59,8 @@ pub struct AppConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Pm3Config {
     pub home: String,
+    pub cfg_dir: String,
+    pub search_path: String,
     pub kill_timeout_ms: u64,
     pub start_timeout_ms: u64,
     pub drain_timeout_secs: u64,
@@ -81,7 +86,6 @@ pub struct SandboxConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ServiceConfig {
     pub label: String,
-    pub search_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -115,6 +119,12 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.home.is_empty() {
         return Err(ConfigError::InvalidHome);
     }
+    if pm3.cfg_dir.is_empty() {
+        return Err(ConfigError::InvalidCfgDir);
+    }
+    if pm3.search_path.is_empty() {
+        return Err(ConfigError::InvalidSearchPath);
+    }
     if pm3.kill_timeout_ms < 1 {
         return Err(ConfigError::InvalidKillTimeout(pm3.kill_timeout_ms));
     }
@@ -138,9 +148,7 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.service.label.is_empty() {
         return Err(ConfigError::InvalidServiceLabel);
     }
-    if pm3.service.search_path.is_empty() {
-        return Err(ConfigError::InvalidServiceSearchPath);
-    }
+
     Ok(())
 }
 

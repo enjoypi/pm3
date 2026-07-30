@@ -49,6 +49,8 @@ pub fn config_yaml(home: &str, sandbox_mode: &str, network: bool, log_level: &st
     format!(
         r#"pm3:
   home: "{home}"
+  cfg_dir: "{home}/svc"
+  search_path: "/usr/bin:/bin:/opt/homebrew/bin"
   kill_timeout_ms: 400
   start_timeout_ms: 8000
   drain_timeout_secs: 2
@@ -62,7 +64,6 @@ pub fn config_yaml(home: &str, sandbox_mode: &str, network: bool, log_level: &st
     network: {network}
   service:
     label: "{SERVICE_LABEL}"
-    search_path: "/usr/bin:/bin"
 
 telemetry:
   service_name: "pm3"

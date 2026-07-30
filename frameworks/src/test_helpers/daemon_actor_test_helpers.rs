@@ -45,6 +45,7 @@ fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
     config.sandbox.mode = sandbox_mode.to_string();
     let daemon = Daemon::new(
         config,
+        paths.root.to_string_lossy().into_owned(),
         logs_dir_of(&paths.root),
         None,
         ports,

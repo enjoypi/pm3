@@ -111,14 +111,11 @@ fn validate_rejects_an_empty_service_label() {
 }
 
 #[test]
-fn validate_rejects_an_empty_service_search_path() {
+fn validate_rejects_an_empty_search_path() {
     let mut cfg = valid_config();
-    cfg.pm3.service.search_path = String::new();
+    cfg.pm3.search_path = String::new();
     let err = validate_config(&cfg).unwrap_err();
-    assert!(
-        matches!(err, ConfigError::InvalidServiceSearchPath),
-        "got: {err}"
-    );
+    assert!(matches!(err, ConfigError::InvalidSearchPath), "got: {err}");
 }
 
 #[test]
@@ -172,13 +169,14 @@ fn parse_error_renders_reason() {
 fn every_error_variant_renders_a_message() {
     let errors = [
         ConfigError::InvalidHome,
+        ConfigError::InvalidCfgDir,
         ConfigError::InvalidKillTimeout(0),
         ConfigError::InvalidStartTimeout(0),
         ConfigError::InvalidDrainTimeout(0),
         ConfigError::InvalidMinUptime(0),
         ConfigError::InvalidSandboxMode("yolo".to_string()),
         ConfigError::InvalidServiceLabel,
-        ConfigError::InvalidServiceSearchPath,
+        ConfigError::InvalidSearchPath,
         ConfigError::InvalidServiceName,
         ConfigError::InvalidLogLevel("verbose".to_string()),
         ConfigError::InvalidLogFormat("xml".to_string()),
@@ -189,4 +187,12 @@ fn every_error_variant_renders_a_message() {
             "error message must start with a verb: {err}"
         );
     }
+}
+
+#[test]
+fn validate_rejects_an_empty_cfg_dir() {
+    let mut cfg = valid_config();
+    cfg.pm3.cfg_dir = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(matches!(err, ConfigError::InvalidCfgDir), "got: {err}");
 }

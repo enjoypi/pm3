@@ -1,24 +1,28 @@
-use std::{collections::BTreeMap, fs};
+use std::{collections::BTreeMap, fs, path::Path};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
 use usecases::{AppSpec, SandboxMode, SandboxPolicy, SpecError, validate_spec};
 
-use crate::config::{ConfigLoadError, Pm3Config, RestartConfig, substitute_env_vars};
+use crate::{
+    config::{ConfigLoadError, Pm3Config, RestartConfig, substitute_env_vars},
+    program::resolve_program,
+};
 
 pub const DEFAULT_AUTORESTART: bool = true;
 const DEFAULTS_SCOPE: &str = "pm3.sandbox";
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct AppsFile {
     pub apps: Vec<AppEntry>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct AppEntry {
     pub name: String,
     pub script: String,
-    pub cwd: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
@@ -37,7 +41,7 @@ pub struct AppEntry {
     pub sandbox: Option<SandboxEntry>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct SandboxEntry {
     #[serde(default)]
     pub mode: Option<String>,
@@ -52,6 +56,8 @@ pub struct SpecDefaults<'d> {
     pub restart: RestartConfig,
     pub sandbox_mode: SandboxMode,
     pub sandbox_network: bool,
+    pub home_dir: &'d str,
+    pub search_path: &'d str,
     pub logs_dir: &'d str,
     pub tmp_dir: Option<&'d str>,
 }
@@ -73,6 +79,12 @@ pub enum AppsFileError {
     #[error("cannot accept duplicate app name '{0}'")]
     DuplicateName(String),
 
+    #[error("cannot accept environment entry '{0}': expected KEY=VALUE")]
+    InvalidEnvPair(String),
+
+    #[error("cannot find '{program}' for app '{app}' on pm3.search_path")]
+    ProgramNotFound { app: String, program: String },
+
     #[error(
         "cannot accept sandbox mode '{mode}' for {scope}: must be one of read-only, workspace-write, danger-full-access"
     )]
@@ -87,7 +99,8 @@ pub enum AppsFileError {
 
 impl<'d> SpecDefaults<'d> {
     pub fn from_config(
-        pm3: &Pm3Config,
+        pm3: &'d Pm3Config,
+        home_dir: &'d str,
         logs_dir: &'d str,
         tmp_dir: Option<&'d str>,
     ) -> Result<Self, AppsFileError> {
@@ -96,6 +109,8 @@ impl<'d> SpecDefaults<'d> {
             restart: pm3.restart,
             sandbox_mode,
             sandbox_network: pm3.sandbox.network,
+            home_dir,
+            search_path: &pm3.search_path,
             logs_dir,
             tmp_dir,
         })
@@ -135,7 +150,14 @@ pub fn resolve_specs(
 }
 
 fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpec, AppsFileError> {
-    let sandbox = resolve_sandbox(defaults, entry)?;
+    let cwd = working_directory(defaults, entry);
+    let script = resolve_program(&entry.script, Some(defaults.search_path)).ok_or_else(|| {
+        AppsFileError::ProgramNotFound {
+            app: entry.name.clone(),
+            program: entry.script.clone(),
+        }
+    })?;
+    let sandbox = resolve_sandbox(defaults, entry, &cwd)?;
     let env = entry
         .env
         .iter()
@@ -143,9 +165,9 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         .collect();
     Ok(AppSpec {
         name: entry.name.clone(),
-        script: entry.script.clone(),
+        script: script.to_string_lossy().into_owned(),
         args: entry.args.clone(),
-        cwd: entry.cwd.clone(),
+        cwd,
         env,
         autorestart: entry.autorestart.unwrap_or(DEFAULT_AUTORESTART),
         min_uptime_ms: entry
@@ -160,9 +182,19 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
     })
 }
 
+fn working_directory(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> String {
+    entry.cwd.clone().unwrap_or_else(|| {
+        Path::new(defaults.home_dir)
+            .join(&entry.name)
+            .to_string_lossy()
+            .into_owned()
+    })
+}
+
 fn resolve_sandbox(
     defaults: &SpecDefaults<'_>,
     entry: &AppEntry,
+    cwd: &str,
 ) -> Result<SandboxPolicy, AppsFileError> {
     let declared = entry.sandbox.as_ref();
     let mode = declared
@@ -175,7 +207,7 @@ fn resolve_sandbox(
         .unwrap_or(defaults.sandbox_network);
     let writable_roots = declared
         .and_then(|section| section.writable_roots.clone())
-        .unwrap_or_else(|| default_writable_roots(defaults, mode, &entry.cwd));
+        .unwrap_or_else(|| default_writable_roots(defaults, mode, cwd));
     Ok(SandboxPolicy {
         mode,
         network,
@@ -211,8 +243,8 @@ fn parse_mode(scope: &str, raw: &str) -> Result<SandboxMode, AppsFileError> {
 }
 
 #[cfg(test)]
-#[path = "test_helpers/apps_file_test_helpers.rs"]
+#[path = "../test_helpers/apps_file_test_helpers.rs"]
 mod test_helpers;
 #[cfg(test)]
-#[path = "tests/apps_file_tests.rs"]
+#[path = "../tests/apps_file_tests.rs"]
 mod tests;

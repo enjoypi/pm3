@@ -2,6 +2,7 @@ use super::spec::ServiceUnitSpec;
 
 const RESTART_DELAY_SECS: u64 = 2;
 const PATH_VARIABLE: &str = "PATH";
+const HOME_VARIABLE: &str = "HOME";
 
 #[must_use]
 pub fn render_unit(spec: &ServiceUnitSpec) -> String {
@@ -10,6 +11,7 @@ pub fn render_unit(spec: &ServiceUnitSpec) -> String {
     let working_directory = escape_value(&spec.working_directory.to_string_lossy());
     let log_path = escape_value(&spec.log_path.to_string_lossy());
     let search_path = escape_value(&spec.search_path);
+    let home = escape_value(&spec.home);
     format!(
         "[Unit]
 Description={label}
@@ -21,6 +23,7 @@ ExecStart={exec_start}
 WorkingDirectory={working_directory}
 Restart=on-failure
 RestartSec={RESTART_DELAY_SECS}
+Environment=\"{HOME_VARIABLE}={home}\"
 Environment=\"{PATH_VARIABLE}={search_path}\"
 StandardOutput=append:{log_path}
 StandardError=append:{log_path}

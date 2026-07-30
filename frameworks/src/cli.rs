@@ -1,6 +1,9 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
-use crate::{Result, commands};
+use crate::{
+    Error, Result, commands,
+    svc::{AMBIGUOUS_TARGET, InlineStart},
+};
 
 pub const DEFAULT_CONFIG: &str = "config.yaml";
 pub const DEFAULT_LOG_LINES: usize = 20;
@@ -21,8 +24,11 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    #[command(about = "Start every app declared in an apps file")]
-    Start { apps_file: String },
+    #[command(
+        about = "Start an apps file, or one program given inline after --name",
+        long_about = "pm3 start <APPS_FILE>\npm3 start --name <NAME> [OPTIONS] <PROGRAM> [ARGS...]\n\npm3 options must come before the program: everything after it belongs to the program."
+    )]
+    Start(StartArgs),
 
     #[command(about = "Stop a managed app")]
     Stop { selector: String },
@@ -69,6 +75,34 @@ pub enum Commands {
     Sleep { ms: u64 },
 }
 
+#[derive(Debug, Args)]
+pub struct StartArgs {
+    #[arg(long, help = "Manage one inline program under this name")]
+    pub name: Option<String>,
+
+    #[arg(long, help = "Working directory; defaults to <pm3 home>/<name>")]
+    pub cwd: Option<String>,
+
+    #[arg(long = "env", value_name = "KEY=VALUE", help = "Environment entry")]
+    pub env: Vec<String>,
+
+    #[arg(long, help = "Allow the program to reach the network")]
+    pub network: bool,
+
+    #[arg(
+        long = "writable-dir",
+        value_name = "DIR",
+        help = "Extra writable directory"
+    )]
+    pub writable_dirs: Vec<String>,
+
+    #[arg(long, help = "Overwrite an existing service file")]
+    pub force: bool,
+
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub target: Vec<String>,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum ServiceCommands {
     #[command(about = "Install the pm3 daemon as a user-level auto-start service")]
@@ -104,7 +138,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
 pub async fn execute(cli: Cli) -> Result<Option<String>> {
     let Cli { config, command } = cli;
     match command {
-        Commands::Start { apps_file } => commands::start_apps(&config, &apps_file).await.map(Some),
+        Commands::Start(args) => run_start(&config, &args).await.map(Some),
         Commands::Stop { selector } => commands::stop_app(&config, &selector).await.map(Some),
         Commands::Restart { selector } => commands::restart_app(&config, &selector).await.map(Some),
         Commands::Delete { selector } => commands::delete_app(&config, &selector).await.map(Some),
@@ -127,6 +161,27 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
             Ok(None)
         }
     }
+}
+
+async fn run_start(config: &str, args: &StartArgs) -> Result<String> {
+    let Some(name) = args.name.as_deref() else {
+        let [apps_file] = args.target.as_slice() else {
+            return Err(Error::InlineUsage {
+                reason: AMBIGUOUS_TARGET.to_string(),
+            });
+        };
+        return commands::start_apps(config, apps_file, args.force).await;
+    };
+    let request = InlineStart {
+        name,
+        target: &args.target,
+        cwd: args.cwd.as_deref(),
+        env: &args.env,
+        network: args.network,
+        writable_dirs: &args.writable_dirs,
+        force: args.force,
+    };
+    commands::start_inline(config, &request).await
 }
 
 async fn run_logs(
@@ -152,9 +207,25 @@ fn run_config(config: &str, command: &ConfigCommands) -> Result<String> {
     }
 }
 
+#[must_use]
+pub fn report(outcome: Result<()>) -> std::process::ExitCode {
+    match outcome {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            emit_error(&error);
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
 #[expect(clippy::print_stdout, reason = "CLI command output")]
 fn emit(output: &str) {
     println!("{output}");
+}
+
+#[expect(clippy::print_stderr, reason = "CLI error output")]
+fn emit_error(error: &Error) {
+    eprintln!("{error}");
 }
 
 #[cfg(test)]

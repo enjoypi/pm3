@@ -71,6 +71,7 @@ pub struct ServiceUnitSpec {
     pub working_directory: PathBuf,
     pub log_path: PathBuf,
     pub search_path: String,
+    pub home: String,
 }
 
 impl ServiceUnitSpec {

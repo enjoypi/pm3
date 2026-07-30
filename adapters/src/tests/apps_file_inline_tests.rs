@@ -1,0 +1,323 @@
+use super::*;
+use crate::{
+    SANDBOX_MODE_WORKSPACE_WRITE, SpecDefaults,
+    config_sections::{pm3_section, telemetry_section},
+    load_apps_file, parse_apps_file, parse_config, resolve_specs,
+};
+
+const NAME: &str = "mihomo-rule";
+const PROGRAM: &str = "/opt/homebrew/bin/mihomo";
+const CWD: &str = "/home/dev/.pm3/mihomo-rule";
+
+const HOME: &str = "/home/dev";
+
+fn request<'r>(env: &'r [String], writable_dirs: &'r [String]) -> InlineRequest<'r> {
+    InlineRequest {
+        name: NAME,
+        program: PROGRAM,
+        args: &[],
+        cwd: Some(CWD),
+        home: Some(HOME),
+        env,
+        network: true,
+        writable_dirs,
+    }
+}
+
+fn only_entry(apps: &AppsFile) -> &AppEntry {
+    apps.apps.first().expect("an inline request makes one app")
+}
+
+#[test]
+fn an_inline_request_becomes_a_single_app() {
+    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
+    assert_eq!(apps.apps.len(), 1);
+    assert_eq!(only_entry(&apps).name, NAME);
+    assert_eq!(only_entry(&apps).script, PROGRAM);
+    assert_eq!(
+        only_entry(&apps).cwd.as_deref(),
+        Some("${HOME}/.pm3/mihomo-rule")
+    );
+}
+
+#[test]
+fn a_program_under_the_home_folds_into_a_placeholder() {
+    let mut asked = request(&[], &[]);
+    asked.program = "/home/dev/bin/mihomo";
+    let apps = inline_apps_file(&asked).expect("the request should resolve");
+    assert_eq!(only_entry(&apps).script, "${HOME}/bin/mihomo");
+}
+
+#[test]
+fn the_program_arguments_are_carried_verbatim() {
+    let args = ["-d".to_string(), CWD.to_string(), "-f".to_string()];
+    let mut asked = request(&[], &[]);
+    asked.args = &args;
+    let apps = inline_apps_file(&asked).expect("the request should resolve");
+    assert_eq!(
+        only_entry(&apps).args,
+        ["-d", "${HOME}/.pm3/mihomo-rule", "-f"]
+    );
+}
+
+#[test]
+fn the_network_switch_reaches_the_sandbox_section() {
+    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
+    let sandbox = only_entry(&apps)
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(sandbox.network, Some(true));
+}
+
+#[test]
+fn no_network_switch_leaves_the_configured_default_alone() {
+    let mut asked = request(&[], &[]);
+    asked.network = false;
+    let apps = inline_apps_file(&asked).expect("the request should resolve");
+    let sandbox = only_entry(&apps)
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(sandbox.network, None);
+}
+
+#[test]
+fn an_inline_app_never_asks_for_a_sandbox_mode() {
+    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
+    let sandbox = only_entry(&apps)
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(sandbox.mode, None);
+}
+
+#[test]
+fn no_writable_dirs_leaves_the_defaults_alone() {
+    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
+    let sandbox = only_entry(&apps)
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(sandbox.writable_roots, None);
+}
+
+#[test]
+fn writable_dirs_are_added_next_to_the_working_directory() {
+    let dirs = ["/srv/data".to_string()];
+    let apps = inline_apps_file(&request(&[], &dirs)).expect("the request should resolve");
+    let sandbox = only_entry(&apps)
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(
+        sandbox.writable_roots,
+        Some(vec![
+            "${HOME}/.pm3/mihomo-rule".to_string(),
+            "/srv/data".to_string()
+        ])
+    );
+}
+
+#[test]
+fn a_writable_dir_equal_to_the_working_directory_is_not_repeated() {
+    let dirs = [CWD.to_string()];
+    let apps = inline_apps_file(&request(&[], &dirs)).expect("the request should resolve");
+    let sandbox = only_entry(&apps)
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(
+        sandbox.writable_roots,
+        Some(vec!["${HOME}/.pm3/mihomo-rule".to_string()])
+    );
+}
+
+#[test]
+fn environment_pairs_are_split_on_the_first_equals_sign() {
+    let env = ["PATH=/usr/bin".to_string(), "GREETING=a=b".to_string()];
+    let apps = inline_apps_file(&request(&env, &[])).expect("the request should resolve");
+    let entry = only_entry(&apps);
+    assert_eq!(entry.env.get("PATH").map(String::as_str), Some("/usr/bin"));
+    assert_eq!(entry.env.get("GREETING").map(String::as_str), Some("a=b"));
+}
+
+#[test]
+fn an_environment_entry_without_an_equals_sign_is_rejected() {
+    let env = ["JUST_A_KEY".to_string()];
+    let err = inline_apps_file(&request(&env, &[]))
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        err,
+        "cannot accept environment entry 'JUST_A_KEY': expected KEY=VALUE"
+    );
+}
+
+#[test]
+fn an_environment_entry_without_a_key_is_rejected() {
+    let env = ["=orphan".to_string()];
+    let err = inline_apps_file(&request(&env, &[]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("expected KEY=VALUE"), "got: {err}");
+}
+
+#[test]
+fn an_encoded_inline_app_reads_back_unchanged() {
+    let env = ["PATH=/usr/bin:/bin".to_string()];
+    let dirs = ["/srv/data".to_string()];
+    let apps = inline_apps_file(&request(&env, &dirs)).expect("the request should resolve");
+    let yaml = encode_apps_file(&apps);
+    let reparsed = parse_apps_file(&yaml).expect("the encoded app should parse");
+    assert_eq!(only_entry(&reparsed).name, NAME);
+    assert_eq!(only_entry(&reparsed).env, only_entry(&apps).env);
+}
+
+#[test]
+fn an_encoded_app_with_no_collections_still_reads_back() {
+    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
+    let yaml = encode_apps_file(&apps);
+    assert!(
+        !yaml.contains('~'),
+        "empty collections must be omitted: {yaml}"
+    );
+    let reparsed = parse_apps_file(&yaml).expect("the encoded app should parse");
+    assert!(only_entry(&reparsed).args.is_empty());
+    assert!(only_entry(&reparsed).env.is_empty());
+}
+
+#[test]
+fn an_encoded_inline_app_resolves_into_a_spec() {
+    let yaml = format!(
+        "{}{}",
+        pm3_section("/tmp/pm3-fixture", 1600, SANDBOX_MODE_WORKSPACE_WRITE),
+        telemetry_section("info")
+    );
+    let config = parse_config(&yaml).expect("the fixture config should parse");
+    let defaults = SpecDefaults::from_config(
+        &config.pm3,
+        "/tmp/pm3-fixture",
+        "/tmp/pm3-fixture/logs",
+        None,
+    )
+    .expect("the fixture defaults should build");
+    let mut asked = request(&[], &[]);
+    asked.cwd = None;
+    let apps = inline_apps_file(&asked).expect("the request should resolve");
+    let specs = resolve_specs(&defaults, &apps).expect("the inline app should resolve");
+    assert_eq!(specs.len(), 1);
+    assert_eq!(specs[0].cwd, "/tmp/pm3-fixture/mihomo-rule");
+    assert_eq!(specs[0].script, PROGRAM);
+}
+
+#[test]
+fn a_home_placeholder_expands_when_the_config_file_is_loaded() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("mihomo-rule.yaml");
+    let mut asked = request(&[], &[]);
+    asked.cwd = Some("/home/dev/work");
+    let apps = inline_apps_file(&asked).expect("the request should resolve");
+    std::fs::write(&path, encode_apps_file(&apps)).expect("write the config file");
+    let loaded = load_apps_file(&path.to_string_lossy()).expect("the config file should load");
+    let expected = format!(
+        "{}/work",
+        std::env::var("HOME").expect("tests always run with HOME")
+    );
+    assert_eq!(only_entry(&loaded).cwd.as_deref(), Some(expected.as_str()));
+}
+
+#[test]
+fn identical_text_has_no_diff() {
+    assert!(diff_lines("a\nb\n", "a\nb\n").is_empty());
+}
+
+#[test]
+fn a_changed_line_shows_both_sides() {
+    assert_eq!(
+        diff_lines("a\nb\n", "a\nc\n"),
+        ["-b".to_string(), "+c".to_string()]
+    );
+}
+
+#[test]
+fn a_removed_line_shows_only_the_old_side() {
+    assert_eq!(diff_lines("a\nb\n", "a\n"), ["-b".to_string()]);
+}
+
+#[test]
+fn an_added_line_shows_only_the_new_side() {
+    assert_eq!(diff_lines("a\n", "a\nb\n"), ["+b".to_string()]);
+}
+
+fn fully_declared_entry() -> AppEntry {
+    AppEntry {
+        name: NAME.to_string(),
+        script: PROGRAM.to_string(),
+        cwd: Some(CWD.to_string()),
+        args: vec!["-d".to_string()],
+        env: std::collections::BTreeMap::new(),
+        depends_on: vec!["db".to_string()],
+        autorestart: Some(false),
+        min_uptime_ms: Some(2000),
+        max_restarts: Some(7),
+        restart_delay_ms: Some(50),
+        sandbox: Some(SandboxEntry {
+            mode: Some(SANDBOX_MODE_WORKSPACE_WRITE.to_string()),
+            network: Some(false),
+            writable_roots: Some(vec!["/srv".to_string()]),
+        }),
+    }
+}
+
+#[test]
+fn a_fully_declared_app_encodes_every_field() {
+    let apps = AppsFile {
+        apps: vec![fully_declared_entry()],
+    };
+    let yaml = encode_apps_file(&apps);
+    for needle in [
+        "depends_on:",
+        "autorestart: false",
+        "min_uptime_ms: 2000",
+        "max_restarts: 7",
+        "restart_delay_ms: 50",
+        "mode: \"workspace-write\"",
+        "network: false",
+        "writable_roots:",
+    ] {
+        assert!(yaml.contains(needle), "{needle} missing from: {yaml}");
+    }
+}
+
+#[test]
+fn a_fully_declared_app_reads_back_unchanged() {
+    let apps = AppsFile {
+        apps: vec![fully_declared_entry()],
+    };
+    let reparsed = parse_apps_file(&encode_apps_file(&apps)).expect("the encoded app should parse");
+    let entry = only_entry(&reparsed);
+    assert_eq!(entry.depends_on, ["db"]);
+    assert_eq!(entry.autorestart, Some(false));
+    assert_eq!(entry.max_restarts, Some(7));
+}
+
+#[test]
+fn an_empty_sandbox_section_is_omitted() {
+    let mut entry = fully_declared_entry();
+    entry.sandbox = Some(SandboxEntry {
+        mode: None,
+        network: None,
+        writable_roots: None,
+    });
+    let yaml = encode_apps_file(&AppsFile { apps: vec![entry] });
+    assert!(!yaml.contains("sandbox"), "got: {yaml}");
+}
+
+#[test]
+fn an_app_without_a_sandbox_section_is_encoded_plainly() {
+    let mut entry = fully_declared_entry();
+    entry.sandbox = None;
+    let yaml = encode_apps_file(&AppsFile { apps: vec![entry] });
+    assert!(!yaml.contains("sandbox"), "got: {yaml}");
+}

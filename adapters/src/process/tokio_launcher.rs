@@ -73,6 +73,7 @@ async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command
     command
         .args(&spec.args)
         .current_dir(&spec.cwd)
+        .env_clear()
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout.into_std().await))
         .stderr(Stdio::from(stderr.into_std().await));

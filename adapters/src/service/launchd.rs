@@ -8,6 +8,7 @@ const PLIST_HEADER: &str = concat!(
 );
 
 const PATH_VARIABLE: &str = "PATH";
+const HOME_VARIABLE: &str = "HOME";
 
 #[must_use]
 pub fn render_plist(spec: &ServiceUnitSpec) -> String {
@@ -21,6 +22,7 @@ pub fn render_plist(spec: &ServiceUnitSpec) -> String {
     let working_directory = escape_xml(&spec.working_directory.to_string_lossy());
     let log_path = escape_xml(&spec.log_path.to_string_lossy());
     let search_path = escape_xml(&spec.search_path);
+    let home = escape_xml(&spec.home);
     format!(
         "{PLIST_HEADER}<dict>
     <key>Label</key>
@@ -42,6 +44,8 @@ pub fn render_plist(spec: &ServiceUnitSpec) -> String {
     <string>{log_path}</string>
     <key>EnvironmentVariables</key>
     <dict>
+        <key>{HOME_VARIABLE}</key>
+        <string>{home}</string>
         <key>{PATH_VARIABLE}</key>
         <string>{search_path}</string>
     </dict>
