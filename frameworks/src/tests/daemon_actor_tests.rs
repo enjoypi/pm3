@@ -39,6 +39,37 @@ async fn listed(harness: &mut Harness) -> usize {
     views.len()
 }
 
+async fn described(harness: &mut Harness, name: &str) -> adapters::ProcessView {
+    let reply = harness
+        .daemon
+        .handle(DaemonRequest::Describe(selector(name)))
+        .await
+        .expect("should describe");
+    let DaemonReply::Described(view) = reply else {
+        panic!("describe should answer with a view")
+    };
+    view
+}
+
+#[tokio::test]
+async fn each_app_expands_the_placeholder_with_its_own_working_directory() {
+    let mut harness = harness();
+    let body = "apps:\n  - name: web\n    script: /bin/sh\n    args:\n      - \"-c\"\n      - \"true\"\n      - \"${PM3_SVC_CWD}\"\n  - name: db\n    script: /bin/sh\n    args:\n      - \"-c\"\n      - \"true\"\n      - \"${PM3_SVC_CWD}\"\n";
+    let file = crate::test_support::write_apps_file(harness.dir.path(), body);
+    harness
+        .daemon
+        .handle(DaemonRequest::Start {
+            apps_file: text(&file),
+        })
+        .await
+        .expect("should start");
+    let web = described(&mut harness, "web").await;
+    let db = described(&mut harness, "db").await;
+    assert_eq!(web.args.last(), Some(&web.cwd));
+    assert_eq!(db.args.last(), Some(&db.cwd));
+    assert_ne!(web.cwd, db.cwd);
+}
+
 #[tokio::test]
 async fn starting_an_apps_file_launches_every_app() {
     let mut harness = harness();

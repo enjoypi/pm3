@@ -2,6 +2,8 @@ use std::{env, fs};
 
 use thiserror::Error;
 
+use crate::program::SVC_CWD_NAME;
+
 #[derive(Debug, Error)]
 pub enum ConfigLoadError {
     #[error("cannot read config file '{path}': {source}")]
@@ -67,11 +69,7 @@ fn classify_env_var(
     }
 }
 
-#[expect(
-    clippy::string_slice,
-    clippy::single_match_else,
-    reason = "match→closure 转换让 llvm-cov 算独立未覆盖 fn；切片边界均为 ASCII"
-)]
+#[expect(clippy::string_slice, reason = "切片边界均为 ASCII")]
 fn substitute_with(raw: &str, lookup: EnvLookup) -> Result<String, ConfigLoadError> {
     let mut out = String::with_capacity(raw.len());
     let mut rest = raw;
@@ -79,6 +77,11 @@ fn substitute_with(raw: &str, lookup: EnvLookup) -> Result<String, ConfigLoadErr
         out.push_str(&rest[..start]);
         let body = &rest[start + 2..];
         match parse_placeholder(body) {
+            Some(parsed) if parsed.name == SVC_CWD_NAME => {
+                out.push_str("${");
+                out.push_str(&body[..parsed.consumed]);
+                rest = &body[parsed.consumed..];
+            }
             Some(parsed) => {
                 let value = match lookup(parsed.name)? {
                     Some(found) => {

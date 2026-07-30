@@ -88,6 +88,26 @@ fn a_sibling_that_merely_shares_the_prefix_is_left_alone() {
 }
 
 #[test]
+fn a_bare_service_cwd_token_folds_into_the_braced_form() {
+    assert_eq!(fold_svc_cwd("PM3_SVC_CWD"), SVC_CWD_PLACEHOLDER);
+}
+
+#[test]
+fn a_bare_service_cwd_token_folds_inside_a_larger_argument() {
+    assert_eq!(fold_svc_cwd("PM3_SVC_CWD/data"), "${PM3_SVC_CWD}/data");
+}
+
+#[test]
+fn an_already_braced_service_cwd_token_is_left_alone() {
+    assert_eq!(fold_svc_cwd(SVC_CWD_PLACEHOLDER), SVC_CWD_PLACEHOLDER);
+}
+
+#[test]
+fn a_value_without_the_service_cwd_token_is_left_alone() {
+    assert_eq!(fold_svc_cwd("/srv/data"), "/srv/data");
+}
+
+#[test]
 fn folding_without_a_home_leaves_the_value_alone() {
     assert_eq!(fold_home("/home/dev/x", None), "/home/dev/x");
 }

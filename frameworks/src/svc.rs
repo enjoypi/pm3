@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use adapters::{
-    AppsFile, InlineRequest, diff_lines, encode_apps_file, fold_home, inline_apps_file,
-    load_apps_file, resolve_program, service_file_of,
+    AppsFile, InlineRequest, diff_lines, encode_apps_file, fold_home, fold_svc_cwd,
+    inline_apps_file, load_apps_file, resolve_program, service_file_of,
 };
 
 use crate::{Error, Result};
@@ -72,7 +72,7 @@ pub async fn split_apps_file(context: &SvcContext<'_>, apps_file: &str, force: b
         folded.args = folded
             .args
             .iter()
-            .map(|value| fold_home(value, context.home))
+            .map(|value| fold_svc_cwd(&fold_home(value, context.home)))
             .collect();
         let single = AppsFile { apps: vec![folded] };
         let contents = encode_apps_file(&single);

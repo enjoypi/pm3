@@ -110,6 +110,23 @@ async fn save_then_load_round_trips_an_idle_app() {
 }
 
 #[tokio::test]
+async fn load_expands_the_service_cwd_placeholder() {
+    let fixture = fixture();
+    write_service_file(
+        &fixture.source,
+        "web",
+        "apps:\n  - name: \"web\"\n    script: \"/bin/sh\"\n    args:\n      - \"${PM3_SVC_CWD}\"\n",
+    );
+    fixture
+        .store
+        .save(&[sample_record("web")])
+        .await
+        .expect("save");
+    let records = fixture.store.load().await.expect("load");
+    assert_eq!(records[0].spec.args, vec![records[0].spec.cwd.clone()]);
+}
+
+#[tokio::test]
 async fn load_prepares_the_working_directory() {
     let fixture = fixture();
     register_service(&fixture.source, "web");

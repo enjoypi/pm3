@@ -104,6 +104,38 @@ async fn program_arguments_fold_the_home_away() {
 }
 
 #[tokio::test]
+async fn a_bare_service_cwd_token_is_stored_as_a_braced_placeholder() {
+    let home = home();
+    let mut target = shell_target();
+    target.push("PM3_SVC_CWD".to_string());
+    let path = prepare_inline(&context(&home), &request(&target, None, false))
+        .await
+        .expect("the inline request should resolve");
+    let written = std::fs::read_to_string(&path).expect("read the config file");
+    assert!(written.contains("\"${PM3_SVC_CWD}\""), "got: {written}");
+}
+
+#[tokio::test]
+async fn splitting_an_apps_file_folds_the_service_cwd_token() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n    args:\n      - \"PM3_SVC_CWD/data\"\n",
+    )
+    .expect("write the apps file");
+    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    let written =
+        std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
+    assert!(
+        written.contains("\"${PM3_SVC_CWD}/data\""),
+        "got: {written}"
+    );
+}
+
+#[tokio::test]
 async fn an_inline_request_without_a_program_is_rejected() {
     let home = home();
     let err = prepare_inline(&context(&home), &request(&[], None, false))

@@ -74,6 +74,32 @@ fn a_confined_app_cannot_reach_the_network() {
 }
 
 #[test]
+fn a_confined_app_can_write_through_the_cwd_placeholder() {
+    let home = home_with_sandbox("workspace-write", false);
+    let started = pm3(
+        &home,
+        &[
+            "start",
+            "--name",
+            "toucher",
+            "/bin/sh",
+            "-c",
+            "cd /; echo hi > \"$0/probe.txt\" && echo done || echo failed",
+            "PM3_SVC_CWD",
+        ],
+    );
+    assert!(started.status.success(), "{}", stdout_of(&started));
+
+    let seen = wait_for_log(&app_log(&home, "toucher"), "done");
+    assert!(!seen.contains("failed"), "{seen}");
+    assert!(
+        home.root.join("toucher").join("probe.txt").is_file(),
+        "the placeholder must expand to the very writable root the sandbox allows"
+    );
+    shutdown_daemon(&home);
+}
+
+#[test]
 fn an_unconfined_app_keeps_full_access() {
     let home = home_with_sandbox("danger-full-access", true);
     let apps = shell_app(&home, "trusted", "echo trusted > ./trusted.txt; echo done");
