@@ -47,6 +47,57 @@ fn validate_rejects_zero_drain_timeout() {
 }
 
 #[test]
+fn validate_rejects_a_zero_request_timeout() {
+    let mut cfg = valid_config();
+    cfg.pm3.request_timeout_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidRequestTimeout(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_zero_command_timeout() {
+    let mut cfg = valid_config();
+    cfg.pm3.command_timeout_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidCommandTimeout(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_zero_log_follow_interval() {
+    let mut cfg = valid_config();
+    cfg.pm3.log_follow_interval_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidFollowInterval(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_an_unknown_stop_signal() {
+    let mut cfg = valid_config();
+    cfg.pm3.stop_signal = "BOOM".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidStopSignal(_)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_accepts_sigint_as_a_stop_signal() {
+    let mut cfg = valid_config();
+    cfg.pm3.stop_signal = "INT".to_string();
+    validate_config(&cfg).expect("pm2 users stopping with SIGINT should be able to say so");
+}
+
+#[test]
 fn validate_rejects_a_zero_daemon_poll_interval() {
     let mut cfg = valid_config();
     cfg.pm3.daemon_poll_interval_ms = 0;
@@ -173,6 +224,11 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidKillTimeout(0),
         ConfigError::InvalidStartTimeout(0),
         ConfigError::InvalidDrainTimeout(0),
+        ConfigError::InvalidRequestTimeout(0),
+        ConfigError::InvalidCommandTimeout(0),
+        ConfigError::InvalidPollInterval(0),
+        ConfigError::InvalidFollowInterval(0),
+        ConfigError::InvalidStopSignal("BOOM".to_string()),
         ConfigError::InvalidMinUptime(0),
         ConfigError::InvalidSandboxMode("yolo".to_string()),
         ConfigError::InvalidServiceLabel,

@@ -4,7 +4,7 @@ use std::{
 };
 
 use adapters::{
-    APPS_PATH, AppConfig, KillSignaler, LogFollower, Pm3Paths, SERVICES_STOP_ALL_PATH,
+    APPS_PATH, AppConfig, KillSignaler, LogFollower, Pm3Paths, ReplyDto, SERVICES_STOP_ALL_PATH,
     Signaler as _, StartRequestDto, load_and_parse_config, log_paths, logs_dir_of, read_tail,
     wait_until_released,
 };
@@ -13,14 +13,15 @@ use crate::{
     Error, Result,
     client::{OK_STATUS, UdsClient},
     daemon::{DaemonLaunch, ensure_daemon_running},
-    layout::{ensure_layout, host_home, read_pid_file, resolve_cfg_dir, resolve_layout},
+    layout::{
+        canonicalize, ensure_layout, host_home, read_pid_file, resolve_cfg_dir, resolve_layout,
+    },
     svc::{self, InlineStart, Reconciled, SvcContext},
 };
 
 pub const FOLLOW_FOREVER: u32 = u32::MAX;
 pub const DAEMON_NOT_RUNNING: &str = "the pm3 daemon is not running";
 
-const FOLLOW_INTERVAL_MS: u64 = 200;
 const STOP_ACTION: &str = "stop";
 const RESTART_ACTION: &str = "restart";
 
@@ -28,6 +29,7 @@ const RESTART_ACTION: &str = "restart";
 pub struct StartReport {
     pub response: String,
     pub changed: Vec<String>,
+    pub already_running: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -65,11 +67,10 @@ pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Resu
     ensure_layout(&session.paths, &session.cfg_dir).await?;
     let resolved = canonical_apps_file(apps_file)?;
     let home = host_home();
-    let changed =
+    let split =
         svc::split_apps_file(&session.svc_context(home.as_deref()), &resolved, force).await?;
-    ask(config_path, "POST", APPS_PATH, Some(&start_body(&resolved)))
-        .await
-        .map(|response| StartReport { response, changed })
+    let asked = ask(config_path, "POST", APPS_PATH, Some(&start_body(&resolved))).await;
+    finish_start(asked, split.changed, &split.undo).await
 }
 
 pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Result<StartReport> {
@@ -83,21 +84,44 @@ pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Resul
     } else {
         Vec::new()
     };
-    ask(config_path, "POST", APPS_PATH, Some(&body))
-        .await
-        .map(|response| StartReport { response, changed })
+    let asked = ask(config_path, "POST", APPS_PATH, Some(&body)).await;
+    finish_start(asked, changed, &prepared.undo).await
+}
+
+async fn finish_start(
+    asked: Result<ReplyDto>,
+    changed: Vec<String>,
+    undo: &svc::SvcUndo,
+) -> Result<StartReport> {
+    let reply = match asked {
+        Ok(reply) => reply,
+        Err(error) => {
+            undo.run().await;
+            return Err(error);
+        }
+    };
+    let ReplyDto {
+        report,
+        service: _,
+        already_running,
+    } = reply;
+    Ok(StartReport {
+        response: report,
+        changed,
+        already_running,
+    })
 }
 
 pub async fn list_apps(config_path: &str) -> Result<String> {
-    ask(config_path, "GET", APPS_PATH, None).await
+    ask_report(config_path, "GET", APPS_PATH, None).await
 }
 
 pub async fn describe_app(config_path: &str, selector: &str) -> Result<String> {
-    ask(config_path, "GET", &app_path(selector), None).await
+    ask_report(config_path, "GET", &app_path(selector), None).await
 }
 
 pub async fn stop_app(config_path: &str, selector: &str) -> Result<String> {
-    ask(
+    ask_report(
         config_path,
         "POST",
         &app_action(selector, STOP_ACTION),
@@ -107,7 +131,7 @@ pub async fn stop_app(config_path: &str, selector: &str) -> Result<String> {
 }
 
 pub async fn restart_app(config_path: &str, selector: &str) -> Result<String> {
-    ask(
+    ask_report(
         config_path,
         "POST",
         &app_action(selector, RESTART_ACTION),
@@ -119,18 +143,19 @@ pub async fn restart_app(config_path: &str, selector: &str) -> Result<String> {
 pub async fn delete_app(config_path: &str, selector: &str) -> Result<String> {
     let cfg_dir = open_session(config_path)?.cfg_dir;
     let deleted = ask(config_path, "DELETE", &app_path(selector), None).await?;
-    svc::forget(&cfg_dir, selector).await;
-    Ok(deleted)
+    svc::forget(&cfg_dir, deleted.service.as_deref().unwrap_or(selector)).await;
+    Ok(deleted.report)
 }
 
 pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<String> {
     let session = open_session(config_path)?;
-    let client = UdsClient::new(session.paths.socket.clone());
+    let pm3 = &session.config.pm3;
+    let client = UdsClient::new(session.paths.socket.clone(), pm3.request_timeout_ms);
     if !client.daemon_is_healthy().await {
         return Ok(DAEMON_NOT_RUNNING.to_string());
     }
     let stopped = if with_services {
-        Some(ask(config_path, "POST", SERVICES_STOP_ALL_PATH, None).await?)
+        Some(ask_report(config_path, "POST", SERVICES_STOP_ALL_PATH, None).await?)
     } else {
         None
     };
@@ -140,9 +165,19 @@ pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<Strin
         });
     };
     KillSignaler::default().terminate(pid).await?;
-    let budget_ms = session.config.pm3.start_timeout_ms;
-    if !wait_until_released(&session.paths.socket, budget_ms).await {
-        log_lingering_daemon(&session.paths.socket, budget_ms);
+    let budget_ms = pm3.start_timeout_ms;
+    if !wait_until_released(
+        &session.paths.socket,
+        budget_ms,
+        pm3.daemon_poll_interval_ms,
+    )
+    .await
+    {
+        return Err(Error::DaemonLingering {
+            pid,
+            path: session.paths.socket.to_string_lossy().into_owned(),
+            timeout_ms: budget_ms,
+        });
     }
     Ok(kill_report(stopped.as_deref(), pid))
 }
@@ -153,17 +188,6 @@ fn kill_report(stopped: Option<&str>, pid: u32) -> String {
         || format!("{farewell}; managed services keep running"),
         |services| format!("{services}\n{farewell}"),
     )
-}
-
-fn log_lingering_daemon(socket: &Path, timeout_ms: u64) {
-    let path = socket.to_string_lossy().into_owned();
-    tracing::warn!(
-        feature = "lifecycle",
-        operation = "kill",
-        path,
-        timeout_ms,
-        "pm3 signalled the daemon but its socket is still there",
-    );
 }
 
 pub async fn read_log_tail(config_path: &str, name: &str, lines: usize) -> Result<String> {
@@ -178,13 +202,15 @@ pub async fn follow_log(
     polls: u32,
     emit: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<()> {
-    let stdout = stdout_log(&open_session(config_path)?.paths, name);
+    let session = open_session(config_path)?;
+    let interval = Duration::from_millis(session.config.pm3.log_follow_interval_ms);
+    let stdout = stdout_log(&session.paths, name);
     let mut follower = LogFollower::start_at_end(Path::new(&stdout)).await?;
     for _poll in 0..polls {
         for line in follower.poll_appended().await? {
             emit(&line);
         }
-        tokio::time::sleep(Duration::from_millis(FOLLOW_INTERVAL_MS)).await;
+        tokio::time::sleep(interval).await;
     }
     Ok(())
 }
@@ -207,9 +233,9 @@ pub fn stdout_log(paths: &Pm3Paths, name: &str) -> String {
 }
 
 pub fn canonical_apps_file(apps_file: &str) -> Result<String> {
-    let resolved = std::fs::canonicalize(apps_file).map_err(|e| Error::AppsFile {
+    let resolved = canonicalize(apps_file, |reason| Error::AppsFile {
         path: apps_file.to_string(),
-        reason: e.to_string(),
+        reason,
     })?;
     Ok(resolved.to_string_lossy().into_owned())
 }
@@ -223,23 +249,43 @@ pub fn start_body(apps_file: &str) -> String {
         .expect("internal error: StartRequestDto serialization is infallible")
 }
 
-async fn ask(config_path: &str, method: &str, path: &str, body: Option<&str>) -> Result<String> {
+async fn ask_report(
+    config_path: &str,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+) -> Result<String> {
+    ask(config_path, method, path, body)
+        .await
+        .map(|reply| reply.report)
+}
+
+async fn ask(config_path: &str, method: &str, path: &str, body: Option<&str>) -> Result<ReplyDto> {
     let session = open_session(config_path)?;
     ensure_layout(&session.paths, &session.cfg_dir).await?;
     let program = std::env::current_exe().unwrap_or_default();
     let launch =
         DaemonLaunch::from_config(&session.paths, config_path, program, &session.config.pm3);
     ensure_daemon_running(&launch).await?;
-    let reply = UdsClient::new(session.paths.socket.clone())
-        .request(method, path, body)
-        .await?;
+    let reply = UdsClient::new(
+        session.paths.socket.clone(),
+        session.config.pm3.request_timeout_ms,
+    )
+    .request(method, path, body)
+    .await?;
     if reply.status != OK_STATUS {
         return Err(Error::Refused {
             status: reply.status,
             body: reply.body,
         });
     }
-    Ok(reply.body)
+    decode_reply(&reply.body)
+}
+
+fn decode_reply(body: &str) -> Result<ReplyDto> {
+    serde_json::from_str(body).map_err(|e| Error::Undecodable {
+        reason: e.to_string(),
+    })
 }
 
 fn app_path(selector: &str) -> String {

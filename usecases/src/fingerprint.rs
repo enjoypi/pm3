@@ -36,7 +36,11 @@ pub fn render_launch(launch: &LaunchSpec) -> String {
 
 fn sorted_env(env: &[(String, String)]) -> Vec<&(String, String)> {
     let mut entries: Vec<&(String, String)> = env.iter().collect();
-    entries.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    entries.sort_by(|(left_key, left_value), (right_key, right_value)| {
+        left_key
+            .cmp(right_key)
+            .then_with(|| left_value.cmp(right_value))
+    });
     entries
 }
 

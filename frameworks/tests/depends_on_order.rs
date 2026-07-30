@@ -78,6 +78,29 @@ fn a_dependency_cycle_is_refused() {
 }
 
 #[test]
+fn a_refused_start_leaves_no_service_files_behind() {
+    let home = home();
+    let apps = cyclic_apps(&home);
+    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
+    assert!(!started.status.success(), "a cycle must fail the command");
+    let leftovers: Vec<String> = std::fs::read_dir(home.root.join("svc"))
+        .expect("the service directory")
+        .map(|entry| {
+            entry
+                .expect("a service directory entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a refused start must roll its service files back, found: {leftovers:?}"
+    );
+    shutdown_daemon(&home);
+}
+
+#[test]
 fn an_unknown_dependency_is_refused() {
     let home = home();
     let cwd = home.root.to_string_lossy();

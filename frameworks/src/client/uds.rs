@@ -1,9 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::UnixStream,
+    time::timeout,
 };
 
 pub const HEALTH_PATH: &str = "/health";
@@ -22,6 +26,7 @@ pub struct HttpReply {
 #[derive(Clone, Debug)]
 pub struct UdsClient {
     socket: PathBuf,
+    timeout_ms: u64,
 }
 
 #[derive(Debug, Error)]
@@ -34,12 +39,15 @@ pub enum ClientError {
 
     #[error("cannot read the pm3 daemon reply: {reason}")]
     Malformed { reason: String },
+
+    #[error("cannot get an answer from the pm3 daemon on '{path}' within {timeout_ms} ms")]
+    Stalled { path: String, timeout_ms: u64 },
 }
 
 impl UdsClient {
     #[must_use]
-    pub const fn new(socket: PathBuf) -> Self {
-        Self { socket }
+    pub const fn new(socket: PathBuf, timeout_ms: u64) -> Self {
+        Self { socket, timeout_ms }
     }
 
     pub async fn request(
@@ -66,6 +74,15 @@ impl UdsClient {
     }
 
     async fn exchange(&self, request: &str) -> Result<String, ClientError> {
+        timeout(Duration::from_millis(self.timeout_ms), self.talk(request))
+            .await
+            .map_err(|_elapsed| ClientError::Stalled {
+                path: text(&self.socket),
+                timeout_ms: self.timeout_ms,
+            })?
+    }
+
+    async fn talk(&self, request: &str) -> Result<String, ClientError> {
         let mut stream =
             UnixStream::connect(&self.socket)
                 .await

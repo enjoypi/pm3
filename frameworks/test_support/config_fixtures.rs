@@ -2,9 +2,13 @@ use std::path::{Path, PathBuf};
 
 use adapters::{Pm3Config, RestartConfig, SandboxConfig, ServiceConfig};
 
+pub const STOP_SIGNAL: &str = "TERM";
 pub const KILL_TIMEOUT_MS: u64 = 400;
 pub const START_TIMEOUT_MS: u64 = 4000;
+pub const REQUEST_TIMEOUT_MS: u64 = 30000;
+pub const COMMAND_TIMEOUT_MS: u64 = 5000;
 pub const POLL_INTERVAL_MS: u64 = 20;
+pub const FOLLOW_INTERVAL_MS: u64 = 200;
 pub const DRAIN_TIMEOUT_SECS: u64 = 5;
 pub const MIN_UPTIME_MS: u64 = 1000;
 pub const MAX_RESTARTS: u32 = 15;
@@ -17,10 +21,14 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         home: home.to_string(),
         cfg_dir: format!("{home}/svc"),
         search_path: SERVICE_SEARCH_PATH.to_string(),
+        stop_signal: STOP_SIGNAL.to_string(),
         kill_timeout_ms: KILL_TIMEOUT_MS,
         start_timeout_ms: START_TIMEOUT_MS,
         drain_timeout_secs: DRAIN_TIMEOUT_SECS,
+        request_timeout_ms: REQUEST_TIMEOUT_MS,
+        command_timeout_ms: COMMAND_TIMEOUT_MS,
         daemon_poll_interval_ms: POLL_INTERVAL_MS,
+        log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         restart: RestartConfig {
             min_uptime_ms: MIN_UPTIME_MS,
             max_restarts: MAX_RESTARTS,
@@ -42,10 +50,14 @@ pub fn config_yaml(home: &str) -> String {
   home: "{home}"
   cfg_dir: "{home}/svc"
   search_path: "{SERVICE_SEARCH_PATH}"
+  stop_signal: "{STOP_SIGNAL}"
   kill_timeout_ms: {KILL_TIMEOUT_MS}
   start_timeout_ms: {START_TIMEOUT_MS}
   drain_timeout_secs: {DRAIN_TIMEOUT_SECS}
+  request_timeout_ms: {REQUEST_TIMEOUT_MS}
+  command_timeout_ms: {COMMAND_TIMEOUT_MS}
   daemon_poll_interval_ms: {POLL_INTERVAL_MS}
+  log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   restart:
     min_uptime_ms: {MIN_UPTIME_MS}
     max_restarts: {MAX_RESTARTS}

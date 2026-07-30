@@ -4,6 +4,7 @@ use serde::Deserialize;
 use thiserror::Error;
 use usecases::{AppSpec, SandboxMode, SandboxPolicy, SpecError, validate_spec};
 
+use super::roots::dedup_roots;
 use crate::{
     config::{ConfigLoadError, Pm3Config, RestartConfig, substitute_env_vars},
     program::resolve_program,
@@ -51,7 +52,7 @@ pub struct SandboxEntry {
     pub writable_roots: Option<Vec<String>>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct SpecDefaults<'d> {
     pub restart: RestartConfig,
     pub sandbox_mode: SandboxMode,
@@ -226,16 +227,12 @@ fn default_writable_roots(
     if mode != SandboxMode::WorkspaceWrite {
         return Vec::new();
     }
-    let mut roots: Vec<String> = Vec::with_capacity(3);
-    for candidate in [Some(cwd), Some(defaults.logs_dir), defaults.tmp_dir] {
-        let Some(root) = candidate.filter(|value| !value.is_empty()) else {
-            continue;
-        };
-        if !roots.iter().any(|known| known == root) {
-            roots.push(root.to_string());
-        }
-    }
-    roots
+    let candidates = [Some(cwd), Some(defaults.logs_dir), defaults.tmp_dir]
+        .into_iter()
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    dedup_roots(candidates)
 }
 
 fn parse_mode(scope: &str, raw: &str) -> Result<SandboxMode, AppsFileError> {

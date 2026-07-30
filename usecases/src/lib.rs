@@ -36,7 +36,7 @@ pub use self::{
     resurrect::resurrect,
     selector::AppSelector,
     start::{StartKind, StartOutcome, start_apps},
-    stop::{StopOutcome, stop_app},
+    stop::{StopOutcome, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
     table::ProcessTable,
 };

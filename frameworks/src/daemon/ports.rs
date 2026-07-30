@@ -22,19 +22,17 @@ pub struct DaemonPorts {
 
 impl DaemonPorts {
     #[must_use]
-    pub fn new(
-        dump_file: PathBuf,
-        specs: SpecSource,
-        backend: Option<SandboxBackend>,
-        poll_interval_ms: u64,
-    ) -> Self {
+    pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<SandboxBackend>) -> Self {
+        let stop_signal = specs.config.stop_signal.clone();
+        let command_timeout_ms = specs.config.command_timeout_ms;
+        let poll_interval_ms = specs.config.daemon_poll_interval_ms;
         Self {
             launcher: TokioProcessLauncher::default(),
-            signaler: KillSignaler::default(),
+            signaler: KillSignaler::with_stop_signal(stop_signal, command_timeout_ms),
             wrapper: SandboxCommandWrapper::new(backend),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
-            probe: PsProcessProbe::default(),
+            probe: PsProcessProbe::with_timeout(command_timeout_ms),
             fingerprinter: Sha256Fingerprinter,
             poll_interval_ms,
         }

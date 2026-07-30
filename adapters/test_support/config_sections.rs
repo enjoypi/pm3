@@ -4,10 +4,14 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   home: "{home}"
   cfg_dir: "{home}/svc"
   search_path: "/usr/bin:/bin"
+  stop_signal: "TERM"
   kill_timeout_ms: {kill_timeout_ms}
   start_timeout_ms: 5000
   drain_timeout_secs: 5
+  request_timeout_ms: 30000
+  command_timeout_ms: 5000
   daemon_poll_interval_ms: 50
+  log_follow_interval_ms: 200
   restart:
     min_uptime_ms: 1000
     max_restarts: 15

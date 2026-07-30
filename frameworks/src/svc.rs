@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use adapters::{
-    AppsFile, InlineRequest, diff_lines, encode_apps_file, fold_home, fold_svc_cwd,
+    AppEntry, AppsFile, InlineRequest, diff_lines, encode_apps_file, fold_home, fold_svc_cwd,
     inline_apps_file, load_apps_file, resolve_program, service_file_of,
 };
 
@@ -11,7 +11,7 @@ pub const MISSING_COMMAND: &str = "--name needs a program to run after it";
 pub const AMBIGUOUS_TARGET: &str =
     "without --name, start takes exactly one apps file; pm3 options must come before the program";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Reconciled {
     Unchanged,
     Stale,
@@ -21,6 +21,55 @@ pub enum Reconciled {
 pub struct PreparedSvc {
     pub path: PathBuf,
     pub reconciled: Reconciled,
+    pub undo: SvcUndo,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SplitApps {
+    pub changed: Vec<String>,
+    pub undo: SvcUndo,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SvcUndo {
+    steps: Vec<(PathBuf, Restore)>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum Restore {
+    Remove,
+    Replace(String),
+}
+
+impl SvcUndo {
+    pub async fn run(&self) {
+        for (path, step) in &self.steps {
+            match step {
+                Restore::Remove => {
+                    tokio::fs::remove_file(path).await.ok();
+                }
+                Restore::Replace(previous) => {
+                    tokio::fs::write(path, previous).await.ok();
+                }
+            }
+            log_undo(path);
+        }
+    }
+
+    fn remember(&mut self, path: &Path, previous: Option<String>) {
+        let step = previous.map_or(Restore::Remove, Restore::Replace);
+        self.steps.push((path.to_path_buf(), step));
+    }
+}
+
+fn log_undo(path: &Path) {
+    let path = path.to_string_lossy().into_owned();
+    tracing::debug!(
+        feature = "svc",
+        action = "undo",
+        path,
+        "pm3 rolled a service file back because the start was refused",
+    );
 }
 
 pub struct InlineStart<'s> {
@@ -65,39 +114,49 @@ pub async fn prepare_inline(
     })?;
     let contents = encode_apps_file(&apps);
     let path = service_file_of(context.cfg_dir, request.name);
-    let reconciled = write_svc(&path, &contents, request.force).await?;
-    Ok(PreparedSvc { path, reconciled })
+    let mut undo = SvcUndo::default();
+    let reconciled = write_svc(&path, &contents, request.force, &mut undo).await?;
+    Ok(PreparedSvc {
+        path,
+        reconciled,
+        undo,
+    })
 }
 
 pub async fn split_apps_file(
     context: &SvcContext<'_>,
     apps_file: &str,
     force: bool,
-) -> Result<Vec<String>> {
+) -> Result<SplitApps> {
     let apps = load_apps_file(apps_file)?;
-    let mut changed: Vec<String> = Vec::new();
+    let mut split = SplitApps::default();
     for entry in &apps.apps {
-        let mut folded = entry.clone();
-        folded.script = fold_home(&folded.script, context.home);
-        folded.cwd = folded.cwd.map(|value| fold_home(&value, context.home));
-        folded.args = folded
-            .args
-            .iter()
-            .map(|value| fold_svc_cwd(&fold_home(value, context.home)))
-            .collect();
-        let single = AppsFile { apps: vec![folded] };
-        let contents = encode_apps_file(&single);
-        let reconciled = write_svc(
-            &service_file_of(context.cfg_dir, &entry.name),
-            &contents,
-            force,
-        )
-        .await?;
-        if reconciled == Reconciled::Stale {
-            changed.push(entry.name.clone());
+        let path = service_file_of(context.cfg_dir, &entry.name);
+        let contents = encode_apps_file(&AppsFile {
+            apps: vec![fold_entry(context, entry)],
+        });
+        match write_svc(&path, &contents, force, &mut split.undo).await {
+            Ok(Reconciled::Stale) => split.changed.push(entry.name.clone()),
+            Ok(Reconciled::Unchanged) => {}
+            Err(error) => {
+                split.undo.run().await;
+                return Err(error);
+            }
         }
     }
-    Ok(changed)
+    Ok(split)
+}
+
+fn fold_entry(context: &SvcContext<'_>, entry: &AppEntry) -> AppEntry {
+    let mut folded = entry.clone();
+    folded.script = fold_home(&folded.script, context.home);
+    folded.cwd = folded.cwd.map(|value| fold_home(&value, context.home));
+    folded.args = folded
+        .args
+        .iter()
+        .map(|value| fold_svc_cwd(&fold_home(value, context.home)))
+        .collect();
+    folded
 }
 
 pub async fn forget(cfg_dir: &Path, name: &str) {
@@ -108,6 +167,15 @@ pub async fn forget(cfg_dir: &Path, name: &str) {
 
 pub async fn reconcile(path: &Path, contents: &str, force: bool) -> Result<Reconciled> {
     let existing = tokio::fs::read_to_string(path).await.unwrap_or_default();
+    reconcile_contents(path, &existing, contents, force)
+}
+
+fn reconcile_contents(
+    path: &Path,
+    existing: &str,
+    contents: &str,
+    force: bool,
+) -> Result<Reconciled> {
     if existing == contents {
         return Ok(Reconciled::Unchanged);
     }
@@ -116,12 +184,23 @@ pub async fn reconcile(path: &Path, contents: &str, force: bool) -> Result<Recon
     }
     Err(Error::SvcConflict {
         path: path.to_string_lossy().into_owned(),
-        diff: diff_lines(&existing, contents).join("\n"),
+        diff: diff_lines(existing, contents).join("\n"),
     })
 }
 
-async fn write_svc(path: &Path, contents: &str, force: bool) -> Result<Reconciled> {
-    let reconciled = reconcile(path, contents, force).await?;
+async fn write_svc(
+    path: &Path,
+    contents: &str,
+    force: bool,
+    undo: &mut SvcUndo,
+) -> Result<Reconciled> {
+    let existing = tokio::fs::read_to_string(path).await.ok();
+    let reconciled = reconcile_contents(
+        path,
+        existing.as_deref().unwrap_or_default(),
+        contents,
+        force,
+    )?;
     if reconciled == Reconciled::Unchanged {
         return Ok(Reconciled::Unchanged);
     }
@@ -131,6 +210,7 @@ async fn write_svc(path: &Path, contents: &str, force: bool) -> Result<Reconcile
             path: path.to_string_lossy().into_owned(),
             reason: error.to_string(),
         })?;
+    undo.remember(path, existing);
     Ok(Reconciled::Stale)
 }
 

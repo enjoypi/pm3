@@ -1,0 +1,281 @@
+import { copyFile, mkdir, rename } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+
+import { runCargo } from "./cargo_invocation.ts";
+import {
+  backupStamp,
+  compareServices,
+  describeComparison,
+  parseListedServices,
+  parseServiceReport,
+  parseLaunchdPid,
+  parsePidFile,
+  parseWriteTargets,
+  type ServiceReport,
+  type ServiceRow,
+} from "./install_plan.ts";
+
+const releaseBinary = "target/release/pm3";
+const configSource = "config.yaml";
+const stagingSuffix = ".incoming";
+const optimisedRelease = { CARGO_PROFILE_RELEASE_OPT_LEVEL: "3" };
+const destinationVariable = "PM3_INSTALL_PATH";
+const backupVariable = "PM3_INSTALL_BACKUPS";
+const dryRunFlag = "--dry-run";
+const exitPolls = 200;
+const supervisionPolls = 100;
+const exitIntervalMs = 50;
+const runningStatus = "running";
+const launchdKind = "launchd";
+const homeVariable = "PM3_HOME";
+const defaultRuntimeHome = ".pm3";
+const pidFileName = "pm3.pid";
+
+interface Captured {
+  code: number;
+  output: string;
+}
+
+interface Installation {
+  destination: string;
+  backups: string;
+  source: string;
+}
+
+function homeDirectory(): string {
+  const home = Bun.env["HOME"];
+  if (home === undefined || home.length === 0) {
+    throw new Error("cannot install pm3: no HOME in the environment");
+  }
+  return home;
+}
+
+function runtimeHome(): string {
+  return Bun.env[homeVariable] ?? join(homeDirectory(), defaultRuntimeHome);
+}
+
+function installation(): Installation {
+  const home = homeDirectory();
+  return {
+    destination: Bun.env[destinationVariable] ?? join(home, "bin", "pm3"),
+    backups: Bun.env[backupVariable] ?? join(home, ".pm3-install-backups"),
+    source: configSource,
+  };
+}
+
+async function capture(command: readonly string[]): Promise<Captured> {
+  const spawned = Bun.spawn([...command], { stderr: "pipe", stdout: "pipe" });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(spawned.stdout).text(),
+    new Response(spawned.stderr).text(),
+    spawned.exited,
+  ]);
+  return { code, output: `${stdout}${stderr}` };
+}
+
+async function announce(step: string, detail: string): Promise<void> {
+  await Bun.write(Bun.stdout, `pm3 install: ${step}\n${detail}\n`);
+}
+
+async function buildOptimisedRelease(): Promise<number> {
+  return runCargo(
+    ["build", "-p", "frameworks", "--release", "--locked"],
+    optimisedRelease,
+  );
+}
+
+async function listedServices(binary: string): Promise<ServiceRow[]> {
+  if (!(await Bun.file(binary).exists())) {
+    return [];
+  }
+  const listed = await capture([binary, "list"]);
+  return parseListedServices(listed.output);
+}
+
+async function backUp(paths: readonly string[], into: string): Promise<void> {
+  await mkdir(into, { recursive: true });
+  for (const path of paths) {
+    if (await Bun.file(path).exists()) {
+      await copyFile(path, join(into, basename(path)));
+    }
+  }
+}
+
+async function replaceBinary(destination: string): Promise<void> {
+  await mkdir(dirname(destination), { recursive: true });
+  const staged = `${destination}${stagingSuffix}`;
+  await copyFile(releaseBinary, staged);
+  await rename(staged, destination);
+}
+
+async function overwrittenByInstall(
+  binary: string,
+  source: string,
+): Promise<string[]> {
+  const planned = await capture([
+    binary,
+    "--config",
+    source,
+    "service",
+    "install",
+    dryRunFlag,
+  ]);
+  if (planned.code !== 0) {
+    throw new Error(`cannot plan the pm3 service install:\n${planned.output}`);
+  }
+  return parseWriteTargets(planned.output);
+}
+
+async function daemonIsRunning(binary: string): Promise<boolean> {
+  const found = await capture(["pgrep", "-f", `${binary} daemon`]);
+  return found.code === 0;
+}
+
+async function waitForDaemonExit(binary: string): Promise<void> {
+  for (let poll = 0; poll < exitPolls; poll += 1) {
+    if (!(await daemonIsRunning(binary))) {
+      return;
+    }
+    await Bun.sleep(exitIntervalMs);
+  }
+  throw new Error(
+    `cannot reclaim services: the previous '${binary} daemon' never left`,
+  );
+}
+
+async function reinstallService(
+  binary: string,
+  source: string,
+): Promise<string> {
+  const removed = await capture([
+    binary,
+    "--config",
+    source,
+    "service",
+    "uninstall",
+  ]);
+  if (removed.code !== 0) {
+    throw new Error(`cannot stop the running pm3 service:\n${removed.output}`);
+  }
+  const stopped = await capture([binary, "--config", source, "kill"]);
+  if (stopped.code !== 0) {
+    throw new Error(`cannot stop the running pm3 daemon:\n${stopped.output}`);
+  }
+  await waitForDaemonExit(binary);
+  const installed = await capture([
+    binary,
+    "--config",
+    source,
+    "service",
+    "install",
+    "--force",
+  ]);
+  if (installed.code !== 0) {
+    throw new Error(`cannot install the pm3 service:\n${installed.output}`);
+  }
+  return [removed.output, stopped.output, installed.output]
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+}
+
+async function readServiceReport(binary: string): Promise<ServiceReport> {
+  const reported = await capture([binary, "service"]);
+  const report = parseServiceReport(reported.output);
+  if (report === undefined) {
+    throw new Error(`cannot read the pm3 service status:\n${reported.output}`);
+  }
+  return report;
+}
+
+async function servingPid(): Promise<number | undefined> {
+  const file = Bun.file(join(runtimeHome(), pidFileName));
+  if (!(await file.exists())) {
+    return undefined;
+  }
+  return parsePidFile(await file.text());
+}
+
+async function supervisedPid(report: ServiceReport): Promise<number | undefined> {
+  if (report.kind !== launchdKind) {
+    return servingPid();
+  }
+  const listed = await capture(["/bin/launchctl", "list", report.label]);
+  return parseLaunchdPid(listed.output);
+}
+
+async function waitForSupervision(
+  binary: string,
+): Promise<ServiceReport | undefined> {
+  for (let poll = 0; poll < supervisionPolls; poll += 1) {
+    const report = await readServiceReport(binary);
+    const supervised = await supervisedPid(report);
+    if (
+      report.status === runningStatus &&
+      supervised !== undefined &&
+      supervised === (await servingPid())
+    ) {
+      return report;
+    }
+    await Bun.sleep(exitIntervalMs);
+  }
+  return undefined;
+}
+
+async function handBackToLaunchd(report: ServiceReport): Promise<void> {
+  const uid = process.getuid?.() ?? 0;
+  const kicked = await capture([
+    "/bin/launchctl",
+    "kickstart",
+    `gui/${uid}/${report.label}`,
+  ]);
+  if (kicked.code !== 0) {
+    throw new Error(`cannot hand '${report.label}' to launchd:\n${kicked.output}`);
+  }
+}
+
+async function verifySupervision(binary: string): Promise<string> {
+  const supervised = await waitForSupervision(binary);
+  if (supervised !== undefined) {
+    return `${supervised.label} (${supervised.kind}) is ${supervised.status}`;
+  }
+  const stalled = await readServiceReport(binary);
+  if (stalled.kind !== launchdKind) {
+    throw new Error(`the pm3 service is ${stalled.status} after installing`);
+  }
+  await handBackToLaunchd(stalled);
+  const kicked = await waitForSupervision(binary);
+  if (kicked === undefined) {
+    throw new Error(`the pm3 service is ${stalled.status} after a kickstart`);
+  }
+  return `${kicked.label} (${kicked.kind}) is ${kicked.status} after a kickstart`;
+}
+
+export async function install(): Promise<number> {
+  const { destination, backups, source } = installation();
+  const built = await buildOptimisedRelease();
+  if (built !== 0) {
+    return built;
+  }
+
+  const before = await listedServices(destination);
+  const stamp = join(backups, backupStamp(new Date()));
+  await backUp([destination], stamp);
+  await replaceBinary(destination);
+  await backUp(await overwrittenByInstall(destination, source), stamp);
+  await announce("backed up", stamp);
+
+  await announce("reinstalled", await reinstallService(destination, source));
+  await announce("service", await verifySupervision(destination));
+
+  const comparison = compareServices(before, await listedServices(destination));
+  await announce("services", describeComparison(comparison));
+  if (comparison.lost.length > 0) {
+    return 1;
+  }
+  return 0;
+}
+
+if (import.meta.main) {
+  process.exit(await install());
+}

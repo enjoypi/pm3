@@ -75,6 +75,14 @@ async fn the_identity_drops_the_padding_ps_adds() {
 }
 
 #[tokio::test]
+async fn a_ps_that_never_answers_yields_no_identity() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = fake_ps(&dir, "sleep 5").to_string_lossy().into_owned();
+    let probe = PsProcessProbe::new(program, 20);
+    assert_eq!(probe.identity(1).await, None);
+}
+
+#[tokio::test]
 async fn the_probe_asks_ps_for_the_start_time_of_one_pid_under_a_fixed_locale() {
     let (_dir, probe) = probe_with("echo \"$LC_ALL|$*\"");
     assert_eq!(

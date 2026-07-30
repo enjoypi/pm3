@@ -1,5 +1,6 @@
 mod file;
 mod inline;
+mod roots;
 mod source;
 
 pub use self::{

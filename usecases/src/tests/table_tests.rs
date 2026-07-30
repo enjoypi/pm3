@@ -56,6 +56,21 @@ fn new_ids_continue_past_the_highest_existing_id() {
 }
 
 #[test]
+fn removing_the_highest_id_does_not_hand_it_out_again() {
+    let mut table = ProcessTable::new();
+    table.upsert(spec("a"), 1000);
+    table.upsert(spec("b"), 1000);
+    table.remove(&AppSelector::Id(1));
+    assert_eq!(table.upsert(spec("c"), 1000), 2);
+}
+
+#[test]
+fn a_table_restored_from_records_continues_past_their_highest_id() {
+    let mut table = ProcessTable::from_records(vec![record_with_id("a", 4)]);
+    assert_eq!(table.upsert(spec("b"), 1000), 5);
+}
+
+#[test]
 fn find_locates_a_record_by_id() {
     let mut table = ProcessTable::new();
     table.upsert(spec("api"), 1000);

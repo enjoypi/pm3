@@ -1,23 +1,46 @@
-use std::process::Output;
+use std::{process::Output, time::Duration};
 
-use tokio::process::Command;
+use tokio::{process::Command, time::timeout};
 use usecases::{SignalError, Signaler};
 
-pub const KILL_PROGRAM: &str = "/bin/kill";
+use crate::config::STOP_SIGNAL_TERM;
 
-const TERMINATE_SIGNAL: &str = "-TERM";
-const FORCE_SIGNAL: &str = "-KILL";
+pub const KILL_PROGRAM: &str = "/bin/kill";
+pub const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 5000;
+
+const FORCE_SIGNAL: &str = "KILL";
+const ARGUMENT_TERMINATOR: &str = "--";
 const UNKNOWN_EXIT_CODE: i32 = -1;
 
 #[derive(Clone, Debug)]
 pub struct KillSignaler {
     program: String,
+    stop_signal: String,
+    timeout_ms: u64,
 }
 
 impl KillSignaler {
     #[must_use]
-    pub const fn with_program(program: String) -> Self {
-        Self { program }
+    pub const fn new(program: String, stop_signal: String, timeout_ms: u64) -> Self {
+        Self {
+            program,
+            stop_signal,
+            timeout_ms,
+        }
+    }
+
+    #[must_use]
+    pub fn with_program(program: String) -> Self {
+        Self::new(
+            program,
+            STOP_SIGNAL_TERM.to_string(),
+            DEFAULT_COMMAND_TIMEOUT_MS,
+        )
+    }
+
+    #[must_use]
+    pub fn with_stop_signal(stop_signal: String, timeout_ms: u64) -> Self {
+        Self::new(KILL_PROGRAM.to_string(), stop_signal, timeout_ms)
     }
 
     pub async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
@@ -25,10 +48,20 @@ impl KillSignaler {
     }
 
     async fn deliver(&self, signal: &str, pid: u32) -> Result<(), SignalError> {
-        let output = Command::new(&self.program)
-            .args([signal, &pid.to_string()])
-            .output()
+        if self.signal(signal, &group_target(pid), pid).await.is_ok() {
+            return Ok(());
+        }
+        self.signal(signal, &pid.to_string(), pid).await
+    }
+
+    async fn signal(&self, signal: &str, target: &str, pid: u32) -> Result<(), SignalError> {
+        let flag = format!("-{signal}");
+        let call = Command::new(&self.program)
+            .args([flag.as_str(), ARGUMENT_TERMINATOR, target])
+            .output();
+        let output = timeout(Duration::from_millis(self.timeout_ms), call)
             .await
+            .map_err(|_elapsed| self.stalled(pid))?
             .map_err(|e| SignalError::Delivery {
                 pid,
                 reason: e.to_string(),
@@ -37,6 +70,7 @@ impl KillSignaler {
         tracing::debug!(
             pid,
             signal,
+            target,
             code,
             action = "signal",
             "delivered a signal to a managed process"
@@ -49,20 +83,33 @@ impl KillSignaler {
             reason: describe_refusal(&output),
         })
     }
+
+    fn stalled(&self, pid: u32) -> SignalError {
+        SignalError::Delivery {
+            pid,
+            reason: format!(
+                "{} did not answer within {}ms",
+                self.program, self.timeout_ms
+            ),
+        }
+    }
 }
 
 impl Default for KillSignaler {
     fn default() -> Self {
-        Self {
-            program: KILL_PROGRAM.to_string(),
-        }
+        Self::with_program(KILL_PROGRAM.to_string())
     }
 }
 
 impl Signaler for KillSignaler {
     async fn terminate(&self, pid: u32) -> Result<(), SignalError> {
-        self.deliver(TERMINATE_SIGNAL, pid).await
+        let signal = self.stop_signal.clone();
+        self.deliver(&signal, pid).await
     }
+}
+
+fn group_target(pid: u32) -> String {
+    format!("-{pid}")
 }
 
 fn describe_refusal(output: &Output) -> String {

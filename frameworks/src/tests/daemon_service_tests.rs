@@ -3,7 +3,10 @@ use std::time::Duration;
 use adapters::resolve_paths;
 
 use super::*;
-use crate::{client::UdsClient, test_support::write_config};
+use crate::{
+    client::UdsClient,
+    test_support::{REQUEST_TIMEOUT_MS, write_config},
+};
 
 const READY_BUDGET: Duration = Duration::from_secs(5);
 const PROBE_INTERVAL: Duration = Duration::from_millis(20);
@@ -100,7 +103,7 @@ async fn a_running_daemon_serves_and_cleans_up_after_itself() {
         .await
     });
 
-    let client = UdsClient::new(paths.socket.clone());
+    let client = UdsClient::new(paths.socket.clone(), REQUEST_TIMEOUT_MS);
     wait_until_healthy(&client).await;
     assert!(paths.pid_file.is_file(), "the pid file should be written");
 
@@ -131,7 +134,7 @@ async fn a_running_daemon_answers_a_list_request() {
         .await
     });
 
-    let client = UdsClient::new(paths.socket.clone());
+    let client = UdsClient::new(paths.socket.clone(), REQUEST_TIMEOUT_MS);
     wait_until_healthy(&client).await;
     let reply = client
         .request("GET", "/apps", None)

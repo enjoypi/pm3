@@ -13,12 +13,12 @@ pub struct LaunchSpec {
     pub stderr_path: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct LaunchedProcess {
     pub pid: u32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ExitOutcome {
     pub exit_code: Option<i32>,
 }

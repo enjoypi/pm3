@@ -74,8 +74,23 @@ fn uptime_one_ms_below_min_uptime_counts_as_unstable() {
 }
 
 #[test]
-fn unstable_run_at_max_restarts_still_restarts() {
+fn unstable_run_reaching_max_restarts_gives_up() {
     let decision = decide_restart(POLICY, 10, 1);
+    assert_eq!(
+        decision,
+        RestartDecision::GiveUp {
+            unstable_restarts: 2
+        }
+    );
+}
+
+#[test]
+fn unstable_run_one_below_max_restarts_still_restarts() {
+    let policy = RestartPolicy {
+        max_restarts: 3,
+        ..POLICY
+    };
+    let decision = decide_restart(policy, 10, 1);
     assert_eq!(
         decision,
         RestartDecision::Restart {

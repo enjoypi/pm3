@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct RestartPolicy {
     pub autorestart: bool,
     pub min_uptime_ms: u64,
@@ -6,7 +6,7 @@ pub struct RestartPolicy {
     pub restart_delay_ms: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum RestartDecision {
     Restart {
         delay_ms: u64,
@@ -42,7 +42,7 @@ pub const fn decide_restart(
         previous_unstable_restarts.saturating_add(1)
     };
 
-    if unstable_restarts > max_restarts {
+    if unstable_restarts >= max_restarts {
         return RestartDecision::GiveUp { unstable_restarts };
     }
 

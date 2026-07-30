@@ -106,7 +106,7 @@ async fn an_adopted_process_is_polled_until_it_leaves() {
 #[tokio::test]
 async fn a_path_that_is_already_gone_is_released_at_once() {
     let dir = tempfile::tempdir().expect("temp dir");
-    assert!(wait_until_released(&dir.path().join("pm3.sock"), 60_000).await);
+    assert!(wait_until_released(&dir.path().join("pm3.sock"), 60_000, POLL_MS).await);
 }
 
 #[tokio::test]
@@ -114,7 +114,7 @@ async fn a_path_that_never_goes_away_exhausts_the_budget() {
     let dir = tempfile::tempdir().expect("temp dir");
     let socket = dir.path().join("pm3.sock");
     fs::write(&socket, b"socket").expect("seed the socket");
-    assert!(!wait_until_released(&socket, 0).await);
+    assert!(!wait_until_released(&socket, 0, POLL_MS).await);
 }
 
 #[tokio::test]
@@ -122,12 +122,9 @@ async fn a_path_removed_while_waiting_is_released() {
     let dir = tempfile::tempdir().expect("temp dir");
     let socket = dir.path().join("pm3.sock");
     fs::write(&socket, b"socket").expect("seed the socket");
-    let waiting = wait_until_released(&socket, 60_000);
+    let waiting = wait_until_released(&socket, 60_000, POLL_MS);
     let remover = async {
-        tokio::time::sleep(std::time::Duration::from_millis(
-            RELEASE_POLL_INTERVAL_MS * 2,
-        ))
-        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(POLL_MS * 2)).await;
         fs::remove_file(&socket).expect("release the socket");
     };
     let (released, ()) = tokio::join!(waiting, remover);

@@ -6,9 +6,30 @@ use crate::state::DaemonReply;
 pub const NOTHING_STARTED: &str = "no apps were started";
 pub const NOTHING_TO_STOP: &str = "no services were running";
 
-#[must_use]
-pub fn already_running_marker(name: &str) -> String {
+fn already_running_marker(name: &str) -> String {
     format!("{name} is already running")
+}
+
+#[must_use]
+pub fn affected_service(reply: &DaemonReply) -> Option<String> {
+    use DaemonReply as Dr;
+
+    match reply {
+        Dr::Stopped { name } | Dr::Restarted { name } | Dr::Deleted { name } => Some(name.clone()),
+        Dr::Started(_) | Dr::Listed(_) | Dr::Described(_) | Dr::StoppedAll { names: _ } => None,
+    }
+}
+
+#[must_use]
+pub fn already_running_names(reply: &DaemonReply) -> Vec<String> {
+    let DaemonReply::Started(outcomes) = reply else {
+        return Vec::new();
+    };
+    outcomes
+        .iter()
+        .filter(|outcome| outcome.kind == StartKind::AlreadyRunning)
+        .map(|outcome| outcome.name.clone())
+        .collect()
 }
 
 #[must_use]

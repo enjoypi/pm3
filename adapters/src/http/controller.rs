@@ -6,9 +6,9 @@ use axum::{
 };
 use usecases::{AppSelector, UsecaseError};
 
-use super::dto::{HealthDto, StartRequestDto};
+use super::dto::{HealthDto, ReplyDto, StartRequestDto};
 use crate::{
-    presenter::render_reply,
+    presenter::{affected_service, already_running_names, render_reply},
     state::{DaemonError, DaemonFailure, DaemonHandle, DaemonReply, DaemonRequest},
 };
 
@@ -57,8 +57,16 @@ fn selector(raw: &str) -> AppSelector {
 
 fn respond(outcome: Result<DaemonReply, DaemonError>) -> Response {
     match outcome {
-        Ok(reply) => (StatusCode::OK, render_reply(&reply)).into_response(),
+        Ok(reply) => (StatusCode::OK, Json(envelope(&reply))).into_response(),
         Err(error) => (status_of(&error), error.to_string()).into_response(),
+    }
+}
+
+fn envelope(reply: &DaemonReply) -> ReplyDto {
+    ReplyDto {
+        report: render_reply(reply),
+        service: affected_service(reply),
+        already_running: already_running_names(reply),
     }
 }
 

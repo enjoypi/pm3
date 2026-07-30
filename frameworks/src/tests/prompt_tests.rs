@@ -2,8 +2,6 @@ use std::io::Cursor;
 
 use super::*;
 
-const RESPONSE: &str = "web is already running (id 0, pid 42)\nstarted db (id 1, pid 43)";
-
 fn changed(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| (*name).to_string()).collect()
 }
@@ -11,29 +9,28 @@ fn changed(names: &[&str]) -> Vec<String> {
 #[test]
 fn a_changed_service_that_is_running_is_offered_a_restart() {
     let names = changed(&["web"]);
-    let pending = stale_running(&names, RESPONSE);
+    let pending = stale_running(&names, &changed(&["web"]));
     assert_eq!(pending, vec!["web"]);
 }
 
 #[test]
 fn a_changed_service_that_was_just_started_is_not_offered_a_restart() {
     let names = changed(&["db"]);
-    let pending = stale_running(&names, RESPONSE);
+    let pending = stale_running(&names, &changed(&["web"]));
     assert!(pending.is_empty(), "got: {pending:?}");
 }
 
 #[test]
 fn an_unchanged_running_service_is_not_offered_a_restart() {
     let names = changed(&[]);
-    let pending = stale_running(&names, RESPONSE);
+    let pending = stale_running(&names, &changed(&["web"]));
     assert!(pending.is_empty(), "got: {pending:?}");
 }
 
 #[test]
 fn a_service_name_that_prefixes_another_does_not_match() {
     let names = changed(&["web"]);
-    let response = "web2 is already running (id 0, pid 42)";
-    let pending = stale_running(&names, response);
+    let pending = stale_running(&names, &changed(&["web2"]));
     assert!(pending.is_empty(), "got: {pending:?}");
 }
 

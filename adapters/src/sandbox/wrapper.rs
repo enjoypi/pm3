@@ -4,7 +4,7 @@ use super::{backend::SandboxBackend, bwrap::bwrap_argv, seatbelt::seatbelt_argv}
 
 const UNSAFE_PATH_CHARACTERS: [char; 3] = ['"', '\\', '\n'];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct SandboxCommandWrapper {
     backend: Option<SandboxBackend>,
 }

@@ -33,6 +33,10 @@ test *args:
 cov *args:
     bun dev_scripts/cov.ts "$@"
 
+[doc("装到真机：opt-level 3 构建、备份、原子换二进制、重装 launchd/systemd unit，并核对服务是否被原 pid 接管")]
+install:
+    bun dev_scripts/install.ts
+
 [doc("tail 服务日志并过滤：crash 匹配 panic 与致命信号，business 匹配 error 与 WARN/ERROR")]
 monitor kind:
     @bun dev_scripts/monitor.ts "$@"

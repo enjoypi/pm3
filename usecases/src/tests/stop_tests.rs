@@ -2,7 +2,7 @@ use entities::ProcessStatus;
 
 use super::*;
 use crate::{
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec},
+    ports_test_helpers::{FakePorts, LOGS_DIR, spec, spec_with_deps},
     start::start_apps,
 };
 
@@ -58,6 +58,22 @@ async fn a_running_record_without_a_pid_settles_as_stopped() {
 }
 
 #[tokio::test]
+async fn stopping_an_app_that_is_already_stopping_keeps_its_pid() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    stop_app(&mut table, &AppSelector::Id(0), &ports)
+        .await
+        .expect("first stop should succeed");
+    let outcome = stop_app(&mut table, &AppSelector::Id(0), &ports)
+        .await
+        .expect("second stop should succeed");
+    assert_eq!(outcome.force_kill_pid, Some(100));
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.pid, Some(100));
+    assert_eq!(record.runtime.status, ProcessStatus::Stopping);
+}
+
+#[tokio::test]
 async fn stopping_an_unknown_selector_reports_not_found() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
@@ -86,6 +102,71 @@ async fn a_persistence_failure_propagates() {
     let err = stop_app(&mut table, &AppSelector::Id(0), &ports)
         .await
         .unwrap_err();
+    assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
+}
+
+#[tokio::test]
+async fn stopping_everything_walks_dependents_before_dependencies() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let specs = [spec_with_deps("web", &["api"]), spec("api")];
+    start_apps(&mut table, &specs, LOGS_DIR, &ports)
+        .await
+        .expect("start should succeed");
+    let stopped = stop_all_apps(&mut table, &ports)
+        .await
+        .expect("stop all should succeed");
+    assert_eq!(stopped, vec!["web".to_string(), "api".to_string()]);
+}
+
+#[tokio::test]
+async fn stopping_everything_persists_the_table_once() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let specs = [spec_with_deps("web", &["api"]), spec("api")];
+    start_apps(&mut table, &specs, LOGS_DIR, &ports)
+        .await
+        .expect("start should succeed");
+    let saves_after_start = ports.save_count();
+    stop_all_apps(&mut table, &ports)
+        .await
+        .expect("stop all should succeed");
+    assert_eq!(ports.save_count(), saves_after_start + 1);
+}
+
+#[tokio::test]
+async fn stopping_everything_reports_nothing_when_all_apps_are_settled() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    table.upsert(spec("api"), 1000);
+    let stopped = stop_all_apps(&mut table, &ports)
+        .await
+        .expect("stop all should succeed");
+    assert!(stopped.is_empty());
+}
+
+#[tokio::test]
+async fn stopping_everything_keeps_going_when_one_signal_is_refused() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let specs = [spec_with_deps("web", &["api"]), spec("api")];
+    start_apps(&mut table, &specs, LOGS_DIR, &ports)
+        .await
+        .expect("start should succeed");
+    ports.fail_signal_for(100);
+    let stopped = stop_all_apps(&mut table, &ports)
+        .await
+        .expect("stop all should succeed");
+    assert_eq!(stopped, vec!["web".to_string()]);
+    assert_eq!(ports.terminated(), vec![101]);
+}
+
+#[tokio::test]
+async fn a_persistence_failure_while_stopping_everything_propagates() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    ports.fail_save();
+    let err = stop_all_apps(&mut table, &ports).await.unwrap_err();
     assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
 }
 

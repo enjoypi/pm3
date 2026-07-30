@@ -11,7 +11,7 @@ const SYSTEMD_UNIT_SUFFIX: &str = "service";
 const LAUNCHD_PID_KEY: &str = "\"PID\"";
 const SYSTEMD_ACTIVE: &str = "active";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ServiceKind {
     Launchd,
     Systemd,
@@ -43,7 +43,7 @@ impl ServiceKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ServiceStatus {
     NotInstalled,
     InstalledNotRunning,

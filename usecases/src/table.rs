@@ -5,6 +5,7 @@ use crate::{record::ProcessRecord, selector::AppSelector};
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProcessTable {
     records: Vec<ProcessRecord>,
+    next_pm_id: u32,
 }
 
 impl ProcessTable {
@@ -12,12 +13,21 @@ impl ProcessTable {
     pub const fn new() -> Self {
         Self {
             records: Vec::new(),
+            next_pm_id: 0,
         }
     }
 
     #[must_use]
-    pub const fn from_records(records: Vec<ProcessRecord>) -> Self {
-        Self { records }
+    pub fn from_records(records: Vec<ProcessRecord>) -> Self {
+        let next_pm_id = records
+            .iter()
+            .map(|record| record.runtime.pm_id)
+            .max()
+            .map_or(0, |highest| highest.saturating_add(1));
+        Self {
+            records,
+            next_pm_id,
+        }
     }
 
     #[must_use]
@@ -49,7 +59,8 @@ impl ProcessTable {
             existing.spec = spec;
             return existing.runtime.pm_id;
         }
-        let pm_id = self.next_pm_id();
+        let pm_id = self.next_pm_id;
+        self.next_pm_id = pm_id.saturating_add(1);
         let runtime = ProcessRuntime::new(pm_id, spec.name.clone(), now_ms);
         self.records.push(ProcessRecord { spec, runtime });
         pm_id
@@ -69,14 +80,6 @@ impl ProcessTable {
             .iter()
             .map(|record| record.spec.dependency_node())
             .collect()
-    }
-
-    fn next_pm_id(&self) -> u32 {
-        self.records
-            .iter()
-            .map(|record| record.runtime.pm_id)
-            .max()
-            .map_or(0, |highest| highest.saturating_add(1))
     }
 }
 

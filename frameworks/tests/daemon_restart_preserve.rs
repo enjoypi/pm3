@@ -295,7 +295,7 @@ fn killing_with_services_needs_a_usable_service_directory() {
 }
 
 #[test]
-fn killing_a_daemon_that_will_not_leave_gives_up_on_its_budget() {
+fn killing_a_daemon_that_will_not_leave_reports_a_failure() {
     let home = common::impatient_home();
     start_sleeper(&home);
     let pid_file = home.root.join("pm3.pid");
@@ -308,7 +308,16 @@ fn killing_a_daemon_that_will_not_leave_gives_up_on_its_budget() {
     std::fs::write(&pid_file, decoy.id().to_string()).expect("point the pid file at the decoy");
 
     let killed = pm3(&home, &["kill"]);
-    assert!(killed.status.success(), "{}", common::stderr_of(&killed));
+    assert!(
+        !killed.status.success(),
+        "pm3 must not claim success while the daemon is still listening: {}",
+        stdout_of(&killed)
+    );
+    let complaint = common::stderr_of(&killed);
+    assert!(
+        complaint.contains("is still there after"),
+        "got: {complaint}"
+    );
     assert!(
         home.root.join("pm3.sock").exists(),
         "the real daemon should still be listening"

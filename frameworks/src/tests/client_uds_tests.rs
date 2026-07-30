@@ -8,6 +8,8 @@ use super::*;
 const REPLY_200: &[u8] =
     b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok";
 const REQUEST_SINK: usize = 1024;
+const TIMEOUT_MS: u64 = 30_000;
+const STALL_TIMEOUT_MS: u64 = 20;
 
 fn socket_in(dir: &tempfile::TempDir) -> PathBuf {
     dir.path().join("pm3.sock")
@@ -93,7 +95,7 @@ async fn a_request_reaches_the_daemon_and_returns_its_reply() {
     let listener = bound_socket(&socket);
     let served = tokio::spawn(serve_once(listener, REPLY_200));
 
-    let reply = UdsClient::new(socket)
+    let reply = UdsClient::new(socket, TIMEOUT_MS)
         .request("GET", "/apps", None)
         .await
         .expect("should talk");
@@ -110,7 +112,7 @@ async fn a_request_reaches_the_daemon_and_returns_its_reply() {
 #[tokio::test]
 async fn a_missing_socket_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let err = UdsClient::new(socket_in(&dir))
+    let err = UdsClient::new(socket_in(&dir), TIMEOUT_MS)
         .request("GET", "/apps", None)
         .await
         .unwrap_err()
@@ -128,7 +130,7 @@ async fn a_daemon_that_answers_nothing_is_reported() {
     let listener = bound_socket(&socket);
     let served = tokio::spawn(serve_once(listener, b""));
 
-    let err = UdsClient::new(socket)
+    let err = UdsClient::new(socket, TIMEOUT_MS)
         .request("GET", "/apps", None)
         .await
         .unwrap_err()
@@ -144,7 +146,7 @@ async fn a_healthy_daemon_is_recognised() {
     let listener = bound_socket(&socket);
     let served = tokio::spawn(serve_once(listener, REPLY_200));
 
-    let healthy = UdsClient::new(socket).daemon_is_healthy().await;
+    let healthy = UdsClient::new(socket, TIMEOUT_MS).daemon_is_healthy().await;
     served.await.expect("join");
     assert!(healthy);
 }
@@ -152,7 +154,34 @@ async fn a_healthy_daemon_is_recognised() {
 #[tokio::test]
 async fn an_absent_daemon_is_not_healthy() {
     let dir = tempfile::tempdir().expect("temp dir");
-    assert!(!UdsClient::new(socket_in(&dir)).daemon_is_healthy().await);
+    assert!(
+        !UdsClient::new(socket_in(&dir), TIMEOUT_MS)
+            .daemon_is_healthy()
+            .await
+    );
+}
+
+#[tokio::test]
+async fn a_daemon_that_never_answers_is_given_up_on() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let socket = socket_in(&dir);
+    let listener = bound_socket(&socket);
+    let stalled = tokio::spawn(async move {
+        let (stream, _addr) = listener.accept().await.expect("accept");
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        drop(stream);
+    });
+
+    let err = UdsClient::new(socket, STALL_TIMEOUT_MS)
+        .request("GET", "/apps", None)
+        .await
+        .unwrap_err()
+        .to_string();
+    stalled.abort();
+    assert!(
+        err.contains(&format!("within {STALL_TIMEOUT_MS} ms")),
+        "got: {err}"
+    );
 }
 
 #[tokio::test]
@@ -162,7 +191,7 @@ async fn a_daemon_that_answers_garbage_is_reported() {
     let listener = bound_socket(&socket);
     let served = tokio::spawn(serve_once(listener, b"not http at all"));
 
-    let err = UdsClient::new(socket)
+    let err = UdsClient::new(socket, TIMEOUT_MS)
         .request("GET", "/apps", None)
         .await
         .unwrap_err()

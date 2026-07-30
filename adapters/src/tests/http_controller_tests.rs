@@ -47,7 +47,36 @@ async fn starting_apps_returns_the_start_summary() {
         kind: StartKind::Spawned,
     }]));
     let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
-    assert_eq!(exchange.body, "started web (id 0, pid 4242)");
+    assert_eq!(
+        reply_of(&exchange.body).report,
+        "started web (id 0, pid 4242)"
+    );
+}
+
+#[tokio::test]
+async fn starting_apps_names_the_ones_that_were_already_running() {
+    let outcome = Ok(DaemonReply::Started(vec![
+        StartOutcome {
+            pm_id: 0,
+            name: "web".to_string(),
+            pid: Some(4242),
+            kind: StartKind::AlreadyRunning,
+        },
+        StartOutcome {
+            pm_id: 1,
+            name: "api".to_string(),
+            pid: Some(4243),
+            kind: StartKind::Spawned,
+        },
+    ]));
+    let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
+    assert_eq!(reply_of(&exchange.body).already_running, ["web"]);
+}
+
+#[tokio::test]
+async fn a_reply_that_started_nothing_names_nothing_as_already_running() {
+    let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
+    assert!(reply_of(&exchange.body).already_running.is_empty());
 }
 
 #[tokio::test]
@@ -108,7 +137,7 @@ async fn stopping_an_app_forwards_the_selector() {
 #[tokio::test]
 async fn stopping_an_app_confirms_the_app() {
     let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
-    assert_eq!(exchange.body, "stopped web");
+    assert_eq!(reply_of(&exchange.body).report, "stopped web");
 }
 
 #[tokio::test]
@@ -203,5 +232,5 @@ async fn stopping_everything_returns_the_list_of_stopped_services() {
         names: vec!["web".to_string()],
     });
     let exchange = exchange(outcome, post_to("/services/stop-all", "")).await;
-    assert_eq!(exchange.body, "stopped web");
+    assert_eq!(reply_of(&exchange.body).report, "stopped web");
 }

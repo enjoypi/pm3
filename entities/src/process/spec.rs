@@ -23,6 +23,9 @@ pub enum SpecError {
     #[error("cannot accept blank app name")]
     EmptyName,
 
+    #[error("cannot accept all-digit app name '{0}': a selector would read it as a process id")]
+    NumericName(String),
+
     #[error("cannot accept blank script for app '{0}'")]
     EmptyScript(String),
 
@@ -65,6 +68,9 @@ impl AppSpec {
 pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
     if spec.name.trim().is_empty() {
         return Err(SpecError::EmptyName);
+    }
+    if spec.name.parse::<u32>().is_ok() {
+        return Err(SpecError::NumericName(spec.name.clone()));
     }
     if spec.script.trim().is_empty() {
         return Err(SpecError::EmptyScript(spec.name.clone()));

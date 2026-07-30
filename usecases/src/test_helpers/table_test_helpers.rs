@@ -1,4 +1,13 @@
-use entities::{AppSpec, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, ProcessRuntime, SandboxMode, SandboxPolicy};
+
+use crate::record::ProcessRecord;
+
+pub fn record_with_id(name: &str, pm_id: u32) -> ProcessRecord {
+    ProcessRecord {
+        spec: spec(name),
+        runtime: ProcessRuntime::new(pm_id, name.to_string(), 1000),
+    }
+}
 
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {

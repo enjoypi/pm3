@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use entities::{ProcessStatus, topo_sort};
+use futures_util::future::join_all;
 
 use crate::{
     Ports, Result,
@@ -11,13 +12,13 @@ use crate::{
     table::ProcessTable,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Verdict {
     Adopt,
     Respawn { change: Change, stale: Option<u32> },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Change {
     Unknown,
     Gone,
@@ -32,13 +33,7 @@ pub async fn resurrect(
     ports: &impl Ports,
 ) -> Result<Vec<StartOutcome>> {
     let stored = ports.load().await?;
-    let mut verdicts: BTreeMap<String, Verdict> = BTreeMap::new();
-    for record in &stored {
-        if was_supposed_to_run(record) {
-            let verdict = judge(record, logs_dir, ports).await;
-            verdicts.insert(record.runtime.name.clone(), verdict);
-        }
-    }
+    let verdicts = judge_all(&stored, logs_dir, ports).await;
 
     *table = ProcessTable::from_records(
         stored
@@ -64,6 +59,29 @@ pub async fn resurrect(
     }
     save_table(table, ports).await?;
     Ok(outcomes)
+}
+
+async fn judge_all(
+    stored: &[ProcessRecord],
+    logs_dir: &str,
+    ports: &impl Ports,
+) -> BTreeMap<String, Verdict> {
+    let pending: Vec<&ProcessRecord> = stored
+        .iter()
+        .filter(|record| was_supposed_to_run(record))
+        .collect();
+    let verdicts = join_all(
+        pending
+            .iter()
+            .map(|record| judge(record, logs_dir, ports))
+            .collect::<Vec<_>>(),
+    )
+    .await;
+    pending
+        .into_iter()
+        .map(|record| record.runtime.name.clone())
+        .zip(verdicts)
+        .collect()
 }
 
 async fn judge(record: &ProcessRecord, logs_dir: &str, ports: &impl Ports) -> Verdict {
@@ -126,7 +144,7 @@ async fn adopt(table: &mut ProcessTable, name: &str, ports: &impl Ports) -> Star
 }
 
 const fn was_supposed_to_run(record: &ProcessRecord) -> bool {
-    record.runtime.status.is_running() || record.runtime.status.is_shutting_down()
+    !record.runtime.status.is_settled()
 }
 
 fn forget_unless_adopted(

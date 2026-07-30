@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SandboxMode {
     ReadOnly,
     WorkspaceWrite,

@@ -129,10 +129,10 @@ async fn splitting_an_apps_file_folds_the_service_cwd_token() {
         "apps:\n  - name: web\n    script: /bin/sh\n    args:\n      - \"PM3_SVC_CWD/data\"\n",
     )
     .expect("write the apps file");
-    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
-    assert_eq!(changed, vec!["web".to_string()]);
+    assert_eq!(split.changed, vec!["web".to_string()]);
     let written =
         std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
     assert!(
@@ -257,10 +257,10 @@ async fn an_apps_file_is_split_into_one_config_file_per_app() {
         "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
     )
     .expect("write the apps file");
-    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
-    assert_eq!(changed, vec!["web".to_string(), "db".to_string()]);
+    assert_eq!(split.changed, vec!["web".to_string(), "db".to_string()]);
     assert!(home.cfg_dir.join("web.yaml").is_file());
     assert!(home.cfg_dir.join("db.yaml").is_file());
 }
@@ -274,10 +274,10 @@ async fn splitting_an_unchanged_apps_file_reports_no_changes() {
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
-    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split again");
-    assert!(changed.is_empty(), "got: {changed:?}");
+    assert!(split.changed.is_empty(), "got: {:?}", split.changed);
 }
 
 #[tokio::test]
@@ -289,10 +289,10 @@ async fn splitting_folds_the_home_out_of_every_app() {
         "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"/home/dev/web\"\n    args:\n      - \"/home/dev/app.js\"\n",
     )
     .expect("write the apps file");
-    let changed = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
-    assert_eq!(changed, vec!["web".to_string()]);
+    assert_eq!(split.changed, vec!["web".to_string()]);
     let written =
         std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
     assert!(written.contains("cwd: \"${HOME}/web\""), "got: {written}");
@@ -321,6 +321,85 @@ async fn splitting_over_a_changed_config_needs_force() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("without --force"), "got: {err}");
+}
+
+#[tokio::test]
+async fn undoing_a_fresh_split_removes_every_file_it_wrote() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+    )
+    .expect("write the apps file");
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    split.undo.run().await;
+    assert!(!home.cfg_dir.join("web.yaml").exists());
+    assert!(!home.cfg_dir.join("db.yaml").exists());
+}
+
+#[tokio::test]
+async fn undoing_a_forced_split_restores_the_previous_config() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
+        .expect("write the apps file");
+    let service = home.cfg_dir.join("web.yaml");
+    std::fs::write(&service, "apps: []\n").expect("seed the previous config");
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), true)
+        .await
+        .expect("a forced split should overwrite");
+    split.undo.run().await;
+    assert_eq!(
+        std::fs::read_to_string(&service).expect("read the config file"),
+        "apps: []\n"
+    );
+}
+
+#[tokio::test]
+async fn undoing_an_unchanged_split_touches_nothing() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
+        .expect("write the apps file");
+    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split again");
+    split.undo.run().await;
+    assert!(
+        home.cfg_dir.join("web.yaml").is_file(),
+        "an unchanged split has nothing to roll back"
+    );
+}
+
+#[tokio::test]
+async fn a_split_that_hits_a_conflict_rolls_back_what_it_already_wrote() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+    )
+    .expect("write the apps file");
+    std::fs::write(home.cfg_dir.join("db.yaml"), "apps: []\n").expect("seed a conflict");
+    let err = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("without --force"), "got: {err}");
+    assert!(
+        !home.cfg_dir.join("web.yaml").exists(),
+        "the first app must not survive a refused split"
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.cfg_dir.join("db.yaml")).expect("read the config file"),
+        "apps: []\n"
+    );
 }
 
 #[tokio::test]
