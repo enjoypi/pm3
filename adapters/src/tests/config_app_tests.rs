@@ -1,165 +1,146 @@
 use super::{test_helpers::*, *};
 
 #[test]
-fn show_config_valid() {
+fn show_config_renders_the_resolved_document() {
     let (_dir, path) = write_valid_config();
     let yaml = show_config(&path).expect("should succeed");
-    assert!(yaml.contains("host"));
-    assert!(yaml.contains("0.0.0.0"));
-    assert!(yaml.contains("9229"));
+    assert!(yaml.contains("home"), "got: {yaml}");
+    assert!(yaml.contains(HOME), "got: {yaml}");
+    assert!(yaml.contains(SANDBOX_MODE), "got: {yaml}");
 }
 
 #[test]
-fn show_config_roundtrip() {
+fn show_config_output_parses_back_into_the_same_settings() {
     let (_dir, path) = write_valid_config();
     let yaml = show_config(&path).expect("should succeed");
-    let dir2 = tempfile::tempdir().expect("create temp dir");
-    let path2 = dir2.path().join("roundtrip.yaml");
-    std::fs::write(&path2, &yaml).expect("write roundtrip config");
-    let reparsed = load_and_parse_config(path2.to_str().expect("path"))
-        .expect("should reparse and revalidate");
-    let server = reparsed.server.as_ref().expect("server present");
-    assert_eq!(server.host, "0.0.0.0");
-    assert_eq!(server.port, 9229);
-}
-
-#[test]
-fn show_config_redacts_database_credentials() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let path = dir.path().join("config.yaml");
-    let config_yaml = format!(
-        "{}{}",
-        telemetry_section("info"),
-        database_section("postgres://app:supersecret@db:5432/app", "./migrations", 5),
-    );
-    std::fs::write(&path, config_yaml).expect("write config");
-    let yaml = show_config(path.to_str().expect("valid path")).expect("should succeed");
-    assert!(!yaml.contains("supersecret"), "got: {yaml}");
-    assert!(yaml.contains("postgres://***@db:5432/app"), "got: {yaml}");
+    let roundtrip = dir.path().join("roundtrip.yaml");
+    std::fs::write(&roundtrip, &yaml).expect("write roundtrip config");
+    let reparsed = load_and_parse_config(roundtrip.to_str().expect("path"))
+        .expect("should reparse and revalidate");
+    assert_eq!(reparsed.pm3.home, HOME);
+    assert_eq!(reparsed.pm3.kill_timeout_ms, KILL_TIMEOUT_MS);
 }
 
 #[test]
-fn show_config_missing_file() {
-    let result = show_config("/nonexistent/config.yaml");
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
+fn show_config_reports_a_missing_file() {
+    let err = show_config("/nonexistent/config.yaml")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("config file"), "got: {err}");
 }
 
 #[test]
-fn show_config_invalid_config() {
+fn show_config_rejects_an_incomplete_document() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join("bad.yaml");
-    std::fs::write(&path, "server:\n  host: localhost\n").expect("write");
-    let result = show_config(path.to_str().expect("path"));
-    assert!(result.is_err());
+    std::fs::write(&path, "pm3:\n  home: /tmp/pm3\n").expect("write");
+    assert!(show_config(path.to_str().expect("path")).is_err());
 }
 
 #[test]
-fn load_and_parse_config_valid() {
+fn load_and_parse_config_accepts_a_valid_file() {
     let (_dir, path) = write_valid_config();
     let cfg = load_and_parse_config(&path).expect("should succeed");
-    assert_eq!(cfg.server.as_ref().expect("server present").host, "0.0.0.0");
+    assert_eq!(cfg.pm3.home, HOME);
 }
 
 #[test]
-fn load_and_parse_config_missing_file() {
-    let result = load_and_parse_config("/nonexistent/config.yaml");
-    assert!(result.is_err());
+fn load_and_parse_config_reports_a_missing_file() {
+    assert!(load_and_parse_config("/nonexistent/config.yaml").is_err());
 }
 
 #[test]
-fn parse_valid_config() {
+fn parse_config_reads_every_pm3_setting() {
     let cfg = parse_config(&valid_yaml()).expect("should parse");
-    let server = cfg.server.as_ref().expect("server present");
-    assert_eq!(server.host, "0.0.0.0");
-    assert_eq!(server.port, 9229);
-    assert_eq!(server.drain_timeout_secs, 20);
-    assert_eq!(cfg.telemetry.service_name, "skel_rs");
+    assert_eq!(cfg.pm3.home, HOME);
+    assert_eq!(cfg.pm3.kill_timeout_ms, KILL_TIMEOUT_MS);
+    assert_eq!(cfg.pm3.start_timeout_ms, 5000);
+    assert_eq!(cfg.pm3.drain_timeout_secs, 5);
+    assert_eq!(cfg.pm3.daemon_poll_interval_ms, 50);
+    assert_eq!(cfg.pm3.restart.min_uptime_ms, 1000);
+    assert_eq!(cfg.pm3.restart.max_restarts, 15);
+    assert_eq!(cfg.pm3.restart.restart_delay_ms, 0);
+    assert_eq!(cfg.pm3.sandbox.mode, SANDBOX_MODE);
+    assert!(!cfg.pm3.sandbox.network);
+    assert_eq!(cfg.telemetry.service_name, "pm3");
 }
 
 #[test]
-fn parse_config_without_server() {
-    let yaml = r#"
-telemetry:
-  service_name: "skel_rs"
-  log_level: "info"
-  log_format: "json"
-"#;
-    let cfg = parse_config(yaml).expect("should parse without server section");
-    assert!(cfg.server.is_none());
-}
-
-#[test]
-fn parse_invalid_yaml_syntax() {
-    let result = parse_config("{{invalid yaml");
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
+fn parse_config_rejects_broken_yaml() {
+    let err = parse_config("{{invalid yaml").unwrap_err().to_string();
     assert!(err.contains("cannot parse config"), "got: {err}");
 }
 
 #[test]
-fn parse_missing_fields() {
-    let result = parse_config("server:\n  host: localhost\n");
-    assert!(result.is_err());
+fn parse_config_rejects_a_document_without_the_pm3_section() {
+    assert!(parse_config(&telemetry_section("info")).is_err());
 }
 
 #[test]
-fn parse_custom_drain_timeout() {
-    let yaml = r#"
-server:
-  host: "0.0.0.0"
-  port: 9229
-  drain_timeout_secs: 30
-telemetry:
-  service_name: "skel_rs"
-  log_level: "info"
-  log_format: "json"
-health_check:
-  host: "127.0.0.1"
-  connect_timeout_secs: 2
-"#;
-    let cfg = parse_config(yaml).expect("should parse");
-    assert_eq!(
-        cfg.server
-            .as_ref()
-            .expect("server present")
-            .drain_timeout_secs,
-        30
-    );
+fn parse_config_rejects_a_document_without_telemetry() {
+    let yaml = pm3_section(HOME, KILL_TIMEOUT_MS, SANDBOX_MODE);
+    assert!(parse_config(&yaml).is_err());
 }
 
 #[test]
-fn parse_config_without_database() {
-    let cfg = parse_config(&valid_yaml()).expect("should parse");
-    assert!(cfg.database.is_none());
-}
-
-#[test]
-fn parse_config_with_database() {
+fn load_and_parse_config_rejects_an_invalid_sandbox_mode() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("config.yaml");
     let yaml = format!(
         "{}{}",
-        valid_yaml(),
-        database_section("sqlite://test.db?mode=rwc", "./migrations", 5),
+        pm3_section(HOME, KILL_TIMEOUT_MS, "yolo"),
+        telemetry_section("info"),
     );
-    let cfg = parse_config(&yaml).expect("should parse");
-    let db = cfg.database.as_ref().expect("database should be present");
-    assert_eq!(db.url, "sqlite://test.db?mode=rwc");
-    assert_eq!(db.migrations_path, "./migrations");
-    assert_eq!(db.pool.max_connections, 5);
-    assert_eq!(db.pool.min_connections, 1);
-    assert_eq!(db.pool.acquire_timeout_secs, 5);
+    std::fs::write(&path, yaml).expect("write config");
+    let err = load_and_parse_config(path.to_str().expect("path"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("pm3.sandbox.mode"), "got: {err}");
 }
 
 #[test]
-fn parse_database_missing_pool_fields_fails() {
+fn load_and_parse_config_reports_an_unresolvable_placeholder() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("config.yaml");
     let yaml = format!(
-        r#"{}
-database:
-  url: "sqlite://test.db"
-"#,
-        valid_yaml()
+        "{}{}",
+        pm3_section("${PM3_TEST_UNSET_HOME}", KILL_TIMEOUT_MS, SANDBOX_MODE),
+        telemetry_section("info"),
     );
-    let result = parse_config(&yaml);
-    assert!(result.is_err(), "should fail when pool fields are missing");
+    std::fs::write(&path, yaml).expect("write config");
+    let err = load_and_parse_config(path.to_str().expect("path"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("PM3_TEST_UNSET_HOME"), "got: {err}");
+}
+
+#[test]
+fn check_config_confirms_a_valid_file() {
+    let (_dir, path) = write_valid_config();
+    let message = check_config(&path).expect("should succeed");
+    assert!(message.contains(&path), "got: {message}");
+}
+
+#[test]
+fn check_config_reports_an_invalid_file() {
+    assert!(check_config("/nonexistent/config.yaml").is_err());
+}
+
+#[test]
+fn environment_placeholders_are_substituted_before_parsing() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("config.yaml");
+    let yaml = format!(
+        "{}{}",
+        pm3_section(
+            "${PM3_TEST_HOME:-/tmp/pm3-default}",
+            KILL_TIMEOUT_MS,
+            SANDBOX_MODE
+        ),
+        telemetry_section("info"),
+    );
+    std::fs::write(&path, yaml).expect("write config");
+    let cfg = load_and_parse_config(path.to_str().expect("path")).expect("should succeed");
+    assert_eq!(cfg.pm3.home, "/tmp/pm3-default");
 }
