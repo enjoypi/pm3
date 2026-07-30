@@ -11,6 +11,9 @@ pm3:
   sandbox:
     mode: "workspace-write"
     network: false
+  service:
+    label: "com.enjoypi.pm3"
+    search_path: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 telemetry:
   service_name: "pm3"

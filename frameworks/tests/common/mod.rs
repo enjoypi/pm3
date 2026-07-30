@@ -10,6 +10,7 @@ use std::{
 };
 
 pub const PM3: &str = env!("CARGO_BIN_EXE_pm3");
+pub const SERVICE_LABEL: &str = "pm3-e2e-never-installed";
 pub const READY_BUDGET: Duration = Duration::from_secs(15);
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -59,6 +60,9 @@ pub fn config_yaml(home: &str, sandbox_mode: &str, network: bool, log_level: &st
   sandbox:
     mode: "{sandbox_mode}"
     network: {network}
+  service:
+    label: "{SERVICE_LABEL}"
+    search_path: "/usr/bin:/bin"
 
 telemetry:
   service_name: "pm3"

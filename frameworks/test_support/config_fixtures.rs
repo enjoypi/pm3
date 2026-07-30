@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use adapters::{Pm3Config, RestartConfig, SandboxConfig};
+use adapters::{Pm3Config, RestartConfig, SandboxConfig, ServiceConfig};
 
 pub const KILL_TIMEOUT_MS: u64 = 400;
 pub const START_TIMEOUT_MS: u64 = 4000;
@@ -9,6 +9,8 @@ pub const DRAIN_TIMEOUT_SECS: u64 = 5;
 pub const MIN_UPTIME_MS: u64 = 1000;
 pub const MAX_RESTARTS: u32 = 15;
 pub const SANDBOX_MODE: &str = "danger-full-access";
+pub const SERVICE_LABEL: &str = "pm3-fixture";
+pub const SERVICE_SEARCH_PATH: &str = "/usr/bin:/bin";
 
 pub fn pm3_config_with_home(home: &str) -> Pm3Config {
     Pm3Config {
@@ -25,6 +27,10 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         sandbox: SandboxConfig {
             mode: SANDBOX_MODE.to_string(),
             network: false,
+        },
+        service: ServiceConfig {
+            label: SERVICE_LABEL.to_string(),
+            search_path: SERVICE_SEARCH_PATH.to_string(),
         },
     }
 }
@@ -44,6 +50,9 @@ pub fn config_yaml(home: &str) -> String {
   sandbox:
     mode: "{SANDBOX_MODE}"
     network: false
+  service:
+    label: "{SERVICE_LABEL}"
+    search_path: "{SERVICE_SEARCH_PATH}"
 
 telemetry:
   service_name: "pm3"

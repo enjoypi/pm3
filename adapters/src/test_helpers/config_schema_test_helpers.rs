@@ -15,6 +15,13 @@ pub fn valid_sandbox_config() -> SandboxConfig {
     }
 }
 
+pub fn valid_service_config() -> ServiceConfig {
+    ServiceConfig {
+        label: "pm3-fixture".to_string(),
+        search_path: "/usr/bin:/bin".to_string(),
+    }
+}
+
 pub fn valid_pm3_config() -> Pm3Config {
     Pm3Config {
         home: "/tmp/pm3-fixture".to_string(),
@@ -24,6 +31,7 @@ pub fn valid_pm3_config() -> Pm3Config {
         daemon_poll_interval_ms: 50,
         restart: valid_restart_config(),
         sandbox: valid_sandbox_config(),
+        service: valid_service_config(),
     }
 }
 

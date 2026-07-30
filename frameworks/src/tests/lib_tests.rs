@@ -105,6 +105,49 @@ fn an_unready_daemon_reports_the_budget() {
 }
 
 #[test]
+fn a_service_manager_failure_is_passed_through() {
+    let error = Error::Service(adapters::ServiceCommandError::Failed {
+        program: "/bin/launchctl".to_string(),
+        reason: "exited with status 1".to_string(),
+    });
+    assert_eq!(
+        error.to_string(),
+        "cannot complete '/bin/launchctl': exited with status 1"
+    );
+}
+
+#[test]
+fn a_binary_lookup_failure_explains_itself() {
+    let error = Error::ServiceProgram {
+        reason: "no such process image".to_string(),
+    };
+    assert_eq!(
+        error.to_string(),
+        "cannot determine the pm3 binary path: no such process image"
+    );
+}
+
+#[test]
+fn an_unresolvable_config_path_names_the_path() {
+    let error = Error::ServiceConfig {
+        path: "config.yaml".to_string(),
+        reason: "missing".to_string(),
+    };
+    assert_eq!(
+        error.to_string(),
+        "cannot resolve the config path 'config.yaml': missing"
+    );
+}
+
+#[test]
+fn a_missing_home_explains_itself() {
+    assert_eq!(
+        Error::ServiceHome.to_string(),
+        "cannot locate the service directory: no HOME in the environment"
+    );
+}
+
+#[test]
 fn a_refused_request_reports_the_status_and_the_body() {
     let error = Error::Refused {
         status: 404,
