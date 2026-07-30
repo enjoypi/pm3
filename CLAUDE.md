@@ -83,6 +83,7 @@
 - CLI 全局默认值 MUST NOT 在 `execute()` 里现算：e2e 的假进程是 `pm3 __sleep`，子进程环境被 `env_clear()` 清空后没有 `HOME`，「所有子命令都先解析配置路径」会让 sleeper 一启动就退出（症状是 e2e 里 app 显示 `stopped ↺1`）→ 交给 clap `default_value_t` 在构建期算，不读配置的命令自然不受影响
 - fixture 里的 `create_dir_all` 会把「测试想要它缺失」的父目录造出来（`save_reports_a_missing_parent_directory` 一度失效）→ 造错误路径的 store/source fixture 必须接一个独立 root，别从被测路径 `parent()` 反推
 - e2e 会泄漏 daemon 与子进程（tempdir 已删、进程仍在）：排查真机状态前先 `pgrep -f 'pm3 daemon --config /var/folders'` 与 `pgrep -f 'pm3 __sleep'` 各清一遍，否则 `pgrep`/端口结果会误导；子进程自 `process_group(0)` 起不再随测试进程组被连带清理
+- nextest 中断（flake 触发取消剩余测试）会让 `TempDir` 的 Drop 跑不到，在 `$TMPDIR` 留下 e2e fixture 目录（`config.yaml` + `home/{logs,svc,pm3.sock}`）：清理用 `rg -l --hidden 'pm3-e2e-never-installed|pm3-fixture' "$TMPDIR" -g config.yaml` 定位——`rg` 默认跳过隐藏目录而这些正是 `.tmp*`，漏 `--hidden` 会得到假阴性；按 label 指纹而非目录名匹配，才不会误删真机配置
 - 文件 IO 错误分支稳定触发：`create_dir_all` 失败 → 目标预置为文件；`rename` 失败 → 目标预置为 non-empty 目录；`remove_file` 失败 → path 是目录；`write` 失败 → 父目录 ENOENT
 
 ## 配置与路径约定
