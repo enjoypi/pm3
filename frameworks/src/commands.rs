@@ -13,7 +13,7 @@ use crate::{
     client::{OK_STATUS, UdsClient},
     daemon::{DaemonLaunch, ensure_daemon_running},
     layout::{ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
-    svc::{self, InlineStart, SvcContext},
+    svc::{self, InlineStart, Reconciled, SvcContext},
 };
 
 pub const FOLLOW_FOREVER: u32 = u32::MAX;
@@ -21,6 +21,12 @@ pub const FOLLOW_FOREVER: u32 = u32::MAX;
 const FOLLOW_INTERVAL_MS: u64 = 200;
 const STOP_ACTION: &str = "stop";
 const RESTART_ACTION: &str = "restart";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartReport {
+    pub response: String,
+    pub changed: Vec<String>,
+}
 
 #[derive(Clone, Debug)]
 pub struct Session {
@@ -52,22 +58,32 @@ pub fn open_session(config_path: &str) -> Result<Session> {
     })
 }
 
-pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Result<String> {
+pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Result<StartReport> {
     let session = open_session(config_path)?;
     ensure_layout(&session.paths, &session.cfg_dir).await?;
     let resolved = canonical_apps_file(apps_file)?;
     let home = host_home();
-    svc::split_apps_file(&session.svc_context(home.as_deref()), &resolved, force).await?;
-    ask(config_path, "POST", APPS_PATH, Some(&start_body(&resolved))).await
+    let changed =
+        svc::split_apps_file(&session.svc_context(home.as_deref()), &resolved, force).await?;
+    ask(config_path, "POST", APPS_PATH, Some(&start_body(&resolved)))
+        .await
+        .map(|response| StartReport { response, changed })
 }
 
-pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Result<String> {
+pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Result<StartReport> {
     let session = open_session(config_path)?;
     ensure_layout(&session.paths, &session.cfg_dir).await?;
     let home = host_home();
-    let svc_file = svc::prepare_inline(&session.svc_context(home.as_deref()), request).await?;
-    let body = start_body(&svc_file.to_string_lossy());
-    ask(config_path, "POST", APPS_PATH, Some(&body)).await
+    let prepared = svc::prepare_inline(&session.svc_context(home.as_deref()), request).await?;
+    let body = start_body(&prepared.path.to_string_lossy());
+    let changed = if prepared.reconciled == Reconciled::Stale {
+        vec![request.name.to_string()]
+    } else {
+        Vec::new()
+    };
+    ask(config_path, "POST", APPS_PATH, Some(&body))
+        .await
+        .map(|response| StartReport { response, changed })
 }
 
 pub async fn list_apps(config_path: &str) -> Result<String> {

@@ -60,7 +60,54 @@ async fn starting_an_apps_file_reports_the_started_app() {
     let started = start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
-    assert!(started.contains("started web"), "got: {started}");
+    assert!(started.response.contains("started web"), "got: {started:?}");
+    assert_eq!(started.changed, vec!["web".to_string()]);
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn restarting_an_unchanged_apps_file_reports_no_config_change() {
+    let fixture = running_daemon().await;
+    let apps_file = sleeper_apps_file(&fixture);
+    start_apps(&fixture.config_path, &apps_file, false)
+        .await
+        .expect("should start");
+    let again = start_apps(&fixture.config_path, &apps_file, false)
+        .await
+        .expect("should start");
+    assert!(again.changed.is_empty(), "got: {:?}", again.changed);
+    assert!(
+        again.response.contains("already running"),
+        "got: {}",
+        again.response
+    );
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn restarting_a_changed_apps_file_reports_the_changed_app() {
+    let fixture = running_daemon().await;
+    let apps_file = sleeper_apps_file(&fixture);
+    start_apps(&fixture.config_path, &apps_file, false)
+        .await
+        .expect("should start");
+    let cwd = fixture.paths.root.to_string_lossy();
+    std::fs::write(
+        &apps_file,
+        format!(
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 60\"\n"
+        ),
+    )
+    .expect("edit the apps file");
+    let again = start_apps(&fixture.config_path, &apps_file, true)
+        .await
+        .expect("should start");
+    assert_eq!(again.changed, vec!["web".to_string()]);
+    assert!(
+        again.response.contains("already running"),
+        "got: {}",
+        again.response
+    );
     stop_daemon(fixture).await;
 }
 
@@ -391,7 +438,34 @@ async fn starting_inline_reaches_the_daemon() {
     let started = start_inline(&fixture.config_path, &inline_request(&target))
         .await
         .expect("the inline app should start");
-    assert!(started.contains("started probe"), "got: {started}");
+    assert!(
+        started.response.contains("started probe"),
+        "got: {started:?}"
+    );
+    assert_eq!(started.changed, vec!["probe".to_string()]);
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn restarting_an_unchanged_inline_app_reports_no_config_change() {
+    let fixture = running_daemon().await;
+    let target = vec![
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        "sleep 5".to_string(),
+    ];
+    start_inline(&fixture.config_path, &inline_request(&target))
+        .await
+        .expect("should start");
+    let again = start_inline(&fixture.config_path, &inline_request(&target))
+        .await
+        .expect("should start");
+    assert!(again.changed.is_empty(), "got: {:?}", again.changed);
+    assert!(
+        again.response.contains("already running"),
+        "got: {}",
+        again.response
+    );
     stop_daemon(fixture).await;
 }
 

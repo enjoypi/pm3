@@ -5,7 +5,7 @@
 
 mod common;
 
-use self::common::{PM3, home, pm3, shutdown_daemon, stderr_of, stdout_of};
+use self::common::{PM3, home, pm3, pm3_with_stdin, shutdown_daemon, stderr_of, stdout_of};
 
 const NAME: &str = "sleeper";
 
@@ -18,6 +18,13 @@ fn start_inline(home: &self::common::Home, extra: &[&str]) -> std::process::Outp
     args.extend_from_slice(extra);
     args.extend_from_slice(&[PM3, "__sleep", "30000"]);
     pm3(home, &args)
+}
+
+fn start_changed_with_answer(home: &self::common::Home, answer: &str) -> std::process::Output {
+    let args = [
+        "start", "--name", NAME, "--force", "--env", "FRESH=1", PM3, "__sleep", "30000",
+    ];
+    pm3_with_stdin(home, &args, answer)
 }
 
 #[test]
@@ -92,6 +99,93 @@ fn a_changed_service_file_blocks_a_restart_until_forced() {
 
     let forced = start_inline(&home, &["--force"]);
     assert!(forced.status.success(), "{}", stderr_of(&forced));
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn answering_yes_restarts_the_running_service_after_a_config_change() {
+    let home = home();
+    assert!(start_inline(&home, &[]).status.success(), "first start");
+
+    let answered = start_changed_with_answer(&home, "y\n");
+    assert!(answered.status.success(), "{}", stderr_of(&answered));
+    let shown = stdout_of(&answered);
+    assert!(shown.contains("is already running"), "{shown}");
+    assert!(shown.contains("restart to apply? [y/N]"), "{shown}");
+    assert!(shown.contains("restarted sleeper"), "{shown}");
+
+    let listed = pm3(&home, &["list"]);
+    assert!(
+        stdout_of(&listed).contains("online"),
+        "{}",
+        stdout_of(&listed)
+    );
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn answering_no_keeps_the_running_service_on_the_old_config() {
+    let home = home();
+    assert!(start_inline(&home, &[]).status.success(), "first start");
+
+    let answered = start_changed_with_answer(&home, "n\n");
+    assert!(answered.status.success(), "{}", stderr_of(&answered));
+    let shown = stdout_of(&answered);
+    assert!(
+        shown.contains("keeps running with the previous config"),
+        "{shown}"
+    );
+    assert!(!shown.contains("restarted"), "{shown}");
+
+    let listed = pm3(&home, &["list"]);
+    assert!(
+        stdout_of(&listed).contains("online"),
+        "{}",
+        stdout_of(&listed)
+    );
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn a_closed_stdin_keeps_the_running_service_on_the_old_config() {
+    let home = home();
+    assert!(start_inline(&home, &[]).status.success(), "first start");
+
+    let forced = start_inline(&home, &["--force", "--env", "FRESH=1"]);
+    assert!(forced.status.success(), "{}", stderr_of(&forced));
+    let shown = stdout_of(&forced);
+    assert!(
+        shown.contains("keeps running with the previous config"),
+        "{shown}"
+    );
+    assert!(!shown.contains("restarted"), "{shown}");
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn an_identical_restart_neither_prompts_nor_restarts() {
+    let home = home();
+    assert!(start_inline(&home, &[]).status.success(), "first start");
+
+    let again = start_inline(&home, &[]);
+    assert!(again.status.success(), "{}", stderr_of(&again));
+    let shown = stdout_of(&again);
+    assert!(shown.contains("is already running"), "{shown}");
+    assert!(!shown.contains("restart to apply"), "{shown}");
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn a_changed_config_for_a_stopped_service_starts_it_without_a_prompt() {
+    let home = home();
+    assert!(start_inline(&home, &[]).status.success(), "first start");
+    assert!(pm3(&home, &["stop", NAME]).status.success(), "stop");
+
+    let forced = start_inline(&home, &["--force", "--env", "FRESH=1"]);
+    assert!(forced.status.success(), "{}", stderr_of(&forced));
+    let shown = stdout_of(&forced);
+    assert!(shown.contains("started sleeper"), "{shown}");
+    assert!(!shown.contains("restart to apply"), "{shown}");
     shutdown_daemon(&home);
 }
 

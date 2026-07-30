@@ -4,6 +4,7 @@ use clap::{Args, Parser, Subcommand};
 use crate::{
     Error, Result, commands,
     layout::host_home,
+    prompt,
     svc::{AMBIGUOUS_TARGET, InlineStart},
 };
 
@@ -142,7 +143,7 @@ pub async fn dispatch(cli: Cli) -> Result<()> {
 pub async fn execute(cli: Cli) -> Result<Option<String>> {
     let Cli { config, command } = cli;
     match command {
-        Commands::Start(args) => run_start(&config, &args).await.map(Some),
+        Commands::Start(args) => run_start(&config, &args).await,
         Commands::Stop { selector } => commands::stop_app(&config, &selector).await.map(Some),
         Commands::Restart { selector } => commands::restart_app(&config, &selector).await.map(Some),
         Commands::Delete { selector } => commands::delete_app(&config, &selector).await.map(Some),
@@ -175,25 +176,56 @@ pub fn default_config(home_env: Option<&str>) -> String {
     )
 }
 
-async fn run_start(config: &str, args: &StartArgs) -> Result<String> {
-    let Some(name) = args.name.as_deref() else {
-        let [apps_file] = args.target.as_slice() else {
-            return Err(Error::InlineUsage {
-                reason: AMBIGUOUS_TARGET.to_string(),
-            });
-        };
-        return commands::start_apps(config, apps_file, args.force).await;
+async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
+    let report = match args.name.as_deref() {
+        None => {
+            let [apps_file] = args.target.as_slice() else {
+                return Err(Error::InlineUsage {
+                    reason: AMBIGUOUS_TARGET.to_string(),
+                });
+            };
+            commands::start_apps(config, apps_file, args.force).await?
+        }
+        Some(name) => {
+            let request = InlineStart {
+                name,
+                target: &args.target,
+                cwd: args.cwd.as_deref(),
+                env: &args.env,
+                network: args.network,
+                writable_dirs: &args.writable_dirs,
+                force: args.force,
+            };
+            commands::start_inline(config, &request).await?
+        }
     };
-    let request = InlineStart {
-        name,
-        target: &args.target,
-        cwd: args.cwd.as_deref(),
-        env: &args.env,
-        network: args.network,
-        writable_dirs: &args.writable_dirs,
-        force: args.force,
-    };
-    commands::start_inline(config, &request).await
+    emit(&report.response);
+    offer_restarts(config, &report, &mut confirm_via_stdio).await
+}
+
+async fn offer_restarts(
+    config: &str,
+    report: &commands::StartReport,
+    confirm: &mut (dyn FnMut(&str) -> bool + Send),
+) -> Result<Option<String>> {
+    let pending = prompt::stale_running(&report.changed, &report.response);
+    let mut lines: Vec<String> = Vec::new();
+    for name in pending {
+        if confirm(name) {
+            lines.push(commands::restart_app(config, name).await?);
+        } else {
+            lines.push(prompt::keep_old_config_hint(name));
+        }
+    }
+    Ok((!lines.is_empty()).then(|| lines.join("\n")))
+}
+
+fn confirm_via_stdio(name: &str) -> bool {
+    let stdin = std::io::stdin();
+    let mut input = stdin.lock();
+    let stdout = std::io::stdout();
+    let mut output = stdout.lock();
+    prompt::confirm_restart(name, &mut input, &mut output)
 }
 
 async fn run_logs(

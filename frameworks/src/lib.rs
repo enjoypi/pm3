@@ -3,6 +3,7 @@ pub mod client;
 pub mod commands;
 pub mod daemon;
 pub mod layout;
+pub mod prompt;
 pub mod sandbox_probe;
 pub mod server;
 pub mod service;

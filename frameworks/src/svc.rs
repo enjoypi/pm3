@@ -17,6 +17,12 @@ pub enum Reconciled {
     Stale,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedSvc {
+    pub path: PathBuf,
+    pub reconciled: Reconciled,
+}
+
 pub struct InlineStart<'s> {
     pub name: &'s str,
     pub target: &'s [String],
@@ -36,7 +42,7 @@ pub struct SvcContext<'c> {
 pub async fn prepare_inline(
     context: &SvcContext<'_>,
     request: &InlineStart<'_>,
-) -> Result<PathBuf> {
+) -> Result<PreparedSvc> {
     let Some((program, args)) = request.target.split_first() else {
         return Err(Error::InlineUsage {
             reason: MISSING_COMMAND.to_string(),
@@ -59,12 +65,17 @@ pub async fn prepare_inline(
     })?;
     let contents = encode_apps_file(&apps);
     let path = service_file_of(context.cfg_dir, request.name);
-    write_svc(&path, &contents, request.force).await?;
-    Ok(path)
+    let reconciled = write_svc(&path, &contents, request.force).await?;
+    Ok(PreparedSvc { path, reconciled })
 }
 
-pub async fn split_apps_file(context: &SvcContext<'_>, apps_file: &str, force: bool) -> Result<()> {
+pub async fn split_apps_file(
+    context: &SvcContext<'_>,
+    apps_file: &str,
+    force: bool,
+) -> Result<Vec<String>> {
     let apps = load_apps_file(apps_file)?;
+    let mut changed: Vec<String> = Vec::new();
     for entry in &apps.apps {
         let mut folded = entry.clone();
         folded.script = fold_home(&folded.script, context.home);
@@ -76,14 +87,17 @@ pub async fn split_apps_file(context: &SvcContext<'_>, apps_file: &str, force: b
             .collect();
         let single = AppsFile { apps: vec![folded] };
         let contents = encode_apps_file(&single);
-        write_svc(
+        let reconciled = write_svc(
             &service_file_of(context.cfg_dir, &entry.name),
             &contents,
             force,
         )
         .await?;
+        if reconciled == Reconciled::Stale {
+            changed.push(entry.name.clone());
+        }
     }
-    Ok(())
+    Ok(changed)
 }
 
 pub async fn forget(cfg_dir: &Path, name: &str) {
@@ -106,16 +120,18 @@ pub async fn reconcile(path: &Path, contents: &str, force: bool) -> Result<Recon
     })
 }
 
-async fn write_svc(path: &Path, contents: &str, force: bool) -> Result<()> {
-    if reconcile(path, contents, force).await? == Reconciled::Unchanged {
-        return Ok(());
+async fn write_svc(path: &Path, contents: &str, force: bool) -> Result<Reconciled> {
+    let reconciled = reconcile(path, contents, force).await?;
+    if reconciled == Reconciled::Unchanged {
+        return Ok(Reconciled::Unchanged);
     }
     tokio::fs::write(path, contents)
         .await
         .map_err(|error| Error::SvcWrite {
             path: path.to_string_lossy().into_owned(),
             reason: error.to_string(),
-        })
+        })?;
+    Ok(Reconciled::Stale)
 }
 
 #[cfg(test)]
