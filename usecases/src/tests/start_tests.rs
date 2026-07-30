@@ -3,7 +3,7 @@ use entities::{ProcessStatus, SandboxMode, SandboxPolicy};
 use super::*;
 use crate::{
     AppSelector,
-    fingerprint::render_launch,
+    fingerprint::render_identity,
     ports::Fingerprinter as _,
     ports_test_helpers::{FakePorts, LOGS_DIR, SANDBOX_PREFIX, live_token, spec, spec_with_deps},
 };
@@ -236,6 +236,7 @@ async fn an_unconfined_app_runs_without_a_sandbox_wrapper() {
             mode: SandboxMode::DangerFullAccess,
             network: true,
             writable_roots: Vec::new(),
+            derived_roots: Vec::new(),
         },
         ..spec("api")
     };
@@ -261,9 +262,10 @@ async fn a_started_app_records_the_digest_of_what_it_was_launched_with() {
     let ports = FakePorts::new(1000);
     let table = started(&ports).await;
     let identity = recorded_identity(&table);
-    let launched = ports.spawned();
-    let launch = launched.first().expect("one spawn recorded");
-    assert_eq!(identity.launch_digest, ports.digest(&render_launch(launch)));
+    assert_eq!(
+        identity.launch_digest,
+        ports.digest(&render_identity(&spec("api")))
+    );
 }
 
 #[tokio::test]

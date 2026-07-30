@@ -265,7 +265,17 @@ fn resolve_specs_rejects_an_unknown_sandbox_mode() {
 #[test]
 fn resolve_specs_grants_the_cwd_the_logs_dir_and_the_tmp_dir_by_default() {
     let spec = resolve_one(&defaults(), minimal_entry());
-    assert_eq!(spec.sandbox.writable_roots, vec![CWD, LOGS_DIR, TMP_DIR]);
+    assert_eq!(spec.sandbox.derived_roots, vec![CWD, LOGS_DIR, TMP_DIR]);
+}
+
+#[test]
+fn resolve_specs_keeps_pm3_derived_roots_out_of_the_declared_ones() {
+    let spec = resolve_one(&defaults(), minimal_entry());
+    assert!(
+        spec.sandbox.writable_roots.is_empty(),
+        "roots pm3 derives itself must not read as operator configuration: {:?}",
+        spec.sandbox.writable_roots
+    );
 }
 
 #[test]
@@ -275,7 +285,7 @@ fn resolve_specs_drops_a_duplicate_default_writable_root() {
         ..minimal_entry()
     };
     let spec = resolve_one(&defaults(), entry);
-    assert_eq!(spec.sandbox.writable_roots, vec![LOGS_DIR, TMP_DIR]);
+    assert_eq!(spec.sandbox.derived_roots, vec![LOGS_DIR, TMP_DIR]);
 }
 
 #[test]
@@ -285,7 +295,7 @@ fn resolve_specs_skips_a_missing_tmp_dir() {
         ..defaults()
     };
     let spec = resolve_one(&defaults, minimal_entry());
-    assert_eq!(spec.sandbox.writable_roots, vec![CWD, LOGS_DIR]);
+    assert_eq!(spec.sandbox.derived_roots, vec![CWD, LOGS_DIR]);
 }
 
 #[test]
@@ -295,7 +305,7 @@ fn resolve_specs_skips_a_blank_tmp_dir() {
         ..defaults()
     };
     let spec = resolve_one(&defaults, minimal_entry());
-    assert_eq!(spec.sandbox.writable_roots, vec![CWD, LOGS_DIR]);
+    assert_eq!(spec.sandbox.derived_roots, vec![CWD, LOGS_DIR]);
 }
 
 #[test]
@@ -306,9 +316,9 @@ fn resolve_specs_grants_no_writable_root_in_read_only_mode() {
     };
     let spec = resolve_one(&defaults, minimal_entry());
     assert!(
-        spec.sandbox.writable_roots.is_empty(),
+        spec.sandbox.granted_roots().is_empty(),
         "got: {:?}",
-        spec.sandbox.writable_roots
+        spec.sandbox.granted_roots()
     );
 }
 
@@ -320,9 +330,9 @@ fn resolve_specs_grants_no_writable_root_in_full_access_mode() {
     };
     let spec = resolve_one(&defaults, minimal_entry());
     assert!(
-        spec.sandbox.writable_roots.is_empty(),
+        spec.sandbox.granted_roots().is_empty(),
         "got: {:?}",
-        spec.sandbox.writable_roots
+        spec.sandbox.granted_roots()
     );
 }
 
@@ -350,9 +360,9 @@ fn resolve_specs_honours_an_explicitly_empty_writable_roots_list() {
     };
     let spec = resolve_one(&defaults(), entry);
     assert!(
-        spec.sandbox.writable_roots.is_empty(),
+        spec.sandbox.granted_roots().is_empty(),
         "got: {:?}",
-        spec.sandbox.writable_roots
+        spec.sandbox.granted_roots()
     );
 }
 

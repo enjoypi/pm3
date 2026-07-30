@@ -5,10 +5,10 @@ use futures_util::future::join_all;
 
 use crate::{
     Ports, Result,
-    fingerprint::render_launch,
+    fingerprint::render_identity,
     persist::save_table,
     record::ProcessRecord,
-    start::{StartKind, StartOutcome, build_launch_spec, start_one},
+    start::{StartKind, StartOutcome, start_one},
     table::ProcessTable,
 };
 
@@ -33,7 +33,7 @@ pub async fn resurrect(
     ports: &impl Ports,
 ) -> Result<Vec<StartOutcome>> {
     let stored = ports.load().await?;
-    let verdicts = judge_all(&stored, logs_dir, ports).await;
+    let verdicts = judge_all(&stored, ports).await;
 
     *table = ProcessTable::from_records(
         stored
@@ -61,11 +61,7 @@ pub async fn resurrect(
     Ok(outcomes)
 }
 
-async fn judge_all(
-    stored: &[ProcessRecord],
-    logs_dir: &str,
-    ports: &impl Ports,
-) -> BTreeMap<String, Verdict> {
+async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<String, Verdict> {
     let pending: Vec<&ProcessRecord> = stored
         .iter()
         .filter(|record| was_supposed_to_run(record))
@@ -73,7 +69,7 @@ async fn judge_all(
     let verdicts = join_all(
         pending
             .iter()
-            .map(|record| judge(record, logs_dir, ports))
+            .map(|record| judge(record, ports))
             .collect::<Vec<_>>(),
     )
     .await;
@@ -84,7 +80,7 @@ async fn judge_all(
         .collect()
 }
 
-async fn judge(record: &ProcessRecord, logs_dir: &str, ports: &impl Ports) -> Verdict {
+async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
     let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
         return respawn(Change::Unknown, None);
     };
@@ -94,10 +90,7 @@ async fn judge(record: &ProcessRecord, logs_dir: &str, ports: &impl Ports) -> Ve
     if token != identity.token {
         return respawn(Change::Reused, None);
     }
-    let Ok(launch) = build_launch_spec(&record.spec, logs_dir, ports) else {
-        return respawn(Change::Launch, Some(pid));
-    };
-    if ports.digest(&render_launch(&launch)) != identity.launch_digest {
+    if ports.digest(&render_identity(&record.spec)) != identity.launch_digest {
         return respawn(Change::Launch, Some(pid));
     }
     let Ok(binary) = ports.file_digest(&record.spec.script).await else {

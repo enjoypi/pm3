@@ -20,10 +20,9 @@ fn stored_record(name: &str, pm_id: u32, status: ProcessStatus) -> ProcessRecord
 }
 
 fn expected_identity(ports: &FakePorts, record: &ProcessRecord) -> ProcessIdentity {
-    let launch = build_launch_spec(&record.spec, LOGS_DIR, ports).expect("the spec wraps cleanly");
     ProcessIdentity {
         token: live_token(SURVIVOR_PID),
-        launch_digest: ports.digest(&render_launch(&launch)),
+        launch_digest: ports.digest(&render_identity(&record.spec)),
         binary_digest: format!("file:{}", record.spec.script),
     }
 }
@@ -318,14 +317,32 @@ async fn a_service_whose_program_cannot_be_digested_is_restarted() {
 }
 
 #[tokio::test]
-async fn a_service_whose_sandbox_no_longer_wraps_cannot_be_reclaimed_and_fails_loudly() {
+async fn a_service_that_must_respawn_without_a_sandbox_fails_loudly() {
     let ports = FakePorts::new(1000);
-    ports.seed_stored(vec![survivor(&ports, "api")]);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = None;
+    ports.seed_stored(vec![record]);
     ports.fail_wrap_for("api");
     let err = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::Sandbox(_)), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_live_service_is_reclaimed_even_when_the_sandbox_can_no_longer_wrap() {
+    let ports = FakePorts::new(1000);
+    ports.seed_stored(vec![survivor(&ports, "api")]);
+    ports.fail_wrap_for("api");
+    let table = resurrected(&ports).await;
+    let record = table
+        .find(&AppSelector::Name("api".to_string()))
+        .expect("record present");
+    assert_eq!(record.runtime.pid, Some(SURVIVOR_PID));
+    assert!(
+        ports.spawned_names().is_empty(),
+        "a reclaimed process needs no fresh wrapping"
+    );
 }
 
 #[tokio::test]

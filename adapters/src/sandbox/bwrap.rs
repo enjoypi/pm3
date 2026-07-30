@@ -15,7 +15,7 @@ pub fn bwrap_argv(policy: &SandboxPolicy, program: &str, args: &[String]) -> Wra
     sandbox_args.push("/dev".to_string());
     sandbox_args.push("--proc".to_string());
     sandbox_args.push("/proc".to_string());
-    for root in &policy.writable_roots {
+    for root in policy.granted_roots() {
         let trimmed = root.trim_end_matches('/');
         sandbox_args.push("--bind".to_string());
         sandbox_args.push(trimmed.to_string());

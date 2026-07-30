@@ -23,7 +23,7 @@ use thiserror::Error;
 
 pub use self::{
     delete::{DeleteOutcome, delete_app},
-    fingerprint::render_launch,
+    fingerprint::render_identity,
     log_paths::{LogPaths, log_paths},
     ports::{
         Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,

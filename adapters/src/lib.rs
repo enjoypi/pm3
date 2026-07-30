@@ -20,8 +20,8 @@ pub use usecases::{
     ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus,
     ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode, SandboxPolicy,
     SignalError, Signaler, StartKind, StartOutcome, StopOutcome, UsecaseError, WrappedCommand,
-    delete_app, describe_app, handle_child_exit, list_apps, log_paths, restart_app, resurrect,
-    start_apps, stop_all_apps, stop_app, topo_sort,
+    delete_app, describe_app, handle_child_exit, list_apps, log_paths, render_identity,
+    restart_app, resurrect, start_apps, stop_all_apps, stop_app, topo_sort,
 };
 
 pub use self::{

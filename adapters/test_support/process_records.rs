@@ -34,6 +34,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
             mode: SandboxMode::WorkspaceWrite,
             network: false,
             writable_roots: vec!["/srv/web".to_string()],
+            derived_roots: Vec::new(),
         },
     }
 }

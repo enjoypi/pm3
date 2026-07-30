@@ -5,6 +5,7 @@ fn workspace_policy() -> SandboxPolicy {
         mode: SandboxMode::WorkspaceWrite,
         network: false,
         writable_roots: vec!["/srv/api".to_string()],
+        derived_roots: Vec::new(),
     }
 }
 
@@ -65,6 +66,7 @@ fn validate_accepts_read_only_without_writable_roots() {
         mode: SandboxMode::ReadOnly,
         network: false,
         writable_roots: Vec::new(),
+        derived_roots: Vec::new(),
     };
     validate_policy(&policy).expect("read-only without writable roots is valid");
 }

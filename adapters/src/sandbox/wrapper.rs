@@ -49,8 +49,8 @@ impl CommandWrapper for SandboxCommandWrapper {
 }
 
 fn reject_unquotable_roots(app: &str, policy: &SandboxPolicy) -> Result<(), SandboxError> {
-    let offending = policy
-        .writable_roots
+    let granted = policy.granted_roots();
+    let offending = granted
         .iter()
         .find(|root| root.contains(UNSAFE_PATH_CHARACTERS));
     let Some(root) = offending else {
