@@ -313,3 +313,71 @@ async fn following_a_log_that_turns_undecodable_fails_the_command() {
     assert!(outcome.is_err(), "got: {outcome:?}");
     crate::daemon_fixture::stop_daemon(fixture).await;
 }
+
+#[test]
+fn service_without_a_subcommand_asks_for_the_status() {
+    let cli = parse(&["pm3", "service"]);
+    assert!(
+        matches!(&cli.command, Commands::Service { command: None }),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn service_install_defaults_to_a_real_run() {
+    let cli = parse(&["pm3", "service", "install"]);
+    assert!(
+        matches!(
+            &cli.command,
+            Commands::Service {
+                command: Some(ServiceCommands::Install { dry_run: false })
+            }
+        ),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn service_install_takes_a_dry_run_flag() {
+    let cli = parse(&["pm3", "service", "install", "--dry-run"]);
+    assert!(
+        matches!(
+            &cli.command,
+            Commands::Service {
+                command: Some(ServiceCommands::Install { dry_run: true })
+            }
+        ),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn service_uninstall_takes_a_dry_run_flag() {
+    let cli = parse(&["pm3", "service", "uninstall", "--dry-run"]);
+    assert!(
+        matches!(
+            &cli.command,
+            Commands::Service {
+                command: Some(ServiceCommands::Uninstall { dry_run: true })
+            }
+        ),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[tokio::test]
+async fn the_service_subcommand_reaches_the_status_report() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
+    let cli = parse(&["pm3", "--config", &config.to_string_lossy(), "service"]);
+    let printed = execute(cli).await.expect("the status query should answer");
+    assert!(
+        printed.expect("a report").contains("not installed"),
+        "an unknown service should read as not installed"
+    );
+}

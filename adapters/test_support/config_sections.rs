@@ -13,6 +13,9 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   sandbox:
     mode: "{sandbox_mode}"
     network: false
+  service:
+    label: "pm3-fixture"
+    search_path: "/usr/bin:/bin"
 "#
     )
 }

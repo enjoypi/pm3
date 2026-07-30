@@ -56,11 +56,32 @@ pub enum Commands {
         command: ConfigCommands,
     },
 
+    #[command(about = "Manage the pm3 auto-start service")]
+    Service {
+        #[command(subcommand)]
+        command: Option<ServiceCommands>,
+    },
+
     #[command(about = "Run the pm3 daemon in the foreground")]
     Daemon,
 
     #[command(name = "__sleep", hide = true, about = "Sleep, then exit cleanly")]
     Sleep { ms: u64 },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ServiceCommands {
+    #[command(about = "Install the pm3 daemon as a user-level auto-start service")]
+    Install {
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    #[command(about = "Deactivate and remove the pm3 auto-start service")]
+    Uninstall {
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -97,6 +118,9 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
             follow,
         } => run_logs(&config, &name, lines, follow, commands::FOLLOW_FOREVER).await,
         Commands::Config { command } => run_config(&config, &command).map(Some),
+        Commands::Service { command } => crate::service::run_service(&config, command.as_ref())
+            .await
+            .map(Some),
         Commands::Daemon => crate::daemon::run_daemon(&config).await.map(|()| None),
         Commands::Sleep { ms } => {
             commands::sleep_for(ms).await;

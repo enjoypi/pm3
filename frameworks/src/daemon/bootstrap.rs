@@ -5,13 +5,10 @@ use std::{
     time::Duration,
 };
 
-use adapters::{Pm3Config, Pm3Paths};
+use adapters::{CONFIG_FLAG, DAEMON_SUBCOMMAND, Pm3Config, Pm3Paths};
 use tokio::process::Command;
 
 use crate::{Error, Result, client::UdsClient};
-
-pub const DAEMON_SUBCOMMAND: &str = "daemon";
-pub const CONFIG_FLAG: &str = "--config";
 
 #[derive(Clone, Debug)]
 pub struct DaemonLaunch<'l> {

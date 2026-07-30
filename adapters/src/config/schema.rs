@@ -29,6 +29,12 @@ pub enum ConfigError {
     )]
     InvalidSandboxMode(String),
 
+    #[error("cannot accept empty pm3.service.label")]
+    InvalidServiceLabel,
+
+    #[error("cannot accept empty pm3.service.search_path")]
+    InvalidServiceSearchPath,
+
     #[error("cannot accept empty telemetry.service_name")]
     InvalidServiceName,
 
@@ -56,6 +62,7 @@ pub struct Pm3Config {
     pub daemon_poll_interval_ms: u64,
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
+    pub service: ServiceConfig,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -69,6 +76,12 @@ pub struct RestartConfig {
 pub struct SandboxConfig {
     pub mode: String,
     pub network: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ServiceConfig {
+    pub label: String,
+    pub search_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -121,6 +134,12 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
     }
     if !VALID_SANDBOX_MODES.contains(&pm3.sandbox.mode.as_str()) {
         return Err(ConfigError::InvalidSandboxMode(pm3.sandbox.mode.clone()));
+    }
+    if pm3.service.label.is_empty() {
+        return Err(ConfigError::InvalidServiceLabel);
+    }
+    if pm3.service.search_path.is_empty() {
+        return Err(ConfigError::InvalidServiceSearchPath);
     }
     Ok(())
 }

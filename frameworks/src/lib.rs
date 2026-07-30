@@ -5,6 +5,7 @@ pub mod daemon;
 pub mod layout;
 pub mod sandbox_probe;
 pub mod server;
+pub mod service;
 pub mod signal;
 pub mod telemetry;
 
@@ -32,6 +33,18 @@ pub enum Error {
 
     #[error(transparent)]
     Client(#[from] client::ClientError),
+
+    #[error(transparent)]
+    Service(#[from] adapters::ServiceCommandError),
+
+    #[error("cannot determine the pm3 binary path: {reason}")]
+    ServiceProgram { reason: String },
+
+    #[error("cannot resolve the config path '{path}': {reason}")]
+    ServiceConfig { path: String, reason: String },
+
+    #[error("cannot locate the service directory: no HOME in the environment")]
+    ServiceHome,
 
     #[error("cannot prepare the pm3 home '{path}': {reason}")]
     Layout { path: String, reason: String },

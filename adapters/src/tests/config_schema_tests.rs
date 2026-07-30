@@ -100,6 +100,28 @@ fn validate_accepts_every_sandbox_mode() {
 }
 
 #[test]
+fn validate_rejects_an_empty_service_label() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.label = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidServiceLabel),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_service_search_path() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.search_path = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidServiceSearchPath),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn validate_rejects_empty_service_name() {
     let mut cfg = valid_config();
     cfg.telemetry.service_name = String::new();
@@ -155,6 +177,8 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidDrainTimeout(0),
         ConfigError::InvalidMinUptime(0),
         ConfigError::InvalidSandboxMode("yolo".to_string()),
+        ConfigError::InvalidServiceLabel,
+        ConfigError::InvalidServiceSearchPath,
         ConfigError::InvalidServiceName,
         ConfigError::InvalidLogLevel("verbose".to_string()),
         ConfigError::InvalidLogFormat("xml".to_string()),

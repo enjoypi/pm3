@@ -7,6 +7,7 @@ pub mod persistence;
 pub mod presenter;
 pub mod process;
 pub mod sandbox;
+pub mod service;
 pub mod startup;
 pub mod state;
 
@@ -28,8 +29,8 @@ pub use self::{
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
         SANDBOX_MODE_DANGER_FULL_ACCESS, SANDBOX_MODE_READ_ONLY, SANDBOX_MODE_WORKSPACE_WRITE,
-        SandboxConfig, TelemetryConfig, check_config, load_and_parse_config, parse_config,
-        show_config, validate_config, validate_pm3_config, validate_telemetry_config,
+        SandboxConfig, ServiceConfig, TelemetryConfig, check_config, load_and_parse_config,
+        parse_config, show_config, validate_config, validate_pm3_config, validate_telemetry_config,
     },
     http::{APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, StartRequestDto, router},
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
@@ -43,6 +44,11 @@ pub use self::{
     },
     process::{KILL_PROGRAM, KillSignaler, SystemClock, TokioProcessLauncher},
     sandbox::{SandboxBackend, SandboxCommandWrapper, seatbelt_profile},
+    service::{
+        CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, ServiceCommandError, ServiceKind,
+        ServiceProgramSet, ServiceStatus, ServiceUnitSpec, install_service, status_report,
+        uninstall_service, unit_dir_of,
+    },
     startup::log_startup_banner,
     state::{
         DaemonCommand, DaemonError, DaemonFailure, DaemonHandle, DaemonOutcome, DaemonReply,
@@ -76,3 +82,6 @@ pub(crate) mod process_views;
 #[cfg(test)]
 #[path = "../test_support/response_body.rs"]
 pub(crate) mod response_body;
+#[cfg(test)]
+#[path = "../test_support/service_specs.rs"]
+pub(crate) mod service_specs;
