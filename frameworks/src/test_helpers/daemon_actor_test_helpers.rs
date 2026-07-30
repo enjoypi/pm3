@@ -57,6 +57,7 @@ fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
         paths.dump_file.clone(),
         specs.clone(),
         None,
+        specs.config.daemon_poll_interval_ms,
     ));
     let (sender, events) = mpsc::channel(CHANNEL_DEPTH);
     let daemon = Daemon::new(specs, ports, sender.clone());

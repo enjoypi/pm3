@@ -93,6 +93,28 @@ async fn a_blocked_pid_path_is_reported() {
 }
 
 #[tokio::test]
+async fn the_recorded_pid_can_be_read_back() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(dir.path());
+    write_pid_file(&paths).await.expect("should write");
+    assert_eq!(read_pid_file(&paths).await, Some(std::process::id()));
+}
+
+#[tokio::test]
+async fn a_missing_pid_file_reads_as_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    assert_eq!(read_pid_file(&resolve_paths(dir.path())).await, None);
+}
+
+#[tokio::test]
+async fn a_garbled_pid_file_reads_as_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(dir.path());
+    std::fs::write(&paths.pid_file, "not a pid").expect("seed a garbled pid file");
+    assert_eq!(read_pid_file(&paths).await, None);
+}
+
+#[tokio::test]
 async fn clearing_runtime_files_removes_the_socket_and_the_pid_file() {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(dir.path());

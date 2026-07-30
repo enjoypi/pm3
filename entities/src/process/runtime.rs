@@ -1,6 +1,13 @@
 use super::status::ProcessStatus;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessIdentity {
+    pub token: String,
+    pub launch_digest: String,
+    pub binary_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessRuntime {
     pub pm_id: u32,
     pub name: String,
@@ -10,6 +17,7 @@ pub struct ProcessRuntime {
     pub unstable_restarts: u32,
     pub created_at_ms: u64,
     pub started_at_ms: Option<u64>,
+    pub identity: Option<ProcessIdentity>,
     pub pending_restart: bool,
 }
 
@@ -25,6 +33,7 @@ impl ProcessRuntime {
             unstable_restarts: 0,
             created_at_ms,
             started_at_ms: None,
+            identity: None,
             pending_restart: false,
         }
     }
@@ -38,10 +47,15 @@ impl ProcessRuntime {
             .map(|started| now_ms.saturating_sub(started))
     }
 
-    pub const fn mark_launched(&mut self, pid: u32, now_ms: u64) {
+    pub fn mark_launched(&mut self, pid: u32, now_ms: u64) {
         self.status = ProcessStatus::Launching;
         self.pid = Some(pid);
         self.started_at_ms = Some(now_ms);
+        self.identity = None;
+    }
+
+    pub fn record_identity(&mut self, identity: Option<ProcessIdentity>) {
+        self.identity = identity;
     }
 
     pub const fn mark_online(&mut self) {
@@ -52,10 +66,11 @@ impl ProcessRuntime {
         self.status = ProcessStatus::Stopping;
     }
 
-    pub const fn mark_exited(&mut self, status: ProcessStatus) {
+    pub fn mark_exited(&mut self, status: ProcessStatus) {
         self.status = status;
         self.pid = None;
         self.started_at_ms = None;
+        self.identity = None;
     }
 
     pub const fn count_restart(&mut self, unstable_restarts: u32) {

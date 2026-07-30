@@ -45,6 +45,15 @@ fn the_plist_asks_launchd_to_start_and_keep_the_daemon_alive() {
 }
 
 #[test]
+fn the_plist_tells_launchd_to_leave_the_service_process_group_alone() {
+    assert!(
+        rendered().contains("<key>AbandonProcessGroup</key>\n    <true/>"),
+        "got: {}",
+        rendered()
+    );
+}
+
+#[test]
 fn the_plist_points_both_streams_at_the_daemon_log() {
     let plist = rendered();
     assert!(

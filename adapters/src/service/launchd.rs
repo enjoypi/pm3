@@ -36,6 +36,8 @@ pub fn render_plist(spec: &ServiceUnitSpec) -> String {
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>AbandonProcessGroup</key>
+    <true/>
     <key>ProcessType</key>
     <string>Background</string>
     <key>StandardOutPath</key>

@@ -1,3 +1,5 @@
+use adapters::StartKind;
+
 use super::{test_helpers::*, *};
 
 async fn start_one(harness: &mut Harness, name: &str, script: &str) -> StartOutcome {
@@ -361,24 +363,81 @@ async fn resurrecting_a_broken_dump_is_tolerated() {
     assert_eq!(listed(&mut harness).await, 0);
 }
 
-#[tokio::test]
-async fn shutting_down_stops_every_app() {
-    let mut harness = harness();
-    start_one(&mut harness, "web", SLEEPER).await;
-    harness.daemon.shutdown().await;
+async fn status_of(harness: &mut Harness, name: &str) -> String {
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(DaemonRequest::Describe(selector(name)))
         .await
         .expect("should describe");
+    let DaemonReply::Described(view) = reply else {
+        panic!("describe should answer with a view")
+    };
+    view.status.as_str().to_string()
+}
+
+#[tokio::test]
+async fn stopping_everything_takes_every_app_down() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    harness
+        .daemon
+        .handle(DaemonRequest::StopAll)
+        .await
+        .expect("should stop everything");
+    assert_ne!(status_of(&mut harness, "web").await, "online");
+}
+
+#[tokio::test]
+async fn stopping_everything_names_what_it_stopped() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    let reply = harness
+        .daemon
+        .handle(DaemonRequest::StopAll)
+        .await
+        .expect("should stop everything");
     assert!(
-        matches!(reply, DaemonReply::Described(view) if view.status.as_str() != "online"),
-        "shutdown should stop every app"
+        matches!(reply, DaemonReply::StoppedAll { names } if names == vec!["web".to_string()]),
+        "stop-all should report the services it stopped"
     );
 }
 
 #[tokio::test]
-async fn shutting_down_force_kills_a_child_the_table_forgot() {
+async fn stopping_everything_on_an_empty_table_reports_nothing() {
+    let mut harness = harness();
+    let reply = harness
+        .daemon
+        .handle(DaemonRequest::StopAll)
+        .await
+        .expect("should stop everything");
+    assert!(
+        matches!(reply, DaemonReply::StoppedAll { names } if names.is_empty()),
+        "an empty table stops nothing"
+    );
+}
+
+#[tokio::test]
+async fn shutting_down_leaves_every_app_running() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    harness.daemon.shutdown();
+    assert_eq!(status_of(&mut harness, "web").await, "online");
+}
+
+#[tokio::test]
+async fn shutting_down_signals_nothing() {
+    let mut harness = harness();
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    let pid = started.pid.expect("a pid");
+    harness.daemon.shutdown();
+    assert!(
+        harness.daemon.tracked_pids().await.contains(&pid),
+        "a preserved service must stay tracked, not be signalled"
+    );
+}
+
+#[tokio::test]
+async fn stopping_everything_force_kills_a_child_the_table_forgot() {
     let mut harness = harness_with_kill_timeout(0);
     let file = apps_file_without_restart(&harness, "web", SLEEPER);
     let reply = harness
@@ -398,7 +457,11 @@ async fn shutting_down_force_kills_a_child_the_table_forgot() {
         .daemon
         .on_exit("web", 1, ExitOutcome { exit_code: Some(0) })
         .await;
-    harness.daemon.shutdown().await;
+    harness
+        .daemon
+        .handle(DaemonRequest::StopAll)
+        .await
+        .expect("should stop everything");
 
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
     assert_eq!(outcome.exit_code, None, "pid {pid} should be force killed");
@@ -547,7 +610,9 @@ async fn starting_an_already_running_app_leaves_it_alone() {
         panic!("start should answer with a start summary")
     };
     assert!(
-        outcomes.iter().all(|outcome| outcome.already_running),
+        outcomes
+            .iter()
+            .all(|outcome| outcome.kind == StartKind::AlreadyRunning),
         "the second start should report the app as already running"
     );
 }
@@ -638,4 +703,18 @@ async fn restarting_a_stopped_app_through_a_command_starts_it_again() {
         matches!(described, DaemonReply::Described(view) if view.status.as_str() == "online"),
         "the app should be online again"
     );
+}
+
+#[tokio::test]
+async fn shutting_down_counts_only_the_services_still_running() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    start_one(&mut harness, "db", SLEEPER).await;
+    harness
+        .daemon
+        .handle(DaemonRequest::Stop(selector("db")))
+        .await
+        .expect("should stop db");
+    harness.daemon.shutdown();
+    assert_eq!(status_of(&mut harness, "web").await, "online");
 }

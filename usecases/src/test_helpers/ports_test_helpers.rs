@@ -1,17 +1,29 @@
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::{
+    collections::BTreeMap,
+    sync::{Mutex, MutexGuard, PoisonError},
+};
 
 use entities::{AppSpec, SandboxMode, SandboxPolicy};
 
 use crate::{
     Ports,
     ports::{
-        Clock, CommandWrapper, DumpError, DumpStore, LaunchError, LaunchSpec, LaunchedProcess,
-        ProcessLauncher, SandboxError, SignalError, Signaler, WrappedCommand,
+        Clock, CommandWrapper, DumpError, DumpStore, FingerprintError, Fingerprinter, LaunchError,
+        LaunchSpec, LaunchedProcess, ProcessLauncher, ProcessProbe, SandboxError, SignalError,
+        Signaler, WrappedCommand,
     },
     record::ProcessRecord,
 };
 
 pub const SANDBOX_PREFIX: &str = "/usr/bin/pm3-sandbox";
+pub const TEXT_DIGEST_PREFIX: &str = "text:";
+pub const FILE_DIGEST_PREFIX: &str = "file:";
+pub const LIVE_TOKEN_PREFIX: &str = "live:";
+
+#[must_use]
+pub fn live_token(pid: u32) -> String {
+    format!("{LIVE_TOKEN_PREFIX}{pid}")
+}
 
 #[derive(Debug, Default)]
 struct FakeState {
@@ -26,6 +38,11 @@ struct FakeState {
     saves: usize,
     load_fails: bool,
     save_fails: bool,
+    live: BTreeMap<u32, String>,
+    probe_blind: Vec<u32>,
+    adopted: Vec<u32>,
+    file_digests: BTreeMap<String, String>,
+    digest_failures: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -73,6 +90,37 @@ impl FakePorts {
         self.with_state(|state| state.stored = records);
     }
 
+    pub fn seed_live(&self, pid: u32, token: &str) {
+        self.with_state(|state| {
+            state.live.insert(pid, token.to_string());
+        });
+    }
+
+    pub fn seed_file_digest(&self, path: &str, digest: &str) {
+        self.with_state(|state| {
+            state
+                .file_digests
+                .insert(path.to_string(), digest.to_string());
+        });
+    }
+
+    pub fn fail_file_digest_for(&self, path: &str) {
+        self.with_state(|state| state.digest_failures.push(path.to_string()));
+    }
+
+    pub fn hide_from_probe(&self, pid: u32) {
+        self.with_state(|state| {
+            state.probe_blind.push(pid);
+            state.live.remove(&pid);
+        });
+    }
+
+    pub fn kill_silently(&self, pid: u32) {
+        self.with_state(|state| {
+            state.live.remove(&pid);
+        });
+    }
+
     #[must_use]
     pub fn spawned_names(&self) -> Vec<String> {
         self.read(|state| state.spawned.iter().map(|spec| spec.name.clone()).collect())
@@ -81,6 +129,11 @@ impl FakePorts {
     #[must_use]
     pub fn spawned(&self) -> Vec<LaunchSpec> {
         self.read(|state| state.spawned.clone())
+    }
+
+    #[must_use]
+    pub fn adopted(&self) -> Vec<u32> {
+        self.read(|state| state.adopted.clone())
     }
 
     #[must_use]
@@ -122,6 +175,9 @@ impl FakePorts {
             guard.spawned.push(spec.clone());
             let assigned = guard.next_pid;
             guard.next_pid = assigned.saturating_add(1);
+            if !guard.probe_blind.contains(&assigned) {
+                guard.live.insert(assigned, live_token(assigned));
+            }
             assigned
         };
         Ok(LaunchedProcess { pid })
@@ -175,6 +231,10 @@ impl ProcessLauncher for FakePorts {
     async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
         self.record_spawn(spec)
     }
+
+    async fn adopt(&self, pid: u32) {
+        self.with_state(|state| state.adopted.push(pid));
+    }
 }
 
 impl Signaler for FakePorts {
@@ -218,6 +278,36 @@ impl DumpStore for FakePorts {
 
     async fn save(&self, records: &[ProcessRecord]) -> Result<(), DumpError> {
         self.record_save(records)
+    }
+}
+
+impl ProcessProbe for FakePorts {
+    async fn identity(&self, pid: u32) -> Option<String> {
+        self.read(|state| state.live.get(&pid).cloned())
+    }
+}
+
+impl Fingerprinter for FakePorts {
+    fn digest(&self, text: &str) -> String {
+        format!("{TEXT_DIGEST_PREFIX}{text}")
+    }
+
+    async fn file_digest(&self, path: &str) -> Result<String, FingerprintError> {
+        let digest = {
+            let guard = self.locked();
+            if guard.digest_failures.iter().any(|failed| failed == path) {
+                return Err(FingerprintError::Read {
+                    path: path.to_string(),
+                    reason: "injected digest failure".to_string(),
+                });
+            }
+            guard
+                .file_digests
+                .get(path)
+                .cloned()
+                .unwrap_or_else(|| format!("{FILE_DIGEST_PREFIX}{path}"))
+        };
+        Ok(digest)
     }
 }
 

@@ -26,6 +26,14 @@ impl TokioProcessLauncher {
         self.tracked.lock().await.live.iter().copied().collect()
     }
 
+    pub async fn is_child(&self, pid: u32) -> bool {
+        self.tracked.lock().await.children.contains_key(&pid)
+    }
+
+    pub async fn release(&self, pid: u32) {
+        self.tracked.lock().await.live.remove(&pid);
+    }
+
     pub async fn wait(&self, pid: u32) -> Option<ExitOutcome> {
         let owned = { self.tracked.lock().await.children.remove(&pid) };
         let mut child = owned?;
@@ -66,6 +74,11 @@ impl ProcessLauncher for TokioProcessLauncher {
         );
         Ok(LaunchedProcess { pid })
     }
+
+    async fn adopt(&self, pid: u32) {
+        self.tracked.lock().await.live.insert(pid);
+        tracing::debug!(pid, action = "adopt", "took over an inherited process");
+    }
 }
 
 async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command {
@@ -74,6 +87,7 @@ async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command
         .args(&spec.args)
         .current_dir(&spec.cwd)
         .env_clear()
+        .process_group(0)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout.into_std().await))
         .stderr(Stdio::from(stderr.into_std().await));

@@ -9,6 +9,14 @@ fn online_at(started_at_ms: u64) -> ProcessRuntime {
     }
 }
 
+fn identity() -> ProcessIdentity {
+    ProcessIdentity {
+        token: "Tue Jul 28 14:06:28 2026".to_string(),
+        launch_digest: "aaaa".to_string(),
+        binary_digest: "bbbb".to_string(),
+    }
+}
+
 #[test]
 fn new_runtime_starts_stopped_without_pid() {
     let runtime = ProcessRuntime::new(7, "api".to_string(), 1000);
@@ -17,6 +25,43 @@ fn new_runtime_starts_stopped_without_pid() {
     assert_eq!(runtime.restart_time, 0);
     assert_eq!(runtime.unstable_restarts, 0);
     assert_eq!(runtime.started_at_ms, None);
+}
+
+#[test]
+fn a_new_runtime_carries_no_identity() {
+    let runtime = ProcessRuntime::new(7, "api".to_string(), 1000);
+    assert_eq!(runtime.identity, None);
+}
+
+#[test]
+fn record_identity_stores_what_the_running_process_was_launched_from() {
+    let mut runtime = online_at(1000);
+    runtime.record_identity(Some(identity()));
+    assert_eq!(runtime.identity, Some(identity()));
+}
+
+#[test]
+fn record_identity_can_clear_an_unusable_capture() {
+    let mut runtime = online_at(1000);
+    runtime.record_identity(Some(identity()));
+    runtime.record_identity(None);
+    assert_eq!(runtime.identity, None);
+}
+
+#[test]
+fn mark_exited_drops_the_identity_along_with_the_pid() {
+    let mut runtime = online_at(1000);
+    runtime.record_identity(Some(identity()));
+    runtime.mark_exited(ProcessStatus::Stopped);
+    assert_eq!(runtime.identity, None);
+}
+
+#[test]
+fn mark_launched_drops_a_stale_identity_until_the_new_one_is_captured() {
+    let mut runtime = online_at(1000);
+    runtime.record_identity(Some(identity()));
+    runtime.mark_launched(99, 2000);
+    assert_eq!(runtime.identity, None);
 }
 
 #[test]

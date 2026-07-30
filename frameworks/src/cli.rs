@@ -70,6 +70,15 @@ pub enum Commands {
         command: Option<ServiceCommands>,
     },
 
+    #[command(
+        about = "Stop the pm3 daemon",
+        long_about = "Stops the pm3 daemon. Managed services keep running and are reclaimed by the next daemon unless --with-services is given."
+    )]
+    Kill {
+        #[arg(long, help = "Stop every managed service before leaving")]
+        with_services: bool,
+    },
+
     #[command(about = "Run the pm3 daemon in the foreground")]
     Daemon,
 
@@ -158,6 +167,9 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
         } => run_logs(&config, &name, lines, follow, commands::FOLLOW_FOREVER).await,
         Commands::Config { command } => run_config(&config, &command).map(Some),
         Commands::Service { command } => crate::service::run_service(&config, command.as_ref())
+            .await
+            .map(Some),
+        Commands::Kill { with_services } => commands::kill_daemon(&config, with_services)
             .await
             .map(Some),
         Commands::Daemon => crate::daemon::run_daemon(&config).await.map(|()| None),

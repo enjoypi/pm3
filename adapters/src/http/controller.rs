@@ -47,6 +47,10 @@ pub async fn delete(State(handle): State<DaemonHandle>, Path(raw): Path<String>)
     respond(handle.send(DaemonRequest::Delete(selector(&raw))).await)
 }
 
+pub async fn stop_all(State(handle): State<DaemonHandle>) -> Response {
+    respond(handle.send(DaemonRequest::StopAll).await)
+}
+
 fn selector(raw: &str) -> AppSelector {
     AppSelector::parse(raw)
 }
@@ -72,7 +76,9 @@ const fn usecase_status(error: &UsecaseError) -> StatusCode {
     match error {
         Ue::NotFound(_) => StatusCode::NOT_FOUND,
         Ue::Spec(_) | Ue::Dependency(_) | Ue::Policy(_) | Ue::Sandbox(_) => StatusCode::BAD_REQUEST,
-        Ue::Launch(_) | Ue::Signal(_) | Ue::Dump(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Ue::Launch(_) | Ue::Signal(_) | Ue::Dump(_) | Ue::Fingerprint(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
 }
 

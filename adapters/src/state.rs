@@ -12,6 +12,7 @@ pub enum DaemonRequest {
     Stop(AppSelector),
     Restart(AppSelector),
     Delete(AppSelector),
+    StopAll,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,6 +23,7 @@ pub enum DaemonReply {
     Stopped { name: String },
     Restarted { name: String },
     Deleted { name: String },
+    StoppedAll { names: Vec<String> },
 }
 
 #[derive(Debug)]

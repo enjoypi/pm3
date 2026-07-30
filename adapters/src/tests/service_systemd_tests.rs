@@ -39,6 +39,15 @@ fn the_unit_restarts_the_daemon_on_failure() {
 }
 
 #[test]
+fn the_unit_kills_only_the_daemon_and_not_its_whole_control_group() {
+    assert!(
+        rendered().contains("KillMode=process"),
+        "got: {}",
+        rendered()
+    );
+}
+
+#[test]
 fn the_unit_appends_both_streams_to_the_daemon_log() {
     let unit = rendered();
     assert!(

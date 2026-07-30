@@ -29,6 +29,11 @@ pub async fn write_pid_file(paths: &Pm3Paths) -> Result<()> {
         .map_err(|e| layout_error(&paths.pid_file, &e))
 }
 
+pub async fn read_pid_file(paths: &Pm3Paths) -> Option<u32> {
+    let raw = tokio::fs::read_to_string(&paths.pid_file).await.ok()?;
+    raw.trim().parse().ok()
+}
+
 pub async fn clear_runtime_files(paths: &Pm3Paths) {
     tokio::fs::remove_file(&paths.socket).await.ok();
     tokio::fs::remove_file(&paths.pid_file).await.ok();

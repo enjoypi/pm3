@@ -23,6 +23,7 @@ ExecStart={exec_start}
 WorkingDirectory={working_directory}
 Restart=on-failure
 RestartSec={RESTART_DELAY_SECS}
+KillMode=process
 Environment=\"{HOME_VARIABLE}={home}\"
 Environment=\"{PATH_VARIABLE}={search_path}\"
 StandardOutput=append:{log_path}

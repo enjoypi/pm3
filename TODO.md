@@ -4,13 +4,15 @@ pm3：极简版 pm2（带严格沙盒隔离）。计划全文见 `~/.claude/plan
 
 ## 当前状态
 
-**四层全部完成，门禁全绿**：`just fmt` / `just lint` / `just cov`（874 测试，regions/functions/lines 四指标 100%，lcov 无 `,0` 项，无生产文件缺失）/ `just typecheck` / `just test-scripts` 均通过。
+**四层全部完成，门禁全绿**：`just fmt` / `just lint` / `just cov`（1031 测试，regions/functions/lines 四指标 100%，lcov 无 `,0` 项，无生产文件缺失）/ `just typecheck` / `just test-scripts` 均通过。
 
 端到端验收（`frameworks/tests/`，各自独立 `PM3_HOME` tempdir、收尾 SIGTERM + 等退出）覆盖：全生命周期 CLI 链路、沙盒真隔离（cwd 内可写／cwd 外被拒／网络被拒）、崩溃熔断、依赖启动序与环检测、自动持久化与 resurrect、孤儿 socket 自愈、SIGINT 吞掉且 SIGTERM 退出。
 
 `pm3 service [install|uninstall] [--dry-run]`（不带子命令查状态）把 daemon 注册为用户级自启服务：macOS launchd LaunchAgent、Linux systemd user unit + `loginctl enable-linger`。生成的 plist 已过 `plutil -lint`，并在 macOS 真机跑通 install → running → `launchctl list` 核对 → uninstall。
 
 启动参数与运行状态已彻底分离：`pm3 start --name X [选项] <程序> <参数...>` 把意图写成 `pm3.cfg_dir/<name>.yaml`（零绝对路径，`${HOME}` 占位、`script` 存裸名、`cwd` 由 daemon 推导），`dump.yaml` 只留 `services[].runtime`；daemon 启动时由 `SpecSource` 把两者缝起来，服务文件缺失/损坏只跳过并 `warn`。真机已验证 launchd 重启后 mihomo-rule 自动复活且代理连通。
+
+daemon 自身重启不再连带重启服务：spawn 时把「身份令牌（`ps -o lstart=`）+ 启动参数摘要 + 二进制 sha256」记进 `dump.yaml`，重启后逐服务比对，全同则接管（`adopt`）已存活的进程并轮询监控，任一不同则先停掉旧幸存进程（`evict`）再重启。SIGTERM 只落盘退出、不动服务；彻底停机用 `pm3 kill --with-services`。子进程用独立 process group，launchd `AbandonProcessGroup` / systemd `KillMode=process`，bwrap 去掉 `--die-with-parent`。
 
 ## 待办
 

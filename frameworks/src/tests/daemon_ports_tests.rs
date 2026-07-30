@@ -6,6 +6,7 @@ use super::*;
 use crate::test_support::pm3_config_with_home;
 
 const EPOCH_2023_MS: u64 = 1_700_000_000_000;
+const POLL_MS: u64 = 10;
 
 fn unconfined_policy() -> SandboxPolicy {
     SandboxPolicy {
@@ -16,7 +17,7 @@ fn unconfined_policy() -> SandboxPolicy {
 }
 
 fn ports_in(dir: &Path) -> DaemonPorts {
-    DaemonPorts::new(dir.join("dump.yaml"), spec_source_in(dir), None)
+    DaemonPorts::new(dir.join("dump.yaml"), spec_source_in(dir), None, POLL_MS)
 }
 
 fn spec_source_in(dir: &Path) -> SpecSource {

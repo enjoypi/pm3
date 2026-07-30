@@ -4,19 +4,21 @@ use std::{
 };
 
 use adapters::{
-    APPS_PATH, AppConfig, LogFollower, Pm3Paths, StartRequestDto, load_and_parse_config, log_paths,
-    logs_dir_of, read_tail,
+    APPS_PATH, AppConfig, KillSignaler, LogFollower, Pm3Paths, SERVICES_STOP_ALL_PATH,
+    Signaler as _, StartRequestDto, load_and_parse_config, log_paths, logs_dir_of, read_tail,
+    wait_until_released,
 };
 
 use crate::{
     Error, Result,
     client::{OK_STATUS, UdsClient},
     daemon::{DaemonLaunch, ensure_daemon_running},
-    layout::{ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
+    layout::{ensure_layout, host_home, read_pid_file, resolve_cfg_dir, resolve_layout},
     svc::{self, InlineStart, Reconciled, SvcContext},
 };
 
 pub const FOLLOW_FOREVER: u32 = u32::MAX;
+pub const DAEMON_NOT_RUNNING: &str = "the pm3 daemon is not running";
 
 const FOLLOW_INTERVAL_MS: u64 = 200;
 const STOP_ACTION: &str = "stop";
@@ -119,6 +121,49 @@ pub async fn delete_app(config_path: &str, selector: &str) -> Result<String> {
     let deleted = ask(config_path, "DELETE", &app_path(selector), None).await?;
     svc::forget(&cfg_dir, selector).await;
     Ok(deleted)
+}
+
+pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<String> {
+    let session = open_session(config_path)?;
+    let client = UdsClient::new(session.paths.socket.clone());
+    if !client.daemon_is_healthy().await {
+        return Ok(DAEMON_NOT_RUNNING.to_string());
+    }
+    let stopped = if with_services {
+        Some(ask(config_path, "POST", SERVICES_STOP_ALL_PATH, None).await?)
+    } else {
+        None
+    };
+    let Some(pid) = read_pid_file(&session.paths).await else {
+        return Err(Error::DaemonPidUnknown {
+            path: session.paths.pid_file.to_string_lossy().into_owned(),
+        });
+    };
+    KillSignaler::default().terminate(pid).await?;
+    let budget_ms = session.config.pm3.start_timeout_ms;
+    if !wait_until_released(&session.paths.socket, budget_ms).await {
+        log_lingering_daemon(&session.paths.socket, budget_ms);
+    }
+    Ok(kill_report(stopped.as_deref(), pid))
+}
+
+fn kill_report(stopped: Option<&str>, pid: u32) -> String {
+    let farewell = format!("stopped the pm3 daemon (pid {pid})");
+    stopped.map_or_else(
+        || format!("{farewell}; managed services keep running"),
+        |services| format!("{services}\n{farewell}"),
+    )
+}
+
+fn log_lingering_daemon(socket: &Path, timeout_ms: u64) {
+    let path = socket.to_string_lossy().into_owned();
+    tracing::warn!(
+        feature = "lifecycle",
+        operation = "kill",
+        path,
+        timeout_ms,
+        "pm3 signalled the daemon but its socket is still there",
+    );
 }
 
 pub async fn read_log_tail(config_path: &str, name: &str, lines: usize) -> Result<String> {

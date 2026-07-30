@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use usecases::{ProcessRecord, ProcessRuntime, ProcessStatus};
+use usecases::{ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DumpDocument {
@@ -22,6 +22,16 @@ pub struct RuntimeDto {
     pub created_at_ms: u64,
     pub pid: Option<u32>,
     pub started_at_ms: Option<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<IdentityDto>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IdentityDto {
+    pub token: String,
+    pub launch_digest: String,
+    pub binary_digest: String,
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -47,6 +57,7 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         created_at_ms,
         pid,
         started_at_ms,
+        identity,
     } = runtime;
     let parsed = ProcessStatus::parse(&status).ok_or_else(|| DecodeError::UnknownStatus {
         app: name.clone(),
@@ -61,8 +72,35 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         unstable_restarts,
         created_at_ms,
         started_at_ms,
+        identity: identity.map(decode_identity),
         pending_restart: false,
     })
+}
+
+fn decode_identity(dto: IdentityDto) -> ProcessIdentity {
+    let IdentityDto {
+        token,
+        launch_digest,
+        binary_digest,
+    } = dto;
+    ProcessIdentity {
+        token,
+        launch_digest,
+        binary_digest,
+    }
+}
+
+fn encode_identity(identity: &ProcessIdentity) -> IdentityDto {
+    let ProcessIdentity {
+        token,
+        launch_digest,
+        binary_digest,
+    } = identity;
+    IdentityDto {
+        token: token.clone(),
+        launch_digest: launch_digest.clone(),
+        binary_digest: binary_digest.clone(),
+    }
 }
 
 fn encode_state(record: &ProcessRecord) -> StateDto {
@@ -76,6 +114,7 @@ fn encode_state(record: &ProcessRecord) -> StateDto {
         unstable_restarts,
         created_at_ms,
         started_at_ms,
+        identity,
         pending_restart: _,
     } = runtime;
     StateDto {
@@ -88,6 +127,7 @@ fn encode_state(record: &ProcessRecord) -> StateDto {
             created_at_ms: *created_at_ms,
             pid: *pid,
             started_at_ms: *started_at_ms,
+            identity: identity.as_ref().map(encode_identity),
         },
     }
 }

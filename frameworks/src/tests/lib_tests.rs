@@ -158,3 +158,23 @@ fn a_refused_request_reports_the_status_and_the_body() {
         "pm3 daemon refused the request with status 404: cannot find app 'web'"
     );
 }
+
+#[test]
+fn a_signal_failure_is_passed_through() {
+    let error = Error::Signal(adapters::SignalError::Delivery {
+        pid: 4242,
+        reason: "no such process".to_string(),
+    });
+    assert_eq!(error.to_string(), "cannot signal pid 4242: no such process");
+}
+
+#[test]
+fn an_unreadable_daemon_pid_names_the_file() {
+    let error = Error::DaemonPidUnknown {
+        path: "/tmp/pm3.pid".to_string(),
+    };
+    assert_eq!(
+        error.to_string(),
+        "cannot read the pm3 daemon pid from '/tmp/pm3.pid'"
+    );
+}
