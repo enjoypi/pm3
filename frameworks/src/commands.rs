@@ -1,4 +1,7 @@
-use std::{path::Path, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use adapters::{
     APPS_PATH, AppConfig, LogFollower, Pm3Paths, StartRequestDto, load_and_parse_config, log_paths,
@@ -9,7 +12,8 @@ use crate::{
     Error, Result,
     client::{OK_STATUS, UdsClient},
     daemon::{DaemonLaunch, ensure_daemon_running},
-    layout::{ensure_layout, host_home, resolve_layout},
+    layout::{ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
+    svc::{self, InlineStart, SvcContext},
 };
 
 pub const FOLLOW_FOREVER: u32 = u32::MAX;
@@ -22,16 +26,47 @@ const RESTART_ACTION: &str = "restart";
 pub struct Session {
     pub config: AppConfig,
     pub paths: Pm3Paths,
+    pub cfg_dir: PathBuf,
+}
+
+impl Session {
+    #[must_use]
+    pub fn svc_context<'s>(&'s self, home: Option<&'s str>) -> SvcContext<'s> {
+        SvcContext {
+            cfg_dir: &self.cfg_dir,
+            search_path: &self.config.pm3.search_path,
+            home,
+        }
+    }
 }
 
 pub fn open_session(config_path: &str) -> Result<Session> {
     let config = load_and_parse_config(config_path)?;
-    let paths = resolve_layout(&config.pm3, host_home().as_deref())?;
-    Ok(Session { config, paths })
+    let home = host_home();
+    let paths = resolve_layout(&config.pm3, home.as_deref())?;
+    let cfg_dir = resolve_cfg_dir(&config.pm3, home.as_deref())?;
+    Ok(Session {
+        config,
+        paths,
+        cfg_dir,
+    })
 }
 
-pub async fn start_apps(config_path: &str, apps_file: &str) -> Result<String> {
-    let body = start_body(&canonical_apps_file(apps_file)?);
+pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Result<String> {
+    let session = open_session(config_path)?;
+    ensure_layout(&session.paths, &session.cfg_dir).await?;
+    let resolved = canonical_apps_file(apps_file)?;
+    let home = host_home();
+    svc::split_apps_file(&session.svc_context(home.as_deref()), &resolved, force).await?;
+    ask(config_path, "POST", APPS_PATH, Some(&start_body(&resolved))).await
+}
+
+pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Result<String> {
+    let session = open_session(config_path)?;
+    ensure_layout(&session.paths, &session.cfg_dir).await?;
+    let home = host_home();
+    let svc_file = svc::prepare_inline(&session.svc_context(home.as_deref()), request).await?;
+    let body = start_body(&svc_file.to_string_lossy());
     ask(config_path, "POST", APPS_PATH, Some(&body)).await
 }
 
@@ -64,7 +99,10 @@ pub async fn restart_app(config_path: &str, selector: &str) -> Result<String> {
 }
 
 pub async fn delete_app(config_path: &str, selector: &str) -> Result<String> {
-    ask(config_path, "DELETE", &app_path(selector), None).await
+    let cfg_dir = open_session(config_path)?.cfg_dir;
+    let deleted = ask(config_path, "DELETE", &app_path(selector), None).await?;
+    svc::forget(&cfg_dir, selector).await;
+    Ok(deleted)
 }
 
 pub async fn read_log_tail(config_path: &str, name: &str, lines: usize) -> Result<String> {
@@ -126,7 +164,7 @@ pub fn start_body(apps_file: &str) -> String {
 
 async fn ask(config_path: &str, method: &str, path: &str, body: Option<&str>) -> Result<String> {
     let session = open_session(config_path)?;
-    ensure_layout(&session.paths).await?;
+    ensure_layout(&session.paths, &session.cfg_dir).await?;
     let program = std::env::current_exe().unwrap_or_default();
     let launch =
         DaemonLaunch::from_config(&session.paths, config_path, program, &session.config.pm3);

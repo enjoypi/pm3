@@ -15,6 +15,8 @@ pub const SERVICE_SEARCH_PATH: &str = "/usr/bin:/bin";
 pub fn pm3_config_with_home(home: &str) -> Pm3Config {
     Pm3Config {
         home: home.to_string(),
+        cfg_dir: format!("{home}/svc"),
+        search_path: SERVICE_SEARCH_PATH.to_string(),
         kill_timeout_ms: KILL_TIMEOUT_MS,
         start_timeout_ms: START_TIMEOUT_MS,
         drain_timeout_secs: DRAIN_TIMEOUT_SECS,
@@ -30,7 +32,6 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         },
         service: ServiceConfig {
             label: SERVICE_LABEL.to_string(),
-            search_path: SERVICE_SEARCH_PATH.to_string(),
         },
     }
 }
@@ -39,6 +40,8 @@ pub fn config_yaml(home: &str) -> String {
     format!(
         r#"pm3:
   home: "{home}"
+  cfg_dir: "{home}/svc"
+  search_path: "{SERVICE_SEARCH_PATH}"
   kill_timeout_ms: {KILL_TIMEOUT_MS}
   start_timeout_ms: {START_TIMEOUT_MS}
   drain_timeout_secs: {DRAIN_TIMEOUT_SECS}
@@ -52,7 +55,6 @@ pub fn config_yaml(home: &str) -> String {
     network: false
   service:
     label: "{SERVICE_LABEL}"
-    search_path: "{SERVICE_SEARCH_PATH}"
 
 telemetry:
   service_name: "pm3"
@@ -65,6 +67,16 @@ telemetry:
 pub fn write_config(dir: &Path, home: &str) -> PathBuf {
     let path = dir.join("config.yaml");
     std::fs::write(&path, config_yaml(home)).expect("write the pm3 config");
+    path
+}
+
+pub fn write_config_with_cfg_dir(dir: &Path, home: &str, cfg_dir: &str) -> PathBuf {
+    let path = dir.join("config.yaml");
+    let yaml = config_yaml(home).replace(
+        &format!("cfg_dir: \"{home}/svc\""),
+        &format!("cfg_dir: \"{cfg_dir}\""),
+    );
+    std::fs::write(&path, yaml).expect("write the pm3 config");
     path
 }
 

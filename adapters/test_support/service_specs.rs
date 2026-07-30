@@ -11,6 +11,7 @@ pub const CONFIG_PATH: &str = "/etc/pm3/config.yaml";
 pub const WORKING_DIRECTORY: &str = "/home/dev/.pm3";
 pub const LOG_PATH: &str = "/home/dev/.pm3/pm3.log";
 pub const SEARCH_PATH: &str = "/usr/bin:/bin";
+pub const HOME: &str = "/home/dev";
 pub const MISSING_PROGRAM: &str = "/nonexistent/pm3-service-manager";
 
 pub fn spec_for(kind: ServiceKind, home: &Path) -> ServiceUnitSpec {
@@ -23,6 +24,7 @@ pub fn spec_for(kind: ServiceKind, home: &Path) -> ServiceUnitSpec {
         working_directory: PathBuf::from(WORKING_DIRECTORY),
         log_path: PathBuf::from(LOG_PATH),
         search_path: SEARCH_PATH.to_string(),
+        home: HOME.to_string(),
     }
 }
 

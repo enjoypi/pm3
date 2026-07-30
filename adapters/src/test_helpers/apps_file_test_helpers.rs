@@ -6,8 +6,9 @@ use crate::{
 };
 
 pub const APP_NAME: &str = "web";
-pub const SCRIPT: &str = "/usr/bin/node";
+pub const SCRIPT: &str = "/bin/sh";
 pub const CWD: &str = "/srv/web";
+pub const HOME_DIR: &str = "/tmp/pm3-fixture";
 pub const LOGS_DIR: &str = "/tmp/pm3-fixture/logs";
 pub const TMP_DIR: &str = "/tmp/pm3-fixture-tmp";
 
@@ -22,20 +23,19 @@ pub fn pm3_config(sandbox_mode: &str) -> Pm3Config {
         .pm3
 }
 
+static FIXTURE_CONFIG: std::sync::LazyLock<Pm3Config> =
+    std::sync::LazyLock::new(|| pm3_config(SANDBOX_MODE_WORKSPACE_WRITE));
+
 pub fn defaults() -> SpecDefaults<'static> {
-    SpecDefaults::from_config(
-        &pm3_config(SANDBOX_MODE_WORKSPACE_WRITE),
-        LOGS_DIR,
-        Some(TMP_DIR),
-    )
-    .expect("fixture defaults should build")
+    SpecDefaults::from_config(&FIXTURE_CONFIG, HOME_DIR, LOGS_DIR, Some(TMP_DIR))
+        .expect("fixture defaults should build")
 }
 
 pub fn minimal_entry() -> AppEntry {
     AppEntry {
         name: APP_NAME.to_string(),
         script: SCRIPT.to_string(),
-        cwd: CWD.to_string(),
+        cwd: Some(CWD.to_string()),
         args: Vec::new(),
         env: BTreeMap::new(),
         depends_on: Vec::new(),

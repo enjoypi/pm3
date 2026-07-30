@@ -8,7 +8,7 @@ use adapters::{
 use crate::{
     Error, Result,
     cli::ServiceCommands,
-    layout::{ensure_layout, host_home, resolve_layout},
+    layout::{ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
 };
 
 #[cfg(target_os = "macos")]
@@ -27,6 +27,7 @@ pub struct ServiceContext<'c> {
 #[derive(Debug)]
 pub struct ServiceSession {
     pub paths: Pm3Paths,
+    pub cfg_dir: PathBuf,
     pub spec: ServiceUnitSpec,
 }
 
@@ -64,8 +65,13 @@ pub fn open_service_session(
     let absolute = canonical_config_path(config_path)?;
     let config = load_and_parse_config(&absolute.to_string_lossy())?;
     let paths = resolve_layout(&config.pm3, context.home_env)?;
+    let cfg_dir = resolve_cfg_dir(&config.pm3, context.home_env)?;
     let spec = build_spec(&config, &paths, context, absolute)?;
-    Ok(ServiceSession { paths, spec })
+    Ok(ServiceSession {
+        paths,
+        cfg_dir,
+        spec,
+    })
 }
 
 async fn install(
@@ -74,7 +80,7 @@ async fn install(
     dry_run: bool,
 ) -> Result<String> {
     if !dry_run {
-        ensure_layout(&session.paths).await?;
+        ensure_layout(&session.paths, &session.cfg_dir).await?;
     }
     Ok(install_service(&session.spec, context.programs, dry_run).await?)
 }
@@ -95,10 +101,11 @@ fn build_spec(
         .clone();
     let kind = context.kind;
     let label = config.pm3.service.label.clone();
-    let search_path = config.pm3.service.search_path.clone();
+    let search_path = config.pm3.search_path.clone();
     let unit_dir = unit_dir_of(kind, Path::new(home));
     let working_directory = paths.root.clone();
     let log_path = paths.daemon_log.clone();
+    let home_dir = home.to_string();
     Ok(ServiceUnitSpec {
         kind,
         label,
@@ -108,6 +115,7 @@ fn build_spec(
         working_directory,
         log_path,
         search_path,
+        home: home_dir,
     })
 }
 

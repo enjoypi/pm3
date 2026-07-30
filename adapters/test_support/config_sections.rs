@@ -2,6 +2,8 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
     format!(
         r#"pm3:
   home: "{home}"
+  cfg_dir: "{home}/svc"
+  search_path: "/usr/bin:/bin"
   kill_timeout_ms: {kill_timeout_ms}
   start_timeout_ms: 5000
   drain_timeout_secs: 5

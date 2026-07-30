@@ -18,13 +18,14 @@ pub fn valid_sandbox_config() -> SandboxConfig {
 pub fn valid_service_config() -> ServiceConfig {
     ServiceConfig {
         label: "pm3-fixture".to_string(),
-        search_path: "/usr/bin:/bin".to_string(),
     }
 }
 
 pub fn valid_pm3_config() -> Pm3Config {
     Pm3Config {
         home: "/tmp/pm3-fixture".to_string(),
+        cfg_dir: "/tmp/pm3-fixture/svc".to_string(),
+        search_path: "/usr/bin:/bin".to_string(),
         kill_timeout_ms: 1600,
         start_timeout_ms: 5000,
         drain_timeout_secs: 5,

@@ -13,7 +13,10 @@ use super::{
 };
 use crate::{
     Error, Result,
-    layout::{clear_runtime_files, ensure_layout, host_home, resolve_layout, write_pid_file},
+    layout::{
+        clear_runtime_files, ensure_layout, host_home, resolve_cfg_dir, resolve_layout,
+        write_pid_file,
+    },
     sandbox_probe::detect_host_backend,
     server::serve_listener,
     signal::daemon_shutdown_signal,
@@ -33,8 +36,10 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
     let config = load_and_parse_config(config_path)?;
     init_telemetry(&config.telemetry)
         .expect("internal error: load_and_parse_config validated log_level and log_format");
-    let paths = resolve_layout(&config.pm3, host_home().as_deref())?;
-    ensure_layout(&paths).await?;
+    let home = host_home();
+    let paths = resolve_layout(&config.pm3, home.as_deref())?;
+    let cfg_dir = resolve_cfg_dir(&config.pm3, home.as_deref())?;
+    ensure_layout(&paths, &cfg_dir).await?;
     let BindOutcome::Bound(listener) = bind_uds(&paths.socket).await? else {
         return Ok(());
     };
@@ -63,6 +68,7 @@ async fn serve_supervised(
     let (events, event_queue) = mpsc::channel(CHANNEL_DEPTH);
     let mut daemon = Daemon::new(
         config.pm3.clone(),
+        paths.root.to_string_lossy().into_owned(),
         logs_dir_of(&paths.root),
         std::env::var(TMPDIR_VARIABLE).ok(),
         ports,

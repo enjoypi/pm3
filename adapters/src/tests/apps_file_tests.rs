@@ -13,7 +13,7 @@ fn parse_apps_file_reads_a_minimal_entry() {
     };
     assert_eq!(entry.name, APP_NAME);
     assert_eq!(entry.script, SCRIPT);
-    assert_eq!(entry.cwd, CWD);
+    assert_eq!(entry.cwd.as_deref(), Some(CWD));
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn load_apps_file_substitutes_environment_placeholders() {
     let (_dir, path) = write_apps_file(&yaml);
     let apps = load_apps_file(&path).expect("should load");
     let entry = apps.apps.first().expect("one entry");
-    assert_eq!(entry.cwd, "/srv/from-default");
+    assert_eq!(entry.cwd.as_deref(), Some("/srv/from-default"));
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn resolve_specs_rejects_a_duplicate_app_name() {
 #[test]
 fn resolve_specs_rejects_an_invalid_spec() {
     let entry = AppEntry {
-        cwd: "relative/path".to_string(),
+        cwd: Some("relative/path".to_string()),
         ..minimal_entry()
     };
     let err = resolve_one_err(&defaults(), entry);
@@ -271,7 +271,7 @@ fn resolve_specs_grants_the_cwd_the_logs_dir_and_the_tmp_dir_by_default() {
 #[test]
 fn resolve_specs_drops_a_duplicate_default_writable_root() {
     let entry = AppEntry {
-        cwd: LOGS_DIR.to_string(),
+        cwd: Some(LOGS_DIR.to_string()),
         ..minimal_entry()
     };
     let spec = resolve_one(&defaults(), entry);
@@ -360,7 +360,8 @@ fn resolve_specs_honours_an_explicitly_empty_writable_roots_list() {
 fn spec_defaults_reads_the_pm3_sandbox_section() {
     let mut pm3 = pm3_config(SANDBOX_MODE_WORKSPACE_WRITE);
     pm3.sandbox.network = true;
-    let defaults = SpecDefaults::from_config(&pm3, LOGS_DIR, Some(TMP_DIR)).expect("should build");
+    let defaults =
+        SpecDefaults::from_config(&pm3, HOME_DIR, LOGS_DIR, Some(TMP_DIR)).expect("should build");
     assert_eq!(defaults.sandbox_mode, SandboxMode::WorkspaceWrite);
     assert!(defaults.sandbox_network);
     assert_eq!(defaults.restart.max_restarts, pm3.restart.max_restarts);
@@ -370,11 +371,23 @@ fn spec_defaults_reads_the_pm3_sandbox_section() {
 fn spec_defaults_rejects_an_unknown_configured_sandbox_mode() {
     let mut pm3 = pm3_config(SANDBOX_MODE_WORKSPACE_WRITE);
     pm3.sandbox.mode = "yolo".to_string();
-    let err = SpecDefaults::from_config(&pm3, LOGS_DIR, Some(TMP_DIR))
+    let err = SpecDefaults::from_config(&pm3, HOME_DIR, LOGS_DIR, Some(TMP_DIR))
         .unwrap_err()
         .to_string();
     assert!(
         err.contains("sandbox mode 'yolo' for pm3.sandbox"),
         "got: {err}"
+    );
+}
+
+#[test]
+fn a_script_that_is_not_on_the_search_path_is_rejected() {
+    let mut entry = minimal_entry();
+    entry.script = "pm3-not-a-real-program".to_string();
+    let apps = AppsFile { apps: vec![entry] };
+    let err = resolve_specs(&defaults(), &apps).unwrap_err().to_string();
+    assert_eq!(
+        err,
+        "cannot find 'pm3-not-a-real-program' for app 'web' on pm3.search_path"
     );
 }

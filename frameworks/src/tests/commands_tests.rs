@@ -57,7 +57,7 @@ async fn listing_an_empty_daemon_reports_that_nothing_runs() {
 async fn starting_an_apps_file_reports_the_started_app() {
     let fixture = running_daemon().await;
     let apps_file = sleeper_apps_file(&fixture);
-    let started = start_apps(&fixture.config_path, &apps_file)
+    let started = start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
     assert!(started.contains("started web"), "got: {started}");
@@ -68,7 +68,7 @@ async fn starting_an_apps_file_reports_the_started_app() {
 async fn describing_a_started_app_reports_its_script() {
     let fixture = running_daemon().await;
     let apps_file = sleeper_apps_file(&fixture);
-    start_apps(&fixture.config_path, &apps_file)
+    start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
     let described = describe_app(&fixture.config_path, "web")
@@ -82,7 +82,7 @@ async fn describing_a_started_app_reports_its_script() {
 async fn stopping_a_started_app_confirms_it() {
     let fixture = running_daemon().await;
     let apps_file = sleeper_apps_file(&fixture);
-    start_apps(&fixture.config_path, &apps_file)
+    start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
     let stopped = stop_app(&fixture.config_path, "web")
@@ -96,7 +96,7 @@ async fn stopping_a_started_app_confirms_it() {
 async fn restarting_a_started_app_confirms_it() {
     let fixture = running_daemon().await;
     let apps_file = sleeper_apps_file(&fixture);
-    start_apps(&fixture.config_path, &apps_file)
+    start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
     let restarted = restart_app(&fixture.config_path, "web")
@@ -110,7 +110,7 @@ async fn restarting_a_started_app_confirms_it() {
 async fn deleting_a_started_app_confirms_it() {
     let fixture = running_daemon().await;
     let apps_file = sleeper_apps_file(&fixture);
-    start_apps(&fixture.config_path, &apps_file)
+    start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
     let deleted = delete_app(&fixture.config_path, "web")
@@ -219,7 +219,7 @@ async fn listing_without_a_config_fails() {
 
 #[tokio::test]
 async fn starting_a_missing_apps_file_fails_before_any_daemon_call() {
-    let outcome = start_apps("/nonexistent/pm3.yaml", "/nonexistent/apps.yaml").await;
+    let outcome = start_apps("/nonexistent/pm3.yaml", "/nonexistent/apps.yaml", false).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
@@ -275,4 +275,133 @@ async fn a_daemon_that_disappears_after_the_probe_stops_a_command() {
         err.contains("cannot connect to the pm3 daemon"),
         "got: {err}"
     );
+}
+
+fn blocked_home_config(dir: &std::path::Path) -> String {
+    let home = dir.join("home");
+    std::fs::write(&home, "blocked").expect("occupy the pm3 home");
+    crate::test_support::write_config(dir, &home.to_string_lossy())
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn usable_config(dir: &std::path::Path) -> String {
+    let home = dir.join("home");
+    crate::test_support::write_config(dir, &home.to_string_lossy())
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn inline_request(target: &[String]) -> InlineStart<'_> {
+    InlineStart {
+        name: "probe",
+        target,
+        cwd: None,
+        env: &[],
+        network: false,
+        writable_dirs: &[],
+        force: false,
+    }
+}
+
+#[tokio::test]
+async fn starting_apps_reports_a_blocked_home() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = blocked_home_config(dir.path());
+    let err = start_apps(&config, "/nonexistent/apps.yaml", false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
+}
+
+#[tokio::test]
+async fn starting_apps_reports_an_unresolvable_apps_file() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = usable_config(dir.path());
+    let err = start_apps(&config, "/nonexistent/apps.yaml", false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot resolve the apps file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn starting_apps_reports_an_unreadable_apps_file() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = usable_config(dir.path());
+    let blocked = dir.path().join("apps-as-a-directory");
+    std::fs::create_dir(&blocked).expect("occupy the apps file path");
+    let err = start_apps(&config, &blocked.to_string_lossy(), false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot read apps file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn starting_inline_without_a_config_fails() {
+    let outcome = start_inline("/nonexistent/pm3.yaml", &inline_request(&[])).await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
+async fn starting_inline_reports_a_blocked_home() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = blocked_home_config(dir.path());
+    let err = start_inline(&config, &inline_request(&[]))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
+}
+
+#[tokio::test]
+async fn starting_inline_without_a_program_fails() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = usable_config(dir.path());
+    let err = start_inline(&config, &inline_request(&[]))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("needs a program"), "got: {err}");
+}
+
+#[tokio::test]
+async fn deleting_without_a_config_fails() {
+    assert!(delete_app("/nonexistent/pm3.yaml", "web").await.is_err());
+}
+
+#[tokio::test]
+async fn deleting_an_unknown_app_fails() {
+    let fixture = running_daemon().await;
+    let outcome = delete_app(&fixture.config_path, "ghost").await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn starting_inline_reaches_the_daemon() {
+    let fixture = running_daemon().await;
+    let target = vec![
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        "sleep 5".to_string(),
+    ];
+    let started = start_inline(&fixture.config_path, &inline_request(&target))
+        .await
+        .expect("the inline app should start");
+    assert!(started.contains("started probe"), "got: {started}");
+    stop_daemon(fixture).await;
+}
+
+#[test]
+fn a_relative_service_directory_cannot_open_a_session() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config =
+        crate::test_support::write_config_with_cfg_dir(dir.path(), "/tmp/pm3-svc", "relative/svc");
+    let err = open_session(config.to_str().expect("path"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("must be absolute"), "got: {err}");
 }

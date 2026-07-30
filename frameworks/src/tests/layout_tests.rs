@@ -31,8 +31,35 @@ fn the_host_home_comes_from_the_environment() {
 async fn preparing_the_layout_creates_the_log_directory() {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(&dir.path().join("home"));
-    ensure_layout(&paths).await.expect("should prepare");
+    let cfg_dir = dir.path().join("svc");
+    ensure_layout(&paths, &cfg_dir)
+        .await
+        .expect("should prepare");
     assert!(paths.logs_dir.is_dir());
+}
+
+#[tokio::test]
+async fn preparing_the_layout_creates_the_service_directory() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(&dir.path().join("home"));
+    let cfg_dir = dir.path().join("config/pm3");
+    ensure_layout(&paths, &cfg_dir)
+        .await
+        .expect("should prepare");
+    assert!(cfg_dir.is_dir());
+}
+
+#[tokio::test]
+async fn preparing_the_layout_reports_a_blocked_service_directory() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(&dir.path().join("home"));
+    let cfg_dir = dir.path().join("blocked");
+    std::fs::write(&cfg_dir, "blocked").expect("occupy the service directory");
+    let err = ensure_layout(&paths, &cfg_dir)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
 }
 
 #[tokio::test]
@@ -40,7 +67,7 @@ async fn preparing_the_layout_reports_a_blocked_root() {
     let dir = tempfile::tempdir().expect("temp dir");
     let root = dir.path().join("home");
     std::fs::write(&root, "blocked").expect("occupy the root");
-    let err = ensure_layout(&resolve_paths(&root))
+    let err = ensure_layout(&resolve_paths(&root), &root.join("svc"))
         .await
         .unwrap_err()
         .to_string();
@@ -80,4 +107,22 @@ async fn clearing_runtime_files_tolerates_missing_files() {
     let dir = tempfile::tempdir().expect("temp dir");
     clear_runtime_files(&resolve_paths(dir.path())).await;
     assert!(!dir.path().join("pm3.sock").exists());
+}
+
+#[test]
+fn the_service_directory_comes_from_the_config() {
+    let mut config = pm3_config_with_home("/srv/pm3");
+    config.cfg_dir = "~/.config/pm3".to_string();
+    let resolved = resolve_cfg_dir(&config, Some("/home/dev")).expect("tilde expands");
+    assert_eq!(resolved, std::path::Path::new("/home/dev/.config/pm3"));
+}
+
+#[test]
+fn a_relative_service_directory_is_rejected() {
+    let mut config = pm3_config_with_home("/srv/pm3");
+    config.cfg_dir = "relative/svc".to_string();
+    let err = resolve_cfg_dir(&config, Some("/home/dev"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("must be absolute"), "got: {err}");
 }

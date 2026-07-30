@@ -1,0 +1,270 @@
+use super::*;
+
+const NAME: &str = "sleeper";
+const SHELL: &str = "/bin/sh";
+const SEARCH_PATH: &str = "/usr/bin:/bin";
+const FAKE_HOME: &str = "/home/dev";
+
+struct Home {
+    dir: tempfile::TempDir,
+    cfg_dir: PathBuf,
+}
+
+fn home() -> Home {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cfg_dir = dir.path().join("config/pm3");
+    std::fs::create_dir_all(&cfg_dir).expect("prepare the config directory");
+    Home { dir, cfg_dir }
+}
+
+fn context(home: &Home) -> SvcContext<'_> {
+    SvcContext {
+        cfg_dir: &home.cfg_dir,
+        search_path: SEARCH_PATH,
+        home: Some(FAKE_HOME),
+    }
+}
+
+fn request<'s>(target: &'s [String], cwd: Option<&'s str>, force: bool) -> InlineStart<'s> {
+    InlineStart {
+        name: NAME,
+        target,
+        cwd,
+        env: &[],
+        network: false,
+        writable_dirs: &[],
+        force,
+    }
+}
+
+fn shell_target() -> Vec<String> {
+    vec![SHELL.to_string(), "-c".to_string(), "sleep 1".to_string()]
+}
+
+async fn prepared(home: &Home, force: bool) -> PathBuf {
+    prepare_inline(&context(home), &request(&shell_target(), None, force))
+        .await
+        .expect("the inline request should resolve")
+}
+
+#[tokio::test]
+async fn an_inline_request_writes_one_config_file() {
+    let home = home();
+    let path = prepared(&home, false).await;
+    assert_eq!(path, home.cfg_dir.join("sleeper.yaml"));
+    let written = std::fs::read_to_string(&path).expect("read the config file");
+    assert!(written.contains("name: \"sleeper\""), "got: {written}");
+    assert!(written.contains(SHELL), "got: {written}");
+}
+
+#[tokio::test]
+async fn an_inline_request_leaves_the_working_directory_to_the_daemon() {
+    let home = home();
+    let path = prepared(&home, false).await;
+    let written = std::fs::read_to_string(&path).expect("read the config file");
+    assert!(!written.contains("cwd:"), "got: {written}");
+}
+
+#[tokio::test]
+async fn a_bare_program_is_stored_without_resolving_it() {
+    let home = home();
+    let target = vec!["sh".to_string()];
+    let path = prepare_inline(&context(&home), &request(&target, None, false))
+        .await
+        .expect("the inline request should resolve");
+    let written = std::fs::read_to_string(&path).expect("read the config file");
+    assert!(written.contains("script: \"sh\""), "got: {written}");
+}
+
+#[tokio::test]
+async fn an_explicit_working_directory_folds_the_home_away() {
+    let home = home();
+    let target = shell_target();
+    let asked = request(&target, Some("/home/dev/work"), false);
+    let path = prepare_inline(&context(&home), &asked)
+        .await
+        .expect("the inline request should resolve");
+    let written = std::fs::read_to_string(&path).expect("read the config file");
+    assert!(written.contains("cwd: \"${HOME}/work\""), "got: {written}");
+}
+
+#[tokio::test]
+async fn program_arguments_fold_the_home_away() {
+    let home = home();
+    let mut target = shell_target();
+    target.push("/home/dev/.config/mihomo/rule.yaml".to_string());
+    let path = prepare_inline(&context(&home), &request(&target, None, false))
+        .await
+        .expect("the inline request should resolve");
+    let written = std::fs::read_to_string(&path).expect("read the config file");
+    assert!(
+        written.contains("${HOME}/.config/mihomo/rule.yaml"),
+        "got: {written}"
+    );
+}
+
+#[tokio::test]
+async fn an_inline_request_without_a_program_is_rejected() {
+    let home = home();
+    let err = prepare_inline(&context(&home), &request(&[], None, false))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("needs a program"), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_program_missing_from_the_search_path_is_reported() {
+    let home = home();
+    let target = vec!["pm3-not-a-real-program".to_string()];
+    let err = prepare_inline(&context(&home), &request(&target, None, false))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(err, "cannot find 'pm3-not-a-real-program' on PATH");
+}
+
+#[tokio::test]
+async fn an_unparsable_environment_entry_is_reported() {
+    let home = home();
+    let target = shell_target();
+    let env = ["OOPS".to_string()];
+    let asked = InlineStart {
+        env: &env,
+        ..request(&target, None, false)
+    };
+    let err = prepare_inline(&context(&home), &asked)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("expected KEY=VALUE"), "got: {err}");
+}
+
+#[tokio::test]
+async fn writing_the_same_config_twice_changes_nothing() {
+    let home = home();
+    let first = prepared(&home, false).await;
+    let before = std::fs::read_to_string(&first).expect("read the config file");
+    let second = prepared(&home, false).await;
+    assert_eq!(first, second);
+    assert_eq!(
+        std::fs::read_to_string(&second).expect("read the config file"),
+        before
+    );
+}
+
+#[tokio::test]
+async fn a_changed_config_needs_force() {
+    let home = home();
+    let path = prepared(&home, false).await;
+    std::fs::write(&path, "apps:\n  - name: sleeper\n    script: /bin/echo\n")
+        .expect("edit the config file");
+    let err = prepare_inline(&context(&home), &request(&shell_target(), None, false))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("without --force"), "got: {err}");
+    assert!(err.contains("-    script: /bin/echo"), "got: {err}");
+}
+
+#[tokio::test]
+async fn force_overwrites_a_changed_config() {
+    let home = home();
+    let path = prepared(&home, false).await;
+    std::fs::write(&path, "apps: []\n").expect("edit the config file");
+    prepared(&home, true).await;
+    let written = std::fs::read_to_string(&path).expect("read the config file");
+    assert!(written.contains(SHELL), "got: {written}");
+}
+
+#[tokio::test]
+async fn a_config_directory_that_is_missing_is_reported() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let missing = dir.path().join("config/pm3");
+    let context = SvcContext {
+        cfg_dir: &missing,
+        search_path: SEARCH_PATH,
+        home: Some(FAKE_HOME),
+    };
+    let err = prepare_inline(&context, &request(&shell_target(), None, false))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.starts_with("cannot write the service file"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn an_apps_file_is_split_into_one_config_file_per_app() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+    )
+    .expect("write the apps file");
+    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    assert!(home.cfg_dir.join("web.yaml").is_file());
+    assert!(home.cfg_dir.join("db.yaml").is_file());
+}
+
+#[tokio::test]
+async fn splitting_folds_the_home_out_of_every_app() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"/home/dev/web\"\n    args:\n      - \"/home/dev/app.js\"\n",
+    )
+    .expect("write the apps file");
+    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    let written =
+        std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
+    assert!(written.contains("cwd: \"${HOME}/web\""), "got: {written}");
+    assert!(written.contains("${HOME}/app.js"), "got: {written}");
+}
+
+#[tokio::test]
+async fn splitting_an_unreadable_apps_file_is_reported() {
+    let home = home();
+    let err = split_apps_file(&context(&home), "/nonexistent/pm3-apps.yaml", false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot read apps file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn splitting_over_a_changed_config_needs_force() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
+        .expect("write the apps file");
+    std::fs::write(home.cfg_dir.join("web.yaml"), "apps: []\n").expect("seed a conflict");
+    let err = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("without --force"), "got: {err}");
+}
+
+#[tokio::test]
+async fn forgetting_a_service_removes_its_config() {
+    let home = home();
+    let path = prepared(&home, false).await;
+    forget(&home.cfg_dir, NAME).await;
+    assert!(!path.exists(), "the config file should be gone");
+}
+
+#[tokio::test]
+async fn forgetting_an_unknown_service_is_quiet() {
+    let home = home();
+    forget(&home.cfg_dir, "ghost").await;
+    assert!(!home.cfg_dir.join("ghost.yaml").exists());
+}

@@ -7,6 +7,7 @@ pub mod sandbox_probe;
 pub mod server;
 pub mod service;
 pub mod signal;
+pub mod svc;
 pub mod telemetry;
 
 use thiserror::Error;
@@ -37,6 +38,9 @@ pub enum Error {
     #[error(transparent)]
     Service(#[from] adapters::ServiceCommandError),
 
+    #[error(transparent)]
+    Apps(#[from] adapters::AppsFileError),
+
     #[error("cannot determine the pm3 binary path: {reason}")]
     ServiceProgram { reason: String },
 
@@ -45,6 +49,18 @@ pub enum Error {
 
     #[error("cannot locate the service directory: no HOME in the environment")]
     ServiceHome,
+
+    #[error("cannot find '{program}' on PATH")]
+    ProgramNotFound { program: String },
+
+    #[error("cannot start: {reason}")]
+    InlineUsage { reason: String },
+
+    #[error("cannot write the service file '{path}': {reason}")]
+    SvcWrite { path: String, reason: String },
+
+    #[error("cannot overwrite '{path}' without --force:\n{diff}")]
+    SvcConflict { path: String, diff: String },
 
     #[error("cannot prepare the pm3 home '{path}': {reason}")]
     Layout { path: String, reason: String },

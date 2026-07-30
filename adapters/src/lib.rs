@@ -6,6 +6,7 @@ pub mod paths;
 pub mod persistence;
 pub mod presenter;
 pub mod process;
+pub mod program;
 pub mod sandbox;
 pub mod service;
 pub mod startup;
@@ -23,8 +24,8 @@ pub use usecases::{
 
 pub use self::{
     apps_file::{
-        AppEntry, AppsFile, AppsFileError, SandboxEntry, SpecDefaults, load_apps_file,
-        parse_apps_file, resolve_specs,
+        AppEntry, AppsFile, AppsFileError, InlineRequest, SandboxEntry, SpecDefaults, diff_lines,
+        encode_apps_file, inline_apps_file, load_apps_file, parse_apps_file, resolve_specs,
     },
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
@@ -43,6 +44,7 @@ pub use self::{
         EMPTY_NOTICE, NOTHING_STARTED, render_describe, render_reply, render_started, render_table,
     },
     process::{KILL_PROGRAM, KillSignaler, SystemClock, TokioProcessLauncher},
+    program::{HOME_PLACEHOLDER, fold_home, program_available, resolve_program},
     sandbox::{SandboxBackend, SandboxCommandWrapper, seatbelt_profile},
     service::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, ServiceCommandError, ServiceKind,
