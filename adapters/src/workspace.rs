@@ -8,7 +8,12 @@ pub async fn materialise_workspace(spec: &mut AppSpec) {
     for arg in &mut spec.args {
         *arg = expand_svc_cwd(arg, &spec.cwd);
     }
-    for root in &mut spec.sandbox.writable_roots {
+    for root in spec
+        .sandbox
+        .writable_roots
+        .iter_mut()
+        .chain(&mut spec.sandbox.derived_roots)
+    {
         *root = real_path(root);
     }
 }

@@ -12,6 +12,7 @@ pub struct SandboxPolicy {
     pub mode: SandboxMode,
     pub network: bool,
     pub writable_roots: Vec<String>,
+    pub derived_roots: Vec<String>,
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -57,18 +58,31 @@ impl SandboxMode {
     }
 }
 
+impl SandboxPolicy {
+    #[must_use]
+    pub fn granted_roots(&self) -> Vec<&str> {
+        self.writable_roots
+            .iter()
+            .chain(self.derived_roots.iter())
+            .map(String::as_str)
+            .collect()
+    }
+}
+
 pub fn validate_policy(policy: &SandboxPolicy) -> Result<(), PolicyError> {
     let SandboxPolicy {
         mode,
         network: _,
         writable_roots,
+        derived_roots,
     } = policy;
 
-    if !writable_roots.is_empty() && !mode.allows_writes() {
+    let granted = writable_roots.iter().chain(derived_roots);
+    if !mode.allows_writes() && granted.clone().count() > 0 {
         return Err(PolicyError::WritableRootsWithoutWriteAccess);
     }
 
-    for root in writable_roots {
+    for root in granted {
         if root.is_empty() {
             return Err(PolicyError::EmptyWritableRoot);
         }

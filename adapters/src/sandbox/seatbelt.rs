@@ -24,7 +24,7 @@ pub fn seatbelt_profile(policy: &SandboxPolicy) -> String {
         profile.push('\n');
         profile.push_str(NETWORK_POLICY);
     }
-    for root in &policy.writable_roots {
+    for root in policy.granted_roots() {
         profile.push_str(&writable_root_rule(root));
     }
     profile

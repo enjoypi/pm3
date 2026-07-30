@@ -209,13 +209,17 @@ fn resolve_sandbox(
     let network = declared
         .and_then(|section| section.network)
         .unwrap_or(defaults.sandbox_network);
-    let writable_roots = declared
+    let (writable_roots, derived_roots) = declared
         .and_then(|section| section.writable_roots.clone())
-        .unwrap_or_else(|| default_writable_roots(defaults, mode, cwd));
+        .map_or_else(
+            || (Vec::new(), default_writable_roots(defaults, mode, cwd)),
+            |roots| (roots, Vec::new()),
+        );
     Ok(SandboxPolicy {
         mode,
         network,
         writable_roots,
+        derived_roots,
     })
 }
 

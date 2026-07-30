@@ -39,7 +39,13 @@ impl ProcessRecord {
             args: self.spec.args.clone(),
             cwd: self.spec.cwd.clone(),
             depends_on: self.spec.depends_on.clone(),
-            writable_roots: self.spec.sandbox.writable_roots.clone(),
+            writable_roots: self
+                .spec
+                .sandbox
+                .granted_roots()
+                .into_iter()
+                .map(ToString::to_string)
+                .collect(),
         }
     }
 }

@@ -27,6 +27,7 @@ fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
             mode: SandboxMode::WorkspaceWrite,
             network: false,
             writable_roots,
+            derived_roots: Vec::new(),
         },
     }
 }

@@ -1,7 +1,7 @@
 use entities::{AppSpec, DependencyNode, ProcessIdentity, topo_sort, validate_spec};
 
 use crate::{
-    Ports, Result, UsecaseError, fingerprint::render_launch, log_paths::log_paths,
+    Ports, Result, UsecaseError, fingerprint::render_identity, log_paths::log_paths,
     persist::save_table, ports::LaunchSpec, table::ProcessTable,
 };
 
@@ -91,7 +91,7 @@ pub(crate) async fn start_one(
     let launch = build_launch_spec(&record.spec, logs_dir, ports)?;
     let launched = ports.spawn(&launch).await?;
     let now_ms = ports.now_ms();
-    let identity = capture_identity(&launch, &record.spec.script, launched.pid, ports).await;
+    let identity = capture_identity(&record.spec, launched.pid, ports).await;
 
     record.runtime.mark_launched(launched.pid, now_ms);
     record.runtime.mark_online();
@@ -105,17 +105,16 @@ pub(crate) async fn start_one(
 }
 
 pub(crate) async fn capture_identity(
-    launch: &LaunchSpec,
-    script: &str,
+    spec: &AppSpec,
     pid: u32,
     ports: &impl Ports,
 ) -> Option<ProcessIdentity> {
     let token = ports.identity(pid).await?;
-    let launch_digest = ports.digest(&render_launch(launch));
+    let launch_digest = ports.digest(&render_identity(spec));
     let binary_digest = ports
-        .file_digest(script)
+        .file_digest(&spec.script)
         .await
-        .inspect_err(|error| log_unusable_identity(&launch.name, &error.to_string()))
+        .inspect_err(|error| log_unusable_identity(&spec.name, &error.to_string()))
         .ok()?;
     Some(ProcessIdentity {
         token,

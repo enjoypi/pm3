@@ -7,6 +7,7 @@ fn policy(mode: SandboxMode, network: bool, writable_roots: &[&str]) -> SandboxP
         mode,
         network,
         writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
+        derived_roots: Vec::new(),
     }
 }
 

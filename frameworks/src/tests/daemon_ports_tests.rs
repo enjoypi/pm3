@@ -12,6 +12,7 @@ fn unconfined_policy() -> SandboxPolicy {
         mode: SandboxMode::DangerFullAccess,
         network: true,
         writable_roots: Vec::new(),
+        derived_roots: Vec::new(),
     }
 }
 

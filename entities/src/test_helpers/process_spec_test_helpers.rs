@@ -6,6 +6,7 @@ pub fn confined_policy() -> SandboxPolicy {
         mode: SandboxMode::WorkspaceWrite,
         network: false,
         writable_roots: Vec::new(),
+        derived_roots: Vec::new(),
     }
 }
 

@@ -1,37 +1,63 @@
-use crate::ports::LaunchSpec;
+use entities::AppSpec;
 
 const NAME_LABEL: &str = "name";
 const PROGRAM_LABEL: &str = "program";
 const CWD_LABEL: &str = "cwd";
 const ARG_LABEL: &str = "arg";
 const ENV_LABEL: &str = "env";
+const SANDBOX_LABEL: &str = "sandbox";
+const NETWORK_LABEL: &str = "network";
+const ROOT_LABEL: &str = "root";
+const NETWORK_ALLOWED: &str = "allowed";
+const NETWORK_DENIED: &str = "denied";
 
 #[must_use]
-pub fn render_launch(launch: &LaunchSpec) -> String {
-    let LaunchSpec {
+pub fn render_identity(spec: &AppSpec) -> String {
+    let AppSpec {
         name,
-        program,
+        script,
         args,
         cwd,
         env,
-        stdout_path: _,
-        stderr_path: _,
-    } = launch;
+        autorestart: _,
+        min_uptime_ms: _,
+        max_restarts: _,
+        restart_delay_ms: _,
+        depends_on: _,
+        sandbox,
+    } = spec;
 
     let head = [
         field(NAME_LABEL, name),
-        field(PROGRAM_LABEL, program),
+        field(PROGRAM_LABEL, script),
         field(CWD_LABEL, cwd),
+        field(SANDBOX_LABEL, sandbox.mode.as_str()),
+        field(NETWORK_LABEL, network_label(sandbox.network)),
     ]
     .concat();
     let with_args = args.iter().fold(head, |mut text, arg| {
         text.push_str(&field(ARG_LABEL, arg));
         text
     });
-    sorted_env(env).iter().fold(with_args, |mut text, entry| {
+    let with_roots = sandbox
+        .writable_roots
+        .iter()
+        .fold(with_args, |mut text, root| {
+            text.push_str(&field(ROOT_LABEL, root));
+            text
+        });
+    sorted_env(env).iter().fold(with_roots, |mut text, entry| {
         text.push_str(&field(ENV_LABEL, &entry_line(entry)));
         text
     })
+}
+
+const fn network_label(allowed: bool) -> &'static str {
+    if allowed {
+        NETWORK_ALLOWED
+    } else {
+        NETWORK_DENIED
+    }
 }
 
 fn sorted_env(env: &[(String, String)]) -> Vec<&(String, String)> {

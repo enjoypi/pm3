@@ -336,6 +336,7 @@ pub fn spec(name: &str) -> AppSpec {
             mode: SandboxMode::WorkspaceWrite,
             network: false,
             writable_roots: Vec::new(),
+            derived_roots: Vec::new(),
         },
     }
 }
