@@ -9,13 +9,15 @@ use crate::{
     Ports,
     ports::{
         Clock, CommandWrapper, DumpError, DumpStore, FingerprintError, Fingerprinter, LaunchError,
-        LaunchSpec, LaunchedProcess, ProcessLauncher, ProcessProbe, SandboxError, SignalError,
-        Signaler, WrappedCommand,
+        LaunchSpec, LaunchedProcess, ProcessLauncher, ProcessProbe, SandboxError, Scheduler,
+        SignalError, Signaler, WrappedCommand,
     },
     record::ProcessRecord,
 };
 
 pub const SANDBOX_PREFIX: &str = "/usr/bin/pm3-sandbox";
+pub const UNSCHEDULABLE_CRON: &str = "not a cron expression";
+pub const FAKE_FIRE_INTERVAL_MS: u64 = 60_000;
 pub const TEXT_DIGEST_PREFIX: &str = "text:";
 pub const FILE_DIGEST_PREFIX: &str = "file:";
 pub const LIVE_TOKEN_PREFIX: &str = "live:";
@@ -319,6 +321,15 @@ impl Clock for FakePorts {
     }
 }
 
+impl Scheduler for FakePorts {
+    fn next_fire_ms(&self, cron: &str, after_ms: u64) -> Option<u64> {
+        if cron == UNSCHEDULABLE_CRON {
+            return None;
+        }
+        Some(after_ms.saturating_add(FAKE_FIRE_INTERVAL_MS))
+    }
+}
+
 #[must_use]
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
@@ -331,6 +342,7 @@ pub fn spec(name: &str) -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 2,
         restart_delay_ms: 250,
+        schedule: None,
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,

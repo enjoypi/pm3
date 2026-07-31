@@ -14,6 +14,7 @@ pub struct AppSpec {
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
     pub restart_delay_ms: u64,
+    pub schedule: Option<String>,
     pub depends_on: Vec<String>,
     pub sandbox: SandboxPolicy,
 }
@@ -41,6 +42,9 @@ pub enum SpecError {
     #[error("cannot accept blank environment variable name for app '{0}'")]
     EmptyEnvKey(String),
 
+    #[error("cannot accept blank schedule for app '{0}'")]
+    EmptySchedule(String),
+
     #[error("cannot accept sandbox policy for app '{app}': {source}")]
     Sandbox { app: String, source: PolicyError },
 }
@@ -54,6 +58,11 @@ impl AppSpec {
             max_restarts: self.max_restarts,
             restart_delay_ms: self.restart_delay_ms,
         }
+    }
+
+    #[must_use]
+    pub const fn is_scheduled_task(&self) -> bool {
+        self.schedule.is_some() && !self.autorestart
     }
 
     #[must_use]
@@ -89,6 +98,13 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
     }
     if spec.env.iter().any(|(key, _value)| key.trim().is_empty()) {
         return Err(SpecError::EmptyEnvKey(spec.name.clone()));
+    }
+    if spec
+        .schedule
+        .as_ref()
+        .is_some_and(|cron| cron.trim().is_empty())
+    {
+        return Err(SpecError::EmptySchedule(spec.name.clone()));
     }
     validate_policy(&spec.sandbox).map_err(|source| SpecError::Sandbox {
         app: spec.name.clone(),

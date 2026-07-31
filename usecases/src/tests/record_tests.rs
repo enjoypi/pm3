@@ -45,3 +45,12 @@ fn view_carries_dependencies_and_writable_roots() {
     assert_eq!(view.args, ["--port".to_string(), "8080".to_string()]);
     assert_eq!(view.restart_time, 0);
 }
+
+#[test]
+fn view_carries_the_schedule_but_leaves_the_next_fire_to_the_daemon() {
+    let mut candidate = record("sweep", 1);
+    candidate.spec.schedule = Some("~ * * * *".to_string());
+    let view = candidate.view(5000);
+    assert_eq!(view.schedule.as_deref(), Some("~ * * * *"));
+    assert_eq!(view.next_fire_ms, None);
+}

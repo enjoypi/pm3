@@ -21,6 +21,7 @@ pub fn spec(name: &str) -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 0,
+        schedule: None,
         depends_on: Vec::new(),
         sandbox: confined_policy(),
     }

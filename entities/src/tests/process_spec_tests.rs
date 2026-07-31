@@ -91,6 +91,25 @@ fn validate_rejects_empty_env_key() {
 }
 
 #[test]
+fn validate_rejects_a_blank_schedule() {
+    let candidate = AppSpec {
+        schedule: Some("   ".to_string()),
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(err, SpecError::EmptySchedule("api".to_string()));
+}
+
+#[test]
+fn validate_accepts_a_schedule_without_parsing_it() {
+    let candidate = AppSpec {
+        schedule: Some("not a cron expression".to_string()),
+        ..spec("api")
+    };
+    validate_spec(&candidate).expect("syntax belongs to adapters, not entities");
+}
+
+#[test]
 fn validate_propagates_sandbox_policy_errors() {
     let candidate = AppSpec {
         sandbox: SandboxPolicy {
@@ -153,6 +172,7 @@ fn every_spec_error_renders_a_message() {
         SpecError::SelfDependency("api".to_string()),
         SpecError::InvalidMinUptime("api".to_string()),
         SpecError::EmptyEnvKey("api".to_string()),
+        SpecError::EmptySchedule("api".to_string()),
         SpecError::Sandbox {
             app: "api".to_string(),
             source: PolicyError::EmptyWritableRoot,
@@ -164,4 +184,33 @@ fn every_spec_error_renders_a_message() {
             "error message must start with a verb: {err}"
         );
     }
+}
+
+#[test]
+fn a_schedule_without_autorestart_is_a_one_shot_task() {
+    let candidate = AppSpec {
+        autorestart: false,
+        schedule: Some("* * * * *".to_string()),
+        ..spec("sweep")
+    };
+    assert!(candidate.is_scheduled_task());
+}
+
+#[test]
+fn a_schedule_with_autorestart_stays_a_long_running_service() {
+    let candidate = AppSpec {
+        autorestart: true,
+        schedule: Some("* * * * *".to_string()),
+        ..spec("api")
+    };
+    assert!(!candidate.is_scheduled_task());
+}
+
+#[test]
+fn an_app_without_a_schedule_is_never_a_task() {
+    let candidate = AppSpec {
+        autorestart: false,
+        ..spec("api")
+    };
+    assert!(!candidate.is_scheduled_task());
 }

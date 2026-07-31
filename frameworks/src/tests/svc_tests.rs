@@ -31,6 +31,8 @@ fn request<'s>(target: &'s [String], cwd: Option<&'s str>, force: bool) -> Inlin
         target,
         cwd,
         env: &[],
+        cron: None,
+        autorestart: None,
         network: false,
         writable_dirs: &[],
         force,
@@ -415,4 +417,55 @@ async fn forgetting_an_unknown_service_is_quiet() {
     let home = home();
     forget(&home.cfg_dir, "ghost").await;
     assert!(!home.cfg_dir.join("ghost.yaml").exists());
+}
+
+#[tokio::test]
+async fn splitting_an_apps_file_folds_home_out_of_the_writable_roots() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n    sandbox:\n      writable_roots:\n        - \"/home/dev/prj\"\n",
+    )
+    .expect("write the apps file");
+    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    let written =
+        std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
+    assert!(written.contains("\"${HOME}/prj\""), "got: {written}");
+}
+
+#[tokio::test]
+async fn splitting_an_apps_file_folds_home_out_of_the_environment() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n    env:\n      CACHE: \"/home/dev/.cache\"\n",
+    )
+    .expect("write the apps file");
+    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    let written =
+        std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
+    assert!(written.contains("\"${HOME}/.cache\""), "got: {written}");
+}
+
+#[tokio::test]
+async fn splitting_an_apps_file_leaves_a_sandbox_without_roots_alone() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n    sandbox:\n      network: true\n",
+    )
+    .expect("write the apps file");
+    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    let written =
+        std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
+    assert!(written.contains("network: true"), "got: {written}");
 }

@@ -401,3 +401,45 @@ fn a_script_that_is_not_on_the_search_path_is_rejected() {
         "cannot find 'pm3-not-a-real-program' for app 'web' on pm3.search_path"
     );
 }
+
+#[test]
+fn a_schedule_reaches_the_spec() {
+    let entry = AppEntry {
+        schedule: Some("~ * * * *".to_string()),
+        ..minimal_entry()
+    };
+    let apps = AppsFile { apps: vec![entry] };
+    let specs = resolve_specs(&defaults(), &apps).expect("a valid schedule should resolve");
+    assert_eq!(specs[0].schedule.as_deref(), Some("~ * * * *"));
+}
+
+#[test]
+fn an_app_without_a_schedule_resolves_to_none() {
+    let apps = AppsFile {
+        apps: vec![minimal_entry()],
+    };
+    let specs = resolve_specs(&defaults(), &apps).expect("resolve");
+    assert_eq!(specs[0].schedule, None);
+}
+
+#[test]
+fn an_unparsable_schedule_is_rejected_at_load_time() {
+    let entry = AppEntry {
+        schedule: Some("nonsense".to_string()),
+        ..minimal_entry()
+    };
+    let apps = AppsFile { apps: vec![entry] };
+    let err = resolve_specs(&defaults(), &apps).unwrap_err();
+    assert!(matches!(err, AppsFileError::Cron(_)), "got: {err}");
+}
+
+#[test]
+fn an_unexpandable_schedule_is_rejected_at_load_time() {
+    let entry = AppEntry {
+        schedule: Some("0~59/0 * * * *".to_string()),
+        ..minimal_entry()
+    };
+    let apps = AppsFile { apps: vec![entry] };
+    let err = resolve_specs(&defaults(), &apps).unwrap_err();
+    assert!(err.to_string().contains("step 0"), "got: {err}");
+}

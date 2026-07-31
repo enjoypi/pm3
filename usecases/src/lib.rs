@@ -28,7 +28,7 @@ pub use self::{
     ports::{
         Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,
         LaunchError, LaunchSpec, LaunchedProcess, ProcessLauncher, ProcessProbe, SandboxError,
-        SignalError, Signaler, WrappedCommand,
+        Scheduler, SignalError, Signaler, WrappedCommand,
     },
     query::{describe_app, list_apps},
     record::{ProcessRecord, ProcessView},
@@ -42,7 +42,14 @@ pub use self::{
 };
 
 pub trait Ports:
-    ProcessLauncher + Signaler + CommandWrapper + DumpStore + Clock + ProcessProbe + Fingerprinter
+    ProcessLauncher
+    + Signaler
+    + CommandWrapper
+    + DumpStore
+    + Clock
+    + ProcessProbe
+    + Fingerprinter
+    + Scheduler
 {
 }
 

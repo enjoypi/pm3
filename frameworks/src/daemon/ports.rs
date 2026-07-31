@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use adapters::{
-    Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,
-    KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Ports, ProcessLauncher, ProcessProbe,
-    ProcessRecord, PsProcessProbe, SandboxBackend, SandboxCommandWrapper, SandboxError,
-    SandboxPolicy, Sha256Fingerprinter, SignalError, Signaler, SpecSource, SystemClock,
-    TokioProcessLauncher, WrappedCommand, YamlDumpStore, wait_for_exit,
+    Clock, CommandWrapper, CronScheduler, DumpError, DumpStore, ExitOutcome, FingerprintError,
+    Fingerprinter, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Ports, ProcessLauncher,
+    ProcessProbe, ProcessRecord, PsProcessProbe, SandboxBackend, SandboxCommandWrapper,
+    SandboxError, SandboxPolicy, Scheduler, Sha256Fingerprinter, SignalError, Signaler, SpecSource,
+    SystemClock, TokioProcessLauncher, WrappedCommand, YamlDumpStore, wait_for_exit,
 };
 
 #[derive(Debug)]
@@ -17,6 +17,7 @@ pub struct DaemonPorts {
     clock: SystemClock,
     probe: PsProcessProbe,
     fingerprinter: Sha256Fingerprinter,
+    scheduler: CronScheduler,
     poll_interval_ms: u64,
 }
 
@@ -34,6 +35,7 @@ impl DaemonPorts {
             clock: SystemClock,
             probe: PsProcessProbe::with_timeout(command_timeout_ms),
             fingerprinter: Sha256Fingerprinter,
+            scheduler: CronScheduler,
             poll_interval_ms,
         }
     }
@@ -54,6 +56,12 @@ impl DaemonPorts {
 impl Clock for DaemonPorts {
     fn now_ms(&self) -> u64 {
         self.clock.now_ms()
+    }
+}
+
+impl Scheduler for DaemonPorts {
+    fn next_fire_ms(&self, cron: &str, after_ms: u64) -> Option<u64> {
+        self.scheduler.next_fire_ms(cron, after_ms)
     }
 }
 

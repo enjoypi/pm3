@@ -2,10 +2,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use adapters::{
     AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
-    ExitOutcome, ProcessStatus, ProcessTable, RestartOutcome, SpecSource, StartOutcome,
-    UsecaseError, delete_app, describe_app, handle_child_exit, list_apps, load_apps_file,
-    materialise_workspace, resolve_specs, restart_app, resurrect, start_apps, stop_all_apps,
-    stop_app,
+    ExitOutcome, ProcessStatus, ProcessTable, ProcessView, RestartOutcome, Scheduler as _,
+    SpecSource, StartOutcome, UsecaseError, delete_app, describe_app, handle_child_exit, list_apps,
+    load_apps_file, materialise_workspace, resolve_specs, restart_app, resurrect, start_apps,
+    stop_all_apps, stop_app,
 };
 use tokio::sync::mpsc;
 
@@ -22,6 +22,10 @@ pub enum DaemonEvent {
     Restart {
         name: String,
     },
+    Fire {
+        name: String,
+        fire_at_ms: u64,
+    },
     ForceKill {
         name: String,
         generation: u64,
@@ -37,6 +41,7 @@ pub struct Daemon {
     specs: SpecSource,
     events: mpsc::Sender<DaemonEvent>,
     generations: HashMap<String, u64>,
+    timers: HashMap<String, u64>,
     next_generation: u64,
 }
 
@@ -86,6 +91,7 @@ impl Daemon {
             specs,
             events,
             generations: HashMap::new(),
+            timers: HashMap::new(),
             next_generation: 0,
         }
     }
@@ -95,15 +101,18 @@ impl Daemon {
             Ok(outcomes) => self.watch_all(&outcomes),
             Err(error) => log_failure("resurrect", "-", &error),
         }
+        self.arm_known_timers();
     }
 
     pub async fn handle(&mut self, request: DaemonRequest) -> DaemonOutcome {
         match request {
             DaemonRequest::Start { apps_file } => self.start(&apps_file).await,
-            DaemonRequest::List => Ok(DaemonReply::Listed(list_apps(
-                &self.table,
-                self.ports.now_ms(),
-            ))),
+            DaemonRequest::List => Ok(DaemonReply::Listed(
+                list_apps(&self.table, self.ports.now_ms())
+                    .into_iter()
+                    .map(|view| self.with_next_fire(view))
+                    .collect(),
+            )),
             DaemonRequest::Describe(selector) => self.describe(&selector),
             DaemonRequest::Stop(selector) => self.stop(&selector).await,
             DaemonRequest::Restart(selector) => self.restart(&selector).await,
@@ -221,6 +230,10 @@ impl Daemon {
                 self.on_restart(&name).await;
                 Flow::Continue
             }
+            DaemonEvent::Fire { name, fire_at_ms } => {
+                self.on_fire(&name, fire_at_ms).await;
+                Flow::Continue
+            }
             DaemonEvent::ForceKill {
                 name,
                 generation,
@@ -245,16 +258,22 @@ impl Daemon {
         let outcomes =
             start_apps(&mut self.table, &specs, &self.specs.logs_dir, &*self.ports).await?;
         self.watch_all(&outcomes);
+        for outcome in &outcomes {
+            if outcome.kind.needs_timer() {
+                self.arm_timer(&outcome.name);
+            }
+        }
         Ok(DaemonReply::Started(outcomes))
     }
 
     fn describe(&self, selector: &AppSelector) -> DaemonOutcome {
         let view = describe_app(&self.table, selector, self.ports.now_ms())?;
-        Ok(DaemonReply::Described(view))
+        Ok(DaemonReply::Described(self.with_next_fire(view)))
     }
 
     async fn stop(&mut self, selector: &AppSelector) -> DaemonOutcome {
         let outcome = stop_app(&mut self.table, selector, &*self.ports).await?;
+        self.timers.remove(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid);
         Ok(DaemonReply::Stopped { name: outcome.name })
     }
@@ -268,13 +287,23 @@ impl Daemon {
         )
         .await?;
         let name = self.dispatch_restart(outcome);
+        self.arm_timer(&name);
         Ok(DaemonReply::Restarted { name })
     }
 
     async fn delete(&mut self, selector: &AppSelector) -> DaemonOutcome {
         let outcome = delete_app(&mut self.table, selector, &*self.ports).await?;
+        self.timers.remove(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid);
         Ok(DaemonReply::Deleted { name: outcome.name })
+    }
+
+    fn with_next_fire(&self, view: ProcessView) -> ProcessView {
+        let next_fire_ms = self.timers.get(&view.name).copied();
+        ProcessView {
+            next_fire_ms,
+            ..view
+        }
     }
 
     fn watch_all(&mut self, outcomes: &[StartOutcome]) {
@@ -305,6 +334,62 @@ impl Daemon {
                 .await
                 .ok();
         });
+    }
+
+    pub async fn on_fire(&mut self, name: &str, fire_at_ms: u64) {
+        if self.timers.get(name) != Some(&fire_at_ms) {
+            return;
+        }
+        self.on_restart(name).await;
+        self.arm_timer(name);
+    }
+
+    fn arm_known_timers(&mut self) {
+        let scheduled = self.scheduled_names();
+        for name in scheduled {
+            self.arm_timer(&name);
+        }
+    }
+
+    fn scheduled_names(&self) -> Vec<String> {
+        self.table
+            .records()
+            .iter()
+            .filter(|record| record.spec.schedule.is_some())
+            .map(|record| record.runtime.name.clone())
+            .collect()
+    }
+
+    fn arm_timer(&mut self, name: &str) {
+        let Some(cron) = self.schedule_of(name) else {
+            self.timers.remove(name);
+            return;
+        };
+        let now_ms = self.ports.now_ms();
+        let Some(fire_at_ms) = self.ports.next_fire_ms(&cron, now_ms) else {
+            self.timers.remove(name);
+            log_unschedulable(name, &cron);
+            return;
+        };
+        self.timers.insert(name.to_string(), fire_at_ms);
+        log_armed(name, fire_at_ms);
+
+        let events = self.events.clone();
+        let name = name.to_string();
+        let delay = Duration::from_millis(fire_at_ms.saturating_sub(now_ms));
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            events
+                .send(DaemonEvent::Fire { name, fire_at_ms })
+                .await
+                .ok();
+        });
+    }
+
+    fn schedule_of(&self, name: &str) -> Option<String> {
+        self.table
+            .find(&AppSelector::Name(name.to_string()))
+            .and_then(|record| record.spec.schedule.clone())
     }
 
     fn schedule_restart(&self, name: &str, delay_ms: u64) {
@@ -361,6 +446,26 @@ fn log_settled(app: &str, status: ProcessStatus) {
         app,
         status,
         "managed app settled",
+    );
+}
+
+fn log_armed(app: &str, fire_at_ms: u64) {
+    tracing::debug!(
+        feature = "supervisor",
+        action = "arm",
+        app,
+        fire_at_ms,
+        "pm3 daemon armed the next cron fire",
+    );
+}
+
+fn log_unschedulable(app: &str, cron: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "arm",
+        app,
+        cron,
+        "pm3 daemon cannot work out a next fire for a schedule",
     );
 }
 

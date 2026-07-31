@@ -43,6 +43,7 @@ pub fn minimal_entry() -> AppEntry {
         min_uptime_ms: None,
         max_restarts: None,
         restart_delay_ms: None,
+        schedule: None,
         sandbox: None,
     }
 }

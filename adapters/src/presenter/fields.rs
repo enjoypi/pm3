@@ -1,7 +1,11 @@
+use chrono::{Local, TimeZone as _};
+
 pub const MISSING: &str = "-";
 pub const NETWORK_SUFFIX: &str = "+net";
 
 const LIST_SEPARATOR: &str = ", ";
+const CLOCK_FORMAT: &str = "%H:%M";
+const STAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S UTC%:z";
 const MS_PER_SECOND: u64 = 1000;
 const SECONDS_PER_MINUTE: u64 = 60;
 const MINUTES_PER_HOUR: u64 = 60;
@@ -31,6 +35,27 @@ pub fn format_uptime(uptime_ms: Option<u64>) -> String {
         return format!("{hours}h");
     }
     format!("{}d", hours / HOURS_PER_DAY)
+}
+
+pub fn format_clock(at_ms: Option<u64>) -> String {
+    format_instant(at_ms, CLOCK_FORMAT)
+}
+
+pub fn format_stamp(at_ms: Option<u64>) -> String {
+    format_instant(at_ms, STAMP_FORMAT)
+}
+
+fn format_instant(at_ms: Option<u64>, layout: &str) -> String {
+    let Some(at_ms) = at_ms else {
+        return MISSING.to_string();
+    };
+    let Ok(millis) = i64::try_from(at_ms) else {
+        return MISSING.to_string();
+    };
+    let Some(moment) = Local.timestamp_millis_opt(millis).single() else {
+        return MISSING.to_string();
+    };
+    moment.format(layout).to_string()
 }
 
 pub fn format_sandbox(mode: &str, network: bool) -> String {

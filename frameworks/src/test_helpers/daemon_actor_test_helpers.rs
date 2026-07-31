@@ -78,6 +78,15 @@ pub fn apps_file_without_restart(harness: &Harness, name: &str, script: &str) ->
     written_apps_file(harness, name, script, false)
 }
 
+pub fn scheduled_apps_file(harness: &Harness, name: &str, script: &str, cron: &str) -> PathBuf {
+    let cwd = harness.paths.root.to_string_lossy();
+    let body = format!(
+        "apps:\n  - name: {name}\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    autorestart: false\n    schedule: \"{cron}\"\n    args:\n      - \"-c\"\n      - \"{script}\"\n"
+    );
+    std::fs::write(service_file_of(&harness.cfg_dir, name), &body).expect("write the service file");
+    write_apps_file(harness.dir.path(), &body)
+}
+
 fn written_apps_file(harness: &Harness, name: &str, script: &str, autorestart: bool) -> PathBuf {
     let cwd = harness.paths.root.to_string_lossy();
     let body = format!(

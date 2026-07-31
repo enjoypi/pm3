@@ -19,6 +19,8 @@ pub struct InlineRequest<'r> {
     pub cwd: Option<&'r str>,
     pub home: Option<&'r str>,
     pub env: &'r [String],
+    pub cron: Option<&'r str>,
+    pub autorestart: Option<bool>,
     pub network: bool,
     pub writable_dirs: &'r [String],
 }
@@ -43,10 +45,11 @@ pub fn inline_apps_file(request: &InlineRequest<'_>) -> Result<AppsFile, AppsFil
         args,
         env,
         depends_on: Vec::new(),
-        autorestart: None,
+        autorestart: request.autorestart,
         min_uptime_ms: None,
         max_restarts: None,
         restart_delay_ms: None,
+        schedule: request.cron.map(ToString::to_string),
         sandbox: Some(sandbox),
     };
     Ok(AppsFile { apps: vec![entry] })
@@ -93,6 +96,7 @@ fn encode_entry(entry: &AppEntry) -> String {
     text.push_str(&optional("min_uptime_ms", entry.min_uptime_ms));
     text.push_str(&optional("max_restarts", entry.max_restarts));
     text.push_str(&optional("restart_delay_ms", entry.restart_delay_ms));
+    text.push_str(&optional_text("schedule", entry.schedule.as_deref()));
     text.push_str(&encode_sandbox(entry.sandbox.as_ref()));
     text
 }

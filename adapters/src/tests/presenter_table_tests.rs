@@ -26,7 +26,9 @@ fn an_empty_table_explains_that_nothing_is_managed() {
 #[test]
 fn the_header_names_every_column() {
     let header = header_of(&[running_view(0, "web")]);
-    for column in ["id", "name", "pid", "status", "↺", "uptime", "sandbox"] {
+    for column in [
+        "id", "name", "pid", "status", "↺", "uptime", "next", "sandbox",
+    ] {
         assert!(header.contains(column), "{column} missing from: {header}");
     }
 }
@@ -43,6 +45,7 @@ fn a_row_reports_every_field_of_a_running_app() {
             "online",
             "2",
             "5s",
+            "-",
             "workspace-write",
         ]
     );
@@ -53,7 +56,7 @@ fn a_row_reports_every_field_of_an_idle_app() {
     let cells = body_cells(&[idle_view(0, "web")]);
     assert_eq!(
         cells,
-        vec!["0", "web", "-", "stopped", "2", "-", "workspace-write"]
+        vec!["0", "web", "-", "stopped", "2", "-", "-", "workspace-write"]
     );
 }
 
@@ -88,4 +91,16 @@ fn no_row_carries_trailing_padding() {
     for row in rendered_rows(&views) {
         assert_eq!(row.trim_end(), row, "got padded row: {row:?}");
     }
+}
+
+#[test]
+fn a_scheduled_row_shows_the_next_local_clock_time() {
+    let mut view = idle_view(0, "sweep");
+    view.next_fire_ms = Some(1_700_000_000_000);
+    let cells = body_cells(&[view]);
+    let next = cells.get(6).expect("next column present");
+    assert!(
+        next.len() == 5 && next.contains(':'),
+        "next column should read as HH:MM, got: {next}"
+    );
 }

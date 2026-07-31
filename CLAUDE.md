@@ -24,6 +24,7 @@
 - 改动令行号位移后必须 `just cov --fresh`，否则残留旧实例化产生幽灵 `FNDA:0`
 - 全零自救：症状是所有文件 0%、`FNDA:0` 上千条 —— 二进制与 profraw 哈希错位（非 fresh 与手动 `cargo llvm-cov report` 交叉跑会触发）；重跑 `just cov --fresh` 且中途不插任何其他 cargo 命令
 - 每个 `?` 的 Err 分支是独立 region，各需一条失败路径测试；`.expect()` / `.unwrap_or(<常量>)` / `.unwrap_or_default()` 不产生本文件 region，「已证不可达」处用 `.expect()` 优于 `map_err` + `?`
+- 同一函数里连续两个 `?` 调同一个 helper（`parse_bound(low)?` 后 `parse_bound(high)?`）时，只测「第一个失败」会让第二个的 Err region 永不可达 → 必须再补一条「前者合法、后者非法」的用例（`25~b` 之于 `a~b`）
 - 每个 thiserror variant 都要构造 + `.to_string()` 断言一次，否则该 `Display::fmt` match arm 的 region 不计入覆盖
 - tail-return（`f().await` 直接作返回值）不产生 Err region，改成 `let x = f().await?;` 就新增一条；收尾处可用 `f().await.map(|x| ...)`（Err 直传不产生 region，closure 是独立 fn 随 Ok 路径覆盖）；真的失败路径则注入依赖让单测能打
 - 定位缺口：`cargo +nightly llvm-cov report --release --summary-only | awk 'NR>2 && $3+0>0'` 找文件；再 `--show-missing-lines`，若它无输出而 summary 有缺口：lines 也缺 → 缺口在 bin 副本（lib+bin 双编译，region 按实例化计数，补 e2e 走真实 binary 或让分支只存在于一处）；lines 100% → 缺的是 `?`/短路的纯 region，重点怀疑新加的 `?`
@@ -55,6 +56,8 @@
 - `shadow_unrelated`：闭包参数名与外层 `let` 撞名即报，换个名字
 - 结构体从「拥有」改成「借用配置」后，返回 `Foo<'static>` 的 fixture 会编译失败 → 用 `LazyLock<Config>` 让引用变 `'static`
 - clap `trailing_var_arg` + `allow_hyphen_values`：pm3 自身选项必须出现在程序名**之前**，否则被当子进程参数
+- `#[tokio::test(start_paused = true)]`（让 `tokio::time::sleep` 自动推进，用来测「定时器到点发事件」）需要在 dev-dependencies 显式写 `tokio = { workspace = true, features = ["test-util"] }`——workspace 的 `"full"` **不含** test-util，否则报 `no method named start_paused`；这种测试里 MUST NOT 用带 `timeout` 的 helper 等事件（timeout 也会被自动推进，可能抢先触发），直接 `events.recv().await`
+- 给 `ProcessView` 加字段会把 `DaemonReply::Described` 撑过 clippy `large_enum_variant` 阈值 → 在 enum 上加 `#[expect(..., reason = "one reply travels per CLI command")]`，别为过 lint 而 Box（会波及 controller/presenter 全链路）
 - 交互询问（confirm prompt）的可测模式：循环签名接 `confirm: &mut (dyn FnMut(&str) -> bool + Send)`，生产传一个「每次调用才锁 stdin/stdout」的 fn（`StdinLock` 非 Send，MUST NOT 跨 `.await` 持有），测试传脚本化闭包；MUST NOT 在单测里碰真 stdin（nextest 下 stdin 是 null → 立即 EOF，且无法注入答案）
 
 ## 运行时行为
@@ -69,6 +72,9 @@
 - 停止/强杀 MUST 先对进程组发信号（`/bin/kill -<SIG> -- -<pid>`）、失败再退回单 pid：spawn 时 `process_group(0)` 让子进程自成组，只杀单 pid 会漏掉它 fork 的孙进程；adopt 来的进程可能不是组长，故回退分支必须保留
 - `Stopping` 不是「已停止」：判「pm3 是否还持有进程」用 `ProcessStatus::is_settled()`（仅 Stopped|Errored），用 `!is_running()` 会让重复 `stop` 清空 pid、让 `restart` 再 spawn 一个同名实例
 - 熔断判定用 `unstable_restarts >= max_restarts`（对齐 pm2 `God.js`），MUST NOT 改回 `>`
+- cron 定时任务照抄 pm2 `lib/Worker.js:37`：到点只调 `restart_app`，**不新增状态**。`autorestart:false`+`schedule` = 一次性任务（`start` 只注册不 spawn，`StartKind::Scheduled`）；`autorestart:true`+`schedule` = 定时重启常驻服务。判定 spawn 与否的分支 MUST 在注册路径（`start_apps` 的 `StartMode::Register`）而非执行路径，否则 cron 触发时也会被跳过、任务永不运行
+- `Daemon.timers: HashMap<name, fire_at_ms>` 同时是「next 列数据源 + 调度激活标记 + 过期 Fire 判别依据」（对应 pm2 的 `God.CronJobs`）：`stop`/`delete` 时 remove，`Fire` 事件先比对 `timers.get(name) == Some(&fire_at_ms)` 再执行——这样 `pm3 list` 的 `next` 列有值即「等触发」、空即「真停了」，避开 pm2 那句 `stopped but CRON RESTART is still UP` 的语义混淆
+- 随机 cron 用 OpenBSD 风格 `~`（`~`、`a~b`、`a~b/n`），**Rust 生态没有任何 cron 库支持它**（croner/cron/cronexpr/jiff-cron/cron_tab 全无，只有 cronexpr 支持 Jenkins 的固定哈希 `H`）→ `adapters/src/schedule/random_expand.rs` 自己展开成具体数字再交 croner。每次 `arm_timer` 都重新展开一次，随机值天然每次不同；副产品是「早晚各一次」写成 `25~35 9,18 * * *` 时两次会落在不同分钟
 - daemon↔CLI 是 JSON envelope `ReplyDto { report, service, already_running }`：新增命令走 `ask_report`（只要文案）或 `ask`（要结构化字段）；MUST NOT 靠 `.contains(渲染文本)` 反解业务状态
 - start 被 daemon 拒绝时 MUST 回滚已写的 `cfg_dir/<name>.yaml`（`svc::SvcUndo` 记前态：原本不存在→删、原本存在→写回）；写盘 MUST NOT 挪到 `ask` 之后——daemon 落 `dump.yaml` 时服务文件必须已在
 - 身份指纹 MUST 在 `start_one` spawn 成功那一刻采集：shutdown 时算会把「磁盘上的新哈希」当成旧进程的，重启后误判未变更 → 接管到跑着旧二进制的进程
@@ -92,6 +98,8 @@
 - `dump.yaml` 只存 `services[].runtime`，启动参数全在 `cfg_dir/<name>.yaml`；`YamlDumpStore::load()` 经 `SpecSource` 把两者缝起来，服务文件缺失/损坏只 `warn` 跳过该条
 - 服务配置里 MUST NOT 出现绝对路径：`$HOME/` 前缀折成 `${HOME}/`（加载时由 `substitute_env_vars` 展开）、`cwd` 不写（daemon 用 `<pm3.home>/<name>` 推导并建目录）、`script` 存裸名
 - 写 `~/.pm3/config.yaml` 与 `cfg_dir/<name>.yaml` 共用 `svc::reconcile`：内容相同静默通过、不同则打 diff 并拒绝、`--force` 才覆盖；`service uninstall` 不删配置
+- `svc::fold_entry` MUST 折回全部五处路径（`script`/`cwd`/`args`/`env` 的值/`sandbox.writable_roots`）：漏任何一处都会让手写的 `${HOME}/...` 与 pm3 重新编码出的绝对路径对不上，`pm3 start <apps-file>` 直接被 `reconcile` 拒绝（症状：diff 全是 `-"${HOME}/x"` / `+"/Users/me/x"`）
+- `substitute_env_vars` **不递归展开默认值**：`${PM3_SEARCH_PATH:-${HOME}/.cargo/bin:...}` 里的 `${HOME}` 会原样留在配置里 → 想让 pm3 找到 `~/.cargo/bin` 下的程序，不要改 `search_path`，直接把服务的 `script` 写成 `${HOME}/.cargo/bin/<prog>`（顶层占位符会展开）
 - args 里指代「该服务自己的可写工作目录」MUST 用 `${PM3_SVC_CWD}`（命令行写裸 `PM3_SVC_CWD`，CLI 折叠成带花括号形式），MUST NOT 写 `${HOME}/.pm3/<name>`（那把 pm3 布局烧进了参数）；只在 args 生效，`cwd`/`writable_roots`/`script` 里写它不展开、会被相对路径校验直接拒；`pm3 describe` 显示的是展开后的真实路径，不能拿它当「配置无绝对路径」的证据
 - `pm3.search_path` 是单一来源：既写进 launchd/systemd unit 的 PATH，也是 daemon 解析 app 程序名的搜索路径；CLI 早期校验必须用它而非 `std::env::var("PATH")`
 - 子进程环境默认为空（`tokio_launcher` 有 `env_clear()`），所以 spawn 前必须已解析出绝对路径
