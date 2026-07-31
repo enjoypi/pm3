@@ -38,6 +38,8 @@
 - 泛型/`impl Trait` 参数会按实例化各算一份 region：把 `shutdown: impl Future` 改成 `Pin<Box<dyn Future + Send>>` 可把实例化收敛为一份
 - `?` 的 Err region 可达性取决于调用顺序：`canonical_config_path` 排在 `load_and_parse_config` **之后**时其 Err 分支永不可达（文件已读成功 → canonicalize 必成功），把「路径解析」提到「读文件」之前才能覆盖
 - 不可注入的系统读取（`std::env::current_exe()`）不要在函数体里直接 `?`；把 `io::Result<T>` 塞进注入的 context，用 `.as_ref().map_err(...)?` 消费，测试才能构造 Err 命中该 region
+- 被 SIGKILL 的进程已执行行的计数器永不落盘（`cargo llvm-cov show-env` 的 `LLVM_PROFILE_FILE` 含 `%p`，子进程各落一份 profraw，但只在正常退出时写出）→ daemon 集成测试收尾 MUST 发 SIGTERM 并 wait 到退出，否则 e2e 覆盖行丢失
+- `pm3 __sleep <ms>` 隐藏子命令自身也是生产代码，MUST 有一条「spawn 它、等正常退出、断言退出码 0」的测试；用它而非 `/bin/sh -c sleep` 可摆脱系统 shell 差异
 - 不可达的防御分支应**重写消除**，而非加测试掩盖
 - 只有 trait 声明的文件进不了 lcov 会触发「生产文件缺失」→ 不写 blanket impl，让实现方显式 `impl Trait for X {}`
 
@@ -62,6 +64,7 @@
 
 ## 运行时行为
 
+- axum 0.8 原生 `impl Listener for tokio::net::UnixListener`（`axum-0.8.9/src/serve/listener.rs`，无需 hyper-util）；`tokio::net::unix::SocketAddr` 只 impl Debug 不 impl Display → 日志用 `?addr`
 - `serde_yaml2` 把空 `BTreeMap`/`Vec` 序列化成 `~`，再反序列化成 map 会失败 → 集合字段一律 `#[serde(default, skip_serializing_if = ...)]`
 - macOS 上 `sandbox-exec` 的 `subpath` 只认真实路径，`/var/...` 这类符号链接不匹配 → spawn 前必须 canonicalize `cwd` 与 `writable_roots`
 - `materialise_workspace` 里展开 `${PM3_SVC_CWD}` MUST 排在 `spec.cwd = real_path(...)` 之后：提前替换会把未 canonicalize 的 cwd 写进 args，正好复现上一条陷阱（回归测试：`adapters/src/tests/workspace_tests.rs::a_placeholder_expands_to_the_real_path_not_the_symlink` 与 `frameworks/tests/sandbox_isolation.rs::a_confined_app_can_write_through_the_cwd_placeholder`）
