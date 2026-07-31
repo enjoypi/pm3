@@ -1,13 +1,13 @@
-use adapters::StartKind;
+use adapters::{StartKind, service_file_of};
 
 use super::{test_helpers::*, *};
 
 async fn start_one(harness: &mut Harness, name: &str, script: &str) -> StartOutcome {
-    let file = apps_file(harness, name, script);
+    apps_file(harness, name, script);
     let reply = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: vec![name.to_string()],
         })
         .await
         .expect("should start");
@@ -56,12 +56,16 @@ async fn described(harness: &mut Harness, name: &str) -> adapters::ProcessView {
 #[tokio::test]
 async fn each_app_expands_the_placeholder_with_its_own_working_directory() {
     let mut harness = harness();
-    let body = "apps:\n  - name: web\n    script: /bin/sh\n    args:\n      - \"-c\"\n      - \"true\"\n      - \"${PM3_SVC_CWD}\"\n  - name: db\n    script: /bin/sh\n    args:\n      - \"-c\"\n      - \"true\"\n      - \"${PM3_SVC_CWD}\"\n";
-    let file = crate::test_support::write_apps_file(harness.dir.path(), body);
+    for name in ["web", "db"] {
+        let body = format!(
+            "name: {name}\nscript: /bin/sh\nargs:\n  - \"-c\"\n  - \"true\"\n  - \"${{PM3_SVC_CWD}}\"\n"
+        );
+        std::fs::write(service_file_of(&harness.cfg_dir, name), body).expect("write the service");
+    }
     harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: vec!["web".to_string(), "db".to_string()],
         })
         .await
         .expect("should start");
@@ -80,28 +84,28 @@ async fn starting_an_apps_file_launches_every_app() {
 }
 
 #[tokio::test]
-async fn starting_a_missing_apps_file_is_refused() {
+async fn starting_a_service_without_a_file_is_refused() {
     let mut harness = harness();
     let outcome = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: "/nonexistent/apps.yaml".to_string(),
+            services: vec!["ghost".to_string()],
         })
         .await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
 #[tokio::test]
-async fn starting_an_apps_file_without_apps_is_refused() {
+async fn starting_no_services_launches_nothing() {
     let mut harness = harness();
-    let file = crate::test_support::write_apps_file(harness.dir.path(), "apps: []\n");
-    let outcome = harness
+    let reply = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: Vec::new(),
         })
-        .await;
-    assert!(outcome.is_err(), "got: {outcome:?}");
+        .await
+        .expect("an empty request is not an error");
+    assert_eq!(reply, DaemonReply::Started(Vec::new()));
 }
 
 #[tokio::test]
@@ -449,11 +453,11 @@ async fn shutting_down_signals_nothing() {
 #[tokio::test]
 async fn stopping_everything_force_kills_a_child_the_table_forgot() {
     let mut harness = harness_with_kill_timeout(0);
-    let file = apps_file_without_restart(&harness, "web", SLEEPER);
+    apps_file_without_restart(&harness, "web", SLEEPER);
     let reply = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: vec!["web".to_string()],
         })
         .await
         .expect("should start");
@@ -596,13 +600,13 @@ async fn a_confined_app_is_refused_when_no_sandbox_backend_exists() {
     let mut harness = harness();
     let cwd = harness.paths.root.to_string_lossy().into_owned();
     let body = format!(
-        "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n    sandbox:\n      mode: workspace-write\n"
+        "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n"
     );
-    let file = crate::test_support::write_apps_file(harness.dir.path(), &body);
+    std::fs::write(service_file_of(&harness.cfg_dir, "web"), &body).expect("write the service");
     let err = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: vec!["web".to_string()],
         })
         .await
         .unwrap_err()
@@ -613,9 +617,9 @@ async fn a_confined_app_is_refused_when_no_sandbox_backend_exists() {
 #[tokio::test]
 async fn starting_an_already_running_app_leaves_it_alone() {
     let mut harness = harness();
-    let file = apps_file(&harness, "web", SLEEPER);
+    apps_file(&harness, "web", SLEEPER);
     let request = DaemonRequest::Start {
-        apps_file: text(&file),
+        services: vec!["web".to_string()],
     };
     harness
         .daemon
@@ -639,13 +643,13 @@ async fn a_writable_root_that_does_not_exist_is_kept_verbatim() {
     let mut harness = harness();
     let cwd = harness.paths.root.to_string_lossy().into_owned();
     let body = format!(
-        "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n    sandbox:\n      mode: workspace-write\n      writable_roots:\n        - /nonexistent/pm3-root\n"
+        "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n  writable_roots:\n    - /nonexistent/pm3-root\n"
     );
-    let file = crate::test_support::write_apps_file(harness.dir.path(), &body);
+    std::fs::write(service_file_of(&harness.cfg_dir, "web"), &body).expect("write the service");
     let err = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: vec!["web".to_string()],
         })
         .await
         .unwrap_err()
@@ -656,11 +660,11 @@ async fn a_writable_root_that_does_not_exist_is_kept_verbatim() {
 #[tokio::test]
 async fn an_unusable_default_sandbox_mode_is_refused() {
     let mut harness = harness_with_sandbox_mode("yolo");
-    let file = apps_file(&harness, "web", SLEEPER);
+    apps_file(&harness, "web", SLEEPER);
     let err = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: vec!["web".to_string()],
         })
         .await
         .unwrap_err()
@@ -737,11 +741,11 @@ async fn shutting_down_counts_only_the_services_still_running() {
 }
 
 async fn start_scheduled(harness: &mut Harness, name: &str, cron: &str) -> StartOutcome {
-    let file = scheduled_apps_file(harness, name, SLEEPER, cron);
+    scheduled_apps_file(harness, name, SLEEPER, cron);
     let reply = harness
         .daemon
         .handle(DaemonRequest::Start {
-            apps_file: text(&file),
+            services: vec![name.to_string()],
         })
         .await
         .expect("should register the task");

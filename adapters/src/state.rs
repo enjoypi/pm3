@@ -6,7 +6,7 @@ use crate::apps_file::AppsFileError;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DaemonRequest {
-    Start { apps_file: String },
+    Start { services: Vec<String> },
     List,
     Describe(AppSelector),
     Stop(AppSelector),

@@ -128,15 +128,26 @@ impl<'d> SpecDefaults<'d> {
 }
 
 pub fn load_apps_file(path: &str) -> Result<AppsFile, AppsFileError> {
+    parse_apps_file(&read_substituted(path)?)
+}
+
+pub fn load_service_file(path: &str) -> Result<AppEntry, AppsFileError> {
+    parse_service_file(&read_substituted(path)?)
+}
+
+fn read_substituted(path: &str) -> Result<String, AppsFileError> {
     let raw = fs::read_to_string(path).map_err(|source| AppsFileError::Io {
         path: path.to_string(),
         source,
     })?;
-    let substituted = substitute_env_vars(&raw)?;
-    parse_apps_file(&substituted)
+    Ok(substitute_env_vars(&raw)?)
 }
 
 pub fn parse_apps_file(yaml: &str) -> Result<AppsFile, AppsFileError> {
+    serde_yaml2::from_str(yaml).map_err(|e| AppsFileError::Parse(e.to_string()))
+}
+
+pub fn parse_service_file(yaml: &str) -> Result<AppEntry, AppsFileError> {
     serde_yaml2::from_str(yaml).map_err(|e| AppsFileError::Parse(e.to_string()))
 }
 
@@ -149,17 +160,25 @@ pub fn resolve_specs(
     }
     let mut specs: Vec<AppSpec> = Vec::with_capacity(apps.apps.len());
     for entry in &apps.apps {
-        let spec = resolve_entry(defaults, entry)?;
+        let spec = resolve_checked(defaults, entry)?;
         if specs.iter().any(|known| known.name == spec.name) {
             return Err(AppsFileError::DuplicateName(spec.name));
-        }
-        validate_spec(&spec)?;
-        if let Some(cron) = spec.schedule.as_deref() {
-            validate_cron(&spec.name, cron)?;
         }
         specs.push(spec);
     }
     Ok(specs)
+}
+
+pub fn resolve_checked(
+    defaults: &SpecDefaults<'_>,
+    entry: &AppEntry,
+) -> Result<AppSpec, AppsFileError> {
+    let spec = resolve_entry(defaults, entry)?;
+    validate_spec(&spec)?;
+    if let Some(cron) = spec.schedule.as_deref() {
+        validate_cron(&spec.name, cron)?;
+    }
+    Ok(spec)
 }
 
 fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpec, AppsFileError> {

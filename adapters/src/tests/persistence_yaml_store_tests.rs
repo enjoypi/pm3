@@ -115,7 +115,7 @@ async fn load_expands_the_service_cwd_placeholder() {
     write_service_file(
         &fixture.source,
         "web",
-        "apps:\n  - name: \"web\"\n    script: \"/bin/sh\"\n    args:\n      - \"${PM3_SVC_CWD}\"\n",
+        "name: \"web\"\nscript: \"/bin/sh\"\nargs:\n  - \"${PM3_SVC_CWD}\"\n",
     );
     fixture
         .store

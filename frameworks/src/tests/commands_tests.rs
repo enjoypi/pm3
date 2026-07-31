@@ -2,11 +2,8 @@ use super::*;
 use crate::daemon_fixture::{Collected, running_daemon, seed_log, sleeper_apps_file, stop_daemon};
 
 #[test]
-fn a_start_body_carries_the_apps_file() {
-    assert_eq!(
-        start_body("/srv/apps.yaml"),
-        "{\"apps_file\":\"/srv/apps.yaml\"}"
-    );
+fn a_start_body_carries_the_service_names() {
+    assert_eq!(start_body(&["web".to_string()]), "{\"services\":[\"web\"]}");
 }
 
 #[test]

@@ -69,7 +69,13 @@ pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Resu
     let home = host_home();
     let split =
         svc::split_apps_file(&session.svc_context(home.as_deref()), &resolved, force).await?;
-    let asked = ask(config_path, "POST", APPS_PATH, Some(&start_body(&resolved))).await;
+    let asked = ask(
+        config_path,
+        "POST",
+        APPS_PATH,
+        Some(&start_body(&split.names)),
+    )
+    .await;
     finish_start(asked, split.changed, &split.undo).await
 }
 
@@ -78,7 +84,7 @@ pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Resul
     ensure_layout(&session.paths, &session.cfg_dir).await?;
     let home = host_home();
     let prepared = svc::prepare_inline(&session.svc_context(home.as_deref()), request).await?;
-    let body = start_body(&prepared.path.to_string_lossy());
+    let body = start_body(std::slice::from_ref(&request.name.to_string()));
     let changed = if prepared.reconciled == Reconciled::Stale {
         vec![request.name.to_string()]
     } else {
@@ -241,9 +247,9 @@ pub fn canonical_apps_file(apps_file: &str) -> Result<String> {
 }
 
 #[must_use]
-pub fn start_body(apps_file: &str) -> String {
+pub fn start_body(services: &[String]) -> String {
     let request = StartRequestDto {
-        apps_file: apps_file.to_string(),
+        services: services.to_vec(),
     };
     serde_json::to_string(&request)
         .expect("internal error: StartRequestDto serialization is infallible")

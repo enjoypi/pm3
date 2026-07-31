@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use usecases::AppSpec;
 
-use super::file::{AppsFileError, SpecDefaults, load_apps_file, resolve_specs};
+use super::file::{AppsFileError, SpecDefaults, load_service_file, resolve_checked};
 use crate::config::Pm3Config;
 
 pub const SERVICE_FILE_SUFFIX: &str = "yaml";
@@ -33,12 +33,11 @@ impl SpecSource {
 
     pub fn resolve_service(&self, name: &str) -> Result<AppSpec, AppsFileError> {
         let path = self.service_file(name);
-        let apps = load_apps_file(&path.to_string_lossy())?;
-        let specs = resolve_specs(&self.defaults()?, &apps)?;
-        specs
-            .into_iter()
-            .find(|spec| spec.name == name)
-            .ok_or_else(|| AppsFileError::MissingApp(name.to_string()))
+        let entry = load_service_file(&path.to_string_lossy())?;
+        if entry.name != name {
+            return Err(AppsFileError::MissingApp(name.to_string()));
+        }
+        resolve_checked(&self.defaults()?, &entry)
     }
 }
 

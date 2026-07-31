@@ -4,8 +4,7 @@ use adapters::{
     AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
     ExitOutcome, ProcessStatus, ProcessTable, ProcessView, RestartOutcome, Scheduler as _,
     SpecSource, StartOutcome, UsecaseError, delete_app, describe_app, handle_child_exit, list_apps,
-    load_apps_file, materialise_workspace, resolve_specs, restart_app, resurrect, start_apps,
-    stop_all_apps, stop_app,
+    materialise_workspace, restart_app, resurrect, start_apps, stop_all_apps, stop_app,
 };
 use tokio::sync::mpsc;
 
@@ -106,7 +105,7 @@ impl Daemon {
 
     pub async fn handle(&mut self, request: DaemonRequest) -> DaemonOutcome {
         match request {
-            DaemonRequest::Start { apps_file } => self.start(&apps_file).await,
+            DaemonRequest::Start { services } => self.start(&services).await,
             DaemonRequest::List => Ok(DaemonReply::Listed(
                 list_apps(&self.table, self.ports.now_ms())
                     .into_iter()
@@ -249,9 +248,11 @@ impl Daemon {
         }
     }
 
-    async fn start(&mut self, apps_file: &str) -> DaemonOutcome {
-        let apps = load_apps_file(apps_file)?;
-        let mut specs = resolve_specs(&self.specs.defaults()?, &apps)?;
+    async fn start(&mut self, services: &[String]) -> DaemonOutcome {
+        let mut specs = Vec::with_capacity(services.len());
+        for name in services {
+            specs.push(self.specs.resolve_service(name)?);
+        }
         for spec in &mut specs {
             materialise_workspace(spec).await;
         }

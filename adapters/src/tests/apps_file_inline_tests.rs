@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     SANDBOX_MODE_WORKSPACE_WRITE, SpecDefaults,
     config_sections::{pm3_section, telemetry_section},
-    load_apps_file, parse_apps_file, parse_config, resolve_specs,
+    load_service_file, parse_config, parse_service_file, resolve_checked,
 };
 
 const NAME: &str = "mihomo-rule";
@@ -26,28 +26,21 @@ fn request<'r>(env: &'r [String], writable_dirs: &'r [String]) -> InlineRequest<
     }
 }
 
-fn only_entry(apps: &AppsFile) -> &AppEntry {
-    apps.apps.first().expect("an inline request makes one app")
-}
 
 #[test]
 fn an_inline_request_becomes_a_single_app() {
-    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
-    assert_eq!(apps.apps.len(), 1);
-    assert_eq!(only_entry(&apps).name, NAME);
-    assert_eq!(only_entry(&apps).script, PROGRAM);
-    assert_eq!(
-        only_entry(&apps).cwd.as_deref(),
-        Some("${HOME}/.pm3/mihomo-rule")
-    );
+    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    assert_eq!(entry.name, NAME);
+    assert_eq!(entry.script, PROGRAM);
+    assert_eq!(entry.cwd.as_deref(), Some("${HOME}/.pm3/mihomo-rule"));
 }
 
 #[test]
 fn a_program_under_the_home_folds_into_a_placeholder() {
     let mut asked = request(&[], &[]);
     asked.program = "/home/dev/bin/mihomo";
-    let apps = inline_apps_file(&asked).expect("the request should resolve");
-    assert_eq!(only_entry(&apps).script, "${HOME}/bin/mihomo");
+    let entry = inline_entry(&asked).expect("the request should resolve");
+    assert_eq!(entry.script, "${HOME}/bin/mihomo");
 }
 
 #[test]
@@ -55,11 +48,8 @@ fn the_program_arguments_are_carried_verbatim() {
     let args = ["-d".to_string(), CWD.to_string(), "-f".to_string()];
     let mut asked = request(&[], &[]);
     asked.args = &args;
-    let apps = inline_apps_file(&asked).expect("the request should resolve");
-    assert_eq!(
-        only_entry(&apps).args,
-        ["-d", "${HOME}/.pm3/mihomo-rule", "-f"]
-    );
+    let entry = inline_entry(&asked).expect("the request should resolve");
+    assert_eq!(entry.args, ["-d", "${HOME}/.pm3/mihomo-rule", "-f"]);
 }
 
 #[test]
@@ -67,14 +57,14 @@ fn a_bare_service_cwd_token_is_stored_braced() {
     let args = ["-d".to_string(), "PM3_SVC_CWD".to_string()];
     let mut asked = request(&[], &[]);
     asked.args = &args;
-    let apps = inline_apps_file(&asked).expect("the request should resolve");
-    assert_eq!(only_entry(&apps).args, ["-d", "${PM3_SVC_CWD}"]);
+    let entry = inline_entry(&asked).expect("the request should resolve");
+    assert_eq!(entry.args, ["-d", "${PM3_SVC_CWD}"]);
 }
 
 #[test]
 fn the_network_switch_reaches_the_sandbox_section() {
-    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
-    let sandbox = only_entry(&apps)
+    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let sandbox = entry
         .sandbox
         .as_ref()
         .expect("an inline app always declares a sandbox");
@@ -85,8 +75,8 @@ fn the_network_switch_reaches_the_sandbox_section() {
 fn no_network_switch_leaves_the_configured_default_alone() {
     let mut asked = request(&[], &[]);
     asked.network = false;
-    let apps = inline_apps_file(&asked).expect("the request should resolve");
-    let sandbox = only_entry(&apps)
+    let entry = inline_entry(&asked).expect("the request should resolve");
+    let sandbox = entry
         .sandbox
         .as_ref()
         .expect("an inline app always declares a sandbox");
@@ -95,8 +85,8 @@ fn no_network_switch_leaves_the_configured_default_alone() {
 
 #[test]
 fn an_inline_app_never_asks_for_a_sandbox_mode() {
-    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
-    let sandbox = only_entry(&apps)
+    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let sandbox = entry
         .sandbox
         .as_ref()
         .expect("an inline app always declares a sandbox");
@@ -105,8 +95,8 @@ fn an_inline_app_never_asks_for_a_sandbox_mode() {
 
 #[test]
 fn no_writable_dirs_leaves_the_defaults_alone() {
-    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
-    let sandbox = only_entry(&apps)
+    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let sandbox = entry
         .sandbox
         .as_ref()
         .expect("an inline app always declares a sandbox");
@@ -116,8 +106,8 @@ fn no_writable_dirs_leaves_the_defaults_alone() {
 #[test]
 fn writable_dirs_are_added_next_to_the_working_directory() {
     let dirs = ["/srv/data".to_string()];
-    let apps = inline_apps_file(&request(&[], &dirs)).expect("the request should resolve");
-    let sandbox = only_entry(&apps)
+    let entry = inline_entry(&request(&[], &dirs)).expect("the request should resolve");
+    let sandbox = entry
         .sandbox
         .as_ref()
         .expect("an inline app always declares a sandbox");
@@ -133,8 +123,8 @@ fn writable_dirs_are_added_next_to_the_working_directory() {
 #[test]
 fn a_writable_dir_equal_to_the_working_directory_is_not_repeated() {
     let dirs = [CWD.to_string()];
-    let apps = inline_apps_file(&request(&[], &dirs)).expect("the request should resolve");
-    let sandbox = only_entry(&apps)
+    let entry = inline_entry(&request(&[], &dirs)).expect("the request should resolve");
+    let sandbox = entry
         .sandbox
         .as_ref()
         .expect("an inline app always declares a sandbox");
@@ -147,8 +137,7 @@ fn a_writable_dir_equal_to_the_working_directory_is_not_repeated() {
 #[test]
 fn environment_pairs_are_split_on_the_first_equals_sign() {
     let env = ["PATH=/usr/bin".to_string(), "GREETING=a=b".to_string()];
-    let apps = inline_apps_file(&request(&env, &[])).expect("the request should resolve");
-    let entry = only_entry(&apps);
+    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
     assert_eq!(entry.env.get("PATH").map(String::as_str), Some("/usr/bin"));
     assert_eq!(entry.env.get("GREETING").map(String::as_str), Some("a=b"));
 }
@@ -156,9 +145,7 @@ fn environment_pairs_are_split_on_the_first_equals_sign() {
 #[test]
 fn an_environment_entry_without_an_equals_sign_is_rejected() {
     let env = ["JUST_A_KEY".to_string()];
-    let err = inline_apps_file(&request(&env, &[]))
-        .unwrap_err()
-        .to_string();
+    let err = inline_entry(&request(&env, &[])).unwrap_err().to_string();
     assert_eq!(
         err,
         "cannot accept environment entry 'JUST_A_KEY': expected KEY=VALUE"
@@ -168,9 +155,7 @@ fn an_environment_entry_without_an_equals_sign_is_rejected() {
 #[test]
 fn an_environment_entry_without_a_key_is_rejected() {
     let env = ["=orphan".to_string()];
-    let err = inline_apps_file(&request(&env, &[]))
-        .unwrap_err()
-        .to_string();
+    let err = inline_entry(&request(&env, &[])).unwrap_err().to_string();
     assert!(err.contains("expected KEY=VALUE"), "got: {err}");
 }
 
@@ -178,24 +163,24 @@ fn an_environment_entry_without_a_key_is_rejected() {
 fn an_encoded_inline_app_reads_back_unchanged() {
     let env = ["PATH=/usr/bin:/bin".to_string()];
     let dirs = ["/srv/data".to_string()];
-    let apps = inline_apps_file(&request(&env, &dirs)).expect("the request should resolve");
-    let yaml = encode_apps_file(&apps);
-    let reparsed = parse_apps_file(&yaml).expect("the encoded app should parse");
-    assert_eq!(only_entry(&reparsed).name, NAME);
-    assert_eq!(only_entry(&reparsed).env, only_entry(&apps).env);
+    let entry = inline_entry(&request(&env, &dirs)).expect("the request should resolve");
+    let yaml = encode_service_file(&entry);
+    let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
+    assert_eq!(reparsed.name, NAME);
+    assert_eq!(reparsed.env, entry.env);
 }
 
 #[test]
 fn an_encoded_app_with_no_collections_still_reads_back() {
-    let apps = inline_apps_file(&request(&[], &[])).expect("the request should resolve");
-    let yaml = encode_apps_file(&apps);
+    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let yaml = encode_service_file(&entry);
     assert!(
         !yaml.contains('~'),
         "empty collections must be omitted: {yaml}"
     );
-    let reparsed = parse_apps_file(&yaml).expect("the encoded app should parse");
-    assert!(only_entry(&reparsed).args.is_empty());
-    assert!(only_entry(&reparsed).env.is_empty());
+    let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
+    assert!(reparsed.args.is_empty());
+    assert!(reparsed.env.is_empty());
 }
 
 #[test]
@@ -215,8 +200,8 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
     .expect("the fixture defaults should build");
     let mut asked = request(&[], &[]);
     asked.cwd = None;
-    let apps = inline_apps_file(&asked).expect("the request should resolve");
-    let specs = resolve_specs(&defaults, &apps).expect("the inline app should resolve");
+    let entry = inline_entry(&asked).expect("the request should resolve");
+    let specs = [resolve_checked(&defaults, &entry).expect("the inline app should resolve")];
     assert_eq!(specs.len(), 1);
     assert_eq!(specs[0].cwd, "/tmp/pm3-fixture/mihomo-rule");
     assert_eq!(specs[0].script, PROGRAM);
@@ -228,14 +213,14 @@ fn a_home_placeholder_expands_when_the_config_file_is_loaded() {
     let path = dir.path().join("mihomo-rule.yaml");
     let mut asked = request(&[], &[]);
     asked.cwd = Some("/home/dev/work");
-    let apps = inline_apps_file(&asked).expect("the request should resolve");
-    std::fs::write(&path, encode_apps_file(&apps)).expect("write the config file");
-    let loaded = load_apps_file(&path.to_string_lossy()).expect("the config file should load");
+    let entry = inline_entry(&asked).expect("the request should resolve");
+    std::fs::write(&path, encode_service_file(&entry)).expect("write the config file");
+    let loaded = load_service_file(&path.to_string_lossy()).expect("the config file should load");
     let expected = format!(
         "{}/work",
         std::env::var("HOME").expect("tests always run with HOME")
     );
-    assert_eq!(only_entry(&loaded).cwd.as_deref(), Some(expected.as_str()));
+    assert_eq!(loaded.cwd.as_deref(), Some(expected.as_str()));
 }
 
 #[test]
@@ -284,10 +269,7 @@ fn fully_declared_entry() -> AppEntry {
 
 #[test]
 fn a_fully_declared_app_encodes_every_field() {
-    let apps = AppsFile {
-        apps: vec![fully_declared_entry()],
-    };
-    let yaml = encode_apps_file(&apps);
+    let yaml = encode_service_file(&fully_declared_entry());
     for needle in [
         "depends_on:",
         "autorestart: false",
@@ -304,14 +286,11 @@ fn a_fully_declared_app_encodes_every_field() {
 
 #[test]
 fn a_fully_declared_app_reads_back_unchanged() {
-    let apps = AppsFile {
-        apps: vec![fully_declared_entry()],
-    };
-    let reparsed = parse_apps_file(&encode_apps_file(&apps)).expect("the encoded app should parse");
-    let entry = only_entry(&reparsed);
-    assert_eq!(entry.depends_on, ["db"]);
-    assert_eq!(entry.autorestart, Some(false));
-    assert_eq!(entry.max_restarts, Some(7));
+    let encoded = encode_service_file(&fully_declared_entry());
+    let reparsed = parse_service_file(&encoded).expect("the encoded app should parse");
+    assert_eq!(reparsed.depends_on, ["db"]);
+    assert_eq!(reparsed.autorestart, Some(false));
+    assert_eq!(reparsed.max_restarts, Some(7));
 }
 
 #[test]
@@ -341,19 +320,18 @@ fn an_inline_cron_reaches_the_encoded_file() {
     let mut ask = request(&env, &dirs);
     ask.cron = Some("~ * * * *");
     ask.autorestart = Some(false);
-    let apps = inline_apps_file(&ask).expect("inline request should build");
-    let yaml = encode_apps_file(&apps);
+    let entry = inline_entry(&ask).expect("inline request should build");
+    let yaml = encode_service_file(&entry);
     assert!(yaml.contains(r#"schedule: "~ * * * *""#), "got: {yaml}");
-    let reparsed = parse_apps_file(&yaml).expect("the encoded app should parse");
-    let entry = only_entry(&reparsed);
-    assert_eq!(entry.schedule.as_deref(), Some("~ * * * *"));
-    assert_eq!(entry.autorestart, Some(false));
+    let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
+    assert_eq!(reparsed.schedule.as_deref(), Some("~ * * * *"));
+    assert_eq!(reparsed.autorestart, Some(false));
 }
 
 #[test]
 fn an_app_without_a_cron_omits_the_schedule_key() {
     let env: Vec<String> = Vec::new();
     let dirs: Vec<String> = Vec::new();
-    let apps = inline_apps_file(&request(&env, &dirs)).expect("inline request should build");
-    assert!(!encode_apps_file(&apps).contains("schedule:"));
+    let entry = inline_entry(&request(&env, &dirs)).expect("inline request should build");
+    assert!(!encode_service_file(&entry).contains("schedule:"));
 }

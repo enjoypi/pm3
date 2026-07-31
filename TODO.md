@@ -16,6 +16,8 @@ daemon 自身重启不再连带重启服务：spawn 时把「身份令牌（`ps 
 
 cron 定时任务（架构照抄 pm2 `lib/Worker.js`：到点只调 `restart_app`，不引入新状态）：服务配置写 `schedule: "<5 字段 cron>"`，`autorestart:false` 时是一次性任务、`true` 时是定时重启常驻服务。随机语法用 OpenBSD 风格 `~`（`~`、`a~b`、`a~b/n`），由 `adapters/src/schedule/random_expand.rs` 在每次装定时器时展开成具体数字再交 croner，因此每次触发都重新摇。`pm3 list` 新增 `next` 列（本地 `HH:MM`，空表示无调度/已停），`describe` 显示 `schedule` 与带时区的 `next fire`。真机已跑通 `cargo-sweep` 每小时随机清理 `~/prj`、`~/contrib`、`~/sre`。
 
+服务文件单体化：`cfg_dir/<name>.yaml` 不再包 `apps:` 数组（顶层直接是 `name:`/`script:`/…），`SpecSource::resolve_service` 用专属 `parse_service_file` 解析并按文件名核对 `name`；daemon↔CLI 的 start 请求改传服务名列表（`services: Vec<String>`）而非 apps 文件路径，服务文件仍是唯一事实来源。多服务 `apps:` 数组只保留在用户手写的 apps 文件（`pm3 start apps.yaml`）。
+
 ## 待办
 
 - [ ] 在 Linux 容器内跑一遍 `just cov`：`bwrap` 需 user namespace 权限（`--cap-add SYS_ADMIN` 或 `--security-opt seccomp=unconfined`），且 `sandbox_isolation` 里 `nc` 的路径在 Debian 是 `/bin/nc`，需要按平台调整；顺带验证 `pm3 service install` 的 systemd 路径与 `loginctl enable-linger` 无用户名参数是否成立
