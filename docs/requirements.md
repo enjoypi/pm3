@@ -1,31 +1,70 @@
 # pm3 需求描述
 
-pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 daemon 合一，经 Unix socket 通信。
+pm3 是极简版 pm2，额外带严格的沙盒隔离。一个二进制既是命令行工具也是常驻守护进程，两者在本机通过 Unix socket 通信，不占用任何网络端口。
 
-## 端到端验收
+面向的是「在自己的机器或一台服务器上，托管几个常驻程序和定时任务」的场景：托管的程序开机自启、崩溃自动拉起、日志集中可查，并且只能读写自己那一亩三分地。
 
-`frameworks/tests/` 下每个 e2e 用独立 `PM3_HOME` tempdir，覆盖：全生命周期 CLI 链路、沙盒真隔离（cwd 内可写／cwd 外被拒／网络被拒）、崩溃熔断、依赖启动序与环检测、自动持久化与 resurrect、孤儿 socket 自愈、SIGINT 吞掉且 SIGTERM 退出。
+## 托管一个程序
 
-## 自启服务
+```
+pm3 start --name web [选项] <程序> <参数...>
+```
 
-`pm3 service [install|uninstall] [--dry-run]`（不带子命令查状态）把 daemon 注册为用户级自启服务：macOS launchd LaunchAgent、Linux systemd user unit + `loginctl enable-linger`。
+命令做两件事：把这次的启动意图记成一份该服务专属的配置文件，然后让守护进程按它把程序跑起来。此后 `pm3 restart web` / `stop` / `delete` / `logs` / `describe` 都只认服务名。
 
-## 启动参数与运行状态分离
+配置文件是给人看、也允许人手改的：里面不出现任何绝对路径，家目录写成 `${HOME}`，程序名写裸名而不是全路径。这样同一份配置换台机器、换个用户名依然成立。
 
-`pm3 start --name X [选项] <程序> <参数...>` 把意图写成 `pm3.cfg_dir/<name>.yaml`（零绝对路径，`${HOME}` 占位、`script` 存裸名、`cwd` 由 daemon 推导），`dump.yaml` 只留 `services[].runtime`；daemon 启动时由 `SpecSource` 把两者缝起来，服务文件缺失/损坏只跳过并 `warn`。
+`pm3 list` 一屏看完所有服务的状态、重启次数与下次触发时间。
 
-## 配置文件布局
+## 意图与运行状态分开存
 
-`pm3.home`（默认 `~/.pm3`）放运行时状态：socket、pid 文件、日志、各服务工作目录，以及 daemon 自己的 `config.yaml`（`service install` 落盘那份，unit 的 `--config` 指向它）。`pm3.cfg_dir`（默认 `~/.config/pm3`）只放每服务一份 `<name>.yaml`。写 `~/.pm3/config.yaml` 与 `cfg_dir/<name>.yaml` 共用 `svc::reconcile`：内容相同静默通过、不同则打 diff 并拒绝、`--force` 才覆盖；`service uninstall` 不删配置。`pm3.search_path` 是 PATH 的单一来源，既写进 launchd/systemd unit，也是 daemon 解析 app 程序名的搜索路径。
+用户声明的**意图**（跑什么、带什么参数、能写哪些目录）与 pm3 记录的**运行状态**（当前 pid、重启了几次）分别存放，互不污染。删掉运行状态文件不会丢配置；手改配置文件也不会破坏正在跑的进程记录。
 
-## daemon 重启与服务接管
+## 沙盒隔离
 
-spawn 时把「身份令牌（`ps -o lstart=`）+ 启动参数摘要 + 二进制 sha256」记进 `dump.yaml`，daemon 重启后逐服务比对：全同则接管（`adopt`）已存活的进程并轮询监控，任一不同则先停掉旧幸存进程（`evict`）再重启。SIGTERM 只落盘退出、不动服务；彻底停机用 `pm3 kill --with-services`。子进程用独立 process group，launchd `AbandonProcessGroup` / systemd `KillMode=process`，bwrap 去掉 `--die-with-parent`。
+每个被托管的程序默认只能写自己的工作目录，写目录之外会被系统拒绝，网络访问也被拒绝。需要放开的目录由运维在服务配置里逐条声明。macOS 用系统自带的沙箱机制，Linux 用命名空间隔离。
 
-## cron 定时任务
+要在参数里指代「这个服务自己的可写工作目录」，写 `${PM3_SVC_CWD}` 占位符，pm3 启动时替换成真实路径。
 
-架构照抄 pm2 `lib/Worker.js`：到点只调 `restart_app`，不引入新状态。服务配置写 `schedule: "<5 字段 cron>"`：`autorestart: false` 时是一次性任务，`true` 时是定时重启常驻服务。随机语法用 OpenBSD 风格 `~`（`~`、`a~b`、`a~b/n`），由 `adapters/src/schedule/random_expand.rs` 在每次装定时器时展开成具体数字再交 croner，每次触发都重新摇。`pm3 list` 的 `next` 列显示本地 `HH:MM`（空表示无调度/已停），`describe` 显示 `schedule` 与带时区的 `next fire`。
+## 崩溃与熔断
 
-## 服务文件格式
+程序异常退出后自动拉起。若短时间内反复崩溃达到阈值，停止重试并标记为出错状态，避免无意义的重启风暴。服务之间可以声明依赖关系，pm3 按依赖顺序启动，并在配置成环时直接报错而不是死循环。
 
-`cfg_dir/<name>.yaml` 是单体格式（顶层直接 `name:`/`script:`/…，不包 `apps:` 数组），`SpecSource::resolve_service` 用专属 `parse_service_file` 解析并按文件名核对 `name`；daemon↔CLI 的 start 请求传服务名列表（`services: Vec<String>`），服务文件是唯一事实来源。多服务 `apps:` 数组只保留在用户手写的 apps 文件（`pm3 start apps.yaml`）。
+## 定时任务
+
+服务配置里写 5 字段 cron 表达式即可定时触发：
+
+- 配成「不自动重启」时，它是一次性任务，到点跑一次、跑完就结束
+- 配成「自动重启」时，它是常驻服务，到点重启一次
+
+支持 OpenBSD 风格的随机语法 `~`：`~` 表示该字段随机取值，`a~b` 表示在区间内随机，`a~b/n` 表示带步长的区间随机。每次触发后重新摇号，所以像「每天早晚各一次，具体分钟随机」这样的需求，两次会落在不同的分钟——用来把定时任务的负载错开。
+
+`pm3 list` 的 `next` 列显示下次触发的本地时刻；这一列为空就代表这个服务确实停了，不会出现 pm2 那种「服务已停止但定时器还在跑」的模糊状态。
+
+## 守护进程重启后接管现有服务
+
+升级 pm3 自身或重启守护进程时，已经在跑的服务不应该被打断。守护进程重启后逐个核对：如果某个服务的进程还是原来那一个、且启动参数和程序文件都没变过，就直接接管继续监控；只要有任何一项对不上，就先停掉旧进程再按新配置重启。
+
+给守护进程发终止信号只会保存状态并退出，不动被托管的服务。要连服务一起停，用 `pm3 kill --with-services`。
+
+## 开机自启
+
+```
+pm3 service install     # 注册为当前用户的自启服务
+pm3 service uninstall   # 取消注册，但不删配置
+pm3 service             # 查看当前注册状态
+pm3 service install --dry-run   # 只打印将要写入的内容
+```
+
+macOS 注册为 launchd 用户级 LaunchAgent，Linux 注册为 systemd user unit 并开启 linger（让服务在用户未登录时也能运行）。
+
+## 文件放在哪
+
+| 位置 | 放什么 |
+|---|---|
+| `~/.pm3` | 运行时状态：socket、pid 文件、日志、各服务的工作目录，以及守护进程自己的配置 |
+| `~/.config/pm3` | 每个服务一份配置文件 |
+
+两个位置都可以在配置里改。写配置文件时若目标已存在：内容相同就静默通过，内容不同则打印 diff 并拒绝覆盖，加 `--force` 才真的写。
+
+程序搜索路径由配置里的一项统一决定，既写进开机自启的服务单元，也是守护进程解析程序名的依据——不继承启动 pm3 时那个 shell 的环境变量，避免「手动跑得起来、开机自启就找不到程序」。
