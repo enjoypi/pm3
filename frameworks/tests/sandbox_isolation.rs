@@ -6,7 +6,7 @@
 mod common;
 
 use self::common::{
-    Home, app_error_log, app_log, home_with_sandbox, pm3, shutdown_daemon, stdout_of,
+    Home, app_error_log, app_log, home_with_sandbox, netcat, pm3, shutdown_daemon, stdout_of,
     wait_for_file, wait_for_log, write_apps,
 };
 
@@ -57,11 +57,11 @@ fn a_confined_app_cannot_write_outside_its_working_directory() {
 #[test]
 fn a_confined_app_cannot_reach_the_network() {
     let home = home_with_sandbox("workspace-write", false);
-    let apps = shell_app(
-        &home,
-        "dialer",
-        "/usr/bin/nc -z -w 2 1.1.1.1 443 && echo reached || echo blocked",
+    let script = format!(
+        "{} -z -w 2 1.1.1.1 443 && echo reached || echo blocked",
+        netcat()
     );
+    let apps = shell_app(&home, "dialer", &script);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
     assert!(started.status.success(), "{}", stdout_of(&started));
 

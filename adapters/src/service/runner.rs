@@ -23,11 +23,14 @@ pub enum ServiceCommandError {
     Io { path: String, reason: String },
 }
 
-pub async fn execute_plan(steps: &[ServiceStep]) -> Result<(), ServiceCommandError> {
+pub async fn execute_plan(steps: &[ServiceStep]) -> Result<Vec<String>, ServiceCommandError> {
+    let mut skipped = Vec::new();
     for step in steps {
-        run_step(step).await?;
+        if let Some(note) = run_step(step).await? {
+            skipped.push(note);
+        }
     }
-    Ok(())
+    Ok(skipped)
 }
 
 pub async fn query_status(
@@ -44,16 +47,31 @@ pub async fn query_status(
     Ok(ServiceStatus::InstalledNotRunning)
 }
 
-async fn run_step(step: &ServiceStep) -> Result<(), ServiceCommandError> {
+async fn run_step(step: &ServiceStep) -> Result<Option<String>, ServiceCommandError> {
     match step {
         ServiceStep::Write {
             dir,
             path,
             contents,
-        } => write_file(dir, path, contents).await,
-        ServiceStep::Remove { path } => remove_path(path).await,
-        ServiceStep::Run(command) => run_command(command).await,
+        } => write_file(dir, path, contents).await.map(|()| None),
+        ServiceStep::Remove { path } => remove_path(path).await.map(|()| None),
+        ServiceStep::Run(command) => run_command(command).await.map(|()| None),
+        ServiceStep::TryRun(command) => Ok(tolerate(command).await),
     }
+}
+
+async fn tolerate(command: &ServiceCommand) -> Option<String> {
+    let Err(error) = run_command(command).await else {
+        return None;
+    };
+    let note = error.to_string();
+    let program = command.program.as_str();
+    tracing::warn!(
+        program,
+        action = "service",
+        "skipped an optional service manager command"
+    );
+    Some(note)
 }
 
 async fn write_file(dir: &Path, path: &Path, contents: &str) -> Result<(), ServiceCommandError> {

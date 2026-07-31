@@ -26,7 +26,6 @@ fn request<'r>(env: &'r [String], writable_dirs: &'r [String]) -> InlineRequest<
     }
 }
 
-
 #[test]
 fn an_inline_request_becomes_a_single_app() {
     let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");

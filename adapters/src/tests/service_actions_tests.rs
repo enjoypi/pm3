@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::*;
 use crate::{
-    ServiceKind, ServiceUnitSpec,
+    ServiceKind, ServiceProgramSet, ServiceUnitSpec,
     service_specs::{fake_program, program_set, spec_for},
 };
 
@@ -44,6 +44,37 @@ async fn an_install_writes_the_unit_and_activates_it() {
         std::fs::read_to_string(spec.unit_path())
             .expect("read the unit")
             .contains("WantedBy=default.target")
+    );
+}
+
+#[tokio::test]
+async fn a_dry_run_systemd_install_marks_linger_as_optional() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(ServiceKind::Systemd, dir.path());
+    let report = install_service(&spec, &program_set(FALSE_PROGRAM), CONFIG_BODY, true)
+        .await
+        .expect("a dry run should never fail");
+    assert!(
+        report.contains("try /usr/bin/false enable-linger"),
+        "got: {report}"
+    );
+}
+
+#[tokio::test]
+async fn an_install_survives_a_refused_linger() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(ServiceKind::Systemd, dir.path());
+    let programs = ServiceProgramSet {
+        launchctl: TRUE_PROGRAM.to_string(),
+        systemctl: TRUE_PROGRAM.to_string(),
+        loginctl: FALSE_PROGRAM.to_string(),
+    };
+    let report = install_service(&spec, &programs, CONFIG_BODY, false)
+        .await
+        .expect("a refused linger must not fail the install");
+    assert!(
+        report.contains("skipped: cannot complete '/usr/bin/false'"),
+        "got: {report}"
     );
 }
 

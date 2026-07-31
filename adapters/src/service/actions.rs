@@ -17,13 +17,14 @@ pub async fn install_service(
     if dry_run {
         return Ok(render_plan(&steps));
     }
-    execute_plan(&steps).await?;
+    let skipped = execute_plan(&steps).await?;
     Ok(format!(
-        "installed {} as a {} service\n{}\n{}",
+        "installed {} as a {} service\n{}\n{}{}",
         spec.label,
         spec.kind.as_str(),
         spec.config_path.display(),
-        spec.unit_path().display()
+        spec.unit_path().display(),
+        render_skipped(&skipped)
     ))
 }
 
@@ -57,6 +58,13 @@ pub async fn status_report(
     ))
 }
 
+fn render_skipped(skipped: &[String]) -> String {
+    if skipped.is_empty() {
+        return String::new();
+    }
+    format!("\nskipped: {}", skipped.join("; "))
+}
+
 fn render_plan(steps: &[ServiceStep]) -> String {
     steps.iter().map(render_step).collect::<Vec<_>>().join("\n")
 }
@@ -71,6 +79,9 @@ fn render_step(step: &ServiceStep) -> String {
         ServiceStep::Remove { path } => format!("remove {}", path.display()),
         ServiceStep::Run(command) => {
             format!("run {} {}", command.program, command.args.join(" "))
+        }
+        ServiceStep::TryRun(command) => {
+            format!("try {} {}", command.program, command.args.join(" "))
         }
     }
 }

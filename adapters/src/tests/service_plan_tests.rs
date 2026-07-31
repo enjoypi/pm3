@@ -26,6 +26,7 @@ fn described(steps: &[ServiceStep]) -> Vec<String> {
             } => format!("write {}", path.display()),
             ServiceStep::Remove { path } => format!("remove {}", path.display()),
             ServiceStep::Run(command) => format!("run {}", command.args.join(" ")),
+            ServiceStep::TryRun(command) => format!("try {}", command.args.join(" ")),
         })
         .collect()
 }
@@ -44,7 +45,7 @@ fn a_launchd_install_writes_the_plist_before_loading_it() {
 }
 
 #[test]
-fn a_systemd_install_reloads_enables_and_lingers() {
+fn a_systemd_install_reloads_enables_and_tries_to_linger() {
     let steps = plan_for(ServiceKind::Systemd, true);
     assert_eq!(
         described(&steps),
@@ -53,7 +54,7 @@ fn a_systemd_install_reloads_enables_and_lingers() {
             "write /home/dev/.config/systemd/user/pm3-test.service",
             "run --user daemon-reload",
             "run --user enable --now pm3-test.service",
-            "run enable-linger",
+            "try enable-linger",
         ]
     );
 }
