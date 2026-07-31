@@ -14,6 +14,10 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 `pm3 start --name X [选项] <程序> <参数...>` 把意图写成 `pm3.cfg_dir/<name>.yaml`（零绝对路径，`${HOME}` 占位、`script` 存裸名、`cwd` 由 daemon 推导），`dump.yaml` 只留 `services[].runtime`；daemon 启动时由 `SpecSource` 把两者缝起来，服务文件缺失/损坏只跳过并 `warn`。
 
+## 配置文件布局
+
+`pm3.home`（默认 `~/.pm3`）放运行时状态：socket、pid 文件、日志、各服务工作目录，以及 daemon 自己的 `config.yaml`（`service install` 落盘那份，unit 的 `--config` 指向它）。`pm3.cfg_dir`（默认 `~/.config/pm3`）只放每服务一份 `<name>.yaml`。写 `~/.pm3/config.yaml` 与 `cfg_dir/<name>.yaml` 共用 `svc::reconcile`：内容相同静默通过、不同则打 diff 并拒绝、`--force` 才覆盖；`service uninstall` 不删配置。`pm3.search_path` 是 PATH 的单一来源，既写进 launchd/systemd unit，也是 daemon 解析 app 程序名的搜索路径。
+
 ## daemon 重启与服务接管
 
 spawn 时把「身份令牌（`ps -o lstart=`）+ 启动参数摘要 + 二进制 sha256」记进 `dump.yaml`，daemon 重启后逐服务比对：全同则接管（`adopt`）已存活的进程并轮询监控，任一不同则先停掉旧幸存进程（`evict`）再重启。SIGTERM 只落盘退出、不动服务；彻底停机用 `pm3 kill --with-services`。子进程用独立 process group，launchd `AbandonProcessGroup` / systemd `KillMode=process`，bwrap 去掉 `--die-with-parent`。
