@@ -1,5 +1,3 @@
-use usecases::Scheduler as _;
-
 use super::*;
 
 const MINUTE_MS: u64 = 60_000;

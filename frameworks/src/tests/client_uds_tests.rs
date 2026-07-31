@@ -1,7 +1,4 @@
-use tokio::{
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
-    net::UnixListener,
-};
+use tokio::net::UnixListener;
 
 use super::*;
 
