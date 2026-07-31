@@ -50,6 +50,10 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - **症状**：`launchctl list` 的 PID 列是 `-`，job 已载入但 launchd 未监管、KeepAlive 形同虚设
   **原因**：任何 pm3 CLI 命令都会经 `ensure_daemon_running` 自动拉起一个**非 launchd 托管**的 daemon；它扛不住 `launchctl unload`，且会抢赢 socket 竞争让 launchd 那份直接退出
   **修法**：换代顺序 MUST 是 `service uninstall` → `pm3 kill` → 等 `pgrep -f "<bin> daemon"` 归零 → `service install --force`；install 后 MUST 等「launchd 报的 pid == `pm3.pid` 内容」再跑任何 CLI 命令，否则又会拉起竞争者。已处于未监管态时先 `pm3 kill` 停掉自启实例，再 `launchctl kickstart gui/$(id -u)/<label>` 交回 launchd
+- 换代前 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷；`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），排查残留只用 `pgrep`
+- Linux 侧同一套顺序换 `systemctl --user`，但两件事只在 Linux 成立：
+  - `systemctl --user` 依赖 `XDG_RUNTIME_DIR`，非登录会话（agent/CI shell）里它为空 → 所有 `service` 子命令报 `Failed to connect to bus: No medium found`；先 `export XDG_RUNTIME_DIR=/run/user/$(id -u)`
+  - `loginctl enable-linger` 走 polkit 授权，polkit 被 mask 或无交互授权时必失败 → 它在 install plan 里是 `ServiceStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。看到 `skipped:` 就要由 root 补 `loginctl enable-linger <user>`，否则用户注销后 user manager 回收会连带停掉 daemon
 
 ## 改动波及清单
 

@@ -16,6 +16,13 @@ fn run_step_of(program: &str) -> Vec<ServiceStep> {
     })]
 }
 
+fn try_step_of(program: &str) -> Vec<ServiceStep> {
+    vec![ServiceStep::TryRun(ServiceCommand {
+        program: program.to_string(),
+        args: Vec::new(),
+    })]
+}
+
 fn write_step(dir: &Path, path: &Path) -> ServiceStep {
     ServiceStep::Write {
         dir: dir.to_path_buf(),
@@ -65,6 +72,35 @@ async fn a_noisy_failure_reports_what_the_manager_said() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("no such unit"), "got: {err}");
+}
+
+#[tokio::test]
+async fn an_optional_step_that_succeeds_skips_nothing() {
+    let skipped = execute_plan(&try_step_of(TRUE_PROGRAM))
+        .await
+        .expect("a clean exit should finish the plan");
+    assert!(skipped.is_empty(), "got: {skipped:?}");
+}
+
+#[tokio::test]
+async fn an_optional_step_that_fails_is_reported_as_skipped() {
+    let skipped = execute_plan(&try_step_of(FALSE_PROGRAM))
+        .await
+        .expect("an optional step must not fail the plan");
+    let note = skipped.first().expect("the refusal should be noted");
+    assert!(note.contains("exited with status 1"), "got: {note}");
+}
+
+#[tokio::test]
+async fn an_optional_step_that_fails_lets_later_steps_run() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let unit_path = dir.path().join("late.plist");
+    let mut steps = try_step_of(FALSE_PROGRAM);
+    steps.push(write_step(dir.path(), &unit_path));
+    execute_plan(&steps)
+        .await
+        .expect("an optional step must not fail the plan");
+    assert!(unit_path.exists(), "later steps must still run");
 }
 
 #[tokio::test]

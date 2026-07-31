@@ -47,6 +47,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 服务管理器
 
 - unit 文件位置由 OS 约定在**本层**派生（`~/Library/LaunchAgents/{label}.plist` / `~/.config/systemd/user/{label}.service`），**不进配置**——单个配置项无法同时对两个平台正确；`$HOME` 由 `frameworks` 注入，测试传 tempdir 就不会碰真实 `~`
+- `ServiceStep::Run` 失败即中止整个 plan，`TryRun` 失败只记 warn 并把原因收进 `execute_plan` 返回的 skipped 列表（`install_service` 追加到报告末尾）→ 「装不上就该报错」的步骤用 `Run`，「装不上也无妨、只影响后续可用性」的用 `TryRun`（目前只有 `loginctl enable-linger`，原因见根 `CLAUDE.md`）
 
 ### 序列化
 

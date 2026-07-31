@@ -22,6 +22,7 @@ pub enum ServiceStep {
         path: PathBuf,
     },
     Run(ServiceCommand),
+    TryRun(ServiceCommand),
 }
 
 #[must_use]
@@ -59,7 +60,7 @@ pub fn install_plan(
             write,
             ServiceStep::Run(systemctl_daemon_reload(programs)),
             ServiceStep::Run(systemctl_enable_now(programs, &spec.unit_name())),
-            ServiceStep::Run(loginctl_enable_linger(programs)),
+            ServiceStep::TryRun(loginctl_enable_linger(programs)),
         ],
     }
 }

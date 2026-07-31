@@ -104,6 +104,13 @@ telemetry:
     )
 }
 
+pub fn netcat() -> &'static str {
+    ["/usr/bin/nc", "/bin/nc"]
+        .into_iter()
+        .find(|candidate| Path::new(candidate).exists())
+        .expect("the host should provide nc for the network probe")
+}
+
 pub fn write_apps(home: &Home, body: &str) -> PathBuf {
     let path = home.dir.path().join("apps.yaml");
     std::fs::write(&path, body).expect("write the apps file");
