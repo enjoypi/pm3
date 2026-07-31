@@ -19,6 +19,8 @@ fn request<'r>(env: &'r [String], writable_dirs: &'r [String]) -> InlineRequest<
         cwd: Some(CWD),
         home: Some(HOME),
         env,
+        cron: None,
+        autorestart: None,
         network: true,
         writable_dirs,
     }
@@ -271,6 +273,7 @@ fn fully_declared_entry() -> AppEntry {
         min_uptime_ms: Some(2000),
         max_restarts: Some(7),
         restart_delay_ms: Some(50),
+        schedule: None,
         sandbox: Some(SandboxEntry {
             mode: Some(SANDBOX_MODE_WORKSPACE_WRITE.to_string()),
             network: Some(false),
@@ -329,4 +332,28 @@ fn an_app_without_a_sandbox_section_is_encoded_plainly() {
     entry.sandbox = None;
     let yaml = encode_apps_file(&AppsFile { apps: vec![entry] });
     assert!(!yaml.contains("sandbox"), "got: {yaml}");
+}
+
+#[test]
+fn an_inline_cron_reaches_the_encoded_file() {
+    let env: Vec<String> = Vec::new();
+    let dirs: Vec<String> = Vec::new();
+    let mut ask = request(&env, &dirs);
+    ask.cron = Some("~ * * * *");
+    ask.autorestart = Some(false);
+    let apps = inline_apps_file(&ask).expect("inline request should build");
+    let yaml = encode_apps_file(&apps);
+    assert!(yaml.contains(r#"schedule: "~ * * * *""#), "got: {yaml}");
+    let reparsed = parse_apps_file(&yaml).expect("the encoded app should parse");
+    let entry = only_entry(&reparsed);
+    assert_eq!(entry.schedule.as_deref(), Some("~ * * * *"));
+    assert_eq!(entry.autorestart, Some(false));
+}
+
+#[test]
+fn an_app_without_a_cron_omits_the_schedule_key() {
+    let env: Vec<String> = Vec::new();
+    let dirs: Vec<String> = Vec::new();
+    let apps = inline_apps_file(&request(&env, &dirs)).expect("inline request should build");
+    assert!(!encode_apps_file(&apps).contains("schedule:"));
 }

@@ -8,6 +8,7 @@ use super::roots::dedup_roots;
 use crate::{
     config::{ConfigLoadError, Pm3Config, RestartConfig, substitute_env_vars},
     program::resolve_program,
+    schedule::{CronError, validate_cron},
 };
 
 pub const DEFAULT_AUTORESTART: bool = true;
@@ -38,6 +39,8 @@ pub struct AppEntry {
     pub max_restarts: Option<u32>,
     #[serde(default)]
     pub restart_delay_ms: Option<u64>,
+    #[serde(default)]
+    pub schedule: Option<String>,
     #[serde(default)]
     pub sandbox: Option<SandboxEntry>,
 }
@@ -99,6 +102,9 @@ pub enum AppsFileError {
 
     #[error(transparent)]
     Spec(#[from] SpecError),
+
+    #[error(transparent)]
+    Cron(#[from] CronError),
 }
 
 impl<'d> SpecDefaults<'d> {
@@ -148,6 +154,9 @@ pub fn resolve_specs(
             return Err(AppsFileError::DuplicateName(spec.name));
         }
         validate_spec(&spec)?;
+        if let Some(cron) = spec.schedule.as_deref() {
+            validate_cron(&spec.name, cron)?;
+        }
         specs.push(spec);
     }
     Ok(specs)
@@ -181,6 +190,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         restart_delay_ms: entry
             .restart_delay_ms
             .unwrap_or(defaults.restart.restart_delay_ms),
+        schedule: entry.schedule.clone(),
         depends_on: entry.depends_on.clone(),
         sandbox,
     })

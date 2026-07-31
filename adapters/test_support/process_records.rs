@@ -29,6 +29,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 40,
+        schedule: None,
         depends_on: vec!["db".to_string()],
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,

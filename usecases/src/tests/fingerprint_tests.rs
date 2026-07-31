@@ -16,6 +16,7 @@ fn spec() -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 0,
+        schedule: None,
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,

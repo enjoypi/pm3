@@ -81,3 +81,25 @@ fn not_found_names_the_selector() {
     let err = UsecaseError::NotFound("api".to_string());
     assert_eq!(err.to_string(), "cannot find app 'api'");
 }
+
+#[test]
+fn the_fake_scheduler_answers_a_fixed_interval() {
+    use crate::ports::Scheduler as _;
+
+    let ports = crate::ports_test_helpers::FakePorts::new(1000);
+    assert_eq!(
+        ports.next_fire_ms("* * * * *", 1000),
+        Some(1000 + crate::ports_test_helpers::FAKE_FIRE_INTERVAL_MS)
+    );
+}
+
+#[test]
+fn the_fake_scheduler_refuses_an_unschedulable_expression() {
+    use crate::ports::Scheduler as _;
+
+    let ports = crate::ports_test_helpers::FakePorts::new(1000);
+    assert_eq!(
+        ports.next_fire_ms(crate::ports_test_helpers::UNSCHEDULABLE_CRON, 1000),
+        None
+    );
+}

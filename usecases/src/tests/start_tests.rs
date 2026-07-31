@@ -1,4 +1,4 @@
-use entities::{ProcessStatus, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, ProcessStatus, SandboxMode, SandboxPolicy};
 
 use super::*;
 use crate::{
@@ -305,4 +305,52 @@ async fn starting_an_unknown_name_reports_not_found() {
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotFound(_)), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_scheduled_one_shot_app_is_registered_without_spawning() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let task = AppSpec {
+        autorestart: false,
+        schedule: Some("* * * * *".to_string()),
+        ..spec("sweep")
+    };
+    let outcomes = start_apps(&mut table, &[task], LOGS_DIR, &ports)
+        .await
+        .expect("start should succeed");
+    assert_eq!(outcomes[0].kind, StartKind::Scheduled);
+    assert!(ports.spawned_names().is_empty());
+    let record = table
+        .find(&AppSelector::Name("sweep".to_string()))
+        .expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Stopped);
+}
+
+#[tokio::test]
+async fn a_scheduled_app_that_autorestarts_still_spawns() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let service = AppSpec {
+        autorestart: true,
+        schedule: Some("* * * * *".to_string()),
+        ..spec("api")
+    };
+    let outcomes = start_apps(&mut table, &[service], LOGS_DIR, &ports)
+        .await
+        .expect("start should succeed");
+    assert_eq!(outcomes[0].kind, StartKind::Spawned);
+}
+
+#[test]
+fn a_scheduled_registration_needs_no_watching() {
+    assert!(!StartKind::Scheduled.needs_watching());
+}
+
+#[test]
+fn only_settled_registrations_skip_the_timer() {
+    assert!(StartKind::Spawned.needs_timer());
+    assert!(StartKind::Adopted.needs_timer());
+    assert!(StartKind::Scheduled.needs_timer());
+    assert!(!StartKind::AlreadyRunning.needs_timer());
 }

@@ -345,6 +345,8 @@ fn inline_request(target: &[String]) -> InlineStart<'_> {
         target,
         cwd: None,
         env: &[],
+        cron: None,
+        autorestart: None,
         network: false,
         writable_dirs: &[],
         force: false,

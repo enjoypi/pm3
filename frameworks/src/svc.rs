@@ -77,6 +77,8 @@ pub struct InlineStart<'s> {
     pub target: &'s [String],
     pub cwd: Option<&'s str>,
     pub env: &'s [String],
+    pub cron: Option<&'s str>,
+    pub autorestart: Option<bool>,
     pub network: bool,
     pub writable_dirs: &'s [String],
     pub force: bool,
@@ -109,6 +111,8 @@ pub async fn prepare_inline(
         cwd: request.cwd,
         home: context.home,
         env: request.env,
+        cron: request.cron,
+        autorestart: request.autorestart,
         network: request.network,
         writable_dirs: request.writable_dirs,
     })?;
@@ -156,6 +160,19 @@ fn fold_entry(context: &SvcContext<'_>, entry: &AppEntry) -> AppEntry {
         .iter()
         .map(|value| fold_svc_cwd(&fold_home(value, context.home)))
         .collect();
+    folded.env = folded
+        .env
+        .iter()
+        .map(|(key, value)| (key.clone(), fold_home(value, context.home)))
+        .collect();
+    if let Some(sandbox) = folded.sandbox.as_mut() {
+        sandbox.writable_roots = sandbox.writable_roots.as_ref().map(|roots| {
+            roots
+                .iter()
+                .map(|root| fold_home(root, context.home))
+                .collect()
+        });
+    }
     folded
 }
 

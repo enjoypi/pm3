@@ -80,3 +80,32 @@ fn the_widest_cell_sets_the_column_width() {
 fn an_absent_column_has_no_width() {
     assert_eq!(widest(std::iter::empty()), 0);
 }
+
+#[test]
+fn a_clock_without_an_instant_is_missing() {
+    assert_eq!(format_clock(None), MISSING);
+}
+
+#[test]
+fn a_stamp_without_an_instant_is_missing() {
+    assert_eq!(format_stamp(None), MISSING);
+}
+
+#[test]
+fn an_instant_beyond_the_signed_range_is_missing() {
+    assert_eq!(format_clock(Some(u64::MAX)), MISSING);
+}
+
+#[test]
+fn an_instant_outside_the_calendar_is_missing() {
+    assert_eq!(format_stamp(Some(u64::MAX / 2)), MISSING);
+}
+
+#[test]
+fn a_stamp_names_its_timezone_offset() {
+    let stamp = format_stamp(Some(1_700_000_000_000));
+    assert!(
+        stamp.contains("UTC+") || stamp.contains("UTC-"),
+        "got: {stamp}"
+    );
+}

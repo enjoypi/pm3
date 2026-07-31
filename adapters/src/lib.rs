@@ -8,6 +8,7 @@ pub mod presenter;
 pub mod process;
 pub mod program;
 pub mod sandbox;
+pub mod schedule;
 pub mod service;
 pub mod startup;
 pub mod state;
@@ -18,7 +19,7 @@ pub use usecases::{
     AppSelector, AppSpec, Clock, CommandWrapper, DeleteOutcome, DumpError, DumpStore, ExitAction,
     ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Ports,
     ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus,
-    ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode, SandboxPolicy,
+    ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
     SignalError, Signaler, StartKind, StartOutcome, StopOutcome, UsecaseError, WrappedCommand,
     delete_app, describe_app, handle_child_exit, list_apps, log_paths, render_identity,
     restart_app, resurrect, start_apps, stop_all_apps, stop_app, topo_sort,
@@ -62,6 +63,7 @@ pub use self::{
         program_available, resolve_program,
     },
     sandbox::{SandboxBackend, SandboxCommandWrapper, seatbelt_profile},
+    schedule::{CronError, CronScheduler, ExpandError, expand_random, validate_cron},
     service::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, ServiceCommandError, ServiceKind,
         ServiceProgramSet, ServiceStatus, ServiceUnitSpec, install_service, status_report,

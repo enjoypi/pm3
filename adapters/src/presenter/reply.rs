@@ -76,6 +76,7 @@ fn describe_start(outcome: &StartOutcome) -> String {
         Sk::Spawned => format!("started {name}"),
         Sk::AlreadyRunning => already_running_marker(name),
         Sk::Adopted => format!("reclaimed {name}"),
+        Sk::Scheduled => format!("scheduled {name}"),
     };
     format!("{headline} (id {pm_id}, pid {pid_text})")
 }

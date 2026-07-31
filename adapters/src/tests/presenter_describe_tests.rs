@@ -93,7 +93,7 @@ fn describe_marks_an_empty_list_as_missing() {
 
 #[test]
 fn every_field_gets_its_own_line() {
-    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 12);
+    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 14);
 }
 
 #[test]
@@ -101,4 +101,21 @@ fn labels_are_padded_to_the_longest_one() {
     let rendered = render_describe(&running_view(7, "web"));
     let gap = " ".repeat("writable roots".len() - "id".len() + LABEL_GAP.len());
     assert!(rendered.contains(&format!("id{gap}7")), "got: {rendered}");
+}
+
+#[test]
+fn describe_reports_the_schedule_and_its_next_fire() {
+    let mut view = idle_view(0, "sweep");
+    view.schedule = Some("~ * * * *".to_string());
+    view.next_fire_ms = Some(1_700_000_000_000);
+    assert_eq!(value_of(&view, "schedule"), "~ * * * *");
+    let stamp = value_of(&view, "next fire");
+    assert!(stamp.contains("UTC+"), "stamp must name its zone: {stamp}");
+}
+
+#[test]
+fn describe_marks_an_unscheduled_app_as_missing() {
+    let view = idle_view(0, "web");
+    assert_eq!(value_of(&view, "schedule"), "-");
+    assert_eq!(value_of(&view, "next fire"), "-");
 }

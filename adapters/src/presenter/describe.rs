@@ -1,6 +1,8 @@
 use usecases::ProcessView;
 
-use super::fields::{format_list, format_pid, format_sandbox, format_uptime, pad, widest};
+use super::fields::{
+    MISSING, format_list, format_pid, format_sandbox, format_stamp, format_uptime, pad, widest,
+};
 
 const LABEL_GAP: &str = "  ";
 
@@ -23,6 +25,11 @@ fn describe_rows(view: &ProcessView) -> Vec<(&'static str, String)> {
         ("pid", format_pid(view.pid)),
         ("uptime", format_uptime(view.uptime_ms)),
         ("restarts", view.restart_time.to_string()),
+        (
+            "schedule",
+            view.schedule.clone().unwrap_or_else(|| MISSING.to_string()),
+        ),
+        ("next fire", format_stamp(view.next_fire_ms)),
         ("script", view.script.clone()),
         ("args", format_list(&view.args)),
         ("cwd", view.cwd.clone()),

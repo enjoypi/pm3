@@ -1,4 +1,4 @@
-use adapters::{CONFIG_FILE, default_config_path};
+use adapters::{CONFIG_FILE, default_config_path, validate_cron};
 use clap::{Args, Parser, Subcommand};
 
 use crate::{
@@ -96,6 +96,19 @@ pub struct StartArgs {
 
     #[arg(long = "env", value_name = "KEY=VALUE", help = "Environment entry")]
     pub env: Vec<String>,
+
+    #[arg(
+        long,
+        value_name = "EXPR",
+        help = "Five-field cron schedule; '~' picks a random value on every fire"
+    )]
+    pub cron: Option<String>,
+
+    #[arg(
+        long = "no-autorestart",
+        help = "Do not restart the program when it exits"
+    )]
+    pub no_autorestart: bool,
 
     #[arg(long, help = "Allow the program to reach the network")]
     pub network: bool,
@@ -199,11 +212,16 @@ async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
             commands::start_apps(config, apps_file, args.force).await?
         }
         Some(name) => {
+            if let Some(cron) = args.cron.as_deref() {
+                validate_cron(name, cron)?;
+            }
             let request = InlineStart {
                 name,
                 target: &args.target,
                 cwd: args.cwd.as_deref(),
                 env: &args.env,
+                cron: args.cron.as_deref(),
+                autorestart: args.no_autorestart.then_some(false),
                 network: args.network,
                 writable_dirs: &args.writable_dirs,
                 force: args.force,

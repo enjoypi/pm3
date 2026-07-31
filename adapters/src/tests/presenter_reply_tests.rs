@@ -120,3 +120,17 @@ fn a_stop_all_reply_with_nothing_to_stop_says_so() {
     let reply = DaemonReply::StoppedAll { names: Vec::new() };
     assert_eq!(render_reply(&reply), NOTHING_TO_STOP);
 }
+
+#[test]
+fn a_scheduled_registration_reads_as_scheduled() {
+    let outcome = StartOutcome {
+        pm_id: 3,
+        name: "sweep".to_string(),
+        pid: None,
+        kind: StartKind::Scheduled,
+    };
+    assert!(
+        render_started(&[outcome]).starts_with("scheduled sweep"),
+        "unexpected headline"
+    );
+}

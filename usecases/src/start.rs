@@ -6,10 +6,17 @@ use crate::{
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum StartMode {
+    Register,
+    Fire,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum StartKind {
     Spawned,
     AlreadyRunning,
     Adopted,
+    Scheduled,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,6 +31,11 @@ impl StartKind {
     #[must_use]
     pub const fn needs_watching(self) -> bool {
         matches!(self, Self::Spawned | Self::Adopted)
+    }
+
+    #[must_use]
+    pub const fn needs_timer(self) -> bool {
+        matches!(self, Self::Spawned | Self::Adopted | Self::Scheduled)
     }
 }
 
@@ -45,7 +57,7 @@ pub async fn start_apps(
 
     let mut outcomes = Vec::with_capacity(order.len());
     for name in &order {
-        outcomes.push(start_one(table, name, logs_dir, ports).await?);
+        outcomes.push(launch(table, name, logs_dir, ports, StartMode::Register).await?);
     }
     save_table(table, ports).await?;
     Ok(outcomes)
@@ -75,6 +87,16 @@ pub(crate) async fn start_one(
     logs_dir: &str,
     ports: &impl Ports,
 ) -> Result<StartOutcome> {
+    launch(table, name, logs_dir, ports, StartMode::Fire).await
+}
+
+async fn launch(
+    table: &mut ProcessTable,
+    name: &str,
+    logs_dir: &str,
+    ports: &impl Ports,
+    mode: StartMode,
+) -> Result<StartOutcome> {
     let Some(record) = table.find_by_name_mut(name) else {
         return Err(UsecaseError::NotFound(name.to_string()));
     };
@@ -85,6 +107,15 @@ pub(crate) async fn start_one(
             name: name.to_string(),
             pid: record.runtime.pid,
             kind: StartKind::AlreadyRunning,
+        });
+    }
+
+    if mode == StartMode::Register && record.spec.is_scheduled_task() {
+        return Ok(StartOutcome {
+            pm_id: record.runtime.pm_id,
+            name: name.to_string(),
+            pid: None,
+            kind: StartKind::Scheduled,
         });
     }
 
