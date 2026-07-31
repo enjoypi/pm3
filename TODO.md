@@ -10,7 +10,3 @@
 - [ ] 在 Linux 容器内跑通 `just cov`；`bwrap` 需要 user namespace 权限，容器要加 `--cap-add SYS_ADMIN` 或 `--security-opt seccomp=unconfined`
 - [ ] 验证 `pm3 service install` 落盘的 systemd user unit 路径正确
 - [ ] 验证 `loginctl enable-linger` 不带用户名参数是否成立
-
-## 待决策
-
-- [ ] `README` 尚未写（新建文档需用户同意）

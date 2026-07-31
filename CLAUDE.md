@@ -45,7 +45,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 ### 装真机与换代
 
-- 固定走 `just install`（已封装 opt-level 3 构建、备份、原子换二进制、换代顺序、前后 pid 核对）
+- 固定走 `just install`，MUST NOT 手工搬二进制（换代顺序有硬约束，见下）
 - `pm3 service install` 用 `current_exe()` 渲染 unit → MUST NOT 在仓库目录执行（会把 plist 钉在 `target/release/pm3`，一次 `cargo clean` 就起不来）；先把二进制 `cp` 到最终位置，再用**那个**二进制执行 install
 - **症状**：`launchctl list` 的 PID 列是 `-`，job 已载入但 launchd 未监管、KeepAlive 形同虚设
   **原因**：任何 pm3 CLI 命令都会经 `ensure_daemon_running` 自动拉起一个**非 launchd 托管**的 daemon；它扛不住 `launchctl unload`，且会抢赢 socket 竞争让 launchd 那份直接退出
@@ -150,21 +150,14 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - test_helper 的请求构造器 MUST NOT 与 handler 同名（`get`/`post`/`delete` 在 `use super::{test_helpers::*, *}` 下二义），用 `get_from`/`post_to`/`delete_at`
 - 只有 `Ok` 分支的测试 fixture 会触发 clippy `unnecessary_wraps`：fixture 返回裸值，调用处再 `Ok(...)`
 
-## Rust / clippy
+## 外部工具与库的坑
 
-- clippy 会报 `similar_names`（`launcher` 与 `launched`、`receiver` 与 `received`）、`significant_drop_tightening`、`shadow_unrelated`（闭包参数名与外层 `let` 撞名即报，换个名字即解）
+- clippy 会报 `similar_names`（`launcher` 与 `launched`、`receiver` 与 `received`）、`shadow_unrelated`（闭包参数名与外层 `let` 撞名即报，换个名字即解）
 - `elidable_lifetime_names`：`fn f<'s>(x: &'s [T]) -> R<'s>` → `fn f(x: &[T]) -> R<'_>`
 - `.collect::<Vec<_>>().join("")` 触发 clippy `unnecessary_join` → 改 `.collect::<String>()`
 - clippy `format_push_string` 与 `format_collect` 互相堵死：`push_str(&format!)` 和 `.map(format!).collect::<String>()` 都报，唯一出路是 `fold(format!(init), |mut t, x| { let _ = writeln!(t, ..); t })`
 - 跨 async 边界的回调参数要写 `&(dyn Fn(&str) + Send + Sync)`，否则外层 future 不是 `Send`
 - 结构体从「拥有」改成「借用配置」后，返回 `Foo<'static>` 的 fixture 会编译失败 → 用 `LazyLock<Config>` 让引用变 `'static`
-
-## 库与框架陷阱
-
 - axum 0.8 原生 `impl Listener for tokio::net::UnixListener`（无需 hyper-util）；`tokio::net::unix::SocketAddr` 只 impl Debug 不 impl Display → 日志用 `?addr`
 - clap `trailing_var_arg` + `allow_hyphen_values`：pm3 自身选项必须出现在程序名**之前**，否则被当子进程参数
 - **Rust 生态没有任何 cron 库支持 OpenBSD 风格的随机 `~`**（croner/cron/cronexpr/jiff-cron/cron_tab 全无，只有 cronexpr 支持 Jenkins 的固定哈希 `H`）→ 自己展开成具体数字再交 croner
-
-## 分层
-
-依赖方向与「再导出必须具名」由 `arch_tests` 在测试期强制，规则清单见 `arch_tests/CLAUDE.md`。最常撞的一条：`frameworks` 不得依赖 `usecases`/`entities`，内层类型一律从 `adapters` 的具名再导出取。

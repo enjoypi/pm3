@@ -6,15 +6,16 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 
 | 目录 | 内容 |
 |---|---|
-| `config/` | `Pm3Config` schema、loader、`substitute_env_vars` |
+| `config/` | `Pm3Config` schema、loader、`substitute_env_vars`；`app.rs` 是 `pm3 config check/show` |
 | `apps_file/` | 用户 apps 文件与单体服务文件的解析、`SpecSource`、`roots` |
 | `http/` | daemon 侧 controller / routes / DTO（`ReplyDto`） |
+| `logs/` | `pm3 logs` 的 `tail_lines` / `read_tail` / `LogFollower`（`-f` 跟随） |
 | `persistence/` | `dump.yaml` 的 `yaml_store` 与 DTO |
-| `presenter/` | `list` 表格、`describe`、reply 文案 |
+| `presenter/` | `list` 表格、`describe`、reply 文案；`fields.rs` 是单字段格式化 |
 | `process/` | `tokio_launcher` `kill_signaler` `ps_probe` `sha256_fingerprinter` `system_clock` `watcher` |
 | `sandbox/` | `seatbelt`（macOS，含 `.sbpl`）/ `bwrap`（Linux）/ `wrapper` / `backend` |
 | `schedule/` | `cron_scheduler` + `random_expand`（OpenBSD `~` 展开） |
-| `service/` | `launchd` / `systemd` unit 渲染、`plan` `actions` `runner` `command` |
+| `service/` | `spec.rs`（`ServiceKind` / `unit_dir_of`）、`launchd` / `systemd` unit 渲染、`plan` `actions` `runner` `command` |
 | 根文件 | `paths.rs` `program.rs` `startup.rs` `state.rs` `workspace.rs` |
 
 ## 本层规则
@@ -41,7 +42,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 
 ### 调度
 
-- `random_expand.rs` 在**每次 `arm_timer`** 把 `~`/`a~b`/`a~b/n` 展开成具体数字再交 croner，所以每次触发都重新摇；副产品是「早晚各一次」写成 `25~35 9,18 * * *` 时两次会落在不同分钟
+- `random_expand.rs` MUST 在**每次 `arm_timer`** 才把 `~`/`a~b`/`a~b/n` 展开成具体数字交 croner；只在加载时展开一次就丢掉了「每次触发重新摇号」这个需求
 
 ### 服务管理器
 
