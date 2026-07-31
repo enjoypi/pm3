@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use adapters::{
-    AppEntry, AppsFile, InlineRequest, diff_lines, encode_apps_file, fold_home, fold_svc_cwd,
-    inline_apps_file, load_apps_file, resolve_program, service_file_of,
+    AppEntry, InlineRequest, diff_lines, encode_service_file, fold_home, fold_svc_cwd,
+    inline_entry, load_apps_file, resolve_program, service_file_of,
 };
 
 use crate::{Error, Result};
@@ -26,6 +26,7 @@ pub struct PreparedSvc {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SplitApps {
+    pub names: Vec<String>,
     pub changed: Vec<String>,
     pub undo: SvcUndo,
 }
@@ -104,7 +105,7 @@ pub async fn prepare_inline(
             program: program.clone(),
         });
     }
-    let apps = inline_apps_file(&InlineRequest {
+    let entry = inline_entry(&InlineRequest {
         name: request.name,
         program,
         args,
@@ -116,7 +117,7 @@ pub async fn prepare_inline(
         network: request.network,
         writable_dirs: request.writable_dirs,
     })?;
-    let contents = encode_apps_file(&apps);
+    let contents = encode_service_file(&entry);
     let path = service_file_of(context.cfg_dir, request.name);
     let mut undo = SvcUndo::default();
     let reconciled = write_svc(&path, &contents, request.force, &mut undo).await?;
@@ -136,9 +137,8 @@ pub async fn split_apps_file(
     let mut split = SplitApps::default();
     for entry in &apps.apps {
         let path = service_file_of(context.cfg_dir, &entry.name);
-        let contents = encode_apps_file(&AppsFile {
-            apps: vec![fold_entry(context, entry)],
-        });
+        let contents = encode_service_file(&fold_entry(context, entry));
+        split.names.push(entry.name.clone());
         match write_svc(&path, &contents, force, &mut split.undo).await {
             Ok(Reconciled::Stale) => split.changed.push(entry.name.clone()),
             Ok(Reconciled::Unchanged) => {}

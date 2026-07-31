@@ -22,7 +22,7 @@ pub async fn start(
     Json(body): Json<StartRequestDto>,
 ) -> Response {
     let request = DaemonRequest::Start {
-        apps_file: body.apps_file,
+        services: body.services,
     };
     respond(handle.send(request).await)
 }

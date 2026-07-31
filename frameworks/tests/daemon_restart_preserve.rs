@@ -118,8 +118,7 @@ fn a_service_whose_config_changed_is_restarted_by_the_new_daemon() {
     detach_daemon(&home);
     let path = service_file(&home);
     let config = std::fs::read_to_string(&path).expect("the service file");
-    std::fs::write(&path, format!("{config}    env:\n      TUNED: \"1\"\n"))
-        .expect("retune the service");
+    std::fs::write(&path, format!("{config}env:\n  TUNED: \"1\"\n")).expect("retune the service");
     revive_daemon(&home);
 
     assert_ne!(
@@ -140,8 +139,7 @@ fn restarting_a_changed_service_takes_the_old_process_down_first() {
     detach_daemon(&home);
     let path = service_file(&home);
     let config = std::fs::read_to_string(&path).expect("the service file");
-    std::fs::write(&path, format!("{config}    env:\n      TUNED: \"1\"\n"))
-        .expect("retune the service");
+    std::fs::write(&path, format!("{config}env:\n  TUNED: \"1\"\n")).expect("retune the service");
     revive_daemon(&home);
     wait_for_log(&daemon_log(&home), "\"action\":\"evict\"");
 

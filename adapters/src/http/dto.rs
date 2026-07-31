@@ -4,7 +4,7 @@ pub const HEALTH_OK: &str = "ok";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StartRequestDto {
-    pub apps_file: String,
+    pub services: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

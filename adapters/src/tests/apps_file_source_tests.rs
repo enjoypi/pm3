@@ -85,7 +85,7 @@ fn resolving_a_service_expands_the_home_placeholder() {
     write_service_file(
         &fixture.source,
         "web",
-        "apps:\n  - name: \"web\"\n    script: \"/bin/sh\"\n    args:\n      - \"${HOME}/app.js\"\n",
+        "name: \"web\"\nscript: \"/bin/sh\"\nargs:\n  - \"${HOME}/app.js\"\n",
     );
     let spec = fixture
         .source
@@ -120,13 +120,13 @@ fn resolving_a_service_that_its_file_does_not_declare_is_reported() {
 #[test]
 fn resolving_a_service_from_an_empty_file_is_reported() {
     let fixture = fixture();
-    write_service_file(&fixture.source, "web", "apps: []\n");
+    write_service_file(&fixture.source, "web", "\n");
     let err = fixture
         .source
         .resolve_service("web")
         .unwrap_err()
         .to_string();
-    assert_eq!(err, "cannot accept an apps file with no apps");
+    assert!(err.starts_with("cannot parse apps file"), "got: {err}");
 }
 
 #[test]
@@ -143,4 +143,20 @@ fn resolving_a_service_with_an_unusable_sandbox_mode_is_reported() {
         err.contains("cannot accept sandbox mode 'yolo'"),
         "got: {err}"
     );
+}
+
+#[test]
+fn resolving_a_service_from_a_legacy_apps_file_is_reported() {
+    let fixture = fixture();
+    write_service_file(
+        &fixture.source,
+        "web",
+        "apps:\n  - name: \"web\"\n    script: \"/bin/sh\"\n",
+    );
+    let err = fixture
+        .source
+        .resolve_service("web")
+        .unwrap_err()
+        .to_string();
+    assert!(err.starts_with("cannot parse apps file"), "got: {err}");
 }

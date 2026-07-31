@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{fmt::Write as _, path::PathBuf, time::Duration};
 
 use adapters::{
     DaemonCommand, DaemonOutcome, Pm3Paths, logs_dir_of, resolve_paths, service_file_of,
@@ -80,24 +77,32 @@ pub fn apps_file_without_restart(harness: &Harness, name: &str, script: &str) ->
 
 pub fn scheduled_apps_file(harness: &Harness, name: &str, script: &str, cron: &str) -> PathBuf {
     let cwd = harness.paths.root.to_string_lossy();
-    let body = format!(
-        "apps:\n  - name: {name}\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    autorestart: false\n    schedule: \"{cron}\"\n    args:\n      - \"-c\"\n      - \"{script}\"\n"
+    let fields = format!(
+        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: false\nschedule: \"{cron}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
     );
-    std::fs::write(service_file_of(&harness.cfg_dir, name), &body).expect("write the service file");
-    write_apps_file(harness.dir.path(), &body)
+    write_both(harness, name, &fields)
 }
 
 fn written_apps_file(harness: &Harness, name: &str, script: &str, autorestart: bool) -> PathBuf {
     let cwd = harness.paths.root.to_string_lossy();
-    let body = format!(
-        "apps:\n  - name: {name}\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    autorestart: {autorestart}\n    args:\n      - \"-c\"\n      - \"{script}\"\n"
+    let fields = format!(
+        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: {autorestart}\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
     );
-    std::fs::write(service_file_of(&harness.cfg_dir, name), &body).expect("write the service file");
-    write_apps_file(harness.dir.path(), &body)
+    write_both(harness, name, &fields)
 }
 
-pub fn text(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
+fn write_both(harness: &Harness, name: &str, fields: &str) -> PathBuf {
+    let service = format!("name: {name}\n{fields}");
+    std::fs::write(service_file_of(&harness.cfg_dir, name), &service)
+        .expect("write the service file");
+    let listed = fields.lines().fold(String::new(), |mut text, line| {
+        let _ = writeln!(text, "    {line}");
+        text
+    });
+    write_apps_file(
+        harness.dir.path(),
+        &format!("apps:\n  - name: {name}\n{listed}"),
+    )
 }
 
 pub async fn next_event(events: &mut mpsc::Receiver<DaemonEvent>) -> DaemonEvent {

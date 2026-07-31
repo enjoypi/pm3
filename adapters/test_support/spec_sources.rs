@@ -42,5 +42,5 @@ pub fn write_service_file(source: &SpecSource, name: &str, body: &str) {
 }
 
 pub fn service_yaml(name: &str) -> String {
-    format!("apps:\n  - name: \"{name}\"\n    script: \"{SERVICE_SCRIPT}\"\n")
+    format!("name: \"{name}\"\nscript: \"{SERVICE_SCRIPT}\"\n")
 }

@@ -3,7 +3,7 @@ use usecases::{DumpError, SpecError, StartKind, StartOutcome};
 use super::{test_helpers::*, *};
 use crate::{apps_file::AppsFileError, http::HEALTH_OK, process_views::running_view};
 
-const APPS_FILE: &str = "/srv/pm3/apps.yaml";
+const SERVICE: &str = "web";
 
 fn listed_nothing() -> DaemonReply {
     DaemonReply::Listed(Vec::new())
@@ -16,7 +16,7 @@ fn acknowledged(name: &str) -> DaemonReply {
 }
 
 fn start_body() -> String {
-    format!("{{\"apps_file\":\"{APPS_FILE}\"}}")
+    format!("{{\"services\":[\"{SERVICE}\"]}}")
 }
 
 #[tokio::test]
@@ -33,7 +33,7 @@ async fn starting_apps_forwards_the_apps_file() {
     assert_eq!(
         exchange.request,
         Some(DaemonRequest::Start {
-            apps_file: APPS_FILE.to_string(),
+            services: vec![SERVICE.to_string()],
         })
     );
 }

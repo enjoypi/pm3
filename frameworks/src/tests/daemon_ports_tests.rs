@@ -35,7 +35,7 @@ fn spec_source_in(dir: &Path) -> SpecSource {
 fn register_service(dir: &Path, name: &str) {
     std::fs::write(
         service_file_of(&dir.join("svc"), name),
-        format!("apps:\n  - name: {name}\n    script: /bin/echo\n"),
+        format!("name: {name}\nscript: /bin/echo\n"),
     )
     .expect("write the service file");
 }

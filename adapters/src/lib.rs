@@ -28,8 +28,9 @@ pub use usecases::{
 pub use self::{
     apps_file::{
         AppEntry, AppsFile, AppsFileError, InlineRequest, SERVICE_FILE_SUFFIX, SandboxEntry,
-        SpecDefaults, SpecSource, diff_lines, encode_apps_file, inline_apps_file, load_apps_file,
-        parse_apps_file, resolve_specs, service_file_of,
+        SpecDefaults, SpecSource, diff_lines, encode_apps_file, encode_service_file, inline_entry,
+        load_apps_file, load_service_file, parse_apps_file, parse_service_file, resolve_checked,
+        resolve_specs, service_file_of,
     },
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,
