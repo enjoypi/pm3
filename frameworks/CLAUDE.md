@@ -12,6 +12,7 @@
 | `cli.rs` / `commands.rs` | clap 定义与子命令分发 |
 | `daemon/` | `bootstrap` `actor`（事件循环 + `timers`）`socket` `service` `ports` |
 | `client/uds.rs` | CLI 侧 Unix socket 客户端（`ask` / `ask_report`） |
+| `server.rs` | `serve_listener`：接管已 bound 的 listener，避开 bind→drop→re-bind 的抢占窗口 |
 | `svc.rs` | `cfg_dir/<name>.yaml` 的读写、`reconcile`、`fold_entry`、`SvcUndo` |
 | `service.rs` | `pm3 service install/uninstall` |
 | `signal.rs` | SIGINT 吞掉、SIGTERM 落盘退出 |
