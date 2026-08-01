@@ -9,8 +9,8 @@ use crate::{
     Ports,
     ports::{
         Clock, CommandWrapper, DumpError, DumpStore, FingerprintError, Fingerprinter, LaunchError,
-        LaunchSpec, LaunchedProcess, ProcessLauncher, ProcessProbe, SandboxError, Scheduler,
-        SignalError, Signaler, WrappedCommand,
+        LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe, SandboxError,
+        Scheduler, SignalError, Signaler, WrappedCommand,
     },
     record::ProcessRecord,
 };
@@ -42,6 +42,7 @@ struct FakeState {
     save_fails: bool,
     live: BTreeMap<u32, String>,
     probe_blind: Vec<u32>,
+    probe_broken: Vec<u32>,
     adopted: Vec<u32>,
     file_digests: BTreeMap<String, String>,
     digest_failures: Vec<String>,
@@ -115,6 +116,10 @@ impl FakePorts {
             state.probe_blind.push(pid);
             state.live.remove(&pid);
         });
+    }
+
+    pub fn break_probe_for(&self, pid: u32) {
+        self.with_state(|state| state.probe_broken.push(pid));
     }
 
     pub fn kill_silently(&self, pid: u32) {
@@ -284,8 +289,17 @@ impl DumpStore for FakePorts {
 }
 
 impl ProcessProbe for FakePorts {
-    async fn identity(&self, pid: u32) -> Option<String> {
-        self.read(|state| state.live.get(&pid).cloned())
+    async fn identity(&self, pid: u32) -> Liveness {
+        self.read(|state| {
+            if state.probe_broken.contains(&pid) {
+                return Liveness::Unreadable;
+            }
+            state
+                .live
+                .get(&pid)
+                .cloned()
+                .map_or(Liveness::Gone, Liveness::Alive)
+        })
     }
 }
 

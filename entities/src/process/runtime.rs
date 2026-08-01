@@ -19,6 +19,7 @@ pub struct ProcessRuntime {
     pub started_at_ms: Option<u64>,
     pub identity: Option<ProcessIdentity>,
     pub pending_restart: bool,
+    pub schedule_armed: bool,
 }
 
 impl ProcessRuntime {
@@ -35,6 +36,7 @@ impl ProcessRuntime {
             started_at_ms: None,
             identity: None,
             pending_restart: false,
+            schedule_armed: false,
         }
     }
 
@@ -80,6 +82,14 @@ impl ProcessRuntime {
 
     pub const fn request_restart(&mut self) {
         self.pending_restart = true;
+    }
+
+    pub const fn arm_schedule(&mut self) {
+        self.schedule_armed = true;
+    }
+
+    pub const fn disarm_schedule(&mut self) {
+        self.schedule_armed = false;
     }
 
     pub const fn take_restart_request(&mut self) -> bool {

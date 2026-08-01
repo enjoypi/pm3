@@ -12,7 +12,7 @@ pub use self::{
     dump_store::{DumpError, DumpStore},
     fingerprint::{FingerprintError, Fingerprinter},
     launcher::{ExitOutcome, LaunchError, LaunchSpec, LaunchedProcess, ProcessLauncher},
-    probe::ProcessProbe,
+    probe::{Liveness, ProcessProbe},
     scheduler::Scheduler,
     signaler::{SignalError, Signaler},
     wrapper::{CommandWrapper, SandboxError, WrappedCommand},

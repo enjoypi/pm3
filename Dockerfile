@@ -46,9 +46,11 @@ FROM ${RUNTIME_IMAGE}
 # bubblewrap 是 pm3 在 Linux 上的沙盒后端，缺失时 pm3 start 会 fail-closed 拒绝启动。
 # 容器内 bwrap 需要 user namespace 权限：以 --cap-add SYS_ADMIN 或
 # --security-opt seccomp=unconfined 运行，否则沙盒无法创建 namespace。
+# procps 提供 /bin/ps，pm3 用它采集身份令牌判进程存活；缺失时每次 daemon 重启
+# 都探不出结果，接管来的服务会被判为「探测失败」而驱逐重启。
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends bubblewrap; \
+    apt-get install -y --no-install-recommends bubblewrap procps; \
     rm -rf /var/lib/apt/lists/*; \
     useradd --create-home --uid 65532 --user-group nonroot
 

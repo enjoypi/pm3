@@ -201,6 +201,22 @@ fn killing_the_daemon_with_its_services_leaves_nothing_running() {
 }
 
 #[test]
+fn killing_with_services_reports_a_dump_it_cannot_write() {
+    let home = home();
+    start_sleeper(&home);
+    let dump = home.root.join("dump.yaml");
+    std::fs::remove_file(&dump).expect("drop the dump file");
+    std::fs::create_dir_all(&dump).expect("block the dump path");
+    std::fs::write(dump.join("occupied"), "state").expect("fill the blocked dump path");
+
+    let killed = pm3(&home, &["kill", "--with-services"]);
+
+    assert!(!killed.status.success(), "{}", stdout_of(&killed));
+    std::fs::remove_dir_all(&dump).expect("unblock the dump path");
+    shutdown_daemon(&home);
+}
+
+#[test]
 fn killing_the_daemon_alone_leaves_the_service_running() {
     let home = home();
     let pid = start_sleeper(&home);
@@ -324,6 +340,32 @@ fn killing_a_daemon_that_will_not_leave_reports_a_failure() {
     decoy.wait().expect("should reap the decoy");
     std::fs::write(&pid_file, recorded).expect("restore the pid file");
     shutdown_daemon(&home);
+}
+
+#[test]
+fn deleting_a_selector_that_would_escape_the_apps_path_is_refused() {
+    let home = home();
+    let deleted = pm3(&home, &["delete", "my app"]);
+    assert!(!deleted.status.success(), "{}", stdout_of(&deleted));
+    assert!(
+        common::stderr_of(&deleted).contains("not allowed"),
+        "{}",
+        common::stderr_of(&deleted)
+    );
+}
+
+#[test]
+fn deleting_without_a_usable_config_cannot_open_a_session() {
+    let deleted = std::process::Command::new(common::PM3)
+        .args(["--config", "/nonexistent/pm3.yaml", "delete", "3"])
+        .output()
+        .expect("pm3 should run");
+    assert!(!deleted.status.success(), "{}", stdout_of(&deleted));
+    assert!(
+        common::stderr_of(&deleted).contains("/nonexistent/pm3.yaml"),
+        "{}",
+        common::stderr_of(&deleted)
+    );
 }
 
 #[test]

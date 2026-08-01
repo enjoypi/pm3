@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write as _};
 
 use super::{
-    file::{AppEntry, AppsFile, AppsFileError, SandboxEntry},
+    file::{AppEntry, AppsFileError, SandboxEntry},
     roots::dedup_roots,
 };
 use crate::program::{fold_home, fold_svc_cwd};
@@ -10,23 +10,7 @@ const ENV_SEPARATOR: char = '=';
 const REMOVED_PREFIX: char = '-';
 const ADDED_PREFIX: char = '+';
 
-const LISTED: Layout = Layout {
-    lead: "  - ",
-    field: "    ",
-    nested: "      ",
-};
-const STANDALONE: Layout = Layout {
-    lead: "",
-    field: "",
-    nested: "  ",
-};
-
-#[derive(Copy, Clone, Debug)]
-struct Layout {
-    lead: &'static str,
-    field: &'static str,
-    nested: &'static str,
-}
+const NESTED_INDENT: &str = "  ";
 
 pub struct InlineRequest<'r> {
     pub name: &'r str,
@@ -42,12 +26,12 @@ pub struct InlineRequest<'r> {
 }
 
 pub fn inline_entry(request: &InlineRequest<'_>) -> Result<AppEntry, AppsFileError> {
-    let env = parse_env_pairs(request.env)?;
+    let env = parse_env_pairs(request.env, request.home)?;
     let cwd = request.cwd.map(|value| fold_home(value, request.home));
     let sandbox = SandboxEntry {
         mode: None,
         network: request.network.then_some(true),
-        writable_roots: writable_roots(cwd.as_deref(), request.writable_dirs, request.home),
+        writable_roots: writable_roots(request.writable_dirs, request.home),
     };
     let args = request
         .args
@@ -72,17 +56,8 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> Result<AppEntry, AppsFileErr
 }
 
 #[must_use]
-pub fn encode_apps_file(apps: &AppsFile) -> String {
-    let mut text = String::from("apps:\n");
-    for entry in &apps.apps {
-        text.push_str(&encode_entry(entry, LISTED));
-    }
-    text
-}
-
-#[must_use]
 pub fn encode_service_file(entry: &AppEntry) -> String {
-    encode_entry(entry, STANDALONE)
+    encode_entry(entry)
 }
 
 #[must_use]
@@ -106,31 +81,23 @@ pub fn diff_lines(old: &str, new: &str) -> Vec<String> {
     diff
 }
 
-fn encode_entry(entry: &AppEntry, layout: Layout) -> String {
-    let mut text = format!("{}name: {}\n", layout.lead, quote(&entry.name));
-    text.push_str(&scalar(layout, "script", &quote(&entry.script)));
-    text.push_str(&optional_text(layout, "cwd", entry.cwd.as_deref()));
-    text.push_str(&sequence(layout.field, "args", &entry.args));
-    text.push_str(&mapping(layout, &entry.env));
-    text.push_str(&sequence(layout.field, "depends_on", &entry.depends_on));
-    text.push_str(&optional(layout, "autorestart", entry.autorestart));
-    text.push_str(&optional(layout, "min_uptime_ms", entry.min_uptime_ms));
-    text.push_str(&optional(layout, "max_restarts", entry.max_restarts));
-    text.push_str(&optional(
-        layout,
-        "restart_delay_ms",
-        entry.restart_delay_ms,
-    ));
-    text.push_str(&optional_text(
-        layout,
-        "schedule",
-        entry.schedule.as_deref(),
-    ));
-    text.push_str(&encode_sandbox(layout, entry.sandbox.as_ref()));
+fn encode_entry(entry: &AppEntry) -> String {
+    let mut text = scalar("name", &quote(&entry.name));
+    text.push_str(&scalar("script", &quote(&entry.script)));
+    text.push_str(&optional_text("cwd", entry.cwd.as_deref()));
+    text.push_str(&sequence("", "args", &entry.args));
+    text.push_str(&mapping(&entry.env));
+    text.push_str(&sequence("", "depends_on", &entry.depends_on));
+    text.push_str(&optional("autorestart", entry.autorestart));
+    text.push_str(&optional("min_uptime_ms", entry.min_uptime_ms));
+    text.push_str(&optional("max_restarts", entry.max_restarts));
+    text.push_str(&optional("restart_delay_ms", entry.restart_delay_ms));
+    text.push_str(&optional_text("schedule", entry.schedule.as_deref()));
+    text.push_str(&encode_sandbox(entry.sandbox.as_ref()));
     text
 }
 
-fn encode_sandbox(layout: Layout, sandbox: Option<&SandboxEntry>) -> String {
+fn encode_sandbox(sandbox: Option<&SandboxEntry>) -> String {
     let Some(section) = sandbox else {
         return String::new();
     };
@@ -138,32 +105,32 @@ fn encode_sandbox(layout: Layout, sandbox: Option<&SandboxEntry>) -> String {
     let roots = section.writable_roots.as_deref().unwrap_or_default();
     let mut text = String::new();
     if let Some(quoted) = mode {
-        text.push_str(&nested(layout, "mode", &quoted));
+        text.push_str(&nested("mode", &quoted));
     }
     if let Some(network) = section.network {
-        text.push_str(&nested(layout, "network", &network.to_string()));
+        text.push_str(&nested("network", &network.to_string()));
     }
-    text.push_str(&sequence(layout.nested, "writable_roots", roots));
+    text.push_str(&sequence(NESTED_INDENT, "writable_roots", roots));
     if text.is_empty() {
         return text;
     }
-    format!("{}sandbox:\n{text}", layout.field)
+    format!("sandbox:\n{text}")
 }
 
-fn scalar(layout: Layout, key: &str, value: &str) -> String {
-    format!("{}{key}: {value}\n", layout.field)
+fn scalar(key: &str, value: &str) -> String {
+    format!("{key}: {value}\n")
 }
 
-fn nested(layout: Layout, key: &str, value: &str) -> String {
-    format!("{}{key}: {value}\n", layout.nested)
+fn nested(key: &str, value: &str) -> String {
+    format!("{NESTED_INDENT}{key}: {value}\n")
 }
 
-fn optional_text(layout: Layout, key: &str, value: Option<&str>) -> String {
-    value.map_or_else(String::new, |shown| scalar(layout, key, &quote(shown)))
+fn optional_text(key: &str, value: Option<&str>) -> String {
+    value.map_or_else(String::new, |shown| scalar(key, &quote(shown)))
 }
 
-fn optional<T: std::fmt::Display>(layout: Layout, key: &str, value: Option<T>) -> String {
-    value.map_or_else(String::new, |shown| scalar(layout, key, &shown.to_string()))
+fn optional<T: std::fmt::Display>(key: &str, value: Option<T>) -> String {
+    value.map_or_else(String::new, |shown| scalar(key, &shown.to_string()))
 }
 
 fn sequence(indent: &str, key: &str, values: &[String]) -> String {
@@ -178,15 +145,15 @@ fn sequence(indent: &str, key: &str, values: &[String]) -> String {
         })
 }
 
-fn mapping(layout: Layout, env: &BTreeMap<String, String>) -> String {
+fn mapping(env: &BTreeMap<String, String>) -> String {
     if env.is_empty() {
         return String::new();
     }
-    let head = format!("{}env:\n", layout.field);
-    env.iter().fold(head, |mut text, (key, value)| {
-        let _ = writeln!(text, "{}{}: {}", layout.nested, quote(key), quote(value));
-        text
-    })
+    env.iter()
+        .fold(String::from("env:\n"), |mut text, (key, value)| {
+            let _ = writeln!(text, "{NESTED_INDENT}{}: {}", quote(key), quote(value));
+            text
+        })
 }
 
 fn quote(raw: &str) -> String {
@@ -194,18 +161,17 @@ fn quote(raw: &str) -> String {
     format!("\"{escaped}\"")
 }
 
-fn writable_roots(cwd: Option<&str>, extra: &[String], home: Option<&str>) -> Option<Vec<String>> {
+fn writable_roots(extra: &[String], home: Option<&str>) -> Option<Vec<String>> {
     if extra.is_empty() {
         return None;
     }
-    let declared = cwd
-        .map(ToString::to_string)
-        .into_iter()
-        .chain(extra.iter().map(|dir| fold_home(dir, home)));
-    Some(dedup_roots(declared))
+    Some(dedup_roots(extra.iter().map(|dir| fold_home(dir, home))))
 }
 
-fn parse_env_pairs(pairs: &[String]) -> Result<BTreeMap<String, String>, AppsFileError> {
+fn parse_env_pairs(
+    pairs: &[String],
+    home: Option<&str>,
+) -> Result<BTreeMap<String, String>, AppsFileError> {
     let mut parsed = BTreeMap::new();
     for pair in pairs {
         let Some((key, value)) = pair.split_once(ENV_SEPARATOR) else {
@@ -214,7 +180,7 @@ fn parse_env_pairs(pairs: &[String]) -> Result<BTreeMap<String, String>, AppsFil
         if key.is_empty() {
             return Err(AppsFileError::InvalidEnvPair(pair.clone()));
         }
-        parsed.insert(key.to_string(), value.to_string());
+        parsed.insert(key.to_string(), fold_home(value, home));
     }
     Ok(parsed)
 }

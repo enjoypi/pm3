@@ -4,7 +4,7 @@ pub const MISSING: &str = "-";
 pub const NETWORK_SUFFIX: &str = "+net";
 
 const LIST_SEPARATOR: &str = ", ";
-const CLOCK_FORMAT: &str = "%H:%M";
+const CLOCK_FORMAT: &str = "%H:%M%:z";
 const STAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S UTC%:z";
 const MS_PER_SECOND: u64 = 1000;
 const SECONDS_PER_MINUTE: u64 = 60;

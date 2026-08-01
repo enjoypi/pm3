@@ -33,7 +33,7 @@ impl YamlDumpStore {
 
     async fn rejoin(&self, state: StateDto) -> Result<Option<ProcessRecord>, DumpError> {
         let runtime = decode_state(state).map_err(|e| read_error(&self.path, &e.to_string()))?;
-        match self.specs.resolve_service(&runtime.name) {
+        match self.specs.resolve_service(&runtime.name).await {
             Ok(mut spec) => {
                 materialise_workspace(&mut spec).await;
                 Ok(Some(ProcessRecord { spec, runtime }))

@@ -160,26 +160,6 @@ async fn a_read_failure_propagates() {
 }
 
 #[tokio::test]
-async fn a_persistence_failure_propagates() {
-    let ports = FakePorts::new(1000);
-    ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Stopped)]);
-    ports.fail_save();
-    let mut table = ProcessTable::new();
-    let err = resurrect(&mut table, LOGS_DIR, &ports).await.unwrap_err();
-    assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
-}
-
-#[tokio::test]
-async fn a_failure_to_revive_an_app_propagates() {
-    let ports = FakePorts::new(1000);
-    ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Online)]);
-    ports.fail_spawn_for("api");
-    let mut table = ProcessTable::new();
-    let err = resurrect(&mut table, LOGS_DIR, &ports).await.unwrap_err();
-    assert!(matches!(err, UsecaseError::Launch(_)), "got: {err}");
-}
-
-#[tokio::test]
 async fn an_untouched_survivor_is_reclaimed_instead_of_restarted() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
@@ -317,16 +297,16 @@ async fn a_service_whose_program_cannot_be_digested_is_restarted() {
 }
 
 #[tokio::test]
-async fn a_service_that_must_respawn_without_a_sandbox_fails_loudly() {
+async fn a_service_that_must_respawn_without_a_sandbox_is_skipped() {
     let ports = FakePorts::new(1000);
     let mut record = survivor(&ports, "api");
     record.runtime.identity = None;
     ports.seed_stored(vec![record]);
     ports.fail_wrap_for("api");
-    let err = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
         .await
-        .unwrap_err();
-    assert!(matches!(err, UsecaseError::Sandbox(_)), "got: {err}");
+        .expect("an unwrappable service must not abort the whole recovery");
+    assert!(outcomes.is_empty());
 }
 
 #[tokio::test]
@@ -375,15 +355,85 @@ async fn reclaimed_and_restarted_services_can_be_mixed() {
     );
 }
 
-#[tokio::test]
-async fn a_cyclic_state_file_is_rejected() {
-    let ports = FakePorts::new(1000);
-    let mut first = stored_record("a", 0, ProcessStatus::Stopped);
+fn cycle(ports: &FakePorts) {
+    let mut first = stored_record("a", 1, ProcessStatus::Stopped);
     first.spec = spec_with_deps("a", &["b"]);
-    let mut second = stored_record("b", 1, ProcessStatus::Stopped);
+    let mut second = stored_record("b", 2, ProcessStatus::Stopped);
     second.spec = spec_with_deps("b", &["a"]);
-    ports.seed_stored(vec![first, second]);
-    let mut table = ProcessTable::new();
-    let err = resurrect(&mut table, LOGS_DIR, &ports).await.unwrap_err();
-    assert!(matches!(err, UsecaseError::Dependency(_)), "got: {err}");
+    ports.seed_stored(vec![survivor(ports, "api"), first, second]);
+}
+
+#[tokio::test]
+async fn a_survivor_pm3_cannot_probe_is_replaced_rather_than_trusted() {
+    let ports = FakePorts::new(1000);
+    ports.seed_stored(vec![survivor(&ports, "api")]);
+    ports.break_probe_for(SURVIVOR_PID);
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+        .await
+        .expect("resurrect should succeed");
+    assert_eq!(outcomes[0].kind, StartKind::Spawned);
+}
+
+#[tokio::test]
+async fn a_survivor_pm3_cannot_probe_is_stopped_before_its_replacement_starts() {
+    let ports = FakePorts::new(1000);
+    ports.seed_stored(vec![survivor(&ports, "api")]);
+    ports.break_probe_for(SURVIVOR_PID);
+    resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+        .await
+        .expect("resurrect should succeed");
+    assert_eq!(ports.terminated(), vec![SURVIVOR_PID]);
+}
+
+#[tokio::test]
+async fn an_unorderable_state_file_still_reclaims_the_survivors() {
+    let ports = FakePorts::new(1000);
+    cycle(&ports);
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+        .await
+        .expect("a broken dependency graph must not abandon live services");
+    let names: Vec<&str> = outcomes
+        .iter()
+        .map(|outcome| outcome.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["api"]);
+}
+
+#[tokio::test]
+async fn an_unorderable_state_file_still_persists_the_table() {
+    let ports = FakePorts::new(1000);
+    cycle(&ports);
+    resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+        .await
+        .expect("a broken dependency graph must not abandon live services");
+    assert_eq!(ports.save_count(), 1);
+}
+
+#[tokio::test]
+async fn a_service_that_cannot_respawn_does_not_abandon_the_rest() {
+    let ports = FakePorts::new(1000);
+    ports.fail_spawn_for("web");
+    ports.seed_stored(vec![
+        survivor(&ports, "api"),
+        stored_record("web", 1, ProcessStatus::Online),
+    ]);
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+        .await
+        .expect("one broken service must not abandon the ones already reclaimed");
+    let names: Vec<&str> = outcomes
+        .iter()
+        .map(|outcome| outcome.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["api"]);
+}
+
+#[tokio::test]
+async fn a_persistence_failure_still_reports_the_services_it_reclaimed() {
+    let ports = FakePorts::new(1000);
+    ports.seed_stored(vec![survivor(&ports, "api")]);
+    ports.fail_save();
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+        .await
+        .expect("a persistence failure must not hide the services already reclaimed");
+    assert_eq!(outcomes.len(), 1);
 }

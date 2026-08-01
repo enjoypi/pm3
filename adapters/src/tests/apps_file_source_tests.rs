@@ -51,24 +51,26 @@ fn an_unusable_sandbox_mode_stops_the_defaults() {
     );
 }
 
-#[test]
-fn resolving_a_service_reads_its_own_file() {
+#[tokio::test]
+async fn resolving_a_service_reads_its_own_file() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
     let spec = fixture
         .source
         .resolve_service("web")
+        .await
         .expect("the service should resolve");
     assert_eq!(spec.script, SERVICE_SCRIPT);
 }
 
-#[test]
-fn resolving_a_service_defaults_the_working_directory_to_the_pm3_home() {
+#[tokio::test]
+async fn resolving_a_service_defaults_the_working_directory_to_the_pm3_home() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
     let spec = fixture
         .source
         .resolve_service("web")
+        .await
         .expect("the service should resolve");
     let expected = fixture
         .dir
@@ -79,8 +81,8 @@ fn resolving_a_service_defaults_the_working_directory_to_the_pm3_home() {
     assert_eq!(spec.cwd, expected);
 }
 
-#[test]
-fn resolving_a_service_expands_the_home_placeholder() {
+#[tokio::test]
+async fn resolving_a_service_expands_the_home_placeholder() {
     let fixture = fixture();
     write_service_file(
         &fixture.source,
@@ -90,53 +92,58 @@ fn resolving_a_service_expands_the_home_placeholder() {
     let spec = fixture
         .source
         .resolve_service("web")
+        .await
         .expect("the service should resolve");
     assert!(!spec.args[0].contains("${HOME}"), "got: {:?}", spec.args);
 }
 
-#[test]
-fn resolving_a_service_without_a_file_is_reported() {
+#[tokio::test]
+async fn resolving_a_service_without_a_file_is_reported() {
     let fixture = fixture();
     let err = fixture
         .source
         .resolve_service("web")
+        .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("cannot read apps file"), "got: {err}");
 }
 
-#[test]
-fn resolving_a_service_that_its_file_does_not_declare_is_reported() {
+#[tokio::test]
+async fn resolving_a_service_that_its_file_does_not_declare_is_reported() {
     let fixture = fixture();
     write_service_file(&fixture.source, "web", &service_yaml("db"));
     let err = fixture
         .source
         .resolve_service("web")
+        .await
         .unwrap_err()
         .to_string();
     assert_eq!(err, "cannot find app 'web' in its own service file");
 }
 
-#[test]
-fn resolving_a_service_from_an_empty_file_is_reported() {
+#[tokio::test]
+async fn resolving_a_service_from_an_empty_file_is_reported() {
     let fixture = fixture();
     write_service_file(&fixture.source, "web", "\n");
     let err = fixture
         .source
         .resolve_service("web")
+        .await
         .unwrap_err()
         .to_string();
     assert!(err.starts_with("cannot parse apps file"), "got: {err}");
 }
 
-#[test]
-fn resolving_a_service_with_an_unusable_sandbox_mode_is_reported() {
+#[tokio::test]
+async fn resolving_a_service_with_an_unusable_sandbox_mode_is_reported() {
     let mut fixture = fixture();
     register_service(&fixture.source, "web");
     fixture.source.config.sandbox.mode = "yolo".to_string();
     let err = fixture
         .source
         .resolve_service("web")
+        .await
         .unwrap_err()
         .to_string();
     assert!(
@@ -145,8 +152,8 @@ fn resolving_a_service_with_an_unusable_sandbox_mode_is_reported() {
     );
 }
 
-#[test]
-fn resolving_a_service_from_a_legacy_apps_file_is_reported() {
+#[tokio::test]
+async fn resolving_a_service_from_a_legacy_apps_file_is_reported() {
     let fixture = fixture();
     write_service_file(
         &fixture.source,
@@ -156,6 +163,7 @@ fn resolving_a_service_from_a_legacy_apps_file_is_reported() {
     let err = fixture
         .source
         .resolve_service("web")
+        .await
         .unwrap_err()
         .to_string();
     assert!(err.starts_with("cannot parse apps file"), "got: {err}");

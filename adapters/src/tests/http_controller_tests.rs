@@ -172,6 +172,17 @@ async fn an_unknown_app_answers_not_found() {
 }
 
 #[tokio::test]
+async fn deleting_a_service_others_depend_on_answers_conflict() {
+    let outcome = Err(UsecaseError::StillDependedOn {
+        name: "api".to_string(),
+        dependents: vec!["web".to_string()],
+    }
+    .into());
+    let exchange = exchange(outcome, delete_at("/apps/api")).await;
+    assert_eq!(exchange.status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
 async fn a_rejected_spec_answers_bad_request() {
     let outcome = Err(UsecaseError::Spec(SpecError::EmptyName).into());
     let exchange = exchange(outcome, post_to("/apps", &start_body())).await;

@@ -94,13 +94,13 @@ fn no_row_carries_trailing_padding() {
 }
 
 #[test]
-fn a_scheduled_row_shows_the_next_local_clock_time() {
+fn a_scheduled_row_shows_the_next_clock_time_with_its_offset() {
     let mut view = idle_view(0, "sweep");
     view.next_fire_ms = Some(1_700_000_000_000);
     let cells = body_cells(&[view]);
     let next = cells.get(6).expect("next column present");
     assert!(
-        next.len() == 5 && next.contains(':'),
-        "next column should read as HH:MM, got: {next}"
+        next.contains(':') && (next.contains('+') || next.contains('-')),
+        "next column should read as HH:MM±HH:MM, got: {next}"
     );
 }

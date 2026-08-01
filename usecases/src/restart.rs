@@ -11,7 +11,6 @@ use crate::{
 pub enum RestartOutcome {
     Started(StartOutcome),
     AwaitingExit {
-        pm_id: u32,
         name: String,
         force_kill_pid: Option<u32>,
     },
@@ -38,7 +37,6 @@ pub async fn restart_app(
     let stopped = request_stop(record, ports).await?;
     save_table(table, ports).await?;
     Ok(RestartOutcome::AwaitingExit {
-        pm_id: stopped.pm_id,
         name: stopped.name,
         force_kill_pid: stopped.force_kill_pid,
     })

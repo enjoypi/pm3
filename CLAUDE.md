@@ -60,8 +60,9 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 改这里就必须同步那里，漏一处即编译失败或运行期对不上。
 
 - 给 `Pm3Config` 加字段要同步 6 处：根 `config.yaml`、`adapters/test_support/config_sections.rs`、`adapters/src/test_helpers/config_schema_test_helpers.rs`、`frameworks/test_support/config_fixtures.rs`、`frameworks/tests/common/mod.rs`、校验函数与 `every_error_variant` 表
+- 给 `ProcessRuntime` 加字段要同步 4 处：`adapters/src/persistence/dto.rs` 的 `RuntimeDto` + `decode_state` + `encode_state`（两处都穷举解构）、`adapters/test_support/process_records.rs`；跨版本可读的字段一律 `#[serde(default)]`
 - 给 `SandboxPolicy` 加字段会波及 ~13 处字面量（四层的 test_helpers/test_support）→ 加完先 `cargo build --workspace` 靠 E0063 逐个补齐
-- `svc::fold_entry` MUST 折回全部五处路径（`script`/`cwd`/`args`/`env` 的值/`sandbox.writable_roots`）：漏任何一处都会让手写的 `${HOME}/...` 与 pm3 重新编码出的绝对路径对不上，`pm3 start <apps-file>` 直接被 `reconcile` 拒绝（症状：diff 全是 `-"${HOME}/x"` / `+"/Users/me/x"`）
+- **两个编码器**都写 `cfg_dir/<name>.yaml`，MUST 折回同一组五处路径（`script`/`cwd`/`args`/`env` 的值/`sandbox.writable_roots`）：`svc::fold_entry`（apps 文件路径）与 `apps_file::inline_entry`（`pm3 start --name` 路径）。任一处漏折，手写的 `${HOME}/...` 与 pm3 重新编码出的绝对路径就对不上，`pm3 start <apps-file>` 直接被 `reconcile` 拒绝（症状：diff 全是 `-"${HOME}/x"` / `+"/Users/me/x"`）
 - 新增 `${...}` 占位符 MUST 在 `substitute_env_vars` 里登记为保留名（`SVC_CWD_NAME` 那个分支），否则加载 cfg 文件时因「变量未设置且无默认值」直接报 `EnvVarNotSet`；保留名不支持 `:-` 默认值
 
 ## 领域不变量
@@ -79,15 +80,20 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 ### 身份指纹与接管
 
 - 指纹三要素记进 `dump.yaml`：身份令牌（`ps -o lstart=`）+ 启动参数摘要 + 二进制 sha256；daemon 重启后逐服务比对，全同则 `adopt` 已存活进程并轮询监控，任一不同则先 `evict` 旧幸存进程再重启
-- 指纹 MUST NOT 含任何宿主环境派生值：`SandboxPolicy` 分 `writable_roots`（运维声明，进指纹）与 `derived_roots`（pm3 从 cwd/logs_dir/`$TMPDIR` 推导，不进指纹），沙箱授予 `granted_roots()` 并集；`render_identity(&AppSpec)` 渲染声明而非包装后的 argv。踩过的坑：launchd 起的 daemon 有 `TMPDIR`、shell 起的没有 → 每次换代都误判 respawn
+- 指纹 MUST NOT 含任何宿主环境派生值：`SandboxPolicy` 分 `writable_roots`（运维声明，进指纹）与 `derived_roots`（pm3 从 cwd/logs_dir/`$TMPDIR` 推导，不进指纹），沙箱授予 `granted_roots()` 并集。**两者是相加关系**：声明 `writable_roots` MUST NOT 清空 `derived_roots`，否则 `--writable-dir /srv/data` 会把服务自己的 cwd 踢出沙箱，进程一写工作目录就 EACCES 并进重启熔断；要授予「什么都不可写」用 `mode: read-only`，不要用空列表；`render_identity(&AppSpec)` 渲染声明而非包装后的 argv。踩过的坑：launchd 起的 daemon 有 `TMPDIR`、shell 起的没有 → 每次换代都误判 respawn
 - 指纹 MUST 在 `start_one` spawn 成功那一刻采集：shutdown 时算会把「磁盘上的新哈希」当成旧进程的，重启后误判未变更 → 接管到跑着旧二进制的进程
 - 防 pid 复用的身份令牌固定用 `LC_ALL=C ps -ww -o lstart= -p <pid>`（管道下不截断、`LC_ALL=C` 消 locale 漂移）；MUST NOT 换 `etime`（时长需容差）或加 `command=`（`spawn()` 返回时可能尚未 exec，拿到的是旧 argv）
+- 存活探测 MUST 是三态 `Liveness::{Alive(token), Gone, Unreadable}`，MUST NOT 退回 `Option<String>`：把「ps 超时/缺失/非零退出」和「进程真的没了」混成 `None`，会让 `watcher` 把仍在跑的进程当已退出而重启（原进程脱离 `live` 集合成孤儿），并让 `resurrect` 跳过 `evict` 直接 respawn。`ps -p <pid>` 退出码 1 才是 `Gone`，其余非零退出是 `Unreadable`。`Unreadable` 时 `watcher` 继续轮询、`resurrect` 走 `respawn(stale: Some(pid))` 先杀后起（fail-safe）
+- 运行期监控 MUST 把 dump 里的身份令牌传给 `wait_for_exit`：只判「pid 还在不在」会在 pid 复用后永远等下去，随后的 `stop` 会对复用 pid 发进程组信号误杀整组
+- 运行镜像 MUST 装 `procps`（`/bin/ps`）：缺了它每次 daemon 重启所有服务都被判「探测失败」而驱逐重启
 - `resurrect` 判定 respawn 且旧进程仍存活（token 已匹配）时 MUST 先 `terminate` 掉它，否则孤儿与新实例重复运行（症状：`just cov` 跑完残留 `pm3 __sleep`）
 
 ### cron 调度
 
 - 到点只调 `restart_app`、**不新增状态**（架构照抄 pm2 `lib/Worker.js`）
-- `Fire` 事件 MUST 先比对 `timers.get(name) == Some(&fire_at_ms)` 再执行，否则已过期的定时器会误触发；`stop`/`delete` 时 MUST remove——`Daemon.timers: HashMap<name, fire_at_ms>` 同时是 `next` 列数据源、调度激活标记与过期判别依据，这样 `next` 有值即「等触发」、空即「真停了」，避开 pm2 那句 `stopped but CRON RESTART is still UP` 的语义混淆
+- `Fire` 事件 MUST 先比对 `timers.get(name).fire_at_ms == Some(fire_at_ms)` 再执行，否则已过期的定时器会误触发；`stop`/`delete`/`stop_all` 三条路径 MUST 走 `disarm`（remove + `JoinHandle::abort`）——`Daemon.timers: HashMap<name, Timer>` 同时是 `next` 列数据源、调度激活标记与过期判别依据，这样 `next` 有值即「等触发」、空即「真停了」，避开 pm2 那句 `stopped but CRON RESTART is still UP` 的语义混淆
+- `Timer` MUST 持 `JoinHandle` 并在重新 `arm_timer` 时 abort 旧 task：只存 `fire_at_ms` 会让每次 restart 多留一个睡到旧 deadline 的孤儿 task（日更 cron + 每分钟 restart ⇒ 24h 累积上千个）
+- 「这个服务的调度是否激活」MUST 落盘（`ProcessRuntime::schedule_armed`）：只存在内存 `timers` 里的话，daemon 换代后 `arm_known_timers` 会把用户 `stop` 掉的 cron 服务重新武装、到点自行复活
 
 ### CLI ↔ daemon 协议
 
@@ -99,7 +105,10 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - daemon 自己的 `config.yaml` 只能放在 `pm3.home`：`cfg_dir` 由配置本身定义，放不进去
 - `substitute_env_vars` **不递归展开默认值**：`${PM3_SEARCH_PATH:-${HOME}/.cargo/bin:...}` 里的 `${HOME}` 会原样留在配置里 → 想让 pm3 找到 `~/.cargo/bin` 下的程序，不要改 `search_path`，直接把服务的 `script` 写成 `${HOME}/.cargo/bin/<prog>`（顶层占位符会展开）
 - args 里指代「该服务自己的可写工作目录」MUST 用 `${PM3_SVC_CWD}`（命令行写裸 `PM3_SVC_CWD`，CLI 折叠成带花括号形式），MUST NOT 写 `${HOME}/.pm3/<name>`（那把 pm3 布局烧进了参数）；只在 args 生效，`cwd`/`writable_roots`/`script` 里写它不展开、会被相对路径校验直接拒；`pm3 describe` 显示的是展开后的真实路径，不能拿它当「配置无绝对路径」的证据
-- 服务名 MUST NOT 能被 `parse::<u32>()` 解析（`validate_spec` 拒绝）：`AppSelector::parse` 把纯数字读成 pm_id，否则 `pm3 stop 3` 会误伤 pm_id=3 的**另一个**服务
+- 服务名 MUST 只含 `[A-Za-z0-9._-]` 且不以 `.` 开头、不能被 `parse::<u32>()` 解析（`entities::validate_app_name`，`validate_spec` 与 CLI 的 `path_safe` 共用）：
+  - 纯数字会被 `AppSelector::parse` 读成 pm_id，`pm3 stop 3` 会误伤 pm_id=3 的**另一个**服务
+  - `/` 与 `..` 会随 `service_file_of` 把服务文件写到 `cfg_dir` 之外（CLI 是先写盘后交 daemon 校验，拦不住）
+  - 空格等字符会被原样嵌进 HTTP 请求行，`pm3 stop "my app"` 直接把 request-line 切碎（症状：`the daemon answered nothing`），服务能起却停不掉
 
 ## 测试与覆盖率
 

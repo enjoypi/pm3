@@ -133,7 +133,7 @@ pub async fn split_apps_file(
     apps_file: &str,
     force: bool,
 ) -> Result<SplitApps> {
-    let apps = load_apps_file(apps_file)?;
+    let apps = load_apps_file(apps_file).await?;
     let mut split = SplitApps::default();
     for entry in &apps.apps {
         let path = service_file_of(context.cfg_dir, &entry.name);

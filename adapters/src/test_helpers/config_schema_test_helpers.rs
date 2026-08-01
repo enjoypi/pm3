@@ -2,6 +2,7 @@ use super::*;
 
 pub fn valid_restart_config() -> RestartConfig {
     RestartConfig {
+        autorestart: true,
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 0,
@@ -33,6 +34,7 @@ pub fn valid_pm3_config() -> Pm3Config {
         request_timeout_ms: 30000,
         command_timeout_ms: 5000,
         daemon_poll_interval_ms: 50,
+        daemon_poll_max_interval_ms: 1000,
         log_follow_interval_ms: 200,
         restart: valid_restart_config(),
         sandbox: valid_sandbox_config(),

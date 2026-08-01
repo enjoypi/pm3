@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -11,7 +11,6 @@ use crate::{
     schedule::{CronError, validate_cron},
 };
 
-pub const DEFAULT_AUTORESTART: bool = true;
 const DEFAULTS_SCOPE: &str = "pm3.sandbox";
 
 #[derive(Clone, Debug, Deserialize)]
@@ -127,19 +126,21 @@ impl<'d> SpecDefaults<'d> {
     }
 }
 
-pub fn load_apps_file(path: &str) -> Result<AppsFile, AppsFileError> {
-    parse_apps_file(&read_substituted(path)?)
+pub async fn load_apps_file(path: &str) -> Result<AppsFile, AppsFileError> {
+    parse_apps_file(&read_substituted(path).await?)
 }
 
-pub fn load_service_file(path: &str) -> Result<AppEntry, AppsFileError> {
-    parse_service_file(&read_substituted(path)?)
+pub async fn load_service_file(path: &str) -> Result<AppEntry, AppsFileError> {
+    parse_service_file(&read_substituted(path).await?)
 }
 
-fn read_substituted(path: &str) -> Result<String, AppsFileError> {
-    let raw = fs::read_to_string(path).map_err(|source| AppsFileError::Io {
-        path: path.to_string(),
-        source,
-    })?;
+async fn read_substituted(path: &str) -> Result<String, AppsFileError> {
+    let raw = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|source| AppsFileError::Io {
+            path: path.to_string(),
+            source,
+        })?;
     Ok(substitute_env_vars(&raw)?)
 }
 
@@ -201,7 +202,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         args: entry.args.clone(),
         cwd,
         env,
-        autorestart: entry.autorestart.unwrap_or(DEFAULT_AUTORESTART),
+        autorestart: entry.autorestart.unwrap_or(defaults.restart.autorestart),
         min_uptime_ms: entry
             .min_uptime_ms
             .unwrap_or(defaults.restart.min_uptime_ms),
@@ -238,17 +239,14 @@ fn resolve_sandbox(
     let network = declared
         .and_then(|section| section.network)
         .unwrap_or(defaults.sandbox_network);
-    let (writable_roots, derived_roots) = declared
+    let writable_roots = declared
         .and_then(|section| section.writable_roots.clone())
-        .map_or_else(
-            || (Vec::new(), default_writable_roots(defaults, mode, cwd)),
-            |roots| (roots, Vec::new()),
-        );
+        .unwrap_or_default();
     Ok(SandboxPolicy {
         mode,
         network,
         writable_roots,
-        derived_roots,
+        derived_roots: default_writable_roots(defaults, mode, cwd),
     })
 }
 

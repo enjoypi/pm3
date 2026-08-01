@@ -64,8 +64,8 @@ fn a_scheduled_task_advertises_its_next_fire() {
 
     let next = field_of(&task_row(&home), 6);
     assert!(
-        next.len() == 5 && next.contains(':'),
-        "the next column should read as HH:MM, got: {next}"
+        next.contains(':') && (next.contains('+') || next.contains('-')),
+        "the next column should read as HH:MM±HH:MM, got: {next}"
     );
     assert_eq!(described(&home, "schedule"), "* * * * *");
     assert!(

@@ -104,7 +104,7 @@ async fn a_spawned_child_is_tracked_and_reaped() {
     let spec = launch_spec(dir.path(), "/bin/echo", &["hello"]);
     let process = ports.spawn(&spec).await.expect("spawn");
     assert_eq!(ports.tracked_pids().await, vec![process.pid]);
-    let outcome = ports.wait(process.pid).await.expect("reap");
+    let outcome = ports.wait(process.pid, None).await.expect("reap");
     assert!(outcome.clean(), "got: {outcome:?}");
     assert!(ports.tracked_pids().await.is_empty());
 }
@@ -116,7 +116,7 @@ async fn terminating_a_child_stops_it() {
     let spec = launch_spec(dir.path(), "/bin/sh", &["-c", "sleep 30"]);
     let process = ports.spawn(&spec).await.expect("spawn");
     ports.terminate(process.pid).await.expect("terminate");
-    let outcome = ports.wait(process.pid).await.expect("reap");
+    let outcome = ports.wait(process.pid, None).await.expect("reap");
     assert_eq!(outcome.exit_code, None);
 }
 
@@ -127,6 +127,6 @@ async fn force_killing_a_child_stops_it() {
     let spec = launch_spec(dir.path(), "/bin/sh", &["-c", "sleep 30"]);
     let process = ports.spawn(&spec).await.expect("spawn");
     ports.force_kill(process.pid).await.expect("force kill");
-    let outcome = ports.wait(process.pid).await.expect("reap");
+    let outcome = ports.wait(process.pid, None).await.expect("reap");
     assert_eq!(outcome.exit_code, None);
 }

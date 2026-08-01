@@ -28,6 +28,7 @@ async fn rejoined(fixture: &Fixture, name: &str) -> ProcessRecord {
     let mut spec = fixture
         .source
         .resolve_service(name)
+        .await
         .expect("the service file should resolve");
     materialise_workspace(&mut spec).await;
     ProcessRecord {

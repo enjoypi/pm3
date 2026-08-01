@@ -66,6 +66,10 @@ impl ProcessTable {
         pm_id
     }
 
+    pub const fn records_mut(&mut self) -> &mut [ProcessRecord] {
+        self.records.as_mut_slice()
+    }
+
     pub fn remove(&mut self, selector: &AppSelector) -> Option<ProcessRecord> {
         let index = self
             .records

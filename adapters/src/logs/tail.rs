@@ -4,7 +4,12 @@ use std::{
 };
 
 use thiserror::Error;
-use tokio::{fs::File, io::AsyncReadExt};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt as _, AsyncSeekExt as _, SeekFrom},
+};
+
+const TAIL_CHUNK_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Error)]
 #[error("cannot read log file '{path}': {reason}")]
@@ -22,19 +27,53 @@ pub struct LogFollower {
 
 #[must_use]
 pub fn tail_lines(content: &str, count: usize) -> Vec<&str> {
-    let all: Vec<&str> = content.lines().collect();
-    let skipped = all.len().saturating_sub(count);
-    all.into_iter().skip(skipped).collect()
+    let mut tail: Vec<&str> = content.lines().rev().take(count).collect();
+    tail.reverse();
+    tail
 }
 
 pub async fn read_tail(path: &Path, count: usize) -> Result<Vec<String>, LogReadError> {
-    let content = tokio::fs::read_to_string(path)
+    let mut file = File::open(path)
         .await
         .map_err(|e| read_error(path, &e.to_string()))?;
-    Ok(tail_lines(&content, count)
+    let mut start = seek_to_end(&mut file).await;
+    let mut buffer = Vec::new();
+    while start > 0 && line_breaks(&buffer) <= count {
+        let step = TAIL_CHUNK_BYTES.min(start);
+        start -= step;
+        let mut chunk = read_chunk_at(&mut file, start, step)
+            .await
+            .map_err(|e| read_error(path, &e.to_string()))?;
+        chunk.append(&mut buffer);
+        buffer = chunk;
+    }
+    let text = String::from_utf8_lossy(&buffer);
+    Ok(tail_lines(&text, count)
         .into_iter()
         .map(str::to_string)
         .collect())
+}
+
+async fn seek_to_end(file: &mut File) -> u64 {
+    file.seek(SeekFrom::End(0))
+        .await
+        .expect("internal error: seeking to the end of an open log cannot overflow")
+}
+
+async fn read_chunk_at(file: &mut File, start: u64, step: u64) -> std::io::Result<Vec<u8>> {
+    file.seek(SeekFrom::Start(start))
+        .await
+        .expect("internal error: seeking inside an open log cannot overflow");
+    let mut chunk = Vec::new();
+    file.take(step).read_to_end(&mut chunk).await?;
+    Ok(chunk)
+}
+
+fn line_breaks(buffer: &[u8]) -> usize {
+    buffer
+        .split(|byte| *byte == b'\n')
+        .count()
+        .saturating_sub(1)
 }
 
 impl LogFollower {
@@ -42,10 +81,7 @@ impl LogFollower {
         let mut file = File::open(path)
             .await
             .map_err(|e| read_error(path, &e.to_string()))?;
-        let mut skipped = String::new();
-        file.read_to_string(&mut skipped)
-            .await
-            .map_err(|e| read_error(path, &e.to_string()))?;
+        seek_to_end(&mut file).await;
         Ok(Self {
             path: path.to_path_buf(),
             file,

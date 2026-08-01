@@ -2,10 +2,11 @@ use std::path::PathBuf;
 
 use adapters::{
     Clock, CommandWrapper, CronScheduler, DumpError, DumpStore, ExitOutcome, FingerprintError,
-    Fingerprinter, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Ports, ProcessLauncher,
-    ProcessProbe, ProcessRecord, PsProcessProbe, SandboxBackend, SandboxCommandWrapper,
-    SandboxError, SandboxPolicy, Scheduler, Sha256Fingerprinter, SignalError, Signaler, SpecSource,
-    SystemClock, TokioProcessLauncher, WrappedCommand, YamlDumpStore, wait_for_exit,
+    Fingerprinter, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Liveness, PollCadence,
+    Ports, ProcessLauncher, ProcessProbe, ProcessRecord, PsProcessProbe, SandboxBackend,
+    SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler, Sha256Fingerprinter,
+    SignalError, Signaler, SpecSource, SystemClock, TokioProcessLauncher, WrappedCommand,
+    YamlDumpStore, wait_for_exit,
 };
 
 #[derive(Debug)]
@@ -18,7 +19,7 @@ pub struct DaemonPorts {
     probe: PsProcessProbe,
     fingerprinter: Sha256Fingerprinter,
     scheduler: CronScheduler,
-    poll_interval_ms: u64,
+    cadence: PollCadence,
 }
 
 impl DaemonPorts {
@@ -26,7 +27,10 @@ impl DaemonPorts {
     pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<SandboxBackend>) -> Self {
         let stop_signal = specs.config.stop_signal.clone();
         let command_timeout_ms = specs.config.command_timeout_ms;
-        let poll_interval_ms = specs.config.daemon_poll_interval_ms;
+        let cadence = PollCadence {
+            interval_ms: specs.config.daemon_poll_interval_ms,
+            max_interval_ms: specs.config.daemon_poll_max_interval_ms,
+        };
         Self {
             launcher: TokioProcessLauncher::default(),
             signaler: KillSignaler::with_stop_signal(stop_signal, command_timeout_ms),
@@ -36,12 +40,12 @@ impl DaemonPorts {
             probe: PsProcessProbe::with_timeout(command_timeout_ms),
             fingerprinter: Sha256Fingerprinter,
             scheduler: CronScheduler,
-            poll_interval_ms,
+            cadence,
         }
     }
 
-    pub async fn wait(&self, pid: u32) -> Option<ExitOutcome> {
-        wait_for_exit(&self.launcher, &self.probe, pid, self.poll_interval_ms).await
+    pub async fn wait(&self, pid: u32, token: Option<String>) -> Option<ExitOutcome> {
+        wait_for_exit(&self.launcher, &self.probe, pid, token, self.cadence).await
     }
 
     pub async fn tracked_pids(&self) -> Vec<u32> {
@@ -108,7 +112,7 @@ impl ProcessLauncher for DaemonPorts {
 }
 
 impl ProcessProbe for DaemonPorts {
-    async fn identity(&self, pid: u32) -> Option<String> {
+    async fn identity(&self, pid: u32) -> Liveness {
         self.probe.identity(pid).await
     }
 }

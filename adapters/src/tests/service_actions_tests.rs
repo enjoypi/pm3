@@ -110,7 +110,7 @@ async fn a_dry_run_uninstall_prints_the_plan() {
         .await
         .expect("a dry run should never fail");
     assert!(
-        report.contains("run /usr/bin/false unload -w"),
+        report.contains("try /usr/bin/false unload -w"),
         "got: {report}"
     );
     assert!(report.contains("remove "), "got: {report}");
@@ -138,14 +138,37 @@ async fn an_uninstall_deactivates_the_service_and_removes_the_unit() {
 }
 
 #[tokio::test]
-async fn an_uninstall_that_the_manager_refuses_is_reported() {
+async fn an_uninstall_that_cannot_remove_the_unit_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), ServiceKind::Launchd);
-    let err = uninstall_service(&spec, &program_set(FALSE_PROGRAM), false)
+    let vanishing = fake_program(dir.path(), "launchctl", "rm -f \"$3\"");
+
+    let err = uninstall_service(&spec, &program_set(&vanishing), false)
         .await
         .unwrap_err()
         .to_string();
-    assert!(err.contains("exited with status 1"), "got: {err}");
+
+    assert!(err.contains("cannot write"), "got: {err}");
+}
+
+#[tokio::test]
+async fn an_uninstall_the_manager_refuses_still_removes_the_unit() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = installed_spec(dir.path(), ServiceKind::Launchd);
+    uninstall_service(&spec, &program_set(FALSE_PROGRAM), false)
+        .await
+        .expect("a refusal to unload must not strand the unit file");
+    assert!(!spec.unit_path().is_file());
+}
+
+#[tokio::test]
+async fn an_uninstall_the_manager_refuses_says_what_it_skipped() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = installed_spec(dir.path(), ServiceKind::Launchd);
+    let report = uninstall_service(&spec, &program_set(FALSE_PROGRAM), false)
+        .await
+        .expect("a refusal to unload must not strand the unit file");
+    assert!(report.contains("skipped: "), "got: {report}");
 }
 
 #[tokio::test]

@@ -25,21 +25,17 @@ async fn restarting_a_stopped_app_starts_it_immediately() {
 async fn restarting_a_running_app_terminates_it_and_records_the_intent() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
     let outcome = restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
         .await
         .expect("restart should succeed");
     let RestartOutcome::AwaitingExit {
-        pm_id,
         name,
         force_kill_pid,
     } = outcome
     else {
         panic!("expected the restart to await the exit");
     };
-    assert_eq!(pm_id, 0);
     assert_eq!(name, "api");
     assert_eq!(force_kill_pid, Some(100));
     assert_eq!(ports.terminated(), vec![100]);
@@ -70,9 +66,7 @@ async fn restarting_a_running_record_without_a_pid_needs_no_force_kill() {
 async fn restarting_an_app_that_is_already_stopping_spawns_no_second_instance() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
     let selector = AppSelector::Id(0);
     restart_app(&mut table, &selector, LOGS_DIR, &ports)
         .await
@@ -115,9 +109,7 @@ async fn a_persistence_failure_while_restarting_a_stopped_app_propagates() {
 async fn a_persistence_failure_while_restarting_a_running_app_propagates() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
     ports.fail_save();
     let err = restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
         .await
@@ -129,9 +121,7 @@ async fn a_persistence_failure_while_restarting_a_running_app_propagates() {
 async fn a_signal_failure_while_restarting_propagates() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
     ports.fail_signal_for(100);
     let err = restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
         .await

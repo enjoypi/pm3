@@ -3,6 +3,7 @@ use std::{
     time::Duration,
 };
 
+use adapters::HEALTH_PATH;
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
@@ -10,7 +11,6 @@ use tokio::{
     time::timeout,
 };
 
-pub const HEALTH_PATH: &str = "/health";
 pub const OK_STATUS: u16 = 200;
 
 const HOST: &str = "localhost";

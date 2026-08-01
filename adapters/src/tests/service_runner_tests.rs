@@ -177,6 +177,51 @@ async fn the_plan_stops_at_the_first_failing_step() {
 }
 
 #[tokio::test]
+async fn a_failing_plan_backs_out_the_files_it_created() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let unit = dir.path().join("units").join("pm3.service");
+    let steps = vec![
+        write_step(unit.parent().expect("a parent"), &unit),
+        ServiceStep::Run(ServiceCommand {
+            program: FALSE_PROGRAM.to_string(),
+            args: Vec::new(),
+        }),
+    ];
+
+    execute_plan(&steps)
+        .await
+        .expect_err("the plan should fail");
+
+    assert!(
+        !unit.exists(),
+        "a half-installed unit would make the status query lie"
+    );
+}
+
+#[tokio::test]
+async fn a_failing_plan_leaves_a_file_it_only_overwrote() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let unit = dir.path().join("pm3.service");
+    std::fs::write(&unit, "the operator's own unit").expect("seed the unit");
+    let steps = vec![
+        write_step(dir.path(), &unit),
+        ServiceStep::Run(ServiceCommand {
+            program: FALSE_PROGRAM.to_string(),
+            args: Vec::new(),
+        }),
+    ];
+
+    execute_plan(&steps)
+        .await
+        .expect_err("the plan should fail");
+
+    assert!(
+        unit.exists(),
+        "pm3 must not delete a file it did not create"
+    );
+}
+
+#[tokio::test]
 async fn an_absent_unit_file_means_the_service_is_not_installed() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(ServiceKind::Launchd, dir.path());

@@ -22,6 +22,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 
 ### 意图与运行态的缝合
 
+- `load_apps_file` / `load_service_file` / `SpecSource::resolve_service` 都是 **async**：它们跑在 daemon 单任务 actor 循环里（`Daemon::start` 每服务一次、`YamlDumpStore::load` 每记录一次），用同步 `std::fs` 会在慢盘/NFS 上冻住整个事件循环。同理 `materialise_workspace` 用 `tokio::fs::canonicalize` 并对已解析过的路径去重（cwd 会同时出现在 `spec.cwd` 与 `derived_roots[0]`）
 - `cfg_dir/<name>.yaml` 存**意图**（零绝对路径，`${HOME}` 占位、`script` 存裸名、`cwd` 由 daemon 推导），`dump.yaml` 只存 `services[].runtime`；`SpecSource` 在 daemon 启动时把两者缝起来，服务文件缺失/损坏只跳过并 `warn`，MUST NOT 让整个 daemon 起不来
 - `SpecSource::resolve_service` 用专属 `parse_service_file` 解析**单体格式**（顶层直接 `name:`/`script:`/…，不包 `apps:` 数组）并按文件名核对 `name`；`apps:` 数组只出现在用户手写的 apps 文件（`pm3 start apps.yaml`）
 
@@ -47,7 +48,9 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 服务管理器
 
 - unit 文件位置由 OS 约定在**本层**派生（`~/Library/LaunchAgents/{label}.plist` / `~/.config/systemd/user/{label}.service`），**不进配置**——单个配置项无法同时对两个平台正确；`$HOME` 由 `frameworks` 注入，测试传 tempdir 就不会碰真实 `~`
-- `ServiceStep::Run` 失败即中止整个 plan，`TryRun` 失败只记 warn 并把原因收进 `execute_plan` 返回的 skipped 列表（`install_service` 追加到报告末尾）→ 「装不上就该报错」的步骤用 `Run`，「装不上也无妨、只影响后续可用性」的用 `TryRun`（目前只有 `loginctl enable-linger`，原因见根 `CLAUDE.md`）
+- `ServiceStep::Run` 失败即中止整个 plan，`TryRun` 失败只记 warn 并把原因收进 `execute_plan` 返回的 skipped 列表（`install_service`/`uninstall_service` 都追加到报告末尾）→ 「装不上就该报错」的步骤用 `Run`，「装不上也无妨、只影响后续可用性」的用 `TryRun`
+- **卸载路径的服务管理器调用一律 `TryRun`**：`launchctl unload` / `systemctl --user disable --now` / `daemon-reload` 用 `Run` 会让「job 未 load」或「无 bus 的非登录会话」把 `Remove{unit_path}` 挡在后面，unit 文件永远删不掉、重跑每次同样失败，而根 `CLAUDE.md` 的换代顺序第一步正是 `service uninstall`。卸载的成败标准是「unit 文件没了」，不是「管理器答应了」
+- `execute_plan` 失败时会**回滚本次新建的文件**（`Write` 前 `try_exists` 为 false 的那些）：install 的 `load` 失败不会留下半装状态让 `query_status` 谎报 `installed, not running`；已存在、只是被覆写的文件不回滚（那可能是运维自己的）
 
 ### 序列化
 

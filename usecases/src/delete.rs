@@ -14,9 +14,17 @@ pub async fn delete_app(
     selector: &AppSelector,
     ports: &impl Ports,
 ) -> Result<DeleteOutcome> {
+    let name = table
+        .find(selector)
+        .map(|record| record.runtime.name.clone())
+        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
+    let dependents = dependents_of(table, &name);
+    if !dependents.is_empty() {
+        return Err(UsecaseError::StillDependedOn { name, dependents });
+    }
     let record = table
         .find_mut(selector)
-        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
+        .expect("internal error: the same selector just located this record");
     let stopped = request_stop(record, ports).await?;
     table.remove(selector);
     save_table(table, ports).await?;
@@ -24,6 +32,15 @@ pub async fn delete_app(
         name: stopped.name,
         force_kill_pid: stopped.force_kill_pid,
     })
+}
+
+fn dependents_of(table: &ProcessTable, name: &str) -> Vec<String> {
+    table
+        .records()
+        .iter()
+        .filter(|record| record.spec.depends_on.iter().any(|dep| dep == name))
+        .map(|record| record.runtime.name.clone())
+        .collect()
 }
 
 #[cfg(test)]

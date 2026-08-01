@@ -11,5 +11,5 @@ pub use self::{
     sha256_fingerprinter::Sha256Fingerprinter,
     system_clock::SystemClock,
     tokio_launcher::TokioProcessLauncher,
-    watcher::{wait_for_exit, wait_until_released},
+    watcher::{PollCadence, wait_for_exit, wait_until_released},
 };

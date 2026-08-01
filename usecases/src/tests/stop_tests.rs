@@ -8,9 +8,7 @@ use crate::{
 
 async fn started_table(ports: &FakePorts) -> ProcessTable {
     let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, ports).await;
     table
 }
 
@@ -26,6 +24,84 @@ async fn stopping_a_running_app_sends_sigterm_and_marks_it_stopping() {
     let record = table.find(&AppSelector::Id(0)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
     assert_eq!(record.runtime.pid, Some(100));
+}
+
+#[tokio::test]
+async fn a_broken_dependency_graph_still_stops_every_service() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    start_apps(
+        &mut table,
+        &[spec("api"), spec_with_deps("web", &["api"])],
+        LOGS_DIR,
+        &ports,
+    )
+    .await;
+    table.remove(&AppSelector::Name("api".to_string()));
+
+    let stopped = stop_all_apps(&mut table, &ports)
+        .await
+        .expect("an unorderable table must not silently stop nothing");
+
+    assert_eq!(stopped, vec!["web".to_string()]);
+}
+
+#[tokio::test]
+async fn a_broken_dependency_graph_still_signals_the_survivors() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    start_apps(
+        &mut table,
+        &[spec("api"), spec_with_deps("web", &["api"])],
+        LOGS_DIR,
+        &ports,
+    )
+    .await;
+    table.remove(&AppSelector::Name("api".to_string()));
+
+    stop_all_apps(&mut table, &ports)
+        .await
+        .expect("an unorderable table must not silently stop nothing");
+
+    assert_eq!(ports.terminated(), vec![101]);
+}
+
+#[tokio::test]
+async fn settling_turns_a_half_stopped_service_into_a_stopped_one() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    stop_app(&mut table, &AppSelector::Id(0), &ports)
+        .await
+        .expect("stop should succeed");
+
+    let settled = settle_stopping_apps(&mut table, &ports)
+        .await
+        .expect("settling should succeed");
+
+    assert_eq!(settled, vec!["api".to_string()]);
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Stopped);
+}
+
+#[tokio::test]
+async fn settling_leaves_a_running_service_alone() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    let settled = settle_stopping_apps(&mut table, &ports)
+        .await
+        .expect("settling should succeed");
+    assert!(settled.is_empty());
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Online);
+}
+
+#[tokio::test]
+async fn settling_reports_a_dump_it_cannot_write() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    ports.fail_save();
+    let err = settle_stopping_apps(&mut table, &ports).await.unwrap_err();
+    assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
 }
 
 #[tokio::test]
@@ -110,9 +186,7 @@ async fn stopping_everything_walks_dependents_before_dependencies() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     let specs = [spec_with_deps("web", &["api"]), spec("api")];
-    start_apps(&mut table, &specs, LOGS_DIR, &ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
     let stopped = stop_all_apps(&mut table, &ports)
         .await
         .expect("stop all should succeed");
@@ -124,9 +198,7 @@ async fn stopping_everything_persists_the_table_once() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     let specs = [spec_with_deps("web", &["api"]), spec("api")];
-    start_apps(&mut table, &specs, LOGS_DIR, &ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
     let saves_after_start = ports.save_count();
     stop_all_apps(&mut table, &ports)
         .await
@@ -150,9 +222,7 @@ async fn stopping_everything_keeps_going_when_one_signal_is_refused() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     let specs = [spec_with_deps("web", &["api"]), spec("api")];
-    start_apps(&mut table, &specs, LOGS_DIR, &ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
     ports.fail_signal_for(100);
     let stopped = stop_all_apps(&mut table, &ports)
         .await

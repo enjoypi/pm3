@@ -1,16 +1,18 @@
-use std::{process::Output, time::Duration};
+use std::time::Duration;
 
 use tokio::{process::Command, time::timeout};
 use usecases::{SignalError, Signaler};
 
-use crate::config::STOP_SIGNAL_TERM;
+use crate::{
+    config::STOP_SIGNAL_TERM,
+    exit_status::{describe_refusal, exit_code_of},
+};
 
 pub const KILL_PROGRAM: &str = "/bin/kill";
 pub const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 5000;
 
 const FORCE_SIGNAL: &str = "KILL";
 const ARGUMENT_TERMINATOR: &str = "--";
-const UNKNOWN_EXIT_CODE: i32 = -1;
 const LOWEST_SIGNALABLE_PID: u32 = 2;
 const UNSAFE_PID_REASON: &str = "pid is outside the safe range";
 
@@ -74,7 +76,7 @@ impl KillSignaler {
                 pid,
                 reason: e.to_string(),
             })?;
-        let code = output.status.code().unwrap_or(UNKNOWN_EXIT_CODE);
+        let code = exit_code_of(&output.status);
         tracing::debug!(
             pid,
             signal,
@@ -88,7 +90,7 @@ impl KillSignaler {
         }
         Err(SignalError::Delivery {
             pid,
-            reason: describe_refusal(&output),
+            reason: describe_refusal(&String::from_utf8_lossy(&output.stderr), code),
         })
     }
 
@@ -122,16 +124,6 @@ fn is_signalable(pid: u32) -> bool {
 
 fn group_target(pid: u32) -> String {
     format!("-{pid}")
-}
-
-fn describe_refusal(output: &Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let trimmed = stderr.trim();
-    if !trimmed.is_empty() {
-        return trimmed.to_string();
-    }
-    let code = output.status.code().unwrap_or(UNKNOWN_EXIT_CODE);
-    format!("kill exited with status {code}")
 }
 
 #[cfg(test)]

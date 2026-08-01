@@ -67,35 +67,36 @@ fn parse_apps_file_rejects_a_document_without_the_apps_key() {
     assert!(parse_apps_file("other: 1\n").is_err());
 }
 
-#[test]
-fn load_apps_file_reads_a_file_from_disk() {
+#[tokio::test]
+async fn load_apps_file_reads_a_file_from_disk() {
     let (_dir, path) = write_apps_file(&minimal_yaml());
-    let apps = load_apps_file(&path).expect("should load");
+    let apps = load_apps_file(&path).await.expect("should load");
     assert_eq!(apps.apps.len(), 1);
 }
 
-#[test]
-fn load_apps_file_reports_a_missing_file() {
+#[tokio::test]
+async fn load_apps_file_reports_a_missing_file() {
     let err = load_apps_file("/nonexistent/apps.yaml")
+        .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("cannot read apps file"), "got: {err}");
 }
 
-#[test]
-fn load_apps_file_substitutes_environment_placeholders() {
+#[tokio::test]
+async fn load_apps_file_substitutes_environment_placeholders() {
     let yaml = minimal_yaml().replace(CWD, "${PM3_TEST_APPS_CWD:-/srv/from-default}");
     let (_dir, path) = write_apps_file(&yaml);
-    let apps = load_apps_file(&path).expect("should load");
+    let apps = load_apps_file(&path).await.expect("should load");
     let entry = apps.apps.first().expect("one entry");
     assert_eq!(entry.cwd.as_deref(), Some("/srv/from-default"));
 }
 
-#[test]
-fn load_apps_file_reports_an_unresolvable_placeholder() {
+#[tokio::test]
+async fn load_apps_file_reports_an_unresolvable_placeholder() {
     let yaml = minimal_yaml().replace(CWD, "${PM3_TEST_APPS_UNSET_CWD}");
     let (_dir, path) = write_apps_file(&yaml);
-    let err = load_apps_file(&path).unwrap_err().to_string();
+    let err = load_apps_file(&path).await.unwrap_err().to_string();
     assert!(err.contains("PM3_TEST_APPS_UNSET_CWD"), "got: {err}");
 }
 
@@ -171,6 +172,7 @@ fn resolve_specs_flattens_the_environment_in_key_order() {
 #[test]
 fn resolve_specs_fills_the_restart_defaults_from_the_config() {
     let RestartConfig {
+        autorestart,
         min_uptime_ms,
         max_restarts,
         restart_delay_ms,
@@ -179,7 +181,7 @@ fn resolve_specs_fills_the_restart_defaults_from_the_config() {
     assert_eq!(
         spec.restart_policy(),
         RestartPolicy {
-            autorestart: true,
+            autorestart,
             min_uptime_ms,
             max_restarts,
             restart_delay_ms,
@@ -350,7 +352,7 @@ fn resolve_specs_honours_explicit_writable_roots() {
 }
 
 #[test]
-fn resolve_specs_honours_an_explicitly_empty_writable_roots_list() {
+fn resolve_specs_keeps_the_workspace_defaults_beside_an_empty_writable_roots_list() {
     let entry = AppEntry {
         sandbox: Some(SandboxEntry {
             writable_roots: Some(Vec::new()),
@@ -360,10 +362,40 @@ fn resolve_specs_honours_an_explicitly_empty_writable_roots_list() {
     };
     let spec = resolve_one(&defaults(), entry);
     assert!(
-        spec.sandbox.granted_roots().is_empty(),
-        "got: {:?}",
+        spec.sandbox.granted_roots().contains(&spec.cwd.as_str()),
+        "a service always owns its own working directory: {:?}",
         spec.sandbox.granted_roots()
     );
+}
+
+#[test]
+fn resolve_specs_keeps_the_workspace_defaults_beside_a_declared_writable_root() {
+    let entry = AppEntry {
+        sandbox: Some(SandboxEntry {
+            writable_roots: Some(vec!["/srv/data".to_string()]),
+            ..sandbox_entry()
+        }),
+        ..minimal_entry()
+    };
+    let spec = resolve_one(&defaults(), entry);
+    let granted = spec.sandbox.granted_roots();
+    assert!(
+        granted.contains(&spec.cwd.as_str()) && granted.contains(&"/srv/data"),
+        "declaring an extra root must not drop the defaults: {granted:?}"
+    );
+}
+
+#[test]
+fn a_declared_writable_root_stays_out_of_the_derived_set() {
+    let entry = AppEntry {
+        sandbox: Some(SandboxEntry {
+            writable_roots: Some(vec!["/srv/data".to_string()]),
+            ..sandbox_entry()
+        }),
+        ..minimal_entry()
+    };
+    let spec = resolve_one(&defaults(), entry);
+    assert_eq!(spec.sandbox.writable_roots, vec!["/srv/data".to_string()]);
 }
 
 #[test]

@@ -72,13 +72,13 @@ pub fn uninstall_plan(spec: &ServiceUnitSpec, programs: &ServiceProgramSet) -> V
     };
     match spec.kind {
         ServiceKind::Launchd => vec![
-            ServiceStep::Run(launchctl_unload(programs, &spec.unit_path())),
+            ServiceStep::TryRun(launchctl_unload(programs, &spec.unit_path())),
             remove,
         ],
         ServiceKind::Systemd => vec![
-            ServiceStep::Run(systemctl_disable_now(programs, &spec.unit_name())),
+            ServiceStep::TryRun(systemctl_disable_now(programs, &spec.unit_name())),
             remove,
-            ServiceStep::Run(systemctl_daemon_reload(programs)),
+            ServiceStep::TryRun(systemctl_daemon_reload(programs)),
         ],
     }
 }

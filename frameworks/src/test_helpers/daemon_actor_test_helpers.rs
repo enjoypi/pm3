@@ -1,8 +1,6 @@
 use std::{fmt::Write as _, path::PathBuf, time::Duration};
 
-use adapters::{
-    DaemonCommand, DaemonOutcome, Pm3Paths, logs_dir_of, resolve_paths, service_file_of,
-};
+use adapters::{DaemonCommand, DaemonOutcome, Pm3Paths, resolve_paths, service_file_of};
 use tokio::sync::oneshot;
 
 use super::*;
@@ -18,6 +16,7 @@ pub struct Harness {
     pub paths: Pm3Paths,
     pub cfg_dir: PathBuf,
     pub daemon: Daemon,
+    pub ports: Arc<DaemonPorts>,
     pub events: mpsc::Receiver<DaemonEvent>,
     pub sender: mpsc::Sender<DaemonEvent>,
 }
@@ -47,7 +46,7 @@ fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
         cfg_dir: cfg_dir.clone(),
         config,
         home_dir: paths.root.to_string_lossy().into_owned(),
-        logs_dir: logs_dir_of(&paths.root),
+        logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: None,
     };
     let ports = Arc::new(DaemonPorts::new(
@@ -56,12 +55,13 @@ fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
         None,
     ));
     let (sender, events) = mpsc::channel(CHANNEL_DEPTH);
-    let daemon = Daemon::new(specs, ports, sender.clone());
+    let daemon = Daemon::new(specs, Arc::clone(&ports), sender.clone());
     Harness {
         dir,
         paths,
         cfg_dir,
         daemon,
+        ports,
         events,
         sender,
     }

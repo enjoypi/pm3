@@ -19,13 +19,23 @@ pub struct AppSpec {
     pub sandbox: SandboxPolicy,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum SpecError {
     #[error("cannot accept blank app name")]
     EmptyName,
 
     #[error("cannot accept all-digit app name '{0}': a selector would read it as a process id")]
     NumericName(String),
+
+    #[error(
+        "cannot accept app name '{0}' starting with a dot: it would escape the service directory"
+    )]
+    DottedName(String),
+
+    #[error(
+        "cannot accept app name '{name}': '{character}' is not allowed, use letters, digits, '-', '_' or '.'"
+    )]
+    UnsafeName { name: String, character: char },
 
     #[error("cannot accept blank script for app '{0}'")]
     EmptyScript(String),
@@ -74,13 +84,32 @@ impl AppSpec {
     }
 }
 
-pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
-    if spec.name.trim().is_empty() {
+pub fn validate_app_name(name: &str) -> Result<(), SpecError> {
+    if name.trim().is_empty() {
         return Err(SpecError::EmptyName);
     }
-    if spec.name.parse::<u32>().is_ok() {
-        return Err(SpecError::NumericName(spec.name.clone()));
+    if name.parse::<u32>().is_ok() {
+        return Err(SpecError::NumericName(name.to_string()));
     }
+    if name.starts_with('.') {
+        return Err(SpecError::DottedName(name.to_string()));
+    }
+    name.chars()
+        .find(|letter| !is_name_letter(*letter))
+        .map_or(Ok(()), |character| {
+            Err(SpecError::UnsafeName {
+                name: name.to_string(),
+                character,
+            })
+        })
+}
+
+const fn is_name_letter(letter: char) -> bool {
+    letter.is_ascii_alphanumeric() || matches!(letter, '-' | '_' | '.')
+}
+
+pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
+    validate_app_name(&spec.name)?;
     if spec.script.trim().is_empty() {
         return Err(SpecError::EmptyScript(spec.name.clone()));
     }

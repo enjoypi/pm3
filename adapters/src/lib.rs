@@ -1,5 +1,6 @@
 pub mod apps_file;
 pub mod config;
+pub mod exit_status;
 pub mod http;
 pub mod logs;
 pub mod paths;
@@ -17,20 +18,21 @@ pub mod workspace;
 use thiserror::Error;
 pub use usecases::{
     AppSelector, AppSpec, Clock, CommandWrapper, DeleteOutcome, DumpError, DumpStore, ExitAction,
-    ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Ports,
-    ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus,
-    ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
-    SignalError, Signaler, StartKind, StartOutcome, StopOutcome, UsecaseError, WrappedCommand,
-    delete_app, describe_app, handle_child_exit, list_apps, log_paths, render_identity,
-    restart_app, resurrect, start_apps, stop_all_apps, stop_app, topo_sort,
+    ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess,
+    Liveness, Ports, ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime,
+    ProcessStatus, ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode,
+    SandboxPolicy, Scheduler, SignalError, Signaler, SpecError, StartKind, StartOutcome,
+    StartReport, StopOutcome, UsecaseError, WrappedCommand, delete_app, describe_app,
+    handle_child_exit, list_apps, log_paths, render_identity, restart_app, resurrect,
+    settle_stopping_apps, start_apps, stop_all_apps, stop_app, topo_sort, validate_app_name,
 };
 
 pub use self::{
     apps_file::{
         AppEntry, AppsFile, AppsFileError, InlineRequest, SERVICE_FILE_SUFFIX, SandboxEntry,
-        SpecDefaults, SpecSource, diff_lines, encode_apps_file, encode_service_file, inline_entry,
-        load_apps_file, load_service_file, parse_apps_file, parse_service_file, resolve_checked,
-        resolve_specs, service_file_of,
+        SpecDefaults, SpecSource, diff_lines, encode_service_file, inline_entry, load_apps_file,
+        load_service_file, parse_apps_file, parse_service_file, resolve_checked, resolve_specs,
+        service_file_of,
     },
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,
@@ -39,6 +41,7 @@ pub use self::{
         TelemetryConfig, check_config, load_and_parse_config, load_config_file, parse_config,
         show_config, validate_config, validate_pm3_config, validate_telemetry_config,
     },
+    exit_status::{UNKNOWN_EXIT_CODE, describe_refusal, exit_code_of},
     http::{
         APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, ReplyDto, SERVICES_STOP_ALL_PATH,
         StartRequestDto, router,
@@ -46,7 +49,7 @@ pub use self::{
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
     paths::{
         CONFIG_FILE, DEFAULT_HOME, PathError, Pm3Paths, default_config_path, expand_home,
-        logs_dir_of, resolve_paths,
+        resolve_paths,
     },
     persistence::{
         DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state, encode_states,
@@ -56,8 +59,8 @@ pub use self::{
         render_reply, render_started, render_table,
     },
     process::{
-        KILL_PROGRAM, KillSignaler, PS_PROGRAM, PsProcessProbe, Sha256Fingerprinter, SystemClock,
-        TokioProcessLauncher, wait_for_exit, wait_until_released,
+        KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe, Sha256Fingerprinter,
+        SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
     },
     program::{
         HOME_PLACEHOLDER, SVC_CWD_NAME, SVC_CWD_PLACEHOLDER, fold_home, fold_svc_cwd,

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt::Write as _, path::Path};
 
 use tempfile::TempDir;
 
@@ -177,13 +177,34 @@ async fn following_reports_a_missing_log() {
 }
 
 #[tokio::test]
-async fn following_reports_undecodable_existing_content() {
-    let (_dir, path) = temp_log(&[0xff, 0xfe]);
-    let err = LogFollower::start_at_end(&path)
-        .await
-        .unwrap_err()
-        .to_string();
+async fn read_tail_reports_a_log_path_it_cannot_read() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let err = read_tail(dir.path(), 5).await.unwrap_err().to_string();
     assert!(err.contains("cannot read log file"), "got: {err}");
+}
+
+fn long_log() -> String {
+    (0..20_000).fold(String::new(), |mut text, line| {
+        let _ = writeln!(text, "line {line}");
+        text
+    })
+}
+
+#[tokio::test]
+async fn read_tail_reads_only_the_tail_of_a_long_log() {
+    let body = long_log();
+    let (_dir, path) = temp_log(body.as_bytes());
+    let tail = read_tail(&path, 2).await.expect("should read");
+    assert_eq!(tail, vec!["line 19998", "line 19999"]);
+}
+
+#[tokio::test]
+async fn read_tail_reads_across_chunk_boundaries_when_it_must() {
+    let body = long_log();
+    let (_dir, path) = temp_log(body.as_bytes());
+    let tail = read_tail(&path, 20_000).await.expect("should read");
+    assert_eq!(tail.len(), 20_000);
+    assert_eq!(tail.first().map(String::as_str), Some("line 0"));
 }
 
 #[tokio::test]

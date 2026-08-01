@@ -7,7 +7,7 @@ pub struct WrappedCommand {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum SandboxError {
     #[error(
         "cannot confine app '{app}': no usable sandbox backend on this platform, install bubblewrap or set sandbox mode to danger-full-access"
