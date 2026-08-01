@@ -25,6 +25,9 @@ pub struct RuntimeDto {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<IdentityDto>,
+
+    #[serde(default)]
+    pub schedule_armed: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -34,7 +37,7 @@ pub struct IdentityDto {
     pub binary_digest: String,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum DecodeError {
     #[error("cannot decode app '{app}': unknown status '{status}'")]
     UnknownStatus { app: String, status: String },
@@ -58,6 +61,7 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         pid,
         started_at_ms,
         identity,
+        schedule_armed,
     } = runtime;
     let parsed = ProcessStatus::parse(&status).ok_or_else(|| DecodeError::UnknownStatus {
         app: name.clone(),
@@ -74,6 +78,7 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         started_at_ms,
         identity: identity.map(decode_identity),
         pending_restart: false,
+        schedule_armed,
     })
 }
 
@@ -116,6 +121,7 @@ fn encode_state(record: &ProcessRecord) -> StateDto {
         started_at_ms,
         identity,
         pending_restart: _,
+        schedule_armed,
     } = runtime;
     StateDto {
         name: name.clone(),
@@ -128,6 +134,7 @@ fn encode_state(record: &ProcessRecord) -> StateDto {
             pid: *pid,
             started_at_ms: *started_at_ms,
             identity: identity.as_ref().map(encode_identity),
+            schedule_armed: *schedule_armed,
         },
     }
 }

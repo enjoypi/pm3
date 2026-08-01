@@ -11,8 +11,10 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   request_timeout_ms: 30000
   command_timeout_ms: 5000
   daemon_poll_interval_ms: 50
+  daemon_poll_max_interval_ms: 1000
   log_follow_interval_ms: 200
   restart:
+    autorestart: true
     min_uptime_ms: 1000
     max_restarts: 15
     restart_delay_ms: 0

@@ -129,11 +129,84 @@ async fn stopping_a_started_app_confirms_it() {
     start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
-    let stopped = stop_app(&fixture.config_path, "web")
+    let stopped = act_on_app(&fixture.config_path, "web", STOP_ACTION)
         .await
         .expect("should stop");
     assert_eq!(stopped, "stopped web");
     stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn a_selector_that_would_break_the_request_line_is_refused_before_dialling() {
+    let error = act_on_app("/nonexistent/config.yaml", "my app", STOP_ACTION)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::Spec(_)), "got: {error}");
+}
+
+#[tokio::test]
+async fn a_selector_that_would_escape_the_apps_path_is_refused_before_dialling() {
+    let error = describe_app("/nonexistent/config.yaml", "../health")
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::Spec(_)), "got: {error}");
+}
+
+#[tokio::test]
+async fn deleting_with_a_selector_that_would_escape_the_apps_path_is_refused() {
+    let error = delete_app("/nonexistent/config.yaml", "my app")
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::Spec(_)), "got: {error}");
+}
+
+#[tokio::test]
+async fn describing_without_a_config_is_reported() {
+    let error = describe_app("/nonexistent/config.yaml", "web")
+        .await
+        .unwrap_err();
+    assert!(!matches!(error, Error::Spec(_)), "got: {error}");
+}
+
+#[tokio::test]
+async fn deleting_an_unknown_app_carries_the_daemon_reason() {
+    let fixture = running_daemon().await;
+    let err = delete_app(&fixture.config_path, "ghost")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("status 404"), "got: {err}");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn killing_with_services_reports_a_dump_it_cannot_write() {
+    let fixture = running_daemon().await;
+    let apps_file = sleeper_apps_file(&fixture);
+    start_apps(&fixture.config_path, &apps_file, false)
+        .await
+        .expect("should start");
+    std::fs::remove_file(&fixture.paths.dump_file).expect("drop the dump file");
+    std::fs::create_dir_all(&fixture.paths.dump_file).expect("block the dump path");
+    std::fs::write(fixture.paths.dump_file.join("occupied"), "state")
+        .expect("fill the blocked dump path");
+
+    let err = kill_daemon(&fixture.config_path, true)
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("status 500"), "got: {err}");
+    std::fs::remove_dir_all(&fixture.paths.dump_file).expect("unblock the dump path");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn a_numeric_selector_still_reaches_the_daemon() {
+    let error = delete_app("/nonexistent/config.yaml", "3")
+        .await
+        .unwrap_err();
+    assert!(!matches!(error, Error::Spec(_)), "got: {error}");
 }
 
 #[tokio::test]
@@ -143,7 +216,7 @@ async fn restarting_a_started_app_confirms_it() {
     start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
-    let restarted = restart_app(&fixture.config_path, "web")
+    let restarted = act_on_app(&fixture.config_path, "web", RESTART_ACTION)
         .await
         .expect("should restart");
     assert_eq!(restarted, "restarted web");

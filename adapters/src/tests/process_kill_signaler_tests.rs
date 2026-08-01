@@ -5,7 +5,7 @@ use tokio::{
     io::{AsyncBufReadExt as _, BufReader},
     process::{Child, Command},
 };
-use usecases::ProcessProbe as _;
+use usecases::{Liveness, ProcessProbe as _};
 
 use super::*;
 use crate::process::ps_probe::PsProcessProbe;
@@ -55,7 +55,7 @@ async fn announced_pid(child: &mut Child) -> u32 {
 async fn outlives_its_group(pid: u32) -> bool {
     let probe = PsProcessProbe::default();
     for _poll in 0..DEATH_POLLS {
-        if probe.identity(pid).await.is_none() {
+        if probe.identity(pid).await == Liveness::Gone {
             return false;
         }
         tokio::time::sleep(Duration::from_millis(DEATH_POLL_INTERVAL_MS)).await;

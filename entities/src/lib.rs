@@ -6,12 +6,13 @@ use thiserror::Error;
 pub use self::{
     process::{
         AppSpec, DependencyError, DependencyNode, ProcessIdentity, ProcessRuntime, ProcessStatus,
-        RestartDecision, RestartPolicy, SpecError, decide_restart, topo_sort, validate_spec,
+        RestartDecision, RestartPolicy, SpecError, decide_restart, topo_sort, validate_app_name,
+        validate_spec,
     },
     sandbox::{PolicyError, SandboxMode, SandboxPolicy, validate_policy},
 };
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum EntityError {
     #[error(transparent)]
     Spec(#[from] SpecError),

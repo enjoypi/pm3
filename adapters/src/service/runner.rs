@@ -1,4 +1,7 @@
-use std::{path::Path, process::Output};
+use std::{
+    path::{Path, PathBuf},
+    process::Output,
+};
 
 use thiserror::Error;
 use tokio::process::Command;
@@ -8,8 +11,7 @@ use super::{
     plan::{ServiceStep, status_command},
     spec::{ServiceStatus, ServiceUnitSpec, parse_run_state},
 };
-
-const UNKNOWN_EXIT_CODE: i32 = -1;
+use crate::exit_status::{describe_refusal, exit_code_of};
 
 #[derive(Debug, Error)]
 pub enum ServiceCommandError {
@@ -25,12 +27,47 @@ pub enum ServiceCommandError {
 
 pub async fn execute_plan(steps: &[ServiceStep]) -> Result<Vec<String>, ServiceCommandError> {
     let mut skipped = Vec::new();
+    let mut created = Vec::new();
     for step in steps {
-        if let Some(note) = run_step(step).await? {
-            skipped.push(note);
+        created.extend(about_to_create(step).await);
+        match run_step(step).await {
+            Ok(None) => {}
+            Ok(Some(note)) => skipped.push(note),
+            Err(error) => {
+                roll_back(&created).await;
+                return Err(error);
+            }
         }
     }
     Ok(skipped)
+}
+
+async fn about_to_create(step: &ServiceStep) -> Option<PathBuf> {
+    let ServiceStep::Write { path, .. } = step else {
+        return None;
+    };
+    match tokio::fs::try_exists(path).await {
+        Ok(false) => Some(path.clone()),
+        Ok(true) => None,
+        Err(_unreadable) => None,
+    }
+}
+
+async fn roll_back(created: &[PathBuf]) {
+    for path in created.iter().rev() {
+        let removed = tokio::fs::remove_file(path).await.is_ok();
+        log_roll_back(path, removed);
+    }
+}
+
+fn log_roll_back(path: &Path, removed: bool) {
+    let file = path.to_string_lossy();
+    tracing::warn!(
+        file = %file,
+        removed,
+        action = "service",
+        "pm3 backed out a file it had written before the plan failed",
+    );
 }
 
 pub async fn query_status(
@@ -121,14 +158,6 @@ async fn capture(command: &ServiceCommand) -> Result<Captured, ServiceCommandErr
     Ok(captured)
 }
 
-fn describe_refusal(stderr: &str, code: i32) -> String {
-    let trimmed = stderr.trim();
-    if trimmed.is_empty() {
-        return format!("exited with status {code}");
-    }
-    trimmed.to_string()
-}
-
 fn io_error(path: &Path, source: &std::io::Error) -> ServiceCommandError {
     ServiceCommandError::Io {
         path: path.to_string_lossy().into_owned(),
@@ -149,7 +178,7 @@ impl Captured {
             success: output.status.success(),
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            code: output.status.code().unwrap_or(UNKNOWN_EXIT_CODE),
+            code: exit_code_of(&output.status),
         }
     }
 }

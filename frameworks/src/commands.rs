@@ -5,8 +5,8 @@ use std::{
 
 use adapters::{
     APPS_PATH, AppConfig, KillSignaler, LogFollower, Pm3Paths, ReplyDto, SERVICES_STOP_ALL_PATH,
-    Signaler as _, StartRequestDto, load_and_parse_config, log_paths, logs_dir_of, read_tail,
-    wait_until_released,
+    STOP_SIGNAL_TERM, Signaler as _, StartRequestDto, load_and_parse_config, log_paths, read_tail,
+    validate_app_name, wait_until_released,
 };
 
 use crate::{
@@ -21,9 +21,8 @@ use crate::{
 
 pub const FOLLOW_FOREVER: u32 = u32::MAX;
 pub const DAEMON_NOT_RUNNING: &str = "the pm3 daemon is not running";
-
-const STOP_ACTION: &str = "stop";
-const RESTART_ACTION: &str = "restart";
+pub const STOP_ACTION: &str = "stop";
+pub const RESTART_ACTION: &str = "restart";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartReport {
@@ -35,6 +34,7 @@ pub struct StartReport {
 #[derive(Clone, Debug)]
 pub struct Session {
     pub config: AppConfig,
+    pub config_path: String,
     pub paths: Pm3Paths,
     pub cfg_dir: PathBuf,
 }
@@ -50,6 +50,12 @@ impl Session {
     }
 }
 
+pub async fn prepared_session(config_path: &str) -> Result<Session> {
+    let session = open_session(config_path)?;
+    ensure_layout(&session.paths, &session.cfg_dir).await?;
+    Ok(session)
+}
+
 pub fn open_session(config_path: &str) -> Result<Session> {
     let config = load_and_parse_config(config_path)?;
     let home = host_home();
@@ -57,31 +63,24 @@ pub fn open_session(config_path: &str) -> Result<Session> {
     let cfg_dir = resolve_cfg_dir(&config.pm3, home.as_deref())?;
     Ok(Session {
         config,
+        config_path: config_path.to_string(),
         paths,
         cfg_dir,
     })
 }
 
 pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Result<StartReport> {
-    let session = open_session(config_path)?;
-    ensure_layout(&session.paths, &session.cfg_dir).await?;
+    let session = prepared_session(config_path).await?;
     let resolved = canonical_apps_file(apps_file)?;
     let home = host_home();
     let split =
         svc::split_apps_file(&session.svc_context(home.as_deref()), &resolved, force).await?;
-    let asked = ask(
-        config_path,
-        "POST",
-        APPS_PATH,
-        Some(&start_body(&split.names)),
-    )
-    .await;
+    let asked = ask(&session, "POST", APPS_PATH, Some(&start_body(&split.names))).await;
     finish_start(asked, split.changed, &split.undo).await
 }
 
 pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Result<StartReport> {
-    let session = open_session(config_path)?;
-    ensure_layout(&session.paths, &session.cfg_dir).await?;
+    let session = prepared_session(config_path).await?;
     let home = host_home();
     let prepared = svc::prepare_inline(&session.svc_context(home.as_deref()), request).await?;
     let body = start_body(std::slice::from_ref(&request.name.to_string()));
@@ -90,7 +89,7 @@ pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Resul
     } else {
         Vec::new()
     };
-    let asked = ask(config_path, "POST", APPS_PATH, Some(&body)).await;
+    let asked = ask(&session, "POST", APPS_PATH, Some(&body)).await;
     finish_start(asked, changed, &prepared.undo).await
 }
 
@@ -119,49 +118,43 @@ async fn finish_start(
 }
 
 pub async fn list_apps(config_path: &str) -> Result<String> {
-    ask_report(config_path, "GET", APPS_PATH, None).await
+    let session = prepared_session(config_path).await?;
+    ask_report(&session, "GET", APPS_PATH, None).await
 }
 
 pub async fn describe_app(config_path: &str, selector: &str) -> Result<String> {
-    ask_report(config_path, "GET", &app_path(selector), None).await
+    let path = app_path(selector)?;
+    let session = prepared_session(config_path).await?;
+    ask_report(&session, "GET", &path, None).await
 }
 
-pub async fn stop_app(config_path: &str, selector: &str) -> Result<String> {
-    ask_report(
-        config_path,
-        "POST",
-        &app_action(selector, STOP_ACTION),
-        None,
-    )
-    .await
-}
-
-pub async fn restart_app(config_path: &str, selector: &str) -> Result<String> {
-    ask_report(
-        config_path,
-        "POST",
-        &app_action(selector, RESTART_ACTION),
-        None,
-    )
-    .await
+pub async fn act_on_app(config_path: &str, selector: &str, action: &str) -> Result<String> {
+    let path = app_action(selector, action)?;
+    let session = prepared_session(config_path).await?;
+    ask_report(&session, "POST", &path, None).await
 }
 
 pub async fn delete_app(config_path: &str, selector: &str) -> Result<String> {
-    let cfg_dir = open_session(config_path)?.cfg_dir;
-    let deleted = ask(config_path, "DELETE", &app_path(selector), None).await?;
-    svc::forget(&cfg_dir, deleted.service.as_deref().unwrap_or(selector)).await;
+    let path = app_path(selector)?;
+    let session = prepared_session(config_path).await?;
+    let deleted = ask(&session, "DELETE", &path, None).await?;
+    svc::forget(
+        &session.cfg_dir,
+        deleted.service.as_deref().unwrap_or(selector),
+    )
+    .await;
     Ok(deleted.report)
 }
 
 pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<String> {
-    let session = open_session(config_path)?;
+    let session = prepared_session(config_path).await?;
     let pm3 = &session.config.pm3;
     let client = UdsClient::new(session.paths.socket.clone(), pm3.request_timeout_ms);
     if !client.daemon_is_healthy().await {
         return Ok(DAEMON_NOT_RUNNING.to_string());
     }
     let stopped = if with_services {
-        Some(ask_report(config_path, "POST", SERVICES_STOP_ALL_PATH, None).await?)
+        Some(ask_report(&session, "POST", SERVICES_STOP_ALL_PATH, None).await?)
     } else {
         None
     };
@@ -170,7 +163,9 @@ pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<Strin
             path: session.paths.pid_file.to_string_lossy().into_owned(),
         });
     };
-    KillSignaler::default().terminate(pid).await?;
+    KillSignaler::with_stop_signal(STOP_SIGNAL_TERM.to_string(), pm3.command_timeout_ms)
+        .terminate(pid)
+        .await?;
     let budget_ms = pm3.start_timeout_ms;
     if !wait_until_released(
         &session.paths.socket,
@@ -235,7 +230,7 @@ pub async fn sleep_for(ms: u64) {
 
 #[must_use]
 pub fn stdout_log(paths: &Pm3Paths, name: &str) -> String {
-    log_paths(&logs_dir_of(&paths.root), name).stdout
+    log_paths(&paths.logs_dir.to_string_lossy(), name).stdout
 }
 
 pub fn canonical_apps_file(apps_file: &str) -> Result<String> {
@@ -256,22 +251,24 @@ pub fn start_body(services: &[String]) -> String {
 }
 
 async fn ask_report(
-    config_path: &str,
+    session: &Session,
     method: &str,
     path: &str,
     body: Option<&str>,
 ) -> Result<String> {
-    ask(config_path, method, path, body)
+    ask(session, method, path, body)
         .await
         .map(|reply| reply.report)
 }
 
-async fn ask(config_path: &str, method: &str, path: &str, body: Option<&str>) -> Result<ReplyDto> {
-    let session = open_session(config_path)?;
-    ensure_layout(&session.paths, &session.cfg_dir).await?;
+async fn ask(session: &Session, method: &str, path: &str, body: Option<&str>) -> Result<ReplyDto> {
     let program = std::env::current_exe().unwrap_or_default();
-    let launch =
-        DaemonLaunch::from_config(&session.paths, config_path, program, &session.config.pm3);
+    let launch = DaemonLaunch::from_config(
+        &session.paths,
+        &session.config_path,
+        program,
+        &session.config.pm3,
+    );
     ensure_daemon_running(&launch).await?;
     let reply = UdsClient::new(
         session.paths.socket.clone(),
@@ -294,12 +291,22 @@ fn decode_reply(body: &str) -> Result<ReplyDto> {
     })
 }
 
-fn app_path(selector: &str) -> String {
-    format!("{APPS_PATH}/{selector}")
+fn app_path(selector: &str) -> Result<String> {
+    let safe = path_safe(selector)?;
+    Ok(format!("{APPS_PATH}/{safe}"))
 }
 
-fn app_action(selector: &str, action: &str) -> String {
-    format!("{APPS_PATH}/{selector}/{action}")
+fn app_action(selector: &str, action: &str) -> Result<String> {
+    let safe = path_safe(selector)?;
+    Ok(format!("{APPS_PATH}/{safe}/{action}"))
+}
+
+fn path_safe(selector: &str) -> Result<&str> {
+    if selector.parse::<u32>().is_ok() {
+        return Ok(selector);
+    }
+    validate_app_name(selector)?;
+    Ok(selector)
 }
 
 #[cfg(test)]

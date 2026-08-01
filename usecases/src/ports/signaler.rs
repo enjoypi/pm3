@@ -2,7 +2,7 @@ use std::future::Future;
 
 use thiserror::Error;
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum SignalError {
     #[error("cannot signal pid {pid}: {reason}")]
     Delivery { pid: u32, reason: String },

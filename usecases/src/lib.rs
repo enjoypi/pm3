@@ -17,7 +17,7 @@ mod persist;
 pub use entities::{
     AppSpec, DependencyError, DependencyNode, PolicyError, ProcessIdentity, ProcessRuntime,
     ProcessStatus, RestartDecision, RestartPolicy, SandboxMode, SandboxPolicy, SpecError,
-    decide_restart, topo_sort, validate_spec,
+    decide_restart, topo_sort, validate_app_name, validate_spec,
 };
 use thiserror::Error;
 
@@ -27,16 +27,16 @@ pub use self::{
     log_paths::{LogPaths, log_paths},
     ports::{
         Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,
-        LaunchError, LaunchSpec, LaunchedProcess, ProcessLauncher, ProcessProbe, SandboxError,
-        Scheduler, SignalError, Signaler, WrappedCommand,
+        LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe,
+        SandboxError, Scheduler, SignalError, Signaler, WrappedCommand,
     },
     query::{describe_app, list_apps},
     record::{ProcessRecord, ProcessView},
     restart::{RestartOutcome, restart_app},
     resurrect::resurrect,
     selector::AppSelector,
-    start::{StartKind, StartOutcome, start_apps},
-    stop::{StopOutcome, stop_all_apps, stop_app},
+    start::{StartKind, StartOutcome, StartReport, start_apps},
+    stop::{StopOutcome, settle_stopping_apps, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
     table::ProcessTable,
 };
@@ -81,6 +81,12 @@ pub enum UsecaseError {
 
     #[error("cannot find app '{0}'")]
     NotFound(String),
+
+    #[error("cannot delete app '{name}': {} still depends on it", .dependents.join(", "))]
+    StillDependedOn {
+        name: String,
+        dependents: Vec<String>,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, UsecaseError>;

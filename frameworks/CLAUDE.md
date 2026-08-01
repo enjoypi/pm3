@@ -43,6 +43,8 @@
 
 ### 覆盖率（本层最容易踩）
 
+- `src/tests/` 与 `src/test_helpers/` 下的文件名 MUST 以 `_tests.rs` 或 `_test_helpers.rs` 结尾：门禁的 `listProductionSources` 靠这两个后缀排除测试文件，取别的名字会被当成「生产文件缺失于 lcov」而失败
+- 会 `panic!` 的测试辅助函数 MUST 放 `src/tests/*_tests.rs`（llvm-cov 忽略路径含 `tests/` 的文件），放 `test_helpers/` 会把 panic 分支算成未覆盖行
 - 「只经真实 binary 驱动」的函数 MUST NOT 再补 lib 侧单测
   原因：lib 测试会新增一个实例化，函数其余 region 在该实例化里永不可达 → 门禁挂（症状：加测试反而多出 missed region，`--show-missing-lines` 无输出而 lines/branches 均 100%）
   修法：删掉 lib 单测，失败路径也走 e2e（如 `pm3 --config /nonexistent kill`）

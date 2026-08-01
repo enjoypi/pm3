@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::record::ProcessRecord;
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum DumpError {
     #[error("cannot read state file '{path}': {reason}")]
     Read { path: String, reason: String },

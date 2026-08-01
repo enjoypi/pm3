@@ -48,6 +48,9 @@ pub enum Error {
     #[error(transparent)]
     Cron(#[from] adapters::CronError),
 
+    #[error(transparent)]
+    Spec(#[from] adapters::SpecError),
+
     #[error("cannot determine the pm3 binary path: {reason}")]
     ServiceProgram { reason: String },
 

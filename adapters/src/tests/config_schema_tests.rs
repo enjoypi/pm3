@@ -109,6 +109,31 @@ fn validate_rejects_a_zero_daemon_poll_interval() {
 }
 
 #[test]
+fn validate_rejects_a_poll_ceiling_below_the_poll_interval() {
+    let mut cfg = valid_config();
+    cfg.pm3.daemon_poll_interval_ms = 500;
+    cfg.pm3.daemon_poll_max_interval_ms = 100;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ConfigError::InvalidPollCeiling {
+                max: 100,
+                floor: 500
+            }
+        ),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_accepts_a_poll_ceiling_equal_to_the_poll_interval() {
+    let mut cfg = valid_config();
+    cfg.pm3.daemon_poll_max_interval_ms = cfg.pm3.daemon_poll_interval_ms;
+    validate_config(&cfg).expect("a flat cadence is a legitimate choice");
+}
+
+#[test]
 fn validate_rejects_zero_min_uptime() {
     let mut cfg = valid_config();
     cfg.pm3.restart.min_uptime_ms = 0;
@@ -227,6 +252,7 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidRequestTimeout(0),
         ConfigError::InvalidCommandTimeout(0),
         ConfigError::InvalidPollInterval(0),
+        ConfigError::InvalidPollCeiling { max: 1, floor: 2 },
         ConfigError::InvalidFollowInterval(0),
         ConfigError::InvalidStopSignal("BOOM".to_string()),
         ConfigError::InvalidMinUptime(0),

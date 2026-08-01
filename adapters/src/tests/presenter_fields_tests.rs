@@ -87,6 +87,15 @@ fn a_clock_without_an_instant_is_missing() {
 }
 
 #[test]
+fn a_clock_carries_the_offset_that_reads_it() {
+    let shown = format_clock(Some(0));
+    assert!(
+        shown.contains('+') || shown.contains('-'),
+        "a bare wall clock is unreadable across time zones: {shown}"
+    );
+}
+
+#[test]
 fn a_stamp_without_an_instant_is_missing() {
     assert_eq!(format_stamp(None), MISSING);
 }

@@ -30,6 +30,11 @@ pub enum ConfigError {
     #[error("cannot accept pm3.daemon_poll_interval_ms {0}: must be >= 1")]
     InvalidPollInterval(u64),
 
+    #[error(
+        "cannot accept pm3.daemon_poll_max_interval_ms {max}: must be >= daemon_poll_interval_ms {floor}"
+    )]
+    InvalidPollCeiling { max: u64, floor: u64 },
+
     #[error("cannot accept pm3.log_follow_interval_ms {0}: must be >= 1")]
     InvalidFollowInterval(u64),
 
@@ -80,6 +85,7 @@ pub struct Pm3Config {
     pub request_timeout_ms: u64,
     pub command_timeout_ms: u64,
     pub daemon_poll_interval_ms: u64,
+    pub daemon_poll_max_interval_ms: u64,
     pub log_follow_interval_ms: u64,
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
@@ -88,6 +94,7 @@ pub struct Pm3Config {
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct RestartConfig {
+    pub autorestart: bool,
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
     pub restart_delay_ms: u64,
@@ -163,6 +170,12 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
         return Err(ConfigError::InvalidPollInterval(
             pm3.daemon_poll_interval_ms,
         ));
+    }
+    if pm3.daemon_poll_max_interval_ms < pm3.daemon_poll_interval_ms {
+        return Err(ConfigError::InvalidPollCeiling {
+            max: pm3.daemon_poll_max_interval_ms,
+            floor: pm3.daemon_poll_interval_ms,
+        });
     }
     if pm3.log_follow_interval_ms < 1 {
         return Err(ConfigError::InvalidFollowInterval(

@@ -104,7 +104,7 @@ fn no_writable_dirs_leaves_the_defaults_alone() {
 }
 
 #[test]
-fn writable_dirs_are_added_next_to_the_working_directory() {
+fn writable_dirs_are_declared_on_their_own() {
     let dirs = ["/srv/data".to_string()];
     let entry = inline_entry(&request(&[], &dirs)).expect("the request should resolve");
     let sandbox = entry
@@ -113,10 +113,8 @@ fn writable_dirs_are_added_next_to_the_working_directory() {
         .expect("an inline app always declares a sandbox");
     assert_eq!(
         sandbox.writable_roots,
-        Some(vec![
-            "${HOME}/.pm3/mihomo-rule".to_string(),
-            "/srv/data".to_string()
-        ])
+        Some(vec!["/srv/data".to_string()]),
+        "the working directory is derived at resolve time, not declared here"
     );
 }
 
@@ -140,6 +138,17 @@ fn environment_pairs_are_split_on_the_first_equals_sign() {
     let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
     assert_eq!(entry.env.get("PATH").map(String::as_str), Some("/usr/bin"));
     assert_eq!(entry.env.get("GREETING").map(String::as_str), Some("a=b"));
+}
+
+#[test]
+fn an_environment_value_under_the_home_folds_back_to_the_placeholder() {
+    let env = [format!("DATA={HOME}/data")];
+    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
+    assert_eq!(
+        entry.env.get("DATA").map(String::as_str),
+        Some("${HOME}/data"),
+        "both encoders must agree, or reconcile rejects the very next apps file"
+    );
 }
 
 #[test]
@@ -208,15 +217,17 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
     assert_eq!(specs[0].script, INSTALLED_PROGRAM);
 }
 
-#[test]
-fn a_home_placeholder_expands_when_the_config_file_is_loaded() {
+#[tokio::test]
+async fn a_home_placeholder_expands_when_the_config_file_is_loaded() {
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("mihomo-rule.yaml");
     let mut asked = request(&[], &[]);
     asked.cwd = Some("/home/dev/work");
     let entry = inline_entry(&asked).expect("the request should resolve");
     std::fs::write(&path, encode_service_file(&entry)).expect("write the config file");
-    let loaded = load_service_file(&path.to_string_lossy()).expect("the config file should load");
+    let loaded = load_service_file(&path.to_string_lossy())
+        .await
+        .expect("the config file should load");
     let expected = format!(
         "{}/work",
         std::env::var("HOME").expect("tests always run with HOME")
@@ -302,7 +313,7 @@ fn an_empty_sandbox_section_is_omitted() {
         network: None,
         writable_roots: None,
     });
-    let yaml = encode_apps_file(&AppsFile { apps: vec![entry] });
+    let yaml = encode_service_file(&entry);
     assert!(!yaml.contains("sandbox"), "got: {yaml}");
 }
 
@@ -310,7 +321,7 @@ fn an_empty_sandbox_section_is_omitted() {
 fn an_app_without_a_sandbox_section_is_encoded_plainly() {
     let mut entry = fully_declared_entry();
     entry.sandbox = None;
-    let yaml = encode_apps_file(&AppsFile { apps: vec![entry] });
+    let yaml = encode_service_file(&entry);
     assert!(!yaml.contains("sandbox"), "got: {yaml}");
 }
 

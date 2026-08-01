@@ -4,9 +4,10 @@ use adapters::{
     AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
     ExitOutcome, ProcessStatus, ProcessTable, ProcessView, RestartOutcome, Scheduler as _,
     SpecSource, StartOutcome, UsecaseError, delete_app, describe_app, handle_child_exit, list_apps,
-    materialise_workspace, restart_app, resurrect, start_apps, stop_all_apps, stop_app,
+    materialise_workspace, restart_app, resurrect, settle_stopping_apps, start_apps, stop_all_apps,
+    stop_app,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 use super::ports::DaemonPorts;
 
@@ -40,8 +41,14 @@ pub struct Daemon {
     specs: SpecSource,
     events: mpsc::Sender<DaemonEvent>,
     generations: HashMap<String, u64>,
-    timers: HashMap<String, u64>,
+    timers: HashMap<String, Timer>,
     next_generation: u64,
+}
+
+#[derive(Debug)]
+struct Timer {
+    fire_at_ms: u64,
+    task: JoinHandle<()>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -156,7 +163,6 @@ impl Daemon {
                 name
             }
             RestartOutcome::AwaitingExit {
-                pm_id: _,
                 name,
                 force_kill_pid,
             } => {
@@ -176,11 +182,11 @@ impl Daemon {
         self.ports.force_kill(pid).await.ok();
     }
 
-    pub async fn tracked_pids(&self) -> Vec<u32> {
-        self.ports.tracked_pids().await
-    }
-
-    pub fn shutdown(&self) {
+    pub async fn shutdown(&mut self) {
+        match settle_stopping_apps(&mut self.table, &*self.ports).await {
+            Ok(settled) => log_settled_on_shutdown(settled.len()),
+            Err(error) => log_failure("shutdown", "-", &error),
+        }
         let survivors = self.running_names().len();
         tracing::info!(
             feature = "lifecycle",
@@ -192,12 +198,25 @@ impl Daemon {
     }
 
     async fn stop_all(&mut self) -> DaemonOutcome {
+        self.disarm_all();
         let stopped = stop_all_apps(&mut self.table, &*self.ports).await?;
         tokio::time::sleep(Duration::from_millis(self.specs.config.kill_timeout_ms)).await;
         for pid in self.ports.tracked_pids().await {
             self.ports.force_kill(pid).await.ok();
         }
         Ok(DaemonReply::StoppedAll { names: stopped })
+    }
+
+    fn disarm(&mut self, name: &str) {
+        if let Some(timer) = self.timers.remove(name) {
+            timer.task.abort();
+        }
+    }
+
+    fn disarm_all(&mut self) {
+        for (_name, timer) in self.timers.drain() {
+            timer.task.abort();
+        }
     }
 
     fn running_names(&self) -> Vec<String> {
@@ -242,7 +261,7 @@ impl Daemon {
                 Flow::Continue
             }
             DaemonEvent::Shutdown => {
-                self.shutdown();
+                self.shutdown().await;
                 Flow::Stop
             }
         }
@@ -251,20 +270,22 @@ impl Daemon {
     async fn start(&mut self, services: &[String]) -> DaemonOutcome {
         let mut specs = Vec::with_capacity(services.len());
         for name in services {
-            specs.push(self.specs.resolve_service(name)?);
+            specs.push(self.specs.resolve_service(name).await?);
         }
         for spec in &mut specs {
             materialise_workspace(spec).await;
         }
-        let outcomes =
-            start_apps(&mut self.table, &specs, &self.specs.logs_dir, &*self.ports).await?;
-        self.watch_all(&outcomes);
-        for outcome in &outcomes {
+        let report = start_apps(&mut self.table, &specs, &self.specs.logs_dir, &*self.ports).await;
+        self.watch_all(&report.outcomes);
+        for outcome in &report.outcomes {
             if outcome.kind.needs_timer() {
                 self.arm_timer(&outcome.name);
             }
         }
-        Ok(DaemonReply::Started(outcomes))
+        match report.failure {
+            Some(error) => Err(error.into()),
+            None => Ok(DaemonReply::Started(report.outcomes)),
+        }
     }
 
     fn describe(&self, selector: &AppSelector) -> DaemonOutcome {
@@ -274,7 +295,7 @@ impl Daemon {
 
     async fn stop(&mut self, selector: &AppSelector) -> DaemonOutcome {
         let outcome = stop_app(&mut self.table, selector, &*self.ports).await?;
-        self.timers.remove(&outcome.name);
+        self.disarm(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid);
         Ok(DaemonReply::Stopped { name: outcome.name })
     }
@@ -294,13 +315,14 @@ impl Daemon {
 
     async fn delete(&mut self, selector: &AppSelector) -> DaemonOutcome {
         let outcome = delete_app(&mut self.table, selector, &*self.ports).await?;
-        self.timers.remove(&outcome.name);
+        self.disarm(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid);
+        self.generations.remove(&outcome.name);
         Ok(DaemonReply::Deleted { name: outcome.name })
     }
 
     fn with_next_fire(&self, view: ProcessView) -> ProcessView {
-        let next_fire_ms = self.timers.get(&view.name).copied();
+        let next_fire_ms = self.timers.get(&view.name).map(|timer| timer.fire_at_ms);
         ProcessView {
             next_fire_ms,
             ..view
@@ -317,13 +339,14 @@ impl Daemon {
         let (Some(pid), true) = (started.pid, started.kind.needs_watching()) else {
             return;
         };
+        let token = self.identity_token(&started.name);
         let generation = self.bump(&started.name);
         let ports = Arc::clone(&self.ports);
         let events = self.events.clone();
         let name = started.name.clone();
         tokio::spawn(async move {
             let outcome = ports
-                .wait(pid)
+                .wait(pid, token)
                 .await
                 .unwrap_or(ExitOutcome { exit_code: None });
             events
@@ -337,8 +360,15 @@ impl Daemon {
         });
     }
 
+    fn identity_token(&self, name: &str) -> Option<String> {
+        self.table
+            .find(&AppSelector::Name(name.to_string()))
+            .and_then(|record| record.runtime.identity.as_ref())
+            .map(|identity| identity.token.clone())
+    }
+
     pub async fn on_fire(&mut self, name: &str, fire_at_ms: u64) {
-        if self.timers.get(name) != Some(&fire_at_ms) {
+        if self.timers.get(name).map(|timer| timer.fire_at_ms) != Some(fire_at_ms) {
             return;
         }
         self.on_restart(name).await;
@@ -356,35 +386,38 @@ impl Daemon {
         self.table
             .records()
             .iter()
-            .filter(|record| record.spec.schedule.is_some())
+            .filter(|record| record.spec.schedule.is_some() && record.runtime.schedule_armed)
             .map(|record| record.runtime.name.clone())
             .collect()
     }
 
     fn arm_timer(&mut self, name: &str) {
+        self.disarm(name);
         let Some(cron) = self.schedule_of(name) else {
-            self.timers.remove(name);
             return;
         };
         let now_ms = self.ports.now_ms();
         let Some(fire_at_ms) = self.ports.next_fire_ms(&cron, now_ms) else {
-            self.timers.remove(name);
             log_unschedulable(name, &cron);
             return;
         };
-        self.timers.insert(name.to_string(), fire_at_ms);
         log_armed(name, fire_at_ms);
 
         let events = self.events.clone();
-        let name = name.to_string();
+        let fired = name.to_string();
         let delay = Duration::from_millis(fire_at_ms.saturating_sub(now_ms));
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             tokio::time::sleep(delay).await;
             events
-                .send(DaemonEvent::Fire { name, fire_at_ms })
+                .send(DaemonEvent::Fire {
+                    name: fired,
+                    fire_at_ms,
+                })
                 .await
                 .ok();
         });
+        self.timers
+            .insert(name.to_string(), Timer { fire_at_ms, task });
     }
 
     fn schedule_of(&self, name: &str) -> Option<String> {
@@ -450,6 +483,15 @@ fn log_settled(app: &str, status: ProcessStatus) {
     );
 }
 
+fn log_settled_on_shutdown(settled: usize) {
+    tracing::debug!(
+        feature = "lifecycle",
+        operation = "shutdown",
+        settled,
+        "pm3 daemon recorded the services it was told to stop as stopped",
+    );
+}
+
 fn log_armed(app: &str, fire_at_ms: u64) {
     tracing::debug!(
         feature = "supervisor",
@@ -481,6 +523,15 @@ fn log_failure(action: &str, app: &str, error: &UsecaseError) {
     );
 }
 
+#[cfg(test)]
+#[path = "../tests/daemon_actor_cron_tests.rs"]
+mod cron_tests;
+#[cfg(test)]
+#[path = "../tests/daemon_actor_lifecycle_tests.rs"]
+mod lifecycle_tests;
+#[cfg(test)]
+#[path = "../tests/daemon_actor_shared_tests.rs"]
+mod shared;
 #[cfg(test)]
 #[path = "../test_helpers/daemon_actor_test_helpers.rs"]
 mod test_helpers;

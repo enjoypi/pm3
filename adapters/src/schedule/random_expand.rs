@@ -7,7 +7,7 @@ const FIELD_BOUNDS: [(u32, u32); FIELD_COUNT] = [(0, 59), (0, 23), (1, 31), (1, 
 const RANDOM_MARK: char = '~';
 const STEP_MARK: char = '/';
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum ExpandError {
     #[error("cannot accept step 0 in random field '{field}'")]
     ZeroStep { field: String },

@@ -68,11 +68,6 @@ fn a_relative_home_is_rejected() {
 }
 
 #[test]
-fn the_logs_directory_is_rendered_as_a_string() {
-    assert_eq!(logs_dir_of(Path::new("/home/u/.pm3")), "/home/u/.pm3/logs");
-}
-
-#[test]
 fn every_path_error_renders_a_message() {
     let errors = [
         PathError::MissingHome("~/.pm3".to_string()),

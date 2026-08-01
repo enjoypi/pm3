@@ -4,7 +4,7 @@ use entities::{ProcessStatus, topo_sort};
 use futures_util::future::join_all;
 
 use crate::{
-    Ports, Result,
+    Liveness, Ports, Result, UsecaseError,
     fingerprint::render_identity,
     persist::save_table,
     record::ProcessRecord,
@@ -22,6 +22,7 @@ enum Verdict {
 enum Change {
     Unknown,
     Gone,
+    Unreadable,
     Reused,
     Launch,
     Binary,
@@ -42,7 +43,7 @@ pub async fn resurrect(
             .collect(),
     );
 
-    let order = topo_sort(&table.dependency_nodes())?;
+    let order = recovery_order(table);
     let mut outcomes = Vec::with_capacity(verdicts.len());
     for name in order {
         let Some(verdict) = verdicts.get(&name).copied() else {
@@ -53,12 +54,31 @@ pub async fn resurrect(
             Verdict::Respawn { change, stale } => {
                 log_respawn(&name, change);
                 evict(&name, stale, ports).await;
-                outcomes.push(start_one(table, &name, logs_dir, ports).await?);
+                match start_one(table, &name, logs_dir, ports).await {
+                    Ok(outcome) => outcomes.push(outcome),
+                    Err(error) => log_recovery_failure("respawn", &name, &error),
+                }
             }
         }
     }
-    save_table(table, ports).await?;
+    if let Err(error) = save_table(table, ports).await {
+        log_recovery_failure("persist", "-", &error);
+    }
     Ok(outcomes)
+}
+
+fn recovery_order(table: &ProcessTable) -> Vec<String> {
+    match topo_sort(&table.dependency_nodes()) {
+        Ok(order) => order,
+        Err(error) => {
+            log_recovery_failure("order", "-", &UsecaseError::from(error));
+            table
+                .records()
+                .iter()
+                .map(|record| record.runtime.name.clone())
+                .collect()
+        }
+    }
 }
 
 async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<String, Verdict> {
@@ -84,8 +104,10 @@ async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
     let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
         return respawn(Change::Unknown, None);
     };
-    let Some(token) = ports.identity(pid).await else {
-        return respawn(Change::Gone, None);
+    let token = match ports.identity(pid).await {
+        Liveness::Alive(token) => token,
+        Liveness::Gone => return respawn(Change::Gone, None),
+        Liveness::Unreadable => return respawn(Change::Unreadable, Some(pid)),
     };
     if token != identity.token {
         return respawn(Change::Reused, None);
@@ -173,6 +195,17 @@ fn log_evict(app: &str, pid: u32, refused: Option<&str>) {
     );
 }
 
+fn log_recovery_failure(action: &str, app: &str, error: &UsecaseError) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "resurrect",
+        action,
+        service = app,
+        reason,
+        "pm3 cannot finish a recovery step, so it keeps the services it already reclaimed",
+    );
+}
+
 fn log_respawn(app: &str, change: Change) {
     let reason = change.as_str();
     tracing::debug!(
@@ -189,6 +222,7 @@ impl Change {
         match self {
             Self::Unknown => "unknown",
             Self::Gone => "gone",
+            Self::Unreadable => "unreadable",
             Self::Reused => "reused",
             Self::Launch => "launch",
             Self::Binary => "binary",

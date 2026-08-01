@@ -2,7 +2,7 @@ use std::{
     fs::{File, OpenOptions},
     path::{Path, PathBuf},
     process::Stdio,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use adapters::{CONFIG_FLAG, DAEMON_SUBCOMMAND, Pm3Config, Pm3Paths};
@@ -41,6 +41,11 @@ impl<'l> DaemonLaunch<'l> {
             request_timeout_ms: pm3.request_timeout_ms,
         }
     }
+
+    #[must_use]
+    pub const fn budget_ms(&self) -> u64 {
+        (self.attempts as u64).saturating_mul(self.interval_ms)
+    }
 }
 
 pub async fn ensure_daemon_running(launch: &DaemonLaunch<'_>) -> Result<()> {
@@ -48,7 +53,7 @@ pub async fn ensure_daemon_running(launch: &DaemonLaunch<'_>) -> Result<()> {
     if client.daemon_is_healthy().await {
         return Ok(());
     }
-    if !claim_lock(&launch.paths.lock_file).await {
+    if !claim_lock(&launch.paths.lock_file, launch.budget_ms()).await {
         return wait_until_ready(&client, launch).await;
     }
     let spawned = spawn_daemon(launch);
@@ -57,7 +62,19 @@ pub async fn ensure_daemon_running(launch: &DaemonLaunch<'_>) -> Result<()> {
     wait_until_ready(&client, launch).await
 }
 
-async fn claim_lock(path: &Path) -> bool {
+async fn claim_lock(path: &Path, stale_after_ms: u64) -> bool {
+    if take_lock(path).await {
+        return true;
+    }
+    if !is_abandoned(path, stale_after_ms).await {
+        return false;
+    }
+    log_abandoned_lock(path, stale_after_ms);
+    release_lock(path).await;
+    take_lock(path).await
+}
+
+async fn take_lock(path: &Path) -> bool {
     tokio::fs::OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -66,8 +83,34 @@ async fn claim_lock(path: &Path) -> bool {
         .is_ok()
 }
 
+async fn is_abandoned(path: &Path, stale_after_ms: u64) -> bool {
+    lock_age(path)
+        .await
+        .is_some_and(|age| age > Duration::from_millis(stale_after_ms))
+}
+
+async fn lock_age(path: &Path) -> Option<Duration> {
+    let modified = tokio::fs::metadata(path)
+        .await
+        .ok()?
+        .modified()
+        .expect("internal error: the unix filesystems pm3 runs on all record a modified time");
+    SystemTime::now().duration_since(modified).ok()
+}
+
 async fn release_lock(path: &Path) {
     tokio::fs::remove_file(path).await.ok();
+}
+
+fn log_abandoned_lock(path: &Path, stale_after_ms: u64) {
+    let lock = path.to_string_lossy();
+    tracing::warn!(
+        feature = "lifecycle",
+        action = "claim_lock",
+        lock = %lock,
+        stale_after_ms,
+        "pm3 is clearing a start lock that outlived its spawn budget",
+    );
 }
 
 #[expect(
@@ -86,6 +129,7 @@ fn spawn_daemon(launch: &DaemonLaunch<'_>) -> Result<()> {
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(errors))
+        .process_group(0)
         .spawn()
         .map(|_child| ())
         .map_err(|e| Error::DaemonSpawn {
@@ -102,7 +146,7 @@ async fn wait_until_ready(client: &UdsClient, launch: &DaemonLaunch<'_>) -> Resu
     }
     Err(Error::DaemonUnready {
         path: launch.paths.socket.to_string_lossy().into_owned(),
-        timeout_ms: u64::from(launch.attempts) * launch.interval_ms,
+        timeout_ms: launch.budget_ms(),
     })
 }
 

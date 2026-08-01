@@ -6,7 +6,7 @@ pub struct DependencyNode<'a> {
     pub depends_on: &'a [String],
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum DependencyError {
     #[error("cannot resolve dependency '{dependency}' declared by app '{app}': no such app")]
     UnknownDependency { app: String, dependency: String },

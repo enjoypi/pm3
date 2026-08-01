@@ -52,6 +52,7 @@ pub fn sample_runtime(name: &str) -> ProcessRuntime {
         started_at_ms: Some(STARTED_AT_MS),
         identity: Some(sample_identity()),
         pending_restart: false,
+        schedule_armed: true,
     }
 }
 

@@ -12,9 +12,7 @@ const CLEAN: ExitOutcome = ExitOutcome { exit_code: Some(0) };
 
 async fn running_table(ports: &FakePorts, candidate: AppSpec) -> ProcessTable {
     let mut table = ProcessTable::new();
-    start_apps(&mut table, &[candidate], LOGS_DIR, ports)
-        .await
-        .expect("start should succeed");
+    start_apps(&mut table, &[candidate], LOGS_DIR, ports).await;
     table
 }
 

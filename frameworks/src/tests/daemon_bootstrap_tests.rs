@@ -1,4 +1,8 @@
-use std::{path::PathBuf, time::Duration};
+use std::{
+    fs::{File, FileTimes},
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 
 use adapters::resolve_paths;
 use tokio::{
@@ -55,6 +59,62 @@ fn healthy_daemon(paths: &Pm3Paths) -> tokio::task::JoinHandle<()> {
             stream.shutdown().await.ok();
         }
     })
+}
+
+fn backdate(path: &std::path::Path, by: Duration) {
+    let file = File::options().write(true).open(path).expect("open a lock");
+    let stamp = SystemTime::now()
+        .checked_sub(by)
+        .expect("the clock is far enough past the epoch");
+    file.set_times(FileTimes::new().set_modified(stamp))
+        .expect("backdate the lock");
+}
+
+fn postdate(path: &std::path::Path, by: Duration) {
+    let file = File::options().write(true).open(path).expect("open a lock");
+    let stamp = SystemTime::now()
+        .checked_add(by)
+        .expect("the clock is far enough from the end of time");
+    file.set_times(FileTimes::new().set_modified(stamp))
+        .expect("postdate the lock");
+}
+
+#[tokio::test]
+async fn a_lock_that_is_not_there_is_not_abandoned() {
+    let fixture = fixture();
+    assert!(!is_abandoned(&fixture.paths.lock_file, 0).await);
+}
+
+#[tokio::test]
+async fn a_lock_stamped_in_the_future_is_not_abandoned() {
+    let fixture = fixture();
+    std::fs::write(&fixture.paths.lock_file, "held").expect("hold the lock");
+    postdate(&fixture.paths.lock_file, Duration::from_hours(1));
+    assert!(!is_abandoned(&fixture.paths.lock_file, 0).await);
+}
+
+#[tokio::test]
+async fn a_lock_still_inside_the_spawn_budget_is_not_abandoned() {
+    let fixture = fixture();
+    std::fs::write(&fixture.paths.lock_file, "held").expect("hold the lock");
+    assert!(!is_abandoned(&fixture.paths.lock_file, 60_000).await);
+}
+
+#[tokio::test]
+async fn a_lock_left_behind_by_an_interrupted_start_is_cleared() {
+    let fixture = fixture();
+    std::fs::write(&fixture.paths.lock_file, "held").expect("hold the lock");
+    backdate(&fixture.paths.lock_file, Duration::from_hours(1));
+
+    let err = ensure_daemon_running(&launch(&fixture, "/nonexistent/pm3"))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        err.contains("cannot spawn the pm3 daemon"),
+        "an abandoned lock must not stop pm3 from trying to spawn: {err}"
+    );
 }
 
 #[test]

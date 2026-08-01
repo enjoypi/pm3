@@ -2,7 +2,7 @@ use std::future::Future;
 
 use thiserror::Error;
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum FingerprintError {
     #[error("cannot digest '{path}': {reason}")]
     Read { path: String, reason: String },

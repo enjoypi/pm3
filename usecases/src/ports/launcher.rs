@@ -23,7 +23,7 @@ pub struct ExitOutcome {
     pub exit_code: Option<i32>,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum LaunchError {
     #[error("cannot spawn app '{app}': {reason}")]
     Spawn { app: String, reason: String },

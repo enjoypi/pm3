@@ -1,8 +1,7 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use adapters::{
-    DaemonHandle, Pm3Paths, SpecSource, load_and_parse_config, log_startup_banner, logs_dir_of,
-    router,
+    DaemonHandle, Pm3Paths, SpecSource, load_and_parse_config, log_startup_banner, router,
 };
 use tokio::{net::UnixListener, sync::mpsc};
 
@@ -53,7 +52,7 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
         cfg_dir,
         config: config.pm3.clone(),
         home_dir: paths.root.to_string_lossy().into_owned(),
-        logs_dir: logs_dir_of(&paths.root),
+        logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: std::env::var(TMPDIR_VARIABLE).ok(),
     };
     let served = serve_supervised(specs, &paths, listener, shutdown).await;

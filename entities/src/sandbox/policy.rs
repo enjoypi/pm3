@@ -15,7 +15,7 @@ pub struct SandboxPolicy {
     pub derived_roots: Vec<String>,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum PolicyError {
     #[error("cannot accept empty sandbox writable root")]
     EmptyWritableRoot,

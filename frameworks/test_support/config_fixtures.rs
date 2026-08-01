@@ -28,8 +28,10 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         request_timeout_ms: REQUEST_TIMEOUT_MS,
         command_timeout_ms: COMMAND_TIMEOUT_MS,
         daemon_poll_interval_ms: POLL_INTERVAL_MS,
+        daemon_poll_max_interval_ms: POLL_INTERVAL_MS,
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         restart: RestartConfig {
+            autorestart: true,
             min_uptime_ms: MIN_UPTIME_MS,
             max_restarts: MAX_RESTARTS,
             restart_delay_ms: 0,
@@ -57,8 +59,10 @@ pub fn config_yaml(home: &str) -> String {
   request_timeout_ms: {REQUEST_TIMEOUT_MS}
   command_timeout_ms: {COMMAND_TIMEOUT_MS}
   daemon_poll_interval_ms: {POLL_INTERVAL_MS}
+  daemon_poll_max_interval_ms: {POLL_INTERVAL_MS}
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   restart:
+    autorestart: true
     min_uptime_ms: {MIN_UPTIME_MS}
     max_restarts: {MAX_RESTARTS}
     restart_delay_ms: 0

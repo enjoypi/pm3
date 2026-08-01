@@ -166,8 +166,16 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
     let Cli { config, command } = cli;
     match command {
         Commands::Start(args) => run_start(&config, &args).await,
-        Commands::Stop { selector } => commands::stop_app(&config, &selector).await.map(Some),
-        Commands::Restart { selector } => commands::restart_app(&config, &selector).await.map(Some),
+        Commands::Stop { selector } => {
+            commands::act_on_app(&config, &selector, commands::STOP_ACTION)
+                .await
+                .map(Some)
+        }
+        Commands::Restart { selector } => {
+            commands::act_on_app(&config, &selector, commands::RESTART_ACTION)
+                .await
+                .map(Some)
+        }
         Commands::Delete { selector } => commands::delete_app(&config, &selector).await.map(Some),
         Commands::Describe { selector } => {
             commands::describe_app(&config, &selector).await.map(Some)
@@ -242,7 +250,7 @@ async fn offer_restarts(
     let mut lines: Vec<String> = Vec::new();
     for name in pending {
         if confirm(name) {
-            lines.push(commands::restart_app(config, name).await?);
+            lines.push(commands::act_on_app(config, name, commands::RESTART_ACTION).await?);
         } else {
             lines.push(prompt::keep_old_config_hint(name));
         }

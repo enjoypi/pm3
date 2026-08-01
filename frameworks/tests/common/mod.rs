@@ -85,8 +85,10 @@ pub fn config_yaml(
   request_timeout_ms: 30000
   command_timeout_ms: 5000
   daemon_poll_interval_ms: 40
+  daemon_poll_max_interval_ms: 200
   log_follow_interval_ms: 200
   restart:
+    autorestart: true
     min_uptime_ms: 1000
     max_restarts: 15
     restart_delay_ms: 0

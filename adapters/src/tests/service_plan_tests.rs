@@ -65,9 +65,10 @@ fn a_launchd_uninstall_unloads_before_removing_the_plist() {
     assert_eq!(
         described(&steps),
         [
-            "run unload -w /home/dev/Library/LaunchAgents/pm3-test.plist",
+            "try unload -w /home/dev/Library/LaunchAgents/pm3-test.plist",
             "remove /home/dev/Library/LaunchAgents/pm3-test.plist",
-        ]
+        ],
+        "a manager that refuses to unload must not strand the unit file"
     );
 }
 
@@ -77,10 +78,11 @@ fn a_systemd_uninstall_disables_removes_then_reloads() {
     assert_eq!(
         described(&steps),
         [
-            "run --user disable --now pm3-test.service",
+            "try --user disable --now pm3-test.service",
             "remove /home/dev/.config/systemd/user/pm3-test.service",
-            "run --user daemon-reload",
-        ]
+            "try --user daemon-reload",
+        ],
+        "a session without a bus must not strand the unit file"
     );
 }
 

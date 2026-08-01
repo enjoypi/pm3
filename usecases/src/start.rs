@@ -27,6 +27,21 @@ pub struct StartOutcome {
     pub kind: StartKind,
 }
 
+#[derive(Debug, Default)]
+pub struct StartReport {
+    pub outcomes: Vec<StartOutcome>,
+    pub failure: Option<UsecaseError>,
+}
+
+impl StartReport {
+    const fn refused(error: UsecaseError) -> Self {
+        Self {
+            outcomes: Vec::new(),
+            failure: Some(error),
+        }
+    }
+}
+
 impl StartKind {
     #[must_use]
     pub const fn needs_watching(self) -> bool {
@@ -44,23 +59,52 @@ pub async fn start_apps(
     specs: &[AppSpec],
     logs_dir: &str,
     ports: &impl Ports,
-) -> Result<Vec<StartOutcome>> {
-    for spec in specs {
-        validate_spec(spec)?;
-    }
-    let order = start_order(table, specs)?;
+) -> StartReport {
+    let order = match accepted_order(table, specs) {
+        Ok(order) => order,
+        Err(error) => return StartReport::refused(error),
+    };
 
     let now_ms = ports.now_ms();
     for spec in specs {
         table.upsert(spec.clone(), now_ms);
     }
 
-    let mut outcomes = Vec::with_capacity(order.len());
+    let mut report = StartReport {
+        outcomes: Vec::with_capacity(order.len()),
+        failure: None,
+    };
     for name in &order {
-        outcomes.push(launch(table, name, logs_dir, ports, StartMode::Register).await?);
+        match launch(table, name, logs_dir, ports, StartMode::Register).await {
+            Ok(outcome) => report.outcomes.push(outcome),
+            Err(error) => {
+                log_abandoned_start(name, &error);
+                report.failure = Some(error);
+                break;
+            }
+        }
     }
-    save_table(table, ports).await?;
-    Ok(outcomes)
+    let unsaved = save_table(table, ports).await.err();
+    report.failure = report.failure.or(unsaved);
+    report
+}
+
+fn accepted_order(table: &ProcessTable, specs: &[AppSpec]) -> Result<Vec<String>> {
+    for spec in specs {
+        validate_spec(spec)?;
+    }
+    start_order(table, specs)
+}
+
+fn log_abandoned_start(app: &str, error: &UsecaseError) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "lifecycle",
+        action = "start",
+        app,
+        reason,
+        "pm3 cannot start a service, so it leaves the rest of the batch alone",
+    );
 }
 
 fn start_order(table: &ProcessTable, specs: &[AppSpec]) -> Result<Vec<String>> {
@@ -102,6 +146,10 @@ async fn launch(
     };
 
     if !record.runtime.status.is_settled() {
+        record.runtime.arm_schedule();
+        if record.runtime.status.is_shutting_down() {
+            record.runtime.request_restart();
+        }
         return Ok(StartOutcome {
             pm_id: record.runtime.pm_id,
             name: name.to_string(),
@@ -111,6 +159,7 @@ async fn launch(
     }
 
     if mode == StartMode::Register && record.spec.is_scheduled_task() {
+        record.runtime.arm_schedule();
         return Ok(StartOutcome {
             pm_id: record.runtime.pm_id,
             name: name.to_string(),
@@ -124,6 +173,7 @@ async fn launch(
     let now_ms = ports.now_ms();
     let identity = capture_identity(&record.spec, launched.pid, ports).await;
 
+    record.runtime.arm_schedule();
     record.runtime.mark_launched(launched.pid, now_ms);
     record.runtime.mark_online();
     record.runtime.record_identity(identity);
@@ -140,7 +190,7 @@ pub(crate) async fn capture_identity(
     pid: u32,
     ports: &impl Ports,
 ) -> Option<ProcessIdentity> {
-    let token = ports.identity(pid).await?;
+    let token = ports.identity(pid).await.into_token()?;
     let launch_digest = ports.digest(&render_identity(spec));
     let binary_digest = ports
         .file_digest(&spec.script)

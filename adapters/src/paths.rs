@@ -23,7 +23,7 @@ pub struct Pm3Paths {
     pub daemon_log: PathBuf,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Error)]
 pub enum PathError {
     #[error("cannot resolve pm3.home '{0}': no HOME in the environment to expand '~'")]
     MissingHome(String),
@@ -65,11 +65,6 @@ pub fn expand_home(raw: &str, home_env: Option<&str>) -> Result<PathBuf, PathErr
 
 pub fn default_config_path(home_env: Option<&str>) -> Result<PathBuf, PathError> {
     Ok(expand_home(DEFAULT_HOME, home_env)?.join(CONFIG_FILE))
-}
-
-#[must_use]
-pub fn logs_dir_of(root: &Path) -> String {
-    root.join(LOGS_DIR).to_string_lossy().into_owned()
 }
 
 #[cfg(test)]

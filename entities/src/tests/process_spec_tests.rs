@@ -35,6 +35,57 @@ fn validate_accepts_a_name_that_merely_contains_digits() {
 }
 
 #[test]
+fn validate_accepts_the_punctuation_a_file_name_can_carry() {
+    validate_app_name("api-2_0.worker").expect("dashes, underscores and dots are safe");
+}
+
+#[test]
+fn validate_rejects_a_name_that_would_escape_the_service_directory() {
+    let err = validate_app_name("../evil").unwrap_err();
+    assert_eq!(err, SpecError::DottedName("../evil".to_string()));
+}
+
+#[test]
+fn validate_rejects_a_hidden_name() {
+    let err = validate_app_name(".hidden").unwrap_err();
+    assert_eq!(err, SpecError::DottedName(".hidden".to_string()));
+}
+
+#[test]
+fn validate_rejects_a_path_separator_inside_a_name() {
+    let err = validate_app_name("team/api").unwrap_err();
+    assert_eq!(
+        err,
+        SpecError::UnsafeName {
+            name: "team/api".to_string(),
+            character: '/',
+        }
+    );
+}
+
+#[test]
+fn validate_rejects_a_space_inside_a_name() {
+    let err = validate_app_name("my app").unwrap_err();
+    assert_eq!(
+        err,
+        SpecError::UnsafeName {
+            name: "my app".to_string(),
+            character: ' ',
+        }
+    );
+}
+
+#[test]
+fn a_spec_carrying_an_unsafe_name_is_refused() {
+    let candidate = AppSpec {
+        name: "team/api".to_string(),
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert!(matches!(err, SpecError::UnsafeName { .. }), "got: {err}");
+}
+
+#[test]
 fn validate_rejects_blank_script() {
     let candidate = AppSpec {
         script: "  ".to_string(),
@@ -164,6 +215,11 @@ fn every_spec_error_renders_a_message() {
     let errors = [
         SpecError::EmptyName,
         SpecError::NumericName("3".to_string()),
+        SpecError::DottedName(".api".to_string()),
+        SpecError::UnsafeName {
+            name: "my app".to_string(),
+            character: ' ',
+        },
         SpecError::EmptyScript("api".to_string()),
         SpecError::RelativeCwd {
             app: "api".to_string(),

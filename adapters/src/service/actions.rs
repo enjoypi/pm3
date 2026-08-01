@@ -40,8 +40,12 @@ pub async fn uninstall_service(
     if !spec.unit_path().is_file() {
         return Ok(NOTHING_INSTALLED.to_string());
     }
-    execute_plan(&steps).await?;
-    Ok(format!("uninstalled {}", spec.label))
+    let skipped = execute_plan(&steps).await?;
+    Ok(format!(
+        "uninstalled {}{}",
+        spec.label,
+        render_skipped(&skipped)
+    ))
 }
 
 pub async fn status_report(

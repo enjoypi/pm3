@@ -426,11 +426,20 @@ async fn an_uninstall_removes_the_unit_it_installed() {
 }
 
 #[tokio::test]
-async fn an_uninstall_that_the_manager_refuses_is_reported() {
-    let fixture = fixture(FALSE_PROGRAM);
+async fn an_uninstall_that_cannot_remove_the_unit_is_reported() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let vanishing = dir.path().join("launchctl");
+    std::fs::write(&vanishing, "#!/bin/sh\nrm -f \"$3\"\n").expect("write a fake launchctl");
+    std::fs::set_permissions(
+        &vanishing,
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
+    )
+    .expect("make the fake launchctl executable");
+    let fixture = fixture(&vanishing.to_string_lossy());
     let home = home_of(&fixture);
     install_unit(&fixture, ServiceKind::Launchd);
     let command = ServiceCommands::Uninstall { dry_run: false };
+
     let err = dispatch_service(
         &fixture.config_path,
         Some(&command),
@@ -439,7 +448,24 @@ async fn an_uninstall_that_the_manager_refuses_is_reported() {
     .await
     .unwrap_err()
     .to_string();
-    assert!(err.contains("exited with status 1"), "got: {err}");
+
+    assert!(err.contains("cannot write"), "got: {err}");
+}
+
+#[tokio::test]
+async fn an_uninstall_that_the_manager_refuses_reports_what_it_skipped() {
+    let fixture = fixture(FALSE_PROGRAM);
+    let home = home_of(&fixture);
+    install_unit(&fixture, ServiceKind::Launchd);
+    let command = ServiceCommands::Uninstall { dry_run: false };
+    let report = dispatch_service(
+        &fixture.config_path,
+        Some(&command),
+        &context(&fixture, ServiceKind::Launchd, &home),
+    )
+    .await
+    .expect("a refusal to unload must not strand the unit file");
+    assert!(report.contains("skipped: "), "got: {report}");
 }
 
 #[tokio::test]
