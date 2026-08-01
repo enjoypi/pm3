@@ -208,12 +208,45 @@ async fn read_tail_reads_across_chunk_boundaries_when_it_must() {
 }
 
 #[tokio::test]
-async fn following_reports_undecodable_appended_content() {
+async fn following_replaces_undecodable_appended_bytes_instead_of_giving_up() {
     let (_dir, path) = temp_log(b"");
     let mut follower = LogFollower::start_at_end(&path)
         .await
         .expect("should start");
     append(&path, &[0xff, 0xfe, b'\n']).await;
+    let lines = follower
+        .poll_appended()
+        .await
+        .expect("a binary byte must not abort the follow");
+    assert_eq!(lines, vec!["\u{fffd}\u{fffd}".to_string()]);
+}
+
+#[tokio::test]
+async fn following_keeps_a_multi_byte_character_split_across_two_polls() {
+    let (_dir, path) = temp_log(b"");
+    let mut follower = LogFollower::start_at_end(&path)
+        .await
+        .expect("should start");
+    let hanzi = "中".as_bytes();
+    append(&path, &hanzi[..1]).await;
+    assert!(
+        follower
+            .poll_appended()
+            .await
+            .expect("a partial character must not abort the follow")
+            .is_empty()
+    );
+    append(&path, &[hanzi[1], hanzi[2], b'\n']).await;
+    let lines = follower.poll_appended().await.expect("should read");
+    assert_eq!(lines, vec!["中".to_string()]);
+}
+
+#[tokio::test]
+async fn following_reports_a_log_it_cannot_read() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut follower = LogFollower::start_at_end(dir.path())
+        .await
+        .expect("a directory opens like a file on linux");
     let err = follower.poll_appended().await.unwrap_err().to_string();
     assert!(err.contains("cannot read log file"), "got: {err}");
 }

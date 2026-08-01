@@ -17,20 +17,20 @@ fn fixture() -> Fixture {
 #[test]
 fn a_service_file_is_named_after_the_service() {
     let path = service_file_of(Path::new("/etc/pm3"), "web");
-    assert_eq!(path, PathBuf::from("/etc/pm3/web.yaml"));
+    assert_eq!(path, Ok(PathBuf::from("/etc/pm3/web.yaml")));
 }
 
 #[test]
 fn a_dotted_service_name_keeps_every_part() {
     let path = service_file_of(Path::new("/etc/pm3"), "api.v2");
-    assert_eq!(path, PathBuf::from("/etc/pm3/api.v2.yaml"));
+    assert_eq!(path, Ok(PathBuf::from("/etc/pm3/api.v2.yaml")));
 }
 
 #[test]
 fn the_source_locates_the_service_file_in_the_config_directory() {
     let fixture = fixture();
     let expected = fixture.dir.path().join("svc/web.yaml");
-    assert_eq!(fixture.source.service_file("web"), expected);
+    assert_eq!(fixture.source.service_file("web"), Ok(expected));
 }
 
 #[test]
@@ -167,4 +167,22 @@ async fn resolving_a_service_from_a_legacy_apps_file_is_reported() {
         .unwrap_err()
         .to_string();
     assert!(err.starts_with("cannot parse apps file"), "got: {err}");
+}
+
+#[test]
+fn a_service_name_that_escapes_the_config_directory_has_no_path() {
+    let path = service_file_of(Path::new("/etc/pm3"), "../escape");
+    assert!(path.is_err(), "got: {path:?}");
+}
+
+#[tokio::test]
+async fn resolving_a_service_whose_name_escapes_the_config_directory_is_refused() {
+    let fixture = fixture();
+    let err = fixture
+        .source
+        .resolve_service("../escape")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot accept app name"), "got: {err}");
 }

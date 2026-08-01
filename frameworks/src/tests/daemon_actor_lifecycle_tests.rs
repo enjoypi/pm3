@@ -76,13 +76,13 @@ async fn shutting_down_settles_a_service_that_was_still_stopping() {
 
     assert_eq!(
         status_of(&mut harness, "web").await,
-        "stopped",
-        "the next daemon must not read a half-stopped service as one to revive"
+        "stopping",
+        "the next daemon must still see that this service was told to stop"
     );
 }
 
 #[tokio::test]
-async fn a_service_settled_at_shutdown_is_not_revived_by_the_next_daemon() {
+async fn a_service_stopped_before_the_handover_is_settled_by_the_next_daemon() {
     let mut harness = harness_with_kill_timeout(0);
     start_one(&mut harness, "web", SLEEPER).await;
     harness
@@ -113,7 +113,7 @@ async fn shutting_down_tolerates_a_dump_it_cannot_write() {
 
     harness.daemon.shutdown().await;
 
-    assert_eq!(status_of(&mut harness, "web").await, "stopped");
+    assert_eq!(status_of(&mut harness, "web").await, "stopping");
 }
 
 #[tokio::test]
@@ -139,7 +139,12 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
         })
         .await
         .expect("should start");
-    let DaemonReply::Started(outcomes) = reply else {
+    let DaemonReply::Started {
+        outcomes,
+        refused: _,
+        reason: _,
+    } = reply
+    else {
         panic!("start should answer with a start summary")
     };
     let started = outcomes.first().expect("one app should start");
@@ -284,7 +289,11 @@ async fn a_confined_app_is_refused_when_no_sandbox_backend_exists() {
     let body = format!(
         "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n"
     );
-    std::fs::write(service_file_of(&harness.cfg_dir, "web"), &body).expect("write the service");
+    std::fs::write(
+        service_file_of(&harness.cfg_dir, "web").expect("a safe service name"),
+        &body,
+    )
+    .expect("write the service");
     let err = harness
         .daemon
         .handle(DaemonRequest::Start {
@@ -309,7 +318,12 @@ async fn starting_an_already_running_app_leaves_it_alone() {
         .await
         .expect("first start");
     let reply = harness.daemon.handle(request).await.expect("second start");
-    let DaemonReply::Started(outcomes) = reply else {
+    let DaemonReply::Started {
+        outcomes,
+        refused: _,
+        reason: _,
+    } = reply
+    else {
         panic!("start should answer with a start summary")
     };
     assert!(
@@ -327,7 +341,11 @@ async fn a_writable_root_that_does_not_exist_is_kept_verbatim() {
     let body = format!(
         "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n  writable_roots:\n    - /nonexistent/pm3-root\n"
     );
-    std::fs::write(service_file_of(&harness.cfg_dir, "web"), &body).expect("write the service");
+    std::fs::write(
+        service_file_of(&harness.cfg_dir, "web").expect("a safe service name"),
+        &body,
+    )
+    .expect("write the service");
     let err = harness
         .daemon
         .handle(DaemonRequest::Start {
@@ -421,3 +439,6 @@ async fn shutting_down_counts_only_the_services_still_running() {
     harness.daemon.shutdown().await;
     assert_eq!(status_of(&mut harness, "web").await, "online");
 }
+
+#[path = "daemon_actor_batch_tests.rs"]
+mod batch;

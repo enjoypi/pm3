@@ -3,6 +3,7 @@ pub mod bootstrap;
 pub mod ports;
 pub mod service;
 pub mod socket;
+pub mod timers;
 
 pub use self::{
     actor::{Daemon, DaemonEvent},

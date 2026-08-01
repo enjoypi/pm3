@@ -66,10 +66,11 @@ async fn serve_supervised(
     listener: UnixListener,
     shutdown: ShutdownFuture,
 ) -> Result<()> {
+    let backend = detect_host_backend(&specs.config.search_path);
     let ports = Arc::new(DaemonPorts::new(
         paths.dump_file.clone(),
         specs.clone(),
-        detect_host_backend(),
+        backend,
     ));
     let (commands, command_queue) = mpsc::channel(CHANNEL_DEPTH);
     let (events, event_queue) = mpsc::channel(CHANNEL_DEPTH);

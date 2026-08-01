@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use usecases::AppSpec;
+use usecases::{AppSpec, SpecError, validate_app_name};
 
 use super::file::{AppsFileError, SpecDefaults, load_service_file, resolve_checked};
 use crate::config::Pm3Config;
@@ -26,13 +26,12 @@ impl SpecSource {
         )
     }
 
-    #[must_use]
-    pub fn service_file(&self, name: &str) -> PathBuf {
+    pub fn service_file(&self, name: &str) -> Result<PathBuf, SpecError> {
         service_file_of(&self.cfg_dir, name)
     }
 
     pub async fn resolve_service(&self, name: &str) -> Result<AppSpec, AppsFileError> {
-        let path = self.service_file(name);
+        let path = self.service_file(name)?;
         let entry = load_service_file(&path.to_string_lossy()).await?;
         if entry.name != name {
             return Err(AppsFileError::MissingApp(name.to_string()));
@@ -41,9 +40,9 @@ impl SpecSource {
     }
 }
 
-#[must_use]
-pub fn service_file_of(cfg_dir: &Path, name: &str) -> PathBuf {
-    cfg_dir.join(format!("{name}.{SERVICE_FILE_SUFFIX}"))
+pub fn service_file_of(cfg_dir: &Path, name: &str) -> Result<PathBuf, SpecError> {
+    validate_app_name(name)?;
+    Ok(cfg_dir.join(format!("{name}.{SERVICE_FILE_SUFFIX}")))
 }
 
 #[cfg(test)]

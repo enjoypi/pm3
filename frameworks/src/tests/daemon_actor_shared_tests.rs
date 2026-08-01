@@ -1,3 +1,7 @@
+use std::fmt::Write as _;
+
+use adapters::service_file_of;
+
 use super::{test_helpers::*, *};
 
 pub async fn start_one(harness: &mut Harness, name: &str, script: &str) -> StartOutcome {
@@ -9,7 +13,12 @@ pub async fn start_one(harness: &mut Harness, name: &str, script: &str) -> Start
         })
         .await
         .expect("should start");
-    let DaemonReply::Started(mut outcomes) = reply else {
+    let DaemonReply::Started {
+        mut outcomes,
+        refused: _,
+        reason: _,
+    } = reply
+    else {
         panic!("start should answer with a start summary")
     };
     outcomes.pop().expect("one app should start")
@@ -56,7 +65,12 @@ pub async fn start_scheduled(harness: &mut Harness, name: &str, cron: &str) -> S
         })
         .await
         .expect("should register the task");
-    let DaemonReply::Started(mut outcomes) = reply else {
+    let DaemonReply::Started {
+        mut outcomes,
+        refused: _,
+        reason: _,
+    } = reply
+    else {
         panic!("start should answer with a start summary")
     };
     outcomes.pop().expect("one app should register")
@@ -77,4 +91,32 @@ pub async fn status_of(harness: &mut Harness, name: &str) -> String {
         panic!("describe should answer with a view")
     };
     view.status.as_str().to_string()
+}
+
+pub fn service_with_script(harness: &Harness, name: &str, script: &str, depends_on: &[&str]) {
+    let cwd = harness.paths.root.to_string_lossy();
+    let deps = depends_on
+        .iter()
+        .fold(String::new(), |mut text, dependency| {
+            let _ = writeln!(text, "  - {dependency}");
+            text
+        });
+    let listed = if deps.is_empty() {
+        String::new()
+    } else {
+        format!("depends_on:\n{deps}")
+    };
+    let service =
+        format!("name: {name}\nscript: \"{script}\"\ncwd: \"{cwd}\"\nautorestart: false\n{listed}");
+    std::fs::write(
+        service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
+        service,
+    )
+    .expect("write the service file");
+}
+
+pub fn unrunnable_script(harness: &Harness) -> String {
+    let path = harness.dir.path().join("not-executable");
+    std::fs::write(&path, "").expect("write a file nobody can execute");
+    path.to_string_lossy().into_owned()
 }

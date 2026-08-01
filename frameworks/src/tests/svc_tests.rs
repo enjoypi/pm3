@@ -469,3 +469,6 @@ async fn splitting_an_apps_file_leaves_a_sandbox_without_roots_alone() {
         std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
     assert!(written.contains("network: true"), "got: {written}");
 }
+
+#[path = "svc_safety_tests.rs"]
+mod safety;

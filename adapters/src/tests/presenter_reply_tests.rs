@@ -15,18 +15,18 @@ fn started(name: &str, kind: StartKind) -> StartOutcome {
 
 #[test]
 fn starting_nothing_says_so() {
-    assert_eq!(render_started(&[]), NOTHING_STARTED);
+    assert_eq!(render_started(&[], None), NOTHING_STARTED);
 }
 
 #[test]
 fn a_freshly_started_app_reports_its_id_and_pid() {
-    let rendered = render_started(&[started("web", StartKind::Spawned)]);
+    let rendered = render_started(&[started("web", StartKind::Spawned)], None);
     assert_eq!(rendered, format!("started web (id 3, pid {RUNNING_PID})"));
 }
 
 #[test]
 fn an_already_running_app_is_left_alone() {
-    let rendered = render_started(&[started("web", StartKind::AlreadyRunning)]);
+    let rendered = render_started(&[started("web", StartKind::AlreadyRunning)], None);
     assert_eq!(
         rendered,
         format!("web is already running (id 3, pid {RUNNING_PID})")
@@ -39,7 +39,10 @@ fn an_app_that_failed_to_report_a_pid_shows_a_dash() {
         pid: None,
         ..started("web", StartKind::Spawned)
     };
-    assert_eq!(render_started(&[outcome]), "started web (id 3, pid -)");
+    assert_eq!(
+        render_started(&[outcome], None),
+        "started web (id 3, pid -)"
+    );
 }
 
 #[test]
@@ -48,12 +51,16 @@ fn every_started_app_gets_its_own_line() {
         started("web", StartKind::Spawned),
         started("db", StartKind::Spawned),
     ];
-    assert_eq!(render_started(&outcomes).lines().count(), 2);
+    assert_eq!(render_started(&outcomes, None).lines().count(), 2);
 }
 
 #[test]
 fn a_start_reply_renders_the_start_summary() {
-    let reply = DaemonReply::Started(vec![started("web", StartKind::Spawned)]);
+    let reply = DaemonReply::Started {
+        outcomes: vec![started("web", StartKind::Spawned)],
+        refused: Vec::new(),
+        reason: None,
+    };
     assert!(render_reply(&reply).starts_with("started web"));
 }
 
@@ -103,7 +110,7 @@ fn a_delete_reply_confirms_the_app() {
 
 #[test]
 fn a_reclaimed_app_says_it_was_reclaimed() {
-    let rendered = render_started(&[started("web", StartKind::Adopted)]);
+    let rendered = render_started(&[started("web", StartKind::Adopted)], None);
     assert_eq!(rendered, format!("reclaimed web (id 3, pid {RUNNING_PID})"));
 }
 
@@ -130,7 +137,43 @@ fn a_scheduled_registration_reads_as_scheduled() {
         kind: StartKind::Scheduled,
     };
     assert!(
-        render_started(&[outcome]).starts_with("scheduled sweep"),
+        render_started(&[outcome], None).starts_with("scheduled sweep"),
         "unexpected headline"
     );
+}
+
+#[test]
+fn a_half_started_batch_names_what_it_could_not_start() {
+    let rendered = render_started(
+        &[started("web", StartKind::Spawned)],
+        Some("cannot spawn 'api'"),
+    );
+    assert!(
+        rendered.ends_with("cannot start the rest of the batch: cannot spawn 'api'"),
+        "got: {rendered}"
+    );
+}
+
+#[test]
+fn a_half_started_batch_still_lists_what_it_started() {
+    let rendered = render_started(
+        &[started("web", StartKind::Spawned)],
+        Some("cannot spawn 'api'"),
+    );
+    assert!(rendered.starts_with("started web"), "got: {rendered}");
+}
+
+#[test]
+fn a_reply_carries_the_services_the_daemon_refused() {
+    let reply = DaemonReply::Started {
+        outcomes: vec![started("web", StartKind::Spawned)],
+        refused: vec!["api".to_string()],
+        reason: Some("cannot spawn 'api'".to_string()),
+    };
+    assert_eq!(refused_names(&reply), vec!["api".to_string()]);
+}
+
+#[test]
+fn a_reply_that_started_nothing_refuses_nothing() {
+    assert!(refused_names(&DaemonReply::Listed(Vec::new())).is_empty());
 }

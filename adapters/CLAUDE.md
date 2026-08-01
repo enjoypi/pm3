@@ -39,6 +39,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 进程
 
 - `TokioProcessLauncher::wait` 会先把 `Child` 从 map 里 remove 再 await，所以「是否存活」必须另用一个 `live: HashSet<u32>` 跟踪（spawn 时插入、wait 返回后删除）
+- adopt 来的进程不是子进程（`adopt` 只插 `live`、不插 `children`），只能轮询 `ps`；而 daemon 换代后**每个**未变更的服务都走这条路 → 探活 MUST 经共享的 `AdoptedWatch`：一个 poller task 每 tick 发一条 `ps -ww -o pid=,lstart= -p <csv>` 覆盖全部被监视 pid，各等待者 await 自己的 oneshot。每 pid 一个 task 各自 fork `ps` 时，20 个服务就是 20 个子进程/秒。`PsProcessProbe::identity` 复用 `identities(&[pid])`，token 仍是 `lstart` 文本（跨版本可比）
 - `kill_signaler`（进程组信号）与 `ps_probe`（`ps -o lstart=` 身份令牌）的取值方式是硬约束，见根 `CLAUDE.md` 的「进程与信号」「身份指纹与接管」
 
 ### 调度

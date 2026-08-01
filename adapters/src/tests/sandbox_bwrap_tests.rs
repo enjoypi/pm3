@@ -1,6 +1,6 @@
 use usecases::{SandboxMode, SandboxPolicy};
 
-use super::*;
+use super::{super::backend::BWRAP_PROGRAM, *};
 
 fn policy(network: bool, writable_roots: &[&str]) -> SandboxPolicy {
     SandboxPolicy {
@@ -13,6 +13,7 @@ fn policy(network: bool, writable_roots: &[&str]) -> SandboxPolicy {
 
 fn argv(network: bool, writable_roots: &[&str]) -> Vec<String> {
     bwrap_argv(
+        BWRAP_PROGRAM,
         &policy(network, writable_roots),
         "/usr/bin/node",
         &["server.js".to_string()],
@@ -89,6 +90,6 @@ fn the_command_follows_a_separator() {
 
 #[test]
 fn bubblewrap_is_looked_up_on_the_path() {
-    let wrapped = bwrap_argv(&policy(false, &[]), "/usr/bin/node", &[]);
+    let wrapped = bwrap_argv(BWRAP_PROGRAM, &policy(false, &[]), "/usr/bin/node", &[]);
     assert_eq!(wrapped.program, "bwrap");
 }

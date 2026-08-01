@@ -5,7 +5,10 @@
 
 mod common;
 
-use self::common::{Home, PM3, home, pm3, shutdown_daemon, stderr_of, stdout_of};
+use self::common::{
+    Home, PM3, daemon_log, home, pm3, shutdown_daemon, stderr_of, stdout_of, verbose_home,
+    wait_for_log,
+};
 
 const TASK: &str = "ticker";
 
@@ -138,5 +141,20 @@ fn a_schedule_out_of_range_is_refused_before_the_daemon_sees_it() {
         "{}",
         stderr_of(&refused)
     );
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn a_due_schedule_fires_the_task_and_arms_the_next_cycle() {
+    let home = verbose_home();
+    let started = start_task(&home, "*/2 * * * * *", &[]);
+    assert!(started.status.success(), "{}", stderr_of(&started));
+
+    let journal = wait_for_log(&daemon_log(&home), "\"action\":\"spawn\"");
+    assert!(
+        journal.contains("\"action\":\"arm\""),
+        "a fire must arm the following cycle"
+    );
+
     shutdown_daemon(&home);
 }

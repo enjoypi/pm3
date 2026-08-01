@@ -109,7 +109,15 @@ async fn finish_start(
         report,
         service: _,
         already_running,
+        refused,
     } = reply;
+    if !refused.is_empty() {
+        undo.run_for(&refused).await;
+        return Err(Error::PartialStart {
+            refused: refused.join(", "),
+            report,
+        });
+    }
     Ok(StartReport {
         response: report,
         changed,
@@ -192,7 +200,7 @@ fn kill_report(stopped: Option<&str>, pid: u32) -> String {
 }
 
 pub async fn read_log_tail(config_path: &str, name: &str, lines: usize) -> Result<String> {
-    let stdout = stdout_log(&open_session(config_path)?.paths, name);
+    let stdout = stdout_log(&open_session(config_path)?.paths, name)?;
     let tail = read_tail(Path::new(&stdout), lines).await?;
     Ok(tail.join("\n"))
 }
@@ -205,7 +213,7 @@ pub async fn follow_log(
 ) -> Result<()> {
     let session = open_session(config_path)?;
     let interval = Duration::from_millis(session.config.pm3.log_follow_interval_ms);
-    let stdout = stdout_log(&session.paths, name);
+    let stdout = stdout_log(&session.paths, name)?;
     let mut follower = LogFollower::start_at_end(Path::new(&stdout)).await?;
     for _poll in 0..polls {
         for line in follower.poll_appended().await? {
@@ -228,9 +236,9 @@ pub async fn sleep_for(ms: u64) {
     tokio::time::sleep(Duration::from_millis(ms)).await;
 }
 
-#[must_use]
-pub fn stdout_log(paths: &Pm3Paths, name: &str) -> String {
-    log_paths(&paths.logs_dir.to_string_lossy(), name).stdout
+pub fn stdout_log(paths: &Pm3Paths, name: &str) -> Result<String> {
+    validate_app_name(name)?;
+    Ok(log_paths(&paths.logs_dir.to_string_lossy(), name).stdout)
 }
 
 pub fn canonical_apps_file(apps_file: &str) -> Result<String> {

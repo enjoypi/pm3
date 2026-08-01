@@ -1,6 +1,6 @@
 use usecases::{SandboxMode, SandboxPolicy};
 
-use super::*;
+use super::{super::backend::SEATBELT_PROGRAM, *};
 
 fn policy(mode: SandboxMode, network: bool, writable_roots: &[&str]) -> SandboxPolicy {
     SandboxPolicy {
@@ -71,6 +71,7 @@ fn a_writable_root_keeps_no_trailing_slash() {
 #[test]
 fn the_command_is_handed_to_sandbox_exec_after_a_separator() {
     let wrapped = seatbelt_argv(
+        SEATBELT_PROGRAM,
         &policy(SandboxMode::WorkspaceWrite, false, &[]),
         "/usr/bin/node",
         &["server.js".to_string()],
@@ -92,6 +93,7 @@ fn the_command_is_handed_to_sandbox_exec_after_a_separator() {
 #[test]
 fn the_profile_is_passed_inline_as_the_second_argument() {
     let wrapped = seatbelt_argv(
+        SEATBELT_PROGRAM,
         &policy(SandboxMode::WorkspaceWrite, false, &[]),
         "/usr/bin/node",
         &[],

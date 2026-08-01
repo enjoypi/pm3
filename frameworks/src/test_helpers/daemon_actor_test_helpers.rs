@@ -93,8 +93,11 @@ fn written_apps_file(harness: &Harness, name: &str, script: &str, autorestart: b
 
 fn write_both(harness: &Harness, name: &str, fields: &str) -> PathBuf {
     let service = format!("name: {name}\n{fields}");
-    std::fs::write(service_file_of(&harness.cfg_dir, name), &service)
-        .expect("write the service file");
+    std::fs::write(
+        service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
+        &service,
+    )
+    .expect("write the service file");
     let listed = fields.lines().fold(String::new(), |mut text, line| {
         let _ = writeln!(text, "    {line}");
         text

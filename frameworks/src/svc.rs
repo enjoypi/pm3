@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use adapters::{
-    AppEntry, InlineRequest, diff_lines, encode_service_file, fold_home, fold_svc_cwd,
-    inline_entry, load_apps_file, resolve_program, service_file_of,
+    InlineRequest, diff_lines, encode_service_file, fold_entry, inline_entry, load_apps_file,
+    resolve_program, service_file_of,
 };
 
 use crate::{Error, Result};
@@ -33,7 +33,14 @@ pub struct SplitApps {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SvcUndo {
-    steps: Vec<(PathBuf, Restore)>,
+    steps: Vec<UndoStep>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct UndoStep {
+    service: String,
+    path: PathBuf,
+    restore: Restore,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,22 +51,40 @@ enum Restore {
 
 impl SvcUndo {
     pub async fn run(&self) {
-        for (path, step) in &self.steps {
-            match step {
-                Restore::Remove => {
-                    tokio::fs::remove_file(path).await.ok();
-                }
-                Restore::Replace(previous) => {
-                    tokio::fs::write(path, previous).await.ok();
-                }
-            }
-            log_undo(path);
+        for step in &self.steps {
+            step.apply().await;
         }
     }
 
-    fn remember(&mut self, path: &Path, previous: Option<String>) {
-        let step = previous.map_or(Restore::Remove, Restore::Replace);
-        self.steps.push((path.to_path_buf(), step));
+    pub async fn run_for(&self, services: &[String]) {
+        for step in &self.steps {
+            if services.contains(&step.service) {
+                step.apply().await;
+            }
+        }
+    }
+
+    fn remember(&mut self, service: &str, path: &Path, previous: Option<String>) {
+        let restore = previous.map_or(Restore::Remove, Restore::Replace);
+        self.steps.push(UndoStep {
+            service: service.to_string(),
+            path: path.to_path_buf(),
+            restore,
+        });
+    }
+}
+
+impl UndoStep {
+    async fn apply(&self) {
+        match &self.restore {
+            Restore::Remove => {
+                tokio::fs::remove_file(&self.path).await.ok();
+            }
+            Restore::Replace(previous) => {
+                tokio::fs::write(&self.path, previous).await.ok();
+            }
+        }
+        log_undo(&self.path);
     }
 }
 
@@ -118,9 +143,9 @@ pub async fn prepare_inline(
         writable_dirs: request.writable_dirs,
     })?;
     let contents = encode_service_file(&entry);
-    let path = service_file_of(context.cfg_dir, request.name);
+    let path = service_file_of(context.cfg_dir, request.name)?;
     let mut undo = SvcUndo::default();
-    let reconciled = write_svc(&path, &contents, request.force, &mut undo).await?;
+    let reconciled = write_svc(request.name, &path, &contents, request.force, &mut undo).await?;
     Ok(PreparedSvc {
         path,
         reconciled,
@@ -136,10 +161,10 @@ pub async fn split_apps_file(
     let apps = load_apps_file(apps_file).await?;
     let mut split = SplitApps::default();
     for entry in &apps.apps {
-        let path = service_file_of(context.cfg_dir, &entry.name);
-        let contents = encode_service_file(&fold_entry(context, entry));
+        let path = service_file_of(context.cfg_dir, &entry.name)?;
+        let contents = encode_service_file(&fold_entry(entry, context.home));
         split.names.push(entry.name.clone());
-        match write_svc(&path, &contents, force, &mut split.undo).await {
+        match write_svc(&entry.name, &path, &contents, force, &mut split.undo).await {
             Ok(Reconciled::Stale) => split.changed.push(entry.name.clone()),
             Ok(Reconciled::Unchanged) => {}
             Err(error) => {
@@ -151,35 +176,11 @@ pub async fn split_apps_file(
     Ok(split)
 }
 
-fn fold_entry(context: &SvcContext<'_>, entry: &AppEntry) -> AppEntry {
-    let mut folded = entry.clone();
-    folded.script = fold_home(&folded.script, context.home);
-    folded.cwd = folded.cwd.map(|value| fold_home(&value, context.home));
-    folded.args = folded
-        .args
-        .iter()
-        .map(|value| fold_svc_cwd(&fold_home(value, context.home)))
-        .collect();
-    folded.env = folded
-        .env
-        .iter()
-        .map(|(key, value)| (key.clone(), fold_home(value, context.home)))
-        .collect();
-    if let Some(sandbox) = folded.sandbox.as_mut() {
-        sandbox.writable_roots = sandbox.writable_roots.as_ref().map(|roots| {
-            roots
-                .iter()
-                .map(|root| fold_home(root, context.home))
-                .collect()
-        });
-    }
-    folded
-}
-
 pub async fn forget(cfg_dir: &Path, name: &str) {
-    tokio::fs::remove_file(service_file_of(cfg_dir, name))
-        .await
-        .ok();
+    let Ok(path) = service_file_of(cfg_dir, name) else {
+        return;
+    };
+    tokio::fs::remove_file(path).await.ok();
 }
 
 pub async fn reconcile(path: &Path, contents: &str, force: bool) -> Result<Reconciled> {
@@ -206,6 +207,7 @@ fn reconcile_contents(
 }
 
 async fn write_svc(
+    service: &str,
     path: &Path,
     contents: &str,
     force: bool,
@@ -227,7 +229,7 @@ async fn write_svc(
             path: path.to_string_lossy().into_owned(),
             reason: error.to_string(),
         })?;
-    undo.remember(path, existing);
+    undo.remember(service, path, existing);
     Ok(Reconciled::Stale)
 }
 

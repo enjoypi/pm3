@@ -1,12 +1,12 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use adapters::{
-    Clock, CommandWrapper, CronScheduler, DumpError, DumpStore, ExitOutcome, FingerprintError,
-    Fingerprinter, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Liveness, PollCadence,
-    Ports, ProcessLauncher, ProcessProbe, ProcessRecord, PsProcessProbe, SandboxBackend,
-    SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler, Sha256Fingerprinter,
-    SignalError, Signaler, SpecSource, SystemClock, TokioProcessLauncher, WrappedCommand,
-    YamlDumpStore, wait_for_exit,
+    AdoptedWatch, Clock, CommandWrapper, CronScheduler, DumpError, DumpStore, ExitOutcome,
+    FingerprintError, Fingerprinter, HostSandbox, KillSignaler, LaunchError, LaunchSpec,
+    LaunchedProcess, Liveness, PollCadence, Ports, ProcessLauncher, ProcessProbe, ProcessRecord,
+    PsProcessProbe, SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler,
+    Sha256Fingerprinter, SignalError, Signaler, SpecSource, SystemClock, TokioProcessLauncher,
+    WrappedCommand, YamlDumpStore, wait_for_exit,
 };
 
 #[derive(Debug)]
@@ -16,7 +16,8 @@ pub struct DaemonPorts {
     wrapper: SandboxCommandWrapper,
     store: YamlDumpStore,
     clock: SystemClock,
-    probe: PsProcessProbe,
+    probe: Arc<PsProcessProbe>,
+    watch: Arc<AdoptedWatch>,
     fingerprinter: Sha256Fingerprinter,
     scheduler: CronScheduler,
     cadence: PollCadence,
@@ -24,7 +25,7 @@ pub struct DaemonPorts {
 
 impl DaemonPorts {
     #[must_use]
-    pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<SandboxBackend>) -> Self {
+    pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<HostSandbox>) -> Self {
         let stop_signal = specs.config.stop_signal.clone();
         let command_timeout_ms = specs.config.command_timeout_ms;
         let cadence = PollCadence {
@@ -37,7 +38,8 @@ impl DaemonPorts {
             wrapper: SandboxCommandWrapper::new(backend),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
-            probe: PsProcessProbe::with_timeout(command_timeout_ms),
+            probe: Arc::new(PsProcessProbe::with_timeout(command_timeout_ms)),
+            watch: Arc::new(AdoptedWatch::default()),
             fingerprinter: Sha256Fingerprinter,
             scheduler: CronScheduler,
             cadence,
@@ -45,7 +47,15 @@ impl DaemonPorts {
     }
 
     pub async fn wait(&self, pid: u32, token: Option<String>) -> Option<ExitOutcome> {
-        wait_for_exit(&self.launcher, &self.probe, pid, token, self.cadence).await
+        wait_for_exit(
+            &self.launcher,
+            &self.watch,
+            Arc::clone(&self.probe),
+            pid,
+            token,
+            self.cadence,
+        )
+        .await
     }
 
     pub async fn tracked_pids(&self) -> Vec<u32> {

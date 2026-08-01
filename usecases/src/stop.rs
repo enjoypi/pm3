@@ -1,8 +1,11 @@
-use entities::{ProcessStatus, topo_sort};
+use entities::ProcessStatus;
 
 use crate::{
-    Ports, Result, UsecaseError, persist::save_table, record::ProcessRecord, selector::AppSelector,
-    table::ProcessTable,
+    Ports, Result, UsecaseError,
+    persist::save_table,
+    record::ProcessRecord,
+    selector::AppSelector,
+    table::{ProcessTable, dependency_order},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,8 +28,11 @@ pub async fn stop_app(
     Ok(outcome)
 }
 
-pub async fn stop_all_apps(table: &mut ProcessTable, ports: &impl Ports) -> Result<Vec<String>> {
-    let order = shutdown_order(table);
+pub async fn stop_all_apps(
+    table: &mut ProcessTable,
+    ports: &impl Ports,
+) -> Result<Vec<StopOutcome>> {
+    let order = dependency_order(table, log_unordered_shutdown);
     let mut stopped = Vec::with_capacity(order.len());
     for name in order.iter().rev() {
         let record = table
@@ -37,26 +43,12 @@ pub async fn stop_all_apps(table: &mut ProcessTable, ports: &impl Ports) -> Resu
             continue;
         }
         match request_stop(record, ports).await {
-            Ok(outcome) => stopped.push(outcome.name),
+            Ok(outcome) => stopped.push(outcome),
             Err(error) => log_refused_stop(name, &error),
         }
     }
     save_table(table, ports).await?;
     Ok(stopped)
-}
-
-fn shutdown_order(table: &ProcessTable) -> Vec<String> {
-    match topo_sort(&table.dependency_nodes()) {
-        Ok(order) => order,
-        Err(error) => {
-            log_unordered_shutdown(&UsecaseError::from(error));
-            table
-                .records()
-                .iter()
-                .map(|record| record.runtime.name.clone())
-                .collect()
-        }
-    }
 }
 
 fn log_unordered_shutdown(error: &UsecaseError) {
@@ -69,20 +61,15 @@ fn log_unordered_shutdown(error: &UsecaseError) {
     );
 }
 
-pub async fn settle_stopping_apps(
-    table: &mut ProcessTable,
-    ports: &impl Ports,
-) -> Result<Vec<String>> {
-    let mut settled = Vec::new();
-    for record in table.records_mut() {
-        if record.runtime.status != ProcessStatus::Stopping {
-            continue;
-        }
-        record.runtime.mark_exited(ProcessStatus::Stopped);
-        settled.push(record.runtime.name.clone());
-    }
+pub async fn persist_for_handover(table: &ProcessTable, ports: &impl Ports) -> Result<Vec<String>> {
+    let draining = table
+        .records()
+        .iter()
+        .filter(|record| record.runtime.status.is_shutting_down())
+        .map(|record| record.runtime.name.clone())
+        .collect();
     save_table(table, ports).await?;
-    Ok(settled)
+    Ok(draining)
 }
 
 fn log_refused_stop(app: &str, error: &UsecaseError) {

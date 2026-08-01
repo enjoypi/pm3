@@ -6,6 +6,10 @@ use crate::{
     start::start_apps,
 };
 
+fn stopped_names(stopped: &[StopOutcome]) -> Vec<String> {
+    stopped.iter().map(|outcome| outcome.name.clone()).collect()
+}
+
 async fn started_table(ports: &FakePorts) -> ProcessTable {
     let mut table = ProcessTable::new();
     start_apps(&mut table, &[spec("api")], LOGS_DIR, ports).await;
@@ -43,7 +47,7 @@ async fn a_broken_dependency_graph_still_stops_every_service() {
         .await
         .expect("an unorderable table must not silently stop nothing");
 
-    assert_eq!(stopped, vec!["web".to_string()]);
+    assert_eq!(stopped_names(&stopped), vec!["web".to_string()]);
 }
 
 #[tokio::test]
@@ -67,40 +71,68 @@ async fn a_broken_dependency_graph_still_signals_the_survivors() {
 }
 
 #[tokio::test]
-async fn settling_turns_a_half_stopped_service_into_a_stopped_one() {
+async fn a_handover_names_the_service_that_is_still_draining() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
     stop_app(&mut table, &AppSelector::Id(0), &ports)
         .await
         .expect("stop should succeed");
 
-    let settled = settle_stopping_apps(&mut table, &ports)
+    let draining = persist_for_handover(&table, &ports)
         .await
-        .expect("settling should succeed");
+        .expect("a handover should succeed");
 
-    assert_eq!(settled, vec!["api".to_string()]);
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
-    assert_eq!(record.runtime.status, ProcessStatus::Stopped);
+    assert_eq!(draining, vec!["api".to_string()]);
 }
 
 #[tokio::test]
-async fn settling_leaves_a_running_service_alone() {
+async fn a_handover_keeps_a_draining_service_stopping_so_the_next_daemon_can_settle_it() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    let settled = settle_stopping_apps(&mut table, &ports)
+    stop_app(&mut table, &AppSelector::Id(0), &ports)
         .await
-        .expect("settling should succeed");
-    assert!(settled.is_empty());
+        .expect("stop should succeed");
+
+    persist_for_handover(&table, &ports)
+        .await
+        .expect("a handover should succeed");
+
     let record = table.find(&AppSelector::Id(0)).expect("record present");
-    assert_eq!(record.runtime.status, ProcessStatus::Online);
+    assert_eq!(record.runtime.status, ProcessStatus::Stopping);
 }
 
 #[tokio::test]
-async fn settling_reports_a_dump_it_cannot_write() {
+async fn a_handover_keeps_the_pid_of_a_draining_service() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
+    stop_app(&mut table, &AppSelector::Id(0), &ports)
+        .await
+        .expect("stop should succeed");
+
+    persist_for_handover(&table, &ports)
+        .await
+        .expect("a handover should succeed");
+
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.pid, Some(100));
+}
+
+#[tokio::test]
+async fn a_handover_names_no_service_while_everything_runs() {
+    let ports = FakePorts::new(1000);
+    let table = started_table(&ports).await;
+    let draining = persist_for_handover(&table, &ports)
+        .await
+        .expect("a handover should succeed");
+    assert!(draining.is_empty());
+}
+
+#[tokio::test]
+async fn a_handover_reports_a_dump_it_cannot_write() {
+    let ports = FakePorts::new(1000);
+    let table = started_table(&ports).await;
     ports.fail_save();
-    let err = settle_stopping_apps(&mut table, &ports).await.unwrap_err();
+    let err = persist_for_handover(&table, &ports).await.unwrap_err();
     assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
 }
 
@@ -190,7 +222,10 @@ async fn stopping_everything_walks_dependents_before_dependencies() {
     let stopped = stop_all_apps(&mut table, &ports)
         .await
         .expect("stop all should succeed");
-    assert_eq!(stopped, vec!["web".to_string(), "api".to_string()]);
+    assert_eq!(
+        stopped_names(&stopped),
+        vec!["web".to_string(), "api".to_string()]
+    );
 }
 
 #[tokio::test]
@@ -227,7 +262,7 @@ async fn stopping_everything_keeps_going_when_one_signal_is_refused() {
     let stopped = stop_all_apps(&mut table, &ports)
         .await
         .expect("stop all should succeed");
-    assert_eq!(stopped, vec!["web".to_string()]);
+    assert_eq!(stopped_names(&stopped), vec!["web".to_string()]);
     assert_eq!(ports.terminated(), vec![101]);
 }
 

@@ -23,15 +23,15 @@ pub use usecases::{
     ProcessStatus, ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode,
     SandboxPolicy, Scheduler, SignalError, Signaler, SpecError, StartKind, StartOutcome,
     StartReport, StopOutcome, UsecaseError, WrappedCommand, delete_app, describe_app,
-    handle_child_exit, list_apps, log_paths, render_identity, restart_app, resurrect,
-    settle_stopping_apps, start_apps, stop_all_apps, stop_app, topo_sort, validate_app_name,
+    handle_child_exit, list_apps, log_paths, persist_for_handover, render_identity, restart_app,
+    resurrect, start_apps, stop_all_apps, stop_app, topo_sort, validate_app_name,
 };
 
 pub use self::{
     apps_file::{
         AppEntry, AppsFile, AppsFileError, InlineRequest, SERVICE_FILE_SUFFIX, SandboxEntry,
-        SpecDefaults, SpecSource, diff_lines, encode_service_file, inline_entry, load_apps_file,
-        load_service_file, parse_apps_file, parse_service_file, resolve_checked, resolve_specs,
+        SpecDefaults, SpecSource, diff_lines, encode_service_file, fold_entry, inline_entry,
+        load_apps_file, load_service_file, parse_apps_file, parse_service_file, resolve_checked,
         service_file_of,
     },
     config::{
@@ -59,14 +59,14 @@ pub use self::{
         render_reply, render_started, render_table,
     },
     process::{
-        KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe, Sha256Fingerprinter,
-        SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
+        AdoptedWatch, KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
+        Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
     },
     program::{
         HOME_PLACEHOLDER, SVC_CWD_NAME, SVC_CWD_PLACEHOLDER, fold_home, fold_svc_cwd,
         program_available, resolve_program,
     },
-    sandbox::{SandboxBackend, SandboxCommandWrapper, seatbelt_profile},
+    sandbox::{HostSandbox, SandboxBackend, SandboxCommandWrapper, seatbelt_profile},
     schedule::{CronError, CronScheduler, ExpandError, expand_random, validate_cron},
     service::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, ServiceCommandError, ServiceKind,

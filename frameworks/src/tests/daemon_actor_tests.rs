@@ -9,7 +9,11 @@ async fn each_app_expands_the_placeholder_with_its_own_working_directory() {
         let body = format!(
             "name: {name}\nscript: /bin/sh\nargs:\n  - \"-c\"\n  - \"true\"\n  - \"${{PM3_SVC_CWD}}\"\n"
         );
-        std::fs::write(service_file_of(&harness.cfg_dir, name), body).expect("write the service");
+        std::fs::write(
+            service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
+            body,
+        )
+        .expect("write the service");
     }
     harness
         .daemon
@@ -54,7 +58,14 @@ async fn starting_no_services_launches_nothing() {
         })
         .await
         .expect("an empty request is not an error");
-    assert_eq!(reply, DaemonReply::Started(Vec::new()));
+    assert_eq!(
+        reply,
+        DaemonReply::Started {
+            outcomes: Vec::new(),
+            refused: Vec::new(),
+            reason: None,
+        }
+    );
 }
 
 #[tokio::test]
@@ -221,6 +232,7 @@ async fn restarting_a_stopped_app_launches_it_again() {
     let (name, generation, outcome) = next_exit(&mut harness.events).await;
     harness.daemon.on_exit(&name, generation, outcome).await;
 
+    harness.daemon.board.schedule_restart("web", 0);
     harness.daemon.on_restart("web").await;
     let reply = harness
         .daemon
@@ -234,9 +246,10 @@ async fn restarting_a_stopped_app_launches_it_again() {
 }
 
 #[tokio::test]
-async fn restarting_a_running_app_through_an_event_waits_for_its_exit() {
+async fn a_scheduled_restart_of_a_running_app_waits_for_its_exit() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;
+    harness.daemon.board.schedule_restart("web", 0);
     harness.daemon.on_restart("web").await;
     let reply = harness
         .daemon
@@ -250,8 +263,33 @@ async fn restarting_a_running_app_through_an_event_waits_for_its_exit() {
 }
 
 #[tokio::test]
+async fn a_restart_cancelled_by_a_stop_no_longer_revives_the_service() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    harness.daemon.board.schedule_restart("web", 60_000);
+    harness
+        .daemon
+        .handle(DaemonRequest::Stop(selector("web")))
+        .await
+        .expect("should stop");
+
+    harness.daemon.on_restart("web").await;
+
+    let reply = harness
+        .daemon
+        .handle(DaemonRequest::Describe(selector("web")))
+        .await
+        .expect("should describe");
+    assert!(
+        matches!(reply, DaemonReply::Described(view) if view.status.as_str() != "online"),
+        "a service the operator stopped must not come back on a stale restart"
+    );
+}
+
+#[tokio::test]
 async fn restarting_an_unknown_app_is_tolerated() {
     let mut harness = harness();
+    harness.daemon.board.schedule_restart("ghost", 0);
     harness.daemon.on_restart("ghost").await;
     assert_eq!(listed(&mut harness).await, 0);
 }
