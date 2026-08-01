@@ -1,6 +1,6 @@
-use entities::{AppSpec, DependencyNode, ProcessRuntime};
+use entities::{AppSpec, DependencyNode, ProcessRuntime, topo_sort};
 
-use crate::{record::ProcessRecord, selector::AppSelector};
+use crate::{UsecaseError, record::ProcessRecord, selector::AppSelector};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProcessTable {
@@ -66,10 +66,6 @@ impl ProcessTable {
         pm_id
     }
 
-    pub const fn records_mut(&mut self) -> &mut [ProcessRecord] {
-        self.records.as_mut_slice()
-    }
-
     pub fn remove(&mut self, selector: &AppSelector) -> Option<ProcessRecord> {
         let index = self
             .records
@@ -84,6 +80,24 @@ impl ProcessTable {
             .iter()
             .map(|record| record.spec.dependency_node())
             .collect()
+    }
+
+    #[must_use]
+    pub fn names_in_table_order(&self) -> Vec<String> {
+        self.records
+            .iter()
+            .map(|record| record.runtime.name.clone())
+            .collect()
+    }
+}
+
+pub(crate) fn dependency_order(table: &ProcessTable, on_cycle: fn(&UsecaseError)) -> Vec<String> {
+    match topo_sort(&table.dependency_nodes()) {
+        Ok(order) => order,
+        Err(error) => {
+            on_cycle(&UsecaseError::from(error));
+            table.names_in_table_order()
+        }
     }
 }
 

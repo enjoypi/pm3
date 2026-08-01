@@ -10,7 +10,7 @@ use usecases::{AppSelector, UsecaseError};
 
 use super::dto::{HealthDto, ReplyDto, StartRequestDto};
 use crate::{
-    presenter::{affected_service, already_running_names, render_reply},
+    presenter::{affected_service, already_running_names, refused_names, render_reply},
     state::{DaemonError, DaemonFailure, DaemonHandle, DaemonReply, DaemonRequest},
 };
 
@@ -83,6 +83,7 @@ fn refusal(error: &DaemonError) -> ReplyDto {
         report: error.to_string(),
         service: None,
         already_running: Vec::new(),
+        refused: Vec::new(),
     }
 }
 
@@ -141,6 +142,7 @@ fn envelope(reply: &DaemonReply) -> ReplyDto {
         report: render_reply(reply),
         service: affected_service(reply),
         already_running: already_running_names(reply),
+        refused: refused_names(reply),
     }
 }
 

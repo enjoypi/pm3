@@ -77,14 +77,26 @@ async fn apps_that_were_online_are_started_again() {
 }
 
 #[tokio::test]
-async fn apps_caught_mid_shutdown_are_started_again() {
+async fn apps_caught_mid_shutdown_are_settled_rather_than_started_again() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Stopping)]);
     let mut table = ProcessTable::new();
     resurrect(&mut table, LOGS_DIR, &ports)
         .await
         .expect("resurrect should succeed");
-    assert_eq!(ports.spawned_names(), vec!["api"]);
+    assert!(ports.spawned_names().is_empty());
+}
+
+#[tokio::test]
+async fn an_app_caught_mid_shutdown_stays_known_as_stopped() {
+    let ports = FakePorts::new(1000);
+    ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Stopping)]);
+    let mut table = ProcessTable::new();
+    resurrect(&mut table, LOGS_DIR, &ports)
+        .await
+        .expect("resurrect should succeed");
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Stopped);
 }
 
 #[tokio::test]
@@ -196,14 +208,34 @@ async fn a_reclaimed_survivor_stays_online() {
 }
 
 #[tokio::test]
-async fn a_survivor_caught_mid_shutdown_is_reclaimed_and_promoted_back_online() {
+async fn a_survivor_caught_mid_shutdown_is_settled_instead_of_revived() {
     let ports = FakePorts::new(1000);
     let mut record = survivor(&ports, "api");
     record.runtime.status = ProcessStatus::Stopping;
     ports.seed_stored(vec![record]);
     let table = resurrected(&ports).await;
     let stored = table.find(&AppSelector::Id(0)).expect("record present");
-    assert_eq!(stored.runtime.status, ProcessStatus::Online);
+    assert_eq!(stored.runtime.status, ProcessStatus::Stopped);
+}
+
+#[tokio::test]
+async fn a_survivor_caught_mid_shutdown_is_terminated_by_the_next_daemon() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.status = ProcessStatus::Stopping;
+    ports.seed_stored(vec![record]);
+    resurrected(&ports).await;
+    assert_eq!(ports.terminated(), vec![SURVIVOR_PID]);
+}
+
+#[tokio::test]
+async fn a_survivor_caught_mid_shutdown_is_not_started_again() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.status = ProcessStatus::Stopping;
+    ports.seed_stored(vec![record]);
+    resurrected(&ports).await;
+    assert!(ports.spawned_names().is_empty());
 }
 
 #[tokio::test]

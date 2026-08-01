@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use entities::{ProcessStatus, topo_sort};
+use entities::ProcessStatus;
 use futures_util::future::join_all;
 
 use crate::{
@@ -9,12 +9,13 @@ use crate::{
     persist::save_table,
     record::ProcessRecord,
     start::{StartKind, StartOutcome, start_one},
-    table::ProcessTable,
+    table::{ProcessTable, dependency_order},
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Verdict {
     Adopt,
+    Settle { stale: Option<u32> },
     Respawn { change: Change, stale: Option<u32> },
 }
 
@@ -43,7 +44,7 @@ pub async fn resurrect(
             .collect(),
     );
 
-    let order = recovery_order(table);
+    let order = dependency_order(table, log_unordered_recovery);
     let mut outcomes = Vec::with_capacity(verdicts.len());
     for name in order {
         let Some(verdict) = verdicts.get(&name).copied() else {
@@ -51,6 +52,10 @@ pub async fn resurrect(
         };
         match verdict {
             Verdict::Adopt => outcomes.push(adopt(table, &name, ports).await),
+            Verdict::Settle { stale } => {
+                log_settle(&name);
+                evict(&name, stale, ports).await;
+            }
             Verdict::Respawn { change, stale } => {
                 log_respawn(&name, change);
                 evict(&name, stale, ports).await;
@@ -67,18 +72,8 @@ pub async fn resurrect(
     Ok(outcomes)
 }
 
-fn recovery_order(table: &ProcessTable) -> Vec<String> {
-    match topo_sort(&table.dependency_nodes()) {
-        Ok(order) => order,
-        Err(error) => {
-            log_recovery_failure("order", "-", &UsecaseError::from(error));
-            table
-                .records()
-                .iter()
-                .map(|record| record.runtime.name.clone())
-                .collect()
-        }
-    }
+fn log_unordered_recovery(error: &UsecaseError) {
+    log_recovery_failure("order", "-", error);
 }
 
 async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<String, Verdict> {
@@ -101,8 +96,13 @@ async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<Str
 }
 
 async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
+    if record.runtime.status.is_shutting_down() {
+        return Verdict::Settle {
+            stale: record.runtime.pid,
+        };
+    }
     let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
-        return respawn(Change::Unknown, None);
+        return respawn(Change::Unknown, record.runtime.pid);
     };
     let token = match ports.identity(pid).await {
         Liveness::Alive(token) => token,
@@ -166,11 +166,21 @@ fn forget_unless_adopted(
     mut record: ProcessRecord,
     verdicts: &BTreeMap<String, Verdict>,
 ) -> ProcessRecord {
-    if verdicts.get(&record.runtime.name) != Some(&Verdict::Adopt) {
+    let judged = verdicts.get(&record.runtime.name);
+    if !record.runtime.status.is_settled() && judged != Some(&Verdict::Adopt) {
         record.runtime.mark_exited(ProcessStatus::Stopped);
     }
     record.runtime.pending_restart = false;
     record
+}
+
+fn log_settle(app: &str) {
+    tracing::debug!(
+        feature = "resurrect",
+        action = "settle",
+        service = app,
+        "pm3 finished the stop the previous daemon had started",
+    );
 }
 
 fn log_adopt(app: &str, pid: u32) {

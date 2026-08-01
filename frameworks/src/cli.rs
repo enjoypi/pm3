@@ -278,8 +278,9 @@ async fn run_logs(
         return Ok(Some(tail));
     }
     emit(&tail);
-    commands::follow_log(config, name, polls, &emit).await?;
-    Ok(None)
+    commands::follow_log(config, name, polls, &emit)
+        .await
+        .map(|()| None)
 }
 
 fn run_config(config: &str, command: &ConfigCommands) -> Result<String> {

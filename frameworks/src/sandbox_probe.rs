@@ -1,4 +1,4 @@
-use adapters::{SandboxBackend, program_available};
+use adapters::{HostSandbox, SandboxBackend};
 
 #[cfg(target_os = "macos")]
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Seatbelt];
@@ -6,16 +6,15 @@ const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Seatbelt];
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Bwrap];
 
 #[must_use]
-pub fn detect_host_backend() -> Option<SandboxBackend> {
-    let path_env = std::env::var("PATH").ok();
-    probe_backend(&|program| program_available(program, path_env.as_deref()))
+pub fn detect_host_backend(search_path: &str) -> Option<HostSandbox> {
+    probe_backend(&|backend| backend.resolve(Some(search_path)))
 }
 
 #[must_use]
-pub fn probe_backend(available: &dyn Fn(&str) -> bool) -> Option<SandboxBackend> {
-    PREFERRED_BACKENDS
-        .into_iter()
-        .find(|backend| available(backend.program()))
+pub fn probe_backend(
+    resolve: &dyn Fn(SandboxBackend) -> Option<HostSandbox>,
+) -> Option<HostSandbox> {
+    PREFERRED_BACKENDS.into_iter().find_map(resolve)
 }
 
 #[cfg(test)]

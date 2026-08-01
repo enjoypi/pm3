@@ -38,7 +38,8 @@ pub fn register_service(source: &SpecSource, name: &str) {
 }
 
 pub fn write_service_file(source: &SpecSource, name: &str, body: &str) {
-    std::fs::write(source.service_file(name), body).expect("write the service file");
+    let path = source.service_file(name).expect("a safe service name");
+    std::fs::write(path, body).expect("write the service file");
 }
 
 pub fn service_yaml(name: &str) -> String {

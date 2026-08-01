@@ -22,7 +22,7 @@ pub struct LogReadError {
 pub struct LogFollower {
     path: PathBuf,
     file: File,
-    pending: String,
+    pending: Vec<u8>,
 }
 
 #[must_use]
@@ -85,27 +85,27 @@ impl LogFollower {
         Ok(Self {
             path: path.to_path_buf(),
             file,
-            pending: String::new(),
+            pending: Vec::new(),
         })
     }
 
     pub async fn poll_appended(&mut self) -> Result<Vec<String>, LogReadError> {
-        let mut chunk = String::new();
+        let mut chunk = Vec::new();
         self.file
-            .read_to_string(&mut chunk)
+            .read_to_end(&mut chunk)
             .await
             .map_err(|e| read_error(&self.path, &e.to_string()))?;
-        self.pending.push_str(&chunk);
+        self.pending.extend_from_slice(&chunk);
         Ok(self.take_complete_lines())
     }
 
     fn take_complete_lines(&mut self) -> Vec<String> {
         let mut lines = Vec::new();
-        while let Some(index) = self.pending.find('\n') {
+        while let Some(index) = self.pending.iter().position(|byte| *byte == b'\n') {
             let rest = self.pending.split_off(index + 1);
             let mut line = mem::replace(&mut self.pending, rest);
             line.pop();
-            lines.push(line);
+            lines.push(String::from_utf8_lossy(&line).into_owned());
         }
         lines
     }

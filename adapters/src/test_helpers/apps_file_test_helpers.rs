@@ -56,20 +56,18 @@ pub fn sandbox_entry() -> SandboxEntry {
     }
 }
 
-pub fn apps_of(entries: Vec<AppEntry>) -> AppsFile {
-    AppsFile { apps: entries }
-}
-
-pub fn resolve_one(defaults: &SpecDefaults<'_>, entry: AppEntry) -> AppSpec {
-    let mut specs =
-        resolve_specs(defaults, &apps_of(vec![entry])).expect("should resolve a single app");
-    specs.pop().expect("should yield one spec")
-}
-
-pub fn resolve_one_err(defaults: &SpecDefaults<'_>, entry: AppEntry) -> String {
-    resolve_specs(defaults, &apps_of(vec![entry]))
-        .unwrap_err()
+pub fn second_app_section(name: &str) -> String {
+    apps_section(name, SCRIPT, CWD)
+        .trim_start_matches("apps:\n")
         .to_string()
+}
+
+pub fn resolve_one(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> AppSpec {
+    resolve_checked(defaults, entry).expect("should resolve a single app")
+}
+
+pub fn resolve_one_err(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> String {
+    resolve_checked(defaults, entry).unwrap_err().to_string()
 }
 
 pub fn minimal_yaml() -> String {

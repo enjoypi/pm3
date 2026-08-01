@@ -1,4 +1,4 @@
-use std::{fs, os::unix::fs::PermissionsExt as _};
+use std::{fs, os::unix::fs::PermissionsExt as _, sync::Arc};
 
 use usecases::{LaunchSpec, ProcessLauncher as _};
 
@@ -14,7 +14,8 @@ const FIXTURE_TOKEN: &str = "Tue Jul 28 14:06:28 2026";
 
 struct Fixture {
     dir: tempfile::TempDir,
-    probe: PsProcessProbe,
+    probe: Arc<PsProcessProbe>,
+    watch: Arc<AdoptedWatch>,
 }
 
 fn fixture() -> Fixture {
@@ -25,16 +26,33 @@ fn fixture() -> Fixture {
     fs::write(
         &script,
         format!(
-            "#!/bin/sh\nif [ -f {} ]; then exit 2; fi\nif [ -f {} ]; then echo '{FIXTURE_TOKEN}'; else exit 1; fi\n",
+            concat!(
+                "#!/bin/sh\n",
+                "if [ -f {} ]; then exit 2; fi\n",
+                "if [ ! -f {} ]; then exit 1; fi\n",
+                "if [ \"$3\" = \"pid=,lstart=\" ]; then\n",
+                "  for pid in $(echo \"$5\" | tr ',' ' '); do echo \"$pid {}\"; done\n",
+                "else\n",
+                "  echo '{}'\n",
+                "fi\n",
+            ),
             broken.display(),
-            alive.display()
+            alive.display(),
+            FIXTURE_TOKEN,
+            FIXTURE_TOKEN,
         ),
     )
     .expect("should write a fake ps");
     fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
         .expect("should make the fake ps executable");
-    let probe = PsProcessProbe::with_program(script.to_string_lossy().into_owned());
-    Fixture { dir, probe }
+    let probe = Arc::new(PsProcessProbe::with_program(
+        script.to_string_lossy().into_owned(),
+    ));
+    Fixture {
+        dir,
+        probe,
+        watch: Arc::new(AdoptedWatch::default()),
+    }
 }
 
 impl Fixture {
@@ -75,9 +93,16 @@ async fn a_real_child_is_reaped_through_its_own_handle() {
         .spawn(&launch_spec(&fixture.dir))
         .await
         .expect("should spawn /usr/bin/true");
-    let outcome = wait_for_exit(&launcher, &fixture.probe, child.pid, None, CADENCE)
-        .await
-        .expect("a real child reports an exit");
+    let outcome = wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        child.pid,
+        None,
+        CADENCE,
+    )
+    .await
+    .expect("a real child reports an exit");
     assert_eq!(outcome.exit_code, Some(0));
 }
 
@@ -86,9 +111,16 @@ async fn an_adopted_process_that_already_left_is_reported_at_once() {
     let fixture = fixture();
     let launcher = TokioProcessLauncher::default();
     launcher.adopt(ADOPTED_PID).await;
-    let outcome = wait_for_exit(&launcher, &fixture.probe, ADOPTED_PID, None, CADENCE)
-        .await
-        .expect("an adopted process reports an exit");
+    let outcome = wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID,
+        None,
+        CADENCE,
+    )
+    .await
+    .expect("an adopted process reports an exit");
     assert_eq!(outcome.exit_code, None);
 }
 
@@ -100,7 +132,8 @@ async fn a_pid_the_kernel_handed_to_someone_else_counts_as_an_exit() {
     launcher.adopt(ADOPTED_PID).await;
     let outcome = wait_for_exit(
         &launcher,
-        &fixture.probe,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
         ADOPTED_PID,
         Some("Mon Jan 01 00:00:00 2020".to_string()),
         CADENCE,
@@ -119,7 +152,8 @@ async fn a_pid_still_holding_the_recorded_identity_keeps_being_watched() {
 
     let observer = wait_for_exit(
         &launcher,
-        &fixture.probe,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
         ADOPTED_PID,
         Some(FIXTURE_TOKEN.to_string()),
         CADENCE,
@@ -140,7 +174,14 @@ async fn a_probe_that_cannot_answer_keeps_the_process_under_watch() {
     let launcher = TokioProcessLauncher::default();
     launcher.adopt(ADOPTED_PID).await;
 
-    let observer = wait_for_exit(&launcher, &fixture.probe, ADOPTED_PID, None, CADENCE);
+    let observer = wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID,
+        None,
+        CADENCE,
+    );
     let repairer = async {
         tokio::time::sleep(std::time::Duration::from_millis(POLL_MS * 3)).await;
         fixture.mark_gone();
@@ -156,7 +197,15 @@ async fn an_adopted_process_stops_being_tracked_once_it_leaves() {
     let launcher = TokioProcessLauncher::default();
     launcher.adopt(ADOPTED_PID).await;
     assert_eq!(launcher.tracked_pids().await, vec![ADOPTED_PID]);
-    wait_for_exit(&launcher, &fixture.probe, ADOPTED_PID, None, CADENCE).await;
+    wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID,
+        None,
+        CADENCE,
+    )
+    .await;
     assert!(launcher.tracked_pids().await.is_empty());
 }
 
@@ -167,7 +216,14 @@ async fn an_adopted_process_is_polled_until_it_leaves() {
     let launcher = TokioProcessLauncher::default();
     launcher.adopt(ADOPTED_PID).await;
 
-    let observer = wait_for_exit(&launcher, &fixture.probe, ADOPTED_PID, None, CADENCE);
+    let observer = wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID,
+        None,
+        CADENCE,
+    );
     let reaper = async {
         tokio::time::sleep(std::time::Duration::from_millis(POLL_MS * 3)).await;
         fixture.mark_gone();
@@ -222,4 +278,60 @@ async fn a_path_removed_while_waiting_is_released() {
     };
     let (released, ()) = tokio::join!(waiting, remover);
     assert!(released);
+}
+
+#[tokio::test]
+async fn the_shared_poller_stops_once_the_last_watched_process_leaves() {
+    let fixture = fixture();
+    let launcher = TokioProcessLauncher::default();
+    launcher.adopt(ADOPTED_PID).await;
+    wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID,
+        None,
+        CADENCE,
+    )
+    .await;
+
+    for _attempt in 0..50 {
+        if fixture.watch.is_idle().await {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;
+    }
+    panic!("the shared poller should wind down once nothing is watched");
+}
+
+#[tokio::test]
+async fn two_adopted_processes_share_one_poller() {
+    let fixture = fixture();
+    fixture.mark_alive();
+    let launcher = TokioProcessLauncher::default();
+    launcher.adopt(ADOPTED_PID).await;
+    launcher.adopt(ADOPTED_PID + 1).await;
+
+    let first = wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID,
+        None,
+        CADENCE,
+    );
+    let second = wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID + 1,
+        None,
+        CADENCE,
+    );
+    let reaper = async {
+        tokio::time::sleep(std::time::Duration::from_millis(POLL_MS * 3)).await;
+        fixture.mark_gone();
+    };
+    let (left, right, ()) = tokio::join!(first, second, reaper);
+    assert!(left.is_some() && right.is_some());
 }

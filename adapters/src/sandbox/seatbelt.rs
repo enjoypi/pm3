@@ -1,17 +1,20 @@
 use usecases::{SandboxPolicy, WrappedCommand};
 
-use super::backend::SEATBELT_PROGRAM;
-
 const BASE_POLICY: &str = include_str!("seatbelt_base_policy.sbpl");
 const NETWORK_POLICY: &str = include_str!("seatbelt_network_policy.sbpl");
 
 #[must_use]
-pub fn seatbelt_argv(policy: &SandboxPolicy, program: &str, args: &[String]) -> WrappedCommand {
+pub fn seatbelt_argv(
+    sandbox_program: &str,
+    policy: &SandboxPolicy,
+    program: &str,
+    args: &[String],
+) -> WrappedCommand {
     let mut sandbox_args = vec!["-p".to_string(), seatbelt_profile(policy), "--".to_string()];
     sandbox_args.push(program.to_string());
     sandbox_args.extend_from_slice(args);
     WrappedCommand {
-        program: SEATBELT_PROGRAM.to_string(),
+        program: sandbox_program.to_string(),
         args: sandbox_args,
     }
 }
@@ -31,8 +34,11 @@ pub fn seatbelt_profile(policy: &SandboxPolicy) -> String {
 }
 
 fn writable_root_rule(root: &str) -> String {
-    let trimmed = root.trim_end_matches('/');
-    format!("\n(allow file-write* (subpath \"{trimmed}\"))\n")
+    let escaped = root
+        .trim_end_matches('/')
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    format!("\n(allow file-write* (subpath \"{escaped}\"))\n")
 }
 
 #[cfg(test)]

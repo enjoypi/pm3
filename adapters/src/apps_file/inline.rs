@@ -26,24 +26,17 @@ pub struct InlineRequest<'r> {
 }
 
 pub fn inline_entry(request: &InlineRequest<'_>) -> Result<AppEntry, AppsFileError> {
-    let env = parse_env_pairs(request.env, request.home)?;
-    let cwd = request.cwd.map(|value| fold_home(value, request.home));
     let sandbox = SandboxEntry {
         mode: None,
         network: request.network.then_some(true),
-        writable_roots: writable_roots(request.writable_dirs, request.home),
+        writable_roots: (!request.writable_dirs.is_empty()).then(|| request.writable_dirs.to_vec()),
     };
-    let args = request
-        .args
-        .iter()
-        .map(|value| fold_svc_cwd(&fold_home(value, request.home)))
-        .collect();
     let entry = AppEntry {
         name: request.name.to_string(),
-        script: fold_home(request.program, request.home),
-        cwd,
-        args,
-        env,
+        script: request.program.to_string(),
+        cwd: request.cwd.map(ToString::to_string),
+        args: request.args.to_vec(),
+        env: parse_env_pairs(request.env)?,
         depends_on: Vec::new(),
         autorestart: request.autorestart,
         min_uptime_ms: None,
@@ -52,7 +45,31 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> Result<AppEntry, AppsFileErr
         schedule: request.cron.map(ToString::to_string),
         sandbox: Some(sandbox),
     };
-    Ok(entry)
+    Ok(fold_entry(&entry, request.home))
+}
+
+#[must_use]
+pub fn fold_entry(entry: &AppEntry, home: Option<&str>) -> AppEntry {
+    let mut folded = entry.clone();
+    folded.script = fold_home(&folded.script, home);
+    folded.cwd = folded.cwd.map(|value| fold_home(&value, home));
+    folded.args = folded
+        .args
+        .iter()
+        .map(|value| fold_svc_cwd(&fold_home(value, home)))
+        .collect();
+    folded.env = folded
+        .env
+        .iter()
+        .map(|(key, value)| (key.clone(), fold_home(value, home)))
+        .collect();
+    if let Some(sandbox) = folded.sandbox.as_mut() {
+        sandbox.writable_roots = sandbox
+            .writable_roots
+            .as_ref()
+            .map(|roots| dedup_roots(roots.iter().map(|root| fold_home(root, home))));
+    }
+    folded
 }
 
 #[must_use]
@@ -161,17 +178,7 @@ fn quote(raw: &str) -> String {
     format!("\"{escaped}\"")
 }
 
-fn writable_roots(extra: &[String], home: Option<&str>) -> Option<Vec<String>> {
-    if extra.is_empty() {
-        return None;
-    }
-    Some(dedup_roots(extra.iter().map(|dir| fold_home(dir, home))))
-}
-
-fn parse_env_pairs(
-    pairs: &[String],
-    home: Option<&str>,
-) -> Result<BTreeMap<String, String>, AppsFileError> {
+fn parse_env_pairs(pairs: &[String]) -> Result<BTreeMap<String, String>, AppsFileError> {
     let mut parsed = BTreeMap::new();
     for pair in pairs {
         let Some((key, value)) = pair.split_once(ENV_SEPARATOR) else {
@@ -180,7 +187,7 @@ fn parse_env_pairs(
         if key.is_empty() {
             return Err(AppsFileError::InvalidEnvPair(pair.clone()));
         }
-        parsed.insert(key.to_string(), fold_home(value, home));
+        parsed.insert(key.to_string(), value.to_string());
     }
     Ok(parsed)
 }

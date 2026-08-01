@@ -83,7 +83,7 @@ async fn a_ps_killed_by_a_signal_reads_as_unreadable() {
 
 #[tokio::test]
 async fn the_identity_drops_the_padding_ps_adds() {
-    let (_dir, probe) = probe_with("echo 'Tue Jul 28 14:06:28 2026    '");
+    let (_dir, probe) = probe_with("echo '  1 Tue Jul 28 14:06:28 2026    '");
     assert_eq!(
         probe.identity(1).await,
         Liveness::Alive("Tue Jul 28 14:06:28 2026".to_string())
@@ -100,11 +100,65 @@ async fn a_ps_that_never_answers_reads_as_unreadable() {
 
 #[tokio::test]
 async fn the_probe_asks_ps_for_the_start_time_of_one_pid_under_a_fixed_locale() {
-    let (_dir, probe) = probe_with("echo \"$LC_ALL|$*\"");
+    let (_dir, probe) = probe_with("echo \"4242 $LC_ALL|$*\"");
     assert_eq!(
         probe.identity(4242).await,
-        Liveness::Alive("C|-ww -o lstart= -p 4242".to_string())
+        Liveness::Alive("C|-ww -o pid=,lstart= -p 4242".to_string())
     );
+}
+
+#[tokio::test]
+async fn probing_nothing_asks_ps_nothing() {
+    let (_dir, probe) = probe_with("exit 2");
+    assert!(probe.identities(&[]).await.is_empty());
+}
+
+#[tokio::test]
+async fn one_batch_call_covers_every_watched_pid() {
+    let (_dir, probe) =
+        probe_with("echo \"$*\" >> \"$0.calls\"; echo '7 Tue Jul 28 14:06:28 2026'");
+    let seen = probe.identities(&[7, 8]).await;
+    assert_eq!(
+        seen.get(&7),
+        Some(&Liveness::Alive("Tue Jul 28 14:06:28 2026".to_string()))
+    );
+}
+
+#[tokio::test]
+async fn a_pid_the_batch_does_not_list_reads_as_gone() {
+    let (_dir, probe) = probe_with("echo '7 Tue Jul 28 14:06:28 2026'");
+    let seen = probe.identities(&[7, 8]).await;
+    assert_eq!(seen.get(&8), Some(&Liveness::Gone));
+}
+
+#[tokio::test]
+async fn a_batch_call_that_ps_refuses_leaves_every_pid_unreadable() {
+    let (_dir, probe) = probe_with("exit 2");
+    let seen = probe.identities(&[7, 8]).await;
+    assert_eq!(seen.get(&7), Some(&Liveness::Unreadable));
+    assert_eq!(seen.get(&8), Some(&Liveness::Unreadable));
+}
+
+#[tokio::test]
+async fn a_batch_call_ps_cannot_answer_leaves_every_pid_unreadable() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = fake_ps(&dir, "sleep 5").to_string_lossy().into_owned();
+    let probe = PsProcessProbe::new(program, 20);
+    let seen = probe.identities(&[7, 8]).await;
+    assert_eq!(seen.get(&8), Some(&Liveness::Unreadable));
+}
+
+#[tokio::test]
+async fn a_missing_ps_leaves_every_batched_pid_unreadable() {
+    let probe = PsProcessProbe::with_program("/nonexistent/pm3-ps".to_string());
+    let seen = probe.identities(&[7]).await;
+    assert_eq!(seen.get(&7), Some(&Liveness::Unreadable));
+}
+
+#[tokio::test]
+async fn a_batch_line_without_a_numeric_pid_is_ignored() {
+    let (_dir, probe) = probe_with("echo 'header Tue Jul 28 14:06:28 2026'");
+    assert_eq!(probe.identities(&[7]).await.get(&7), Some(&Liveness::Gone));
 }
 
 #[test]
@@ -115,4 +169,10 @@ fn a_gone_process_carries_no_token() {
 #[test]
 fn an_unreadable_probe_carries_no_token() {
     assert_eq!(Liveness::Unreadable.into_token(), None);
+}
+
+#[tokio::test]
+async fn a_batch_line_without_a_start_time_is_ignored() {
+    let (_dir, probe) = probe_with("echo '7    '");
+    assert_eq!(probe.identities(&[7]).await.get(&7), Some(&Liveness::Gone));
 }

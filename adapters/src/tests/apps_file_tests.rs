@@ -101,39 +101,33 @@ async fn load_apps_file_reports_an_unresolvable_placeholder() {
 }
 
 #[test]
-fn resolve_specs_rejects_an_empty_apps_list() {
-    let err = resolve_specs(&defaults(), &apps_of(Vec::new()))
-        .unwrap_err()
-        .to_string();
+fn parse_apps_file_rejects_an_empty_apps_list() {
+    let err = parse_apps_file("apps: []").unwrap_err().to_string();
     assert!(err.contains("no apps"), "got: {err}");
 }
 
 #[test]
-fn resolve_specs_rejects_a_duplicate_app_name() {
-    let apps = apps_of(vec![minimal_entry(), minimal_entry()]);
-    let err = resolve_specs(&defaults(), &apps).unwrap_err().to_string();
+fn parse_apps_file_rejects_a_duplicate_app_name() {
+    let yaml = format!("{}{}", minimal_yaml(), second_app_section(APP_NAME));
+    let err = parse_apps_file(&yaml).unwrap_err().to_string();
     assert!(err.contains("duplicate app name 'web'"), "got: {err}");
 }
 
 #[test]
-fn resolve_specs_rejects_an_invalid_spec() {
+fn resolve_checked_rejects_an_invalid_spec() {
     let entry = AppEntry {
         cwd: Some("relative/path".to_string()),
         ..minimal_entry()
     };
-    let err = resolve_one_err(&defaults(), entry);
+    let err = resolve_one_err(&defaults(), &entry);
     assert!(err.contains("relative cwd"), "got: {err}");
 }
 
 #[test]
-fn resolve_specs_keeps_the_declared_order() {
-    let second = AppEntry {
-        name: "db".to_string(),
-        ..minimal_entry()
-    };
-    let apps = apps_of(vec![minimal_entry(), second]);
-    let specs = resolve_specs(&defaults(), &apps).expect("should resolve");
-    let names: Vec<&str> = specs.iter().map(|spec| spec.name.as_str()).collect();
+fn parse_apps_file_keeps_the_declared_order() {
+    let yaml = format!("{}{}", minimal_yaml(), second_app_section("db"));
+    let apps = parse_apps_file(&yaml).expect("should parse");
+    let names: Vec<&str> = apps.apps.iter().map(|entry| entry.name.as_str()).collect();
     assert_eq!(names, vec![APP_NAME, "db"]);
 }
 
@@ -144,7 +138,7 @@ fn resolve_specs_copies_the_script_and_command_line() {
         depends_on: vec!["db".to_string()],
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert_eq!(spec.script, SCRIPT);
     assert_eq!(spec.args, vec!["server.js"]);
     assert_eq!(spec.depends_on, vec!["db"]);
@@ -159,7 +153,7 @@ fn resolve_specs_flattens_the_environment_in_key_order() {
         ]),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert_eq!(
         spec.env,
         vec![
@@ -177,7 +171,7 @@ fn resolve_specs_fills_the_restart_defaults_from_the_config() {
         max_restarts,
         restart_delay_ms,
     } = pm3_config(SANDBOX_MODE_WORKSPACE_WRITE).restart;
-    let spec = resolve_one(&defaults(), minimal_entry());
+    let spec = resolve_one(&defaults(), &minimal_entry());
     assert_eq!(
         spec.restart_policy(),
         RestartPolicy {
@@ -198,7 +192,7 @@ fn resolve_specs_keeps_explicit_restart_overrides() {
         restart_delay_ms: Some(40),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert_eq!(
         spec.restart_policy(),
         RestartPolicy {
@@ -212,13 +206,13 @@ fn resolve_specs_keeps_explicit_restart_overrides() {
 
 #[test]
 fn resolve_specs_takes_the_sandbox_mode_from_the_config() {
-    let spec = resolve_one(&defaults(), minimal_entry());
+    let spec = resolve_one(&defaults(), &minimal_entry());
     assert_eq!(spec.sandbox.mode, SandboxMode::WorkspaceWrite);
 }
 
 #[test]
 fn resolve_specs_takes_the_sandbox_network_flag_from_the_config() {
-    let spec = resolve_one(&defaults(), minimal_entry());
+    let spec = resolve_one(&defaults(), &minimal_entry());
     assert!(!spec.sandbox.network);
 }
 
@@ -231,7 +225,7 @@ fn resolve_specs_honours_an_explicit_sandbox_mode() {
         }),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert_eq!(spec.sandbox.mode, SandboxMode::DangerFullAccess);
 }
 
@@ -244,7 +238,7 @@ fn resolve_specs_honours_an_explicit_sandbox_network_flag() {
         }),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert!(spec.sandbox.network);
 }
 
@@ -257,7 +251,7 @@ fn resolve_specs_rejects_an_unknown_sandbox_mode() {
         }),
         ..minimal_entry()
     };
-    let err = resolve_one_err(&defaults(), entry);
+    let err = resolve_one_err(&defaults(), &entry);
     assert!(
         err.contains("sandbox mode 'yolo' for app 'web'"),
         "got: {err}"
@@ -266,13 +260,13 @@ fn resolve_specs_rejects_an_unknown_sandbox_mode() {
 
 #[test]
 fn resolve_specs_grants_the_cwd_the_logs_dir_and_the_tmp_dir_by_default() {
-    let spec = resolve_one(&defaults(), minimal_entry());
+    let spec = resolve_one(&defaults(), &minimal_entry());
     assert_eq!(spec.sandbox.derived_roots, vec![CWD, LOGS_DIR, TMP_DIR]);
 }
 
 #[test]
 fn resolve_specs_keeps_pm3_derived_roots_out_of_the_declared_ones() {
-    let spec = resolve_one(&defaults(), minimal_entry());
+    let spec = resolve_one(&defaults(), &minimal_entry());
     assert!(
         spec.sandbox.writable_roots.is_empty(),
         "roots pm3 derives itself must not read as operator configuration: {:?}",
@@ -286,7 +280,7 @@ fn resolve_specs_drops_a_duplicate_default_writable_root() {
         cwd: Some(LOGS_DIR.to_string()),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert_eq!(spec.sandbox.derived_roots, vec![LOGS_DIR, TMP_DIR]);
 }
 
@@ -296,7 +290,7 @@ fn resolve_specs_skips_a_missing_tmp_dir() {
         tmp_dir: None,
         ..defaults()
     };
-    let spec = resolve_one(&defaults, minimal_entry());
+    let spec = resolve_one(&defaults, &minimal_entry());
     assert_eq!(spec.sandbox.derived_roots, vec![CWD, LOGS_DIR]);
 }
 
@@ -306,7 +300,7 @@ fn resolve_specs_skips_a_blank_tmp_dir() {
         tmp_dir: Some(""),
         ..defaults()
     };
-    let spec = resolve_one(&defaults, minimal_entry());
+    let spec = resolve_one(&defaults, &minimal_entry());
     assert_eq!(spec.sandbox.derived_roots, vec![CWD, LOGS_DIR]);
 }
 
@@ -316,7 +310,7 @@ fn resolve_specs_grants_no_writable_root_in_read_only_mode() {
         sandbox_mode: SandboxMode::ReadOnly,
         ..defaults()
     };
-    let spec = resolve_one(&defaults, minimal_entry());
+    let spec = resolve_one(&defaults, &minimal_entry());
     assert!(
         spec.sandbox.granted_roots().is_empty(),
         "got: {:?}",
@@ -330,7 +324,7 @@ fn resolve_specs_grants_no_writable_root_in_full_access_mode() {
         sandbox_mode: SandboxMode::DangerFullAccess,
         ..defaults()
     };
-    let spec = resolve_one(&defaults, minimal_entry());
+    let spec = resolve_one(&defaults, &minimal_entry());
     assert!(
         spec.sandbox.granted_roots().is_empty(),
         "got: {:?}",
@@ -347,7 +341,7 @@ fn resolve_specs_honours_explicit_writable_roots() {
         }),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert_eq!(spec.sandbox.writable_roots, vec!["/srv/web/var"]);
 }
 
@@ -360,7 +354,7 @@ fn resolve_specs_keeps_the_workspace_defaults_beside_an_empty_writable_roots_lis
         }),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert!(
         spec.sandbox.granted_roots().contains(&spec.cwd.as_str()),
         "a service always owns its own working directory: {:?}",
@@ -377,7 +371,7 @@ fn resolve_specs_keeps_the_workspace_defaults_beside_a_declared_writable_root() 
         }),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     let granted = spec.sandbox.granted_roots();
     assert!(
         granted.contains(&spec.cwd.as_str()) && granted.contains(&"/srv/data"),
@@ -394,7 +388,7 @@ fn a_declared_writable_root_stays_out_of_the_derived_set() {
         }),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), entry);
+    let spec = resolve_one(&defaults(), &entry);
     assert_eq!(spec.sandbox.writable_roots, vec!["/srv/data".to_string()]);
 }
 
@@ -426,8 +420,9 @@ fn spec_defaults_rejects_an_unknown_configured_sandbox_mode() {
 fn a_script_that_is_not_on_the_search_path_is_rejected() {
     let mut entry = minimal_entry();
     entry.script = "pm3-not-a-real-program".to_string();
-    let apps = AppsFile { apps: vec![entry] };
-    let err = resolve_specs(&defaults(), &apps).unwrap_err().to_string();
+    let err = resolve_checked(&defaults(), &entry)
+        .unwrap_err()
+        .to_string();
     assert_eq!(
         err,
         "cannot find 'pm3-not-a-real-program' for app 'web' on pm3.search_path"
@@ -440,18 +435,14 @@ fn a_schedule_reaches_the_spec() {
         schedule: Some("~ * * * *".to_string()),
         ..minimal_entry()
     };
-    let apps = AppsFile { apps: vec![entry] };
-    let specs = resolve_specs(&defaults(), &apps).expect("a valid schedule should resolve");
-    assert_eq!(specs[0].schedule.as_deref(), Some("~ * * * *"));
+    let spec = resolve_checked(&defaults(), &entry).expect("a valid schedule should resolve");
+    assert_eq!(spec.schedule.as_deref(), Some("~ * * * *"));
 }
 
 #[test]
 fn an_app_without_a_schedule_resolves_to_none() {
-    let apps = AppsFile {
-        apps: vec![minimal_entry()],
-    };
-    let specs = resolve_specs(&defaults(), &apps).expect("resolve");
-    assert_eq!(specs[0].schedule, None);
+    let spec = resolve_checked(&defaults(), &minimal_entry()).expect("resolve");
+    assert_eq!(spec.schedule, None);
 }
 
 #[test]
@@ -460,8 +451,7 @@ fn an_unparsable_schedule_is_rejected_at_load_time() {
         schedule: Some("nonsense".to_string()),
         ..minimal_entry()
     };
-    let apps = AppsFile { apps: vec![entry] };
-    let err = resolve_specs(&defaults(), &apps).unwrap_err();
+    let err = resolve_checked(&defaults(), &entry).unwrap_err();
     assert!(matches!(err, AppsFileError::Cron(_)), "got: {err}");
 }
 
@@ -471,7 +461,6 @@ fn an_unexpandable_schedule_is_rejected_at_load_time() {
         schedule: Some("0~59/0 * * * *".to_string()),
         ..minimal_entry()
     };
-    let apps = AppsFile { apps: vec![entry] };
-    let err = resolve_specs(&defaults(), &apps).unwrap_err();
+    let err = resolve_checked(&defaults(), &entry).unwrap_err();
     assert!(err.to_string().contains("step 0"), "got: {err}");
 }

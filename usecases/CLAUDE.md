@@ -7,7 +7,7 @@ Interactor + Output Port（trait）。与外层交互只经 `ports/` 下的 trai
 | 文件 | 内容 |
 |---|---|
 | `start.rs` | `start_apps` / `start_one`；`StartMode::{Register, Execute}` |
-| `stop.rs` / `restart.rs` / `delete.rs` | 对应 CLI 动作 |
+| `stop.rs` / `restart.rs` / `delete.rs` | 对应 CLI 动作；`persist_for_handover` 是 daemon 换代收尾（只落盘，不改状态） |
 | `resurrect.rs` | daemon 重启后逐服务比对指纹：adopt / evict / respawn |
 | `supervise.rs` | 子进程退出与熔断监督循环 |
 | `fingerprint.rs` | 身份指纹拼装 |

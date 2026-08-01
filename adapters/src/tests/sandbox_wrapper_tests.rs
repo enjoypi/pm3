@@ -1,9 +1,16 @@
 use usecases::SandboxMode;
 
 use super::{
-    super::backend::{BWRAP_PROGRAM, SEATBELT_PROGRAM},
+    super::backend::{BWRAP_PROGRAM, HostSandbox, SEATBELT_PROGRAM},
     *,
 };
+
+fn host(backend: SandboxBackend) -> HostSandbox {
+    HostSandbox {
+        backend,
+        program: backend.program().to_string(),
+    }
+}
 
 fn policy(mode: SandboxMode, writable_roots: &[&str]) -> SandboxPolicy {
     SandboxPolicy {
@@ -16,7 +23,7 @@ fn policy(mode: SandboxMode, writable_roots: &[&str]) -> SandboxPolicy {
 
 #[test]
 fn a_seatbelt_backend_wraps_with_sandbox_exec() {
-    let sandbox = SandboxCommandWrapper::new(Some(SandboxBackend::Seatbelt));
+    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Seatbelt)));
     let wrapped = sandbox
         .wrap(
             "api",
@@ -30,7 +37,7 @@ fn a_seatbelt_backend_wraps_with_sandbox_exec() {
 
 #[test]
 fn a_bwrap_backend_wraps_with_bubblewrap() {
-    let sandbox = SandboxCommandWrapper::new(Some(SandboxBackend::Bwrap));
+    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Bwrap)));
     let wrapped = sandbox
         .wrap(
             "api",
@@ -84,25 +91,26 @@ fn an_unconfined_app_runs_unwrapped_even_without_a_backend() {
 }
 
 #[test]
-fn a_writable_root_with_a_quote_is_rejected() {
-    let sandbox = SandboxCommandWrapper::new(Some(SandboxBackend::Seatbelt));
-    let err = sandbox
+fn seatbelt_escapes_a_writable_root_that_holds_a_quote() {
+    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Seatbelt)));
+    let wrapped = sandbox
         .wrap(
             "api",
             &policy(SandboxMode::WorkspaceWrite, &["/srv/\"evil"]),
             "/usr/bin/node",
             &[],
         )
-        .unwrap_err();
+        .expect("a quote should be escaped, not refused");
+    let profile = wrapped.args.get(1).expect("the profile is the second arg");
     assert!(
-        matches!(err, SandboxError::Unsupported { .. }),
-        "got: {err}"
+        profile.contains(r#"(subpath "/srv/\"evil")"#),
+        "got: {profile}"
     );
 }
 
 #[test]
-fn a_writable_root_with_a_newline_is_rejected() {
-    let sandbox = SandboxCommandWrapper::new(Some(SandboxBackend::Bwrap));
+fn seatbelt_refuses_a_writable_root_that_holds_a_newline() {
+    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Seatbelt)));
     let err = sandbox
         .wrap(
             "api",
@@ -118,7 +126,25 @@ fn a_writable_root_with_a_newline_is_rejected() {
 }
 
 #[test]
+fn bwrap_accepts_a_writable_root_that_a_seatbelt_profile_cannot_render() {
+    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Bwrap)));
+    let wrapped = sandbox
+        .wrap(
+            "api",
+            &policy(SandboxMode::WorkspaceWrite, &["/srv/a\nb"]),
+            "/usr/bin/node",
+            &[],
+        )
+        .expect("bwrap passes roots as argv, so a newline is harmless");
+    assert!(
+        wrapped.args.contains(&"/srv/a\nb".to_string()),
+        "got: {:?}",
+        wrapped.args
+    );
+}
+
+#[test]
 fn the_configured_backend_is_reported_for_logging() {
-    let sandbox = SandboxCommandWrapper::new(Some(SandboxBackend::Bwrap));
+    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Bwrap)));
     assert_eq!(sandbox.backend(), Some(SandboxBackend::Bwrap));
 }

@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -130,6 +133,19 @@ pub async fn load_apps_file(path: &str) -> Result<AppsFile, AppsFileError> {
     parse_apps_file(&read_substituted(path).await?)
 }
 
+fn check_declared_names(apps: &AppsFile) -> Result<(), AppsFileError> {
+    if apps.apps.is_empty() {
+        return Err(AppsFileError::NoApps);
+    }
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for entry in &apps.apps {
+        if !seen.insert(entry.name.as_str()) {
+            return Err(AppsFileError::DuplicateName(entry.name.clone()));
+        }
+    }
+    Ok(())
+}
+
 pub async fn load_service_file(path: &str) -> Result<AppEntry, AppsFileError> {
     parse_service_file(&read_substituted(path).await?)
 }
@@ -145,29 +161,14 @@ async fn read_substituted(path: &str) -> Result<String, AppsFileError> {
 }
 
 pub fn parse_apps_file(yaml: &str) -> Result<AppsFile, AppsFileError> {
-    serde_yaml2::from_str(yaml).map_err(|e| AppsFileError::Parse(e.to_string()))
+    let apps: AppsFile =
+        serde_yaml2::from_str(yaml).map_err(|e| AppsFileError::Parse(e.to_string()))?;
+    check_declared_names(&apps)?;
+    Ok(apps)
 }
 
 pub fn parse_service_file(yaml: &str) -> Result<AppEntry, AppsFileError> {
     serde_yaml2::from_str(yaml).map_err(|e| AppsFileError::Parse(e.to_string()))
-}
-
-pub fn resolve_specs(
-    defaults: &SpecDefaults<'_>,
-    apps: &AppsFile,
-) -> Result<Vec<AppSpec>, AppsFileError> {
-    if apps.apps.is_empty() {
-        return Err(AppsFileError::NoApps);
-    }
-    let mut specs: Vec<AppSpec> = Vec::with_capacity(apps.apps.len());
-    for entry in &apps.apps {
-        let spec = resolve_checked(defaults, entry)?;
-        if specs.iter().any(|known| known.name == spec.name) {
-            return Err(AppsFileError::DuplicateName(spec.name));
-        }
-        specs.push(spec);
-    }
-    Ok(specs)
 }
 
 pub fn resolve_checked(

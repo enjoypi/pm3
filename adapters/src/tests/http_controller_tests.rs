@@ -5,6 +5,14 @@ use crate::{apps_file::AppsFileError, http::HEALTH_OK, process_views::running_vi
 
 const SERVICE: &str = "web";
 
+fn started_reply(outcomes: Vec<StartOutcome>) -> DaemonReply {
+    DaemonReply::Started {
+        outcomes,
+        refused: Vec::new(),
+        reason: None,
+    }
+}
+
 fn listed_nothing() -> DaemonReply {
     DaemonReply::Listed(Vec::new())
 }
@@ -28,7 +36,7 @@ async fn health_reports_that_the_daemon_is_up() {
 
 #[tokio::test]
 async fn starting_apps_forwards_the_apps_file() {
-    let outcome = Ok(DaemonReply::Started(Vec::new()));
+    let outcome = Ok(started_reply(Vec::new()));
     let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
     assert_eq!(
         exchange.request,
@@ -40,7 +48,7 @@ async fn starting_apps_forwards_the_apps_file() {
 
 #[tokio::test]
 async fn starting_apps_returns_the_start_summary() {
-    let outcome = Ok(DaemonReply::Started(vec![StartOutcome {
+    let outcome = Ok(started_reply(vec![StartOutcome {
         pm_id: 0,
         name: "web".to_string(),
         pid: Some(4242),
@@ -55,7 +63,7 @@ async fn starting_apps_returns_the_start_summary() {
 
 #[tokio::test]
 async fn starting_apps_names_the_ones_that_were_already_running() {
-    let outcome = Ok(DaemonReply::Started(vec![
+    let outcome = Ok(started_reply(vec![
         StartOutcome {
             pm_id: 0,
             name: "web".to_string(),

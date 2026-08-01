@@ -84,7 +84,7 @@ pub fn sleeper_apps_file(fixture: &Fixture) -> String {
 }
 
 pub fn seed_log(fixture: &Fixture, name: &str, content: &str) -> String {
-    let path = stdout_log(&fixture.paths, name);
+    let path = stdout_log(&fixture.paths, name).expect("a safe service name");
     std::fs::create_dir_all(&fixture.paths.logs_dir).expect("create the log directory");
     std::fs::write(&path, content).expect("seed the log");
     path

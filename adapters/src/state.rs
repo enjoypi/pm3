@@ -16,18 +16,26 @@ pub enum DaemonRequest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "one reply travels per CLI command, so boxing only adds indirection"
-)]
 pub enum DaemonReply {
-    Started(Vec<StartOutcome>),
+    Started {
+        outcomes: Vec<StartOutcome>,
+        refused: Vec<String>,
+        reason: Option<String>,
+    },
     Listed(Vec<ProcessView>),
     Described(ProcessView),
-    Stopped { name: String },
-    Restarted { name: String },
-    Deleted { name: String },
-    StoppedAll { names: Vec<String> },
+    Stopped {
+        name: String,
+    },
+    Restarted {
+        name: String,
+    },
+    Deleted {
+        name: String,
+    },
+    StoppedAll {
+        names: Vec<String>,
+    },
 }
 
 #[derive(Debug)]

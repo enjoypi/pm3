@@ -70,15 +70,8 @@ impl SandboxPolicy {
 }
 
 pub fn validate_policy(policy: &SandboxPolicy) -> Result<(), PolicyError> {
-    let SandboxPolicy {
-        mode,
-        network: _,
-        writable_roots,
-        derived_roots,
-    } = policy;
-
-    let granted = writable_roots.iter().chain(derived_roots);
-    if !mode.allows_writes() && granted.clone().count() > 0 {
+    let granted = policy.granted_roots();
+    if !policy.mode.allows_writes() && !granted.is_empty() {
         return Err(PolicyError::WritableRootsWithoutWriteAccess);
     }
 
@@ -87,7 +80,7 @@ pub fn validate_policy(policy: &SandboxPolicy) -> Result<(), PolicyError> {
             return Err(PolicyError::EmptyWritableRoot);
         }
         if !root.starts_with('/') {
-            return Err(PolicyError::RelativeWritableRoot(root.clone()));
+            return Err(PolicyError::RelativeWritableRoot(root.to_string()));
         }
     }
 

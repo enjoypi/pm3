@@ -6,6 +6,10 @@ use crate::state::DaemonReply;
 pub const NOTHING_STARTED: &str = "no apps were started";
 pub const NOTHING_TO_STOP: &str = "no services were running";
 
+fn refused_marker(reason: &str) -> String {
+    format!("cannot start the rest of the batch: {reason}")
+}
+
 fn already_running_marker(name: &str) -> String {
     format!("{name} is already running")
 }
@@ -16,13 +20,25 @@ pub fn affected_service(reply: &DaemonReply) -> Option<String> {
 
     match reply {
         Dr::Stopped { name } | Dr::Restarted { name } | Dr::Deleted { name } => Some(name.clone()),
-        Dr::Started(_) | Dr::Listed(_) | Dr::Described(_) | Dr::StoppedAll { names: _ } => None,
+        Dr::Started {
+            outcomes: _,
+            refused: _,
+            reason: _,
+        }
+        | Dr::Listed(_)
+        | Dr::Described(_)
+        | Dr::StoppedAll { names: _ } => None,
     }
 }
 
 #[must_use]
 pub fn already_running_names(reply: &DaemonReply) -> Vec<String> {
-    let DaemonReply::Started(outcomes) = reply else {
+    let DaemonReply::Started {
+        outcomes,
+        refused: _,
+        reason: _,
+    } = reply
+    else {
         return Vec::new();
     };
     outcomes
@@ -33,9 +49,26 @@ pub fn already_running_names(reply: &DaemonReply) -> Vec<String> {
 }
 
 #[must_use]
+pub fn refused_names(reply: &DaemonReply) -> Vec<String> {
+    let DaemonReply::Started {
+        outcomes: _,
+        refused,
+        reason: _,
+    } = reply
+    else {
+        return Vec::new();
+    };
+    refused.clone()
+}
+
+#[must_use]
 pub fn render_reply(reply: &DaemonReply) -> String {
     match reply {
-        DaemonReply::Started(outcomes) => render_started(outcomes),
+        DaemonReply::Started {
+            outcomes,
+            refused: _,
+            reason,
+        } => render_started(outcomes, reason.as_deref()),
         DaemonReply::Listed(views) => render_table(views),
         DaemonReply::Described(view) => render_describe(view),
         DaemonReply::Stopped { name } => format!("stopped {name}"),
@@ -54,11 +87,14 @@ pub fn render_stopped_all(names: &[String]) -> String {
 }
 
 #[must_use]
-pub fn render_started(outcomes: &[StartOutcome]) -> String {
-    if outcomes.is_empty() {
-        return NOTHING_STARTED.to_string();
+pub fn render_started(outcomes: &[StartOutcome], reason: Option<&str>) -> String {
+    let mut lines: Vec<String> = outcomes.iter().map(describe_start).collect();
+    if lines.is_empty() {
+        lines.push(NOTHING_STARTED.to_string());
     }
-    let lines: Vec<String> = outcomes.iter().map(describe_start).collect();
+    if let Some(refused) = reason {
+        lines.push(refused_marker(refused));
+    }
     lines.join("\n")
 }
 
