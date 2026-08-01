@@ -10,14 +10,17 @@ use usecases::ProcessProbe as _;
 use super::*;
 use crate::process::ps_probe::PsProcessProbe;
 
-const UNUSABLE_PID: u32 = u32::MAX;
+const MISSING_PID: u32 = 2_147_483_647;
+const BROADCAST_PID: u32 = u32::MAX;
+const SELF_GROUP_PID: u32 = 0;
+const INIT_PID: u32 = 1;
 const DEATH_POLLS: u32 = 100;
 const DEATH_POLL_INTERVAL_MS: u64 = 20;
 const STALL_TIMEOUT_MS: u64 = 20;
 
 fn spawn_sleeper() -> Child {
     Command::new("/bin/sh")
-        .args(["-c", "sleep 30"])
+        .args(["-c", "exec sleep 30"])
         .kill_on_drop(true)
         .spawn()
         .expect("should spawn a sleeper")
@@ -129,7 +132,7 @@ async fn terminate_honours_the_configured_stop_signal() {
 async fn terminate_gives_up_on_a_kill_program_that_never_answers() {
     let dir = TempDir::new().expect("temp dir");
     let signaler = KillSignaler::new(stalling_kill(&dir), "TERM".to_string(), STALL_TIMEOUT_MS);
-    let err = signaler.terminate(1).await.unwrap_err().to_string();
+    let err = signaler.terminate(2).await.unwrap_err().to_string();
     assert!(
         err.contains(&format!("did not answer within {STALL_TIMEOUT_MS}ms")),
         "got: {err}"
@@ -139,12 +142,12 @@ async fn terminate_gives_up_on_a_kill_program_that_never_answers() {
 #[tokio::test]
 async fn terminate_reports_a_pid_the_system_rejects() {
     let err = KillSignaler::default()
-        .terminate(UNUSABLE_PID)
+        .terminate(MISSING_PID)
         .await
         .unwrap_err()
         .to_string();
     assert!(
-        err.contains(&format!("cannot signal pid {UNUSABLE_PID}")),
+        err.contains(&format!("cannot signal pid {MISSING_PID}")),
         "got: {err}"
     );
 }
@@ -152,17 +155,17 @@ async fn terminate_reports_a_pid_the_system_rejects() {
 #[tokio::test]
 async fn terminate_explains_why_the_system_refused() {
     let err = KillSignaler::default()
-        .terminate(UNUSABLE_PID)
+        .terminate(MISSING_PID)
         .await
         .unwrap_err()
         .to_string();
-    assert!(err.contains("illegal process id"), "got: {err}");
+    assert!(err.contains("No such process"), "got: {err}");
 }
 
 #[tokio::test]
 async fn force_kill_reports_a_pid_the_system_rejects() {
     let err = KillSignaler::default()
-        .force_kill(UNUSABLE_PID)
+        .force_kill(MISSING_PID)
         .await
         .unwrap_err()
         .to_string();
@@ -172,13 +175,53 @@ async fn force_kill_reports_a_pid_the_system_rejects() {
 #[tokio::test]
 async fn terminate_reports_a_missing_kill_program() {
     let signaler = KillSignaler::with_program("/nonexistent/pm3-kill".to_string());
-    let err = signaler.terminate(1).await.unwrap_err().to_string();
-    assert!(err.contains("cannot signal pid 1"), "got: {err}");
+    let err = signaler.terminate(2).await.unwrap_err().to_string();
+    assert!(err.contains("cannot signal pid 2"), "got: {err}");
 }
 
 #[tokio::test]
 async fn terminate_falls_back_to_the_exit_status_when_kill_stays_silent() {
     let signaler = KillSignaler::with_program("/usr/bin/false".to_string());
-    let err = signaler.terminate(1).await.unwrap_err().to_string();
+    let err = signaler.terminate(2).await.unwrap_err().to_string();
     assert!(err.contains("exited with status"), "got: {err}");
+}
+
+#[tokio::test]
+async fn terminate_refuses_a_pid_that_would_widen_into_a_broadcast() {
+    let err = KillSignaler::default()
+        .terminate(BROADCAST_PID)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("outside the safe range"), "got: {err}");
+}
+
+#[tokio::test]
+async fn force_kill_refuses_a_pid_that_would_widen_into_a_broadcast() {
+    let err = KillSignaler::default()
+        .force_kill(BROADCAST_PID)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("outside the safe range"), "got: {err}");
+}
+
+#[tokio::test]
+async fn terminate_refuses_the_pid_that_means_the_calling_group() {
+    let err = KillSignaler::default()
+        .terminate(SELF_GROUP_PID)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("outside the safe range"), "got: {err}");
+}
+
+#[tokio::test]
+async fn terminate_refuses_the_init_pid() {
+    let err = KillSignaler::default()
+        .terminate(INIT_PID)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("outside the safe range"), "got: {err}");
 }
