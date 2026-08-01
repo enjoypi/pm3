@@ -50,7 +50,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - **症状**：`launchctl list` 的 PID 列是 `-`，job 已载入但 launchd 未监管、KeepAlive 形同虚设
   **原因**：任何 pm3 CLI 命令都会经 `ensure_daemon_running` 自动拉起一个**非 launchd 托管**的 daemon；它扛不住 `launchctl unload`，且会抢赢 socket 竞争让 launchd 那份直接退出
   **修法**：换代顺序 MUST 是 `service uninstall` → `pm3 kill` → 等 `pgrep -f "<bin> daemon"` 归零 → `service install --force`；install 后 MUST 等「launchd 报的 pid == `pm3.pid` 内容」再跑任何 CLI 命令，否则又会拉起竞争者。已处于未监管态时先 `pm3 kill` 停掉自启实例，再 `launchctl kickstart gui/$(id -u)/<label>` 交回 launchd
-- 换代前 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷；`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），排查残留只用 `pgrep`
+- 换代前 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷；`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），排查残留只用 `pgrep`；但 `pgrep -f <pat>` 同样会匹配到发起它的 shell，按可执行名找用 `pgrep -x`
 - Linux 侧同一套顺序换 `systemctl --user`，但两件事只在 Linux 成立：
   - `systemctl --user` 依赖 `XDG_RUNTIME_DIR`，非登录会话（agent/CI shell）里它为空 → 所有 `service` 子命令报 `Failed to connect to bus: No medium found`；先 `export XDG_RUNTIME_DIR=/run/user/$(id -u)`
   - `loginctl enable-linger` 走 polkit 授权，polkit 被 mask 或无交互授权时必失败 → 它在 install plan 里是 `ServiceStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。看到 `skipped:` 就要由 root 补 `loginctl enable-linger <user>`，否则用户注销后 user manager 回收会连带停掉 daemon
@@ -71,6 +71,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 ### 进程与信号
 
 - 停止/强杀 MUST 先对进程组发信号（`/bin/kill -<SIG> -- -<pid>`）、失败再退回单 pid：spawn 时 `process_group(0)` 让子进程自成组，只杀单 pid 会漏掉它 fork 的孙进程；adopt 来的进程可能不是组长，故回退分支必须保留
+- 传给 `/bin/kill` 的 pid MUST 先过 `is_signalable`（`pid >= 2 && i32::try_from(pid).is_ok()`）：procps 对超 i32 的值**静默截断**——`4294967295` → `kill(-1)` 杀光当前用户所有进程（user manager/tmux/全部用户级服务一起没），`-4294967295` → `kill(1)`；macOS 的 BSD kill 严格报错，故此坑只在 Linux 炸。上一条的「组信号失败即回退单 pid」会把第一步的失败直接放大成第二步的灾难
 - `Stopping` 不是「已停止」：判「pm3 是否还持有进程」用 `ProcessStatus::is_settled()`（仅 Stopped|Errored），用 `!is_running()` 会让重复 `stop` 清空 pid、让 `restart` 再 spawn 一个同名实例
 - SIGTERM 只落盘退出、不停服务，彻底停机只有 `pm3 kill --with-services`
 - 子进程环境默认为空（`tokio_launcher` 有 `env_clear()`），所以 spawn 前必须已解析出绝对路径
@@ -140,6 +141,8 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - fixture 里的 `create_dir_all` 会把「测试想要它缺失」的父目录造出来 → 造错误路径的 store/source fixture 必须接一个独立 root，别从被测路径 `parent()` 反推
 - `#[tokio::test(start_paused = true)]`（让 `tokio::time::sleep` 自动推进，用来测「定时器到点发事件」）需要在 dev-dependencies 显式写 `tokio = { workspace = true, features = ["test-util"] }`——workspace 的 `"full"` **不含** test-util，否则报 `no method named start_paused`；这种测试里 MUST NOT 用带 `timeout` 的 helper 等事件（timeout 也会被自动推进，可能抢先触发），直接 `events.recv().await`
 - 交互询问（confirm prompt）的可测模式：循环签名接 `confirm: &mut (dyn FnMut(&str) -> bool + Send)`，生产传一个「每次调用才锁 stdin/stdout」的 fn（`StdinLock` 非 Send，MUST NOT 跨 `.await` 持有），测试传脚本化闭包；MUST NOT 在单测里碰真 stdin（nextest 下 stdin 是 null → 立即 EOF，且无法注入答案）
+- 测试靶子 MUST 写 `sh -c "exec sleep 30"`：漏掉 `exec` 时 sh 只 fork 不 exec，信号打在 sh 上、sleep 成孤儿（症状：nextest 报 LEAK、测试卡满整个 sleep 时长）
+- 断言外部命令的错误文案 MUST 跨平台：合法但不存在的 pid 两边都报 `No such process`，而 `illegal process id` 只有 macOS BSD kill 有；需要「真实存在的程序」的测试用 `/bin/sh`，MUST NOT 写 `/opt/homebrew/...`
 
 ### 残留清理
 
@@ -165,3 +168,6 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - axum 0.8 原生 `impl Listener for tokio::net::UnixListener`（无需 hyper-util）；`tokio::net::unix::SocketAddr` 只 impl Debug 不 impl Display → 日志用 `?addr`
 - clap `trailing_var_arg` + `allow_hyphen_values`：pm3 自身选项必须出现在程序名**之前**，否则被当子进程参数
 - **Rust 生态没有任何 cron 库支持 OpenBSD 风格的随机 `~`**（croner/cron/cronexpr/jiff-cron/cron_tab 全无，只有 cronexpr 支持 Jenkins 的固定哈希 `H`）→ 自己展开成具体数字再交 croner
+- 判「是不是 OOM」用 `/proc/vmstat` 的 `oom_kill`（开机以来内核 + cgroup OOM 累计杀进程数）：为 0 即可彻底排除，比翻 dmesg/journal 可靠
+- 抓「谁杀了进程」MUST 用 `sudo systemd-run --unit=X --collect perf record -a -e syscalls:sys_enter_kill -e signal:signal_generate`：直接从用户会话起的 perf 属 `user-1000.slice`，slice 一崩它就陪葬、数据废掉（`data size field is 0`）；输出里行首是发送者、`comm=`/`pid=` 是目标、`grp=1` 表示进程组广播
+- 安全验证 kill 语义用 `strace -e trace=kill /bin/kill -0 -- <target>`：sig 0 只探测不投递，能看到内核实际收到的 pid

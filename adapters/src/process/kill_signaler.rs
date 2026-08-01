@@ -11,6 +11,8 @@ pub const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 5000;
 const FORCE_SIGNAL: &str = "KILL";
 const ARGUMENT_TERMINATOR: &str = "--";
 const UNKNOWN_EXIT_CODE: i32 = -1;
+const LOWEST_SIGNALABLE_PID: u32 = 2;
+const UNSAFE_PID_REASON: &str = "pid is outside the safe range";
 
 #[derive(Clone, Debug)]
 pub struct KillSignaler {
@@ -48,6 +50,12 @@ impl KillSignaler {
     }
 
     async fn deliver(&self, signal: &str, pid: u32) -> Result<(), SignalError> {
+        if !is_signalable(pid) {
+            return Err(SignalError::Delivery {
+                pid,
+                reason: UNSAFE_PID_REASON.to_string(),
+            });
+        }
         if self.signal(signal, &group_target(pid), pid).await.is_ok() {
             return Ok(());
         }
@@ -106,6 +114,10 @@ impl Signaler for KillSignaler {
         let signal = self.stop_signal.clone();
         self.deliver(&signal, pid).await
     }
+}
+
+fn is_signalable(pid: u32) -> bool {
+    pid >= LOWEST_SIGNALABLE_PID && i32::try_from(pid).is_ok()
 }
 
 fn group_target(pid: u32) -> String {

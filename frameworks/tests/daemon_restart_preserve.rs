@@ -300,7 +300,7 @@ fn killing_a_daemon_that_will_not_leave_reports_a_failure() {
     let recorded = std::fs::read_to_string(&pid_file).expect("the daemon pid file");
 
     let mut decoy = std::process::Command::new("/bin/sh")
-        .args(["-c", "sleep 30"])
+        .args(["-c", "exec sleep 30"])
         .spawn()
         .expect("should spawn a decoy");
     std::fs::write(&pid_file, decoy.id().to_string()).expect("point the pid file at the decoy");

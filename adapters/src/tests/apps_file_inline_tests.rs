@@ -7,6 +7,7 @@ use crate::{
 
 const NAME: &str = "mihomo-rule";
 const PROGRAM: &str = "/opt/homebrew/bin/mihomo";
+const INSTALLED_PROGRAM: &str = "/bin/sh";
 const CWD: &str = "/home/dev/.pm3/mihomo-rule";
 
 const HOME: &str = "/home/dev";
@@ -199,11 +200,12 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
     .expect("the fixture defaults should build");
     let mut asked = request(&[], &[]);
     asked.cwd = None;
+    asked.program = INSTALLED_PROGRAM;
     let entry = inline_entry(&asked).expect("the request should resolve");
     let specs = [resolve_checked(&defaults, &entry).expect("the inline app should resolve")];
     assert_eq!(specs.len(), 1);
     assert_eq!(specs[0].cwd, "/tmp/pm3-fixture/mihomo-rule");
-    assert_eq!(specs[0].script, PROGRAM);
+    assert_eq!(specs[0].script, INSTALLED_PROGRAM);
 }
 
 #[test]
