@@ -212,6 +212,19 @@ pub fn wait_for_log(path: &Path, needle: &str) -> String {
     panic!("{} should mention {needle}", path.display())
 }
 
+pub fn wait_for_listing(home: &Home, needle: &str) -> String {
+    let deadline = std::time::Instant::now() + READY_BUDGET;
+    let mut shown = String::new();
+    while std::time::Instant::now() < deadline {
+        shown = stdout_of(&pm3(home, &["list"]));
+        if shown.contains(needle) {
+            return shown;
+        }
+        std::thread::sleep(PROBE_INTERVAL);
+    }
+    panic!("the listing should mention {needle} inside the budget, saw:\n{shown}")
+}
+
 pub fn signal(pid: u32, name: &str) {
     let status = std::process::Command::new("/bin/kill")
         .args([name, &pid.to_string()])
