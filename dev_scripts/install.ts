@@ -118,10 +118,13 @@ async function replaceBinary(destination: string): Promise<void> {
   await rename(staged, destination);
 }
 
-async function overwrittenByInstall(
+export async function overwrittenByInstall(
   binary: string,
   source: string,
 ): Promise<string[]> {
+  if (!(await Bun.file(binary).exists())) {
+    return [];
+  }
   const planned = await capture([
     binary,
     "--config",
