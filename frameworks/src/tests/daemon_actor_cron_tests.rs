@@ -1,4 +1,4 @@
-use adapters::StartKind;
+use adapters::{StartKind, SupervisionRequest};
 
 use super::{shared::*, test_helpers::*, *};
 
@@ -180,7 +180,7 @@ async fn everything_stopped_together_stays_disarmed_across_a_daemon_restart() {
 async fn a_cron_fire_cancels_the_delayed_restart_it_replaces() {
     let mut harness = harness();
     start_scheduled(&mut harness, "tick", "* * * * *").await;
-    harness.daemon.board.schedule_restart("tick", 60_000);
+    queue_restart(&mut harness, "tick", 60_000);
     let armed = armed_fire(&mut harness, "tick").await;
     harness.daemon.on_fire("tick", armed).await;
     let pid = described(&mut harness, "tick")

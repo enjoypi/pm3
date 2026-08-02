@@ -1,48 +1,90 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use adapters::TimerState;
+use adapters::{ExitOutcome, SupervisionEffect};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use super::events::DaemonEvent;
+use super::{events::DaemonEvent, ports::DaemonPorts};
 
 #[derive(Debug)]
-pub struct TimerBoard {
+pub struct TaskBoard {
     events: mpsc::Sender<DaemonEvent>,
-    state: TimerState,
-    fire_tasks: HashMap<String, JoinHandle<()>>,
-    restart_tasks: HashMap<String, JoinHandle<()>>,
-    force_kill_tasks: HashMap<String, JoinHandle<()>>,
+    ports: Arc<DaemonPorts>,
+    fires: HashMap<String, JoinHandle<()>>,
+    restarts: HashMap<String, JoinHandle<()>>,
+    force_kills: HashMap<String, JoinHandle<()>>,
 }
 
-impl TimerBoard {
+impl TaskBoard {
     #[must_use]
-    pub fn new(events: mpsc::Sender<DaemonEvent>) -> Self {
+    pub fn new(events: mpsc::Sender<DaemonEvent>, ports: Arc<DaemonPorts>) -> Self {
         Self {
             events,
-            state: TimerState::new(),
-            fire_tasks: HashMap::new(),
-            restart_tasks: HashMap::new(),
-            force_kill_tasks: HashMap::new(),
+            ports,
+            fires: HashMap::new(),
+            restarts: HashMap::new(),
+            force_kills: HashMap::new(),
+        }
+    }
+
+    pub fn apply(&mut self, effect: SupervisionEffect) {
+        use SupervisionEffect as Se;
+
+        match effect {
+            Se::ArmTimer {
+                name,
+                fire_at_ms,
+                delay_ms,
+            } => self.arm(name, fire_at_ms, delay_ms),
+            Se::DisarmTimer { name } => abort(self.fires.remove(&name)),
+            Se::ScheduleRestart { name, delay_ms } => self.schedule_restart(name, delay_ms),
+            Se::CancelRestart { name } => abort(self.restarts.remove(&name)),
+            Se::ScheduleForceKill {
+                name,
+                generation,
+                pid,
+                token,
+                delay_ms,
+            } => self.schedule_force_kill(name, generation, pid, token, delay_ms),
+            Se::CancelForceKill { name } => abort(self.force_kills.remove(&name)),
+            Se::WatchExit {
+                name,
+                generation,
+                pid,
+                token,
+            } => self.watch(name, generation, pid, token),
         }
     }
 
     #[must_use]
-    pub fn next_fire_of(&self, name: &str) -> Option<u64> {
-        self.state.next_fire_of(name)
+    pub fn has_force_kill(&self, name: &str) -> bool {
+        self.force_kills.contains_key(name)
     }
 
-    #[must_use]
-    pub fn fire_is_due(&self, name: &str, fire_at_ms: u64) -> bool {
-        self.state.fire_is_due(name, fire_at_ms)
-    }
-
-    pub fn arm(&mut self, name: &str, fire_at_ms: u64, delay: Duration) {
-        self.disarm(name);
-        self.state.arm(name, fire_at_ms);
+    fn watch(&self, name: String, generation: u64, pid: u32, token: Option<String>) {
+        let ports = Arc::clone(&self.ports);
         let events = self.events.clone();
-        let fired = name.to_string();
+        tokio::spawn(async move {
+            let outcome = ports
+                .wait(pid, token)
+                .await
+                .unwrap_or(ExitOutcome { exit_code: None });
+            events
+                .send(DaemonEvent::Exited {
+                    name,
+                    generation,
+                    outcome,
+                })
+                .await
+                .ok();
+        });
+    }
+
+    fn arm(&mut self, name: String, fire_at_ms: u64, delay_ms: u64) {
+        abort(self.fires.remove(&name));
+        let events = self.events.clone();
+        let fired = name.clone();
         let task = tokio::spawn(async move {
-            tokio::time::sleep(delay).await;
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             events
                 .send(DaemonEvent::Fire {
                     name: fired,
@@ -51,25 +93,13 @@ impl TimerBoard {
                 .await
                 .ok();
         });
-        self.fire_tasks.insert(name.to_string(), task);
+        self.fires.insert(name, task);
     }
 
-    pub fn disarm(&mut self, name: &str) {
-        self.state.disarm(name);
-        abort(self.fire_tasks.remove(name));
-    }
-
-    pub fn disarm_all(&mut self) {
-        for name in self.state.disarm_all() {
-            abort(self.fire_tasks.remove(&name));
-        }
-    }
-
-    pub fn schedule_restart(&mut self, name: &str, delay_ms: u64) {
-        self.cancel_restart(name);
-        self.state.queue_restart(name);
+    fn schedule_restart(&mut self, name: String, delay_ms: u64) {
+        abort(self.restarts.remove(&name));
         let events = self.events.clone();
-        let restarted = name.to_string();
+        let restarted = name.clone();
         let task = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             events
@@ -77,42 +107,22 @@ impl TimerBoard {
                 .await
                 .ok();
         });
-        self.restart_tasks.insert(name.to_string(), task);
+        self.restarts.insert(name, task);
     }
 
-    pub fn claim_restart(&mut self, name: &str) -> bool {
-        self.restart_tasks.remove(name);
-        self.state.claim_restart(name)
-    }
-
-    pub fn cancel_restart(&mut self, name: &str) {
-        self.state.cancel_restart(name);
-        abort(self.restart_tasks.remove(name));
-    }
-
-    pub fn cancel_all_restarts(&mut self) {
-        for name in self.state.cancel_all_restarts() {
-            abort(self.restart_tasks.remove(&name));
-        }
-    }
-
-    pub fn schedule_force_kill(
+    fn schedule_force_kill(
         &mut self,
-        name: &str,
-        pid: Option<u32>,
+        name: String,
+        generation: u64,
+        pid: u32,
         token: Option<String>,
-        delay: Duration,
+        delay_ms: u64,
     ) {
-        let Some(pid) = pid else {
-            return;
-        };
-        self.cancel_force_kill(name);
-        self.state.queue_force_kill(name);
+        abort(self.force_kills.remove(&name));
         let events = self.events.clone();
-        let doomed = name.to_string();
-        let generation = self.state.current_generation(name);
+        let doomed = name.clone();
         let task = tokio::spawn(async move {
-            tokio::time::sleep(delay).await;
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             events
                 .send(DaemonEvent::ForceKill {
                     name: doomed,
@@ -123,30 +133,7 @@ impl TimerBoard {
                 .await
                 .ok();
         });
-        self.force_kill_tasks.insert(name.to_string(), task);
-    }
-
-    pub fn cancel_force_kill(&mut self, name: &str) {
-        self.state.cancel_force_kill(name);
-        abort(self.force_kill_tasks.remove(name));
-    }
-
-    #[must_use]
-    pub fn has_force_kill(&self, name: &str) -> bool {
-        self.state.has_force_kill(name)
-    }
-
-    pub fn bump(&mut self, name: &str) -> u64 {
-        self.state.bump(name)
-    }
-
-    pub fn forget_generation(&mut self, name: &str) {
-        self.state.forget_generation(name);
-    }
-
-    #[must_use]
-    pub fn is_current(&self, name: &str, generation: u64) -> bool {
-        self.state.is_current(name, generation)
+        self.force_kills.insert(name, task);
     }
 }
 
@@ -154,24 +141,4 @@ fn abort(task: Option<JoinHandle<()>>) {
     if let Some(task) = task {
         task.abort();
     }
-}
-
-pub fn log_armed(app: &str, fire_at_ms: u64) {
-    tracing::debug!(
-        feature = "supervisor",
-        action = "arm",
-        app,
-        fire_at_ms,
-        "pm3 daemon armed the next cron fire",
-    );
-}
-
-pub fn log_unschedulable(app: &str, cron: &str) {
-    tracing::warn!(
-        feature = "supervisor",
-        action = "arm",
-        app,
-        cron,
-        "pm3 daemon cannot work out a next fire for a schedule",
-    );
 }

@@ -1,33 +1,22 @@
 use std::{sync::Arc, time::Duration};
 
 use adapters::{
-    AppSelector, Clock as _, DaemonCommand, ExitAction, ExitOutcome, ProcessProbe as _,
-    ProcessTable, ProcessView, RestartOutcome, Scheduler as _, Signaler as _, SpecResolver as _,
-    SpecSource, StartKind, StartOutcome, StartReport, SupervisionOutcome, SupervisionReply,
-    SupervisionRequest, armed_schedule_names, delete_app, describe_app, handle_child_exit,
-    identity_token_of, is_drained, list_apps, owner_of_pid, persist_for_handover, pid_was_recycled,
-    refused_services, restart_app, resurrect, running_pids, schedule_of, start_apps, stop_all_apps,
-    stop_app, unsettled_count,
+    DaemonCommand, ExitOutcome, ProcessLauncher as _, Signaler as _, SpecSource, SupervisionEffect,
+    SupervisionOutcome, SupervisionRequest, Supervisor,
 };
 use tokio::sync::mpsc;
 
-use super::{
-    events::DaemonEvent,
-    logging::{
-        log_failure, log_handover, log_partial_start, log_settled, log_spared_force_kill,
-        log_stale_restart, log_stuck_force_kill,
-    },
-    ports::DaemonPorts,
-    timers::{TimerBoard, log_armed, log_unschedulable},
-};
+use super::{events::DaemonEvent, ports::DaemonPorts, timers::TaskBoard};
 
 #[derive(Debug)]
 pub struct Daemon {
     pub(super) events: mpsc::Sender<DaemonEvent>,
-    table: ProcessTable,
+    supervisor: Supervisor,
     ports: Arc<DaemonPorts>,
     specs: SpecSource,
-    board: TimerBoard,
+    board: TaskBoard,
+    poll_interval_ms: u64,
+    kill_timeout_ms: u64,
 }
 
 impl Daemon {
@@ -37,133 +26,66 @@ impl Daemon {
         ports: Arc<DaemonPorts>,
         events: mpsc::Sender<DaemonEvent>,
     ) -> Self {
+        let kill_timeout_ms = specs.config.kill_timeout_ms;
         Self {
-            table: ProcessTable::new(),
+            supervisor: Supervisor::new(specs.logs_dir.clone(), kill_timeout_ms),
+            board: TaskBoard::new(events.clone(), Arc::clone(&ports)),
             ports,
+            poll_interval_ms: specs.config.daemon_poll_interval_ms.max(1),
+            kill_timeout_ms,
             specs,
-            board: TimerBoard::new(events.clone()),
             events,
         }
     }
 
     pub async fn resurrect_saved_apps(&mut self) {
-        let kill_timeout_ms = self.specs.config.kill_timeout_ms;
-        match resurrect(
-            &mut self.table,
-            &self.specs.logs_dir,
-            kill_timeout_ms,
-            &*self.ports,
-        )
-        .await
-        {
-            Ok(outcomes) => self.watch_all(&outcomes),
-            Err(error) => log_failure("resurrect", "-", &error),
-        }
-        self.arm_known_timers();
+        let effects = self.supervisor.resurrect_saved(&*self.ports).await;
+        self.run(effects);
     }
 
     pub async fn handle(&mut self, request: SupervisionRequest) -> SupervisionOutcome {
-        match request {
-            SupervisionRequest::Start { services } => self.start(&services).await,
-            SupervisionRequest::List => Ok(SupervisionReply::Listed(
-                list_apps(&self.table, self.ports.now_ms())
-                    .into_iter()
-                    .map(|view| self.with_next_fire(view))
-                    .collect(),
-            )),
-            SupervisionRequest::Describe(selector) => self.describe(&selector),
-            SupervisionRequest::Stop(selector) => self.stop(&selector).await,
-            SupervisionRequest::Restart(selector) => self.restart(&selector).await,
-            SupervisionRequest::Delete(selector) => self.delete(&selector).await,
-            SupervisionRequest::StopAll => self.stop_all().await,
-        }
+        let (outcome, effects) = self
+            .supervisor
+            .handle(request, &self.specs, &*self.ports)
+            .await;
+        self.run(effects);
+        outcome
     }
 
     pub async fn on_exit(&mut self, name: &str, generation: u64, outcome: ExitOutcome) {
-        if !self.board.is_current(name, generation) {
-            return;
-        }
-        self.board.cancel_force_kill(name);
-        match handle_child_exit(&mut self.table, name, outcome, &*self.ports).await {
-            Ok(ExitAction::RestartAfter { delay_ms }) => {
-                self.board.schedule_restart(name, delay_ms);
-            }
-            Ok(ExitAction::Settled { status }) => log_settled(name, status),
-            Err(error) => log_failure("exit", name, &error),
-        }
+        let effects = self
+            .supervisor
+            .on_exit(name, generation, outcome, &*self.ports)
+            .await;
+        self.run(effects);
     }
 
     pub async fn on_restart(&mut self, name: &str) {
-        if !self.board.claim_restart(name) {
-            log_stale_restart(name);
-            return;
-        }
-        self.restart_now(name).await;
+        let effects = self.supervisor.on_restart(name, &*self.ports).await;
+        self.run(effects);
     }
 
-    pub(super) async fn restart_now(&mut self, name: &str) {
-        self.board.cancel_restart(name);
-        let attempt = restart_app(
-            &mut self.table,
-            &AppSelector::Name(name.to_string()),
-            &self.specs.logs_dir,
-            &*self.ports,
-        )
-        .await;
-        match attempt {
-            Ok(outcome) => {
-                let restarted = self.dispatch_restart(outcome);
-                self.arm_timer(&restarted);
-            }
-            Err(error) => log_failure("restart", name, &error),
-        }
-    }
-
-    fn dispatch_restart(&mut self, outcome: RestartOutcome) -> String {
-        match outcome {
-            RestartOutcome::Started(started) => {
-                let name = started.name.clone();
-                self.watch(&started);
-                name
-            }
-            RestartOutcome::AwaitingExit {
-                name,
-                force_kill_pid,
-            } => {
-                let token = self.identity_token(&name);
-                self.schedule_force_kill(&name, force_kill_pid, token);
-                name
-            }
-        }
+    pub async fn on_fire(&mut self, name: &str, fire_at_ms: u64) {
+        let effects = self
+            .supervisor
+            .on_fire(name, fire_at_ms, &*self.ports)
+            .await;
+        self.run(effects);
     }
 
     pub async fn on_force_kill(&self, name: &str, generation: u64, pid: u32, token: Option<&str>) {
-        if !self.board.is_current(name, generation) {
-            return;
-        }
-        if !self.ports.tracked_pids().await.contains(&pid) {
-            return;
-        }
-        if pid_was_recycled(&self.ports.identity(pid).await, token) {
-            log_spared_force_kill(name, pid);
-            return;
-        }
-        if let Err(error) = self.ports.force_kill(pid).await {
-            log_stuck_force_kill(name, pid, &error.to_string());
-        }
+        self.supervisor
+            .on_force_kill(name, generation, pid, token, &*self.ports)
+            .await;
     }
 
     pub async fn shutdown(&mut self) {
-        self.board.disarm_all();
-        self.board.cancel_all_restarts();
-        match persist_for_handover(&self.table, &*self.ports).await {
-            Ok(draining) => log_handover(draining.len()),
-            Err(error) => log_failure("shutdown", "-", &error),
-        }
+        let effects = self.supervisor.prepare_shutdown(&*self.ports).await;
+        self.run(effects);
         if !self.wait_until_drained().await {
             self.force_kill_survivors().await;
         }
-        let survivors = unsettled_count(&self.table);
+        let survivors = self.supervisor.unsettled();
         tracing::info!(
             feature = "lifecycle",
             action = "shutdown",
@@ -200,136 +122,32 @@ impl Daemon {
         }
     }
 
-    async fn start(&mut self, services: &[String]) -> SupervisionOutcome {
-        let mut specs = Vec::with_capacity(services.len());
-        for name in services {
-            specs.push(self.specs.prepare(name).await?);
-        }
-        let report = start_apps(&mut self.table, &specs, &self.specs.logs_dir, &*self.ports).await;
-        let StartReport { outcomes, failure } = report;
-        self.watch_all(&outcomes);
-        for outcome in &outcomes {
-            self.board.cancel_restart(&outcome.name);
-            match outcome.kind {
-                StartKind::AlreadyRunning => self.reconcile_timer(&outcome.name),
-                StartKind::Spawned | StartKind::Adopted | StartKind::Scheduled => {
-                    self.arm_timer(&outcome.name);
-                }
-            }
-        }
-        let Some(error) = failure else {
-            return Ok(SupervisionReply::Started {
-                outcomes,
-                refused: Vec::new(),
-                reason: None,
-            });
-        };
-        if outcomes.is_empty() {
-            return Err(error.into());
-        }
-        let refused = refused_services(services, &outcomes);
-        log_partial_start(&refused, &error);
-        Ok(SupervisionReply::Started {
-            outcomes,
-            refused,
-            reason: Some(error.to_string()),
-        })
-    }
-
-    fn describe(&self, selector: &AppSelector) -> SupervisionOutcome {
-        let view = describe_app(&self.table, selector, self.ports.now_ms())?;
-        Ok(SupervisionReply::Described(self.with_next_fire(view)))
-    }
-
-    async fn stop(&mut self, selector: &AppSelector) -> SupervisionOutcome {
-        let outcome = stop_app(&mut self.table, selector, &*self.ports).await?;
-        self.board.disarm(&outcome.name);
-        self.board.cancel_restart(&outcome.name);
-        let token = self.identity_token(&outcome.name);
-        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
-        Ok(SupervisionReply::Stopped { name: outcome.name })
-    }
-
-    async fn restart(&mut self, selector: &AppSelector) -> SupervisionOutcome {
-        let outcome = restart_app(
-            &mut self.table,
-            selector,
-            &self.specs.logs_dir,
-            &*self.ports,
-        )
-        .await?;
-        let name = self.dispatch_restart(outcome);
-        self.board.cancel_restart(&name);
-        self.arm_timer(&name);
-        Ok(SupervisionReply::Restarted { name })
-    }
-
-    async fn delete(&mut self, selector: &AppSelector) -> SupervisionOutcome {
-        let token = identity_token_of(&self.table, selector);
-        let outcome = delete_app(&mut self.table, selector, &*self.ports).await?;
-        self.board.disarm(&outcome.name);
-        self.board.cancel_restart(&outcome.name);
-        self.board.forget_generation(&outcome.name);
-        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
-        Ok(SupervisionReply::Deleted { name: outcome.name })
-    }
-
-    async fn stop_all(&mut self) -> SupervisionOutcome {
-        self.board.disarm_all();
-        self.board.cancel_all_restarts();
-        let stopped = stop_all_apps(&mut self.table, &*self.ports).await?;
-        let mut names = Vec::with_capacity(stopped.len());
-        let mut covered = Vec::with_capacity(stopped.len());
-        for outcome in &stopped {
-            names.push(outcome.name.clone());
-            covered.extend(outcome.force_kill_pid);
-            let token = self.identity_token(&outcome.name);
-            self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
-        }
-        self.sweep_strays(&covered).await;
-        Ok(SupervisionReply::StoppedAll { names })
-    }
-
-    async fn sweep_strays(&mut self, covered: &[u32]) {
-        let strays: Vec<u32> = self
-            .ports
-            .tracked_pids()
-            .await
-            .into_iter()
-            .filter(|pid| !covered.contains(pid))
-            .collect();
-        for pid in strays {
-            let (name, token) = owner_of_pid(&self.table, pid);
-            self.schedule_force_kill(&name, Some(pid), token);
+    fn run(&mut self, effects: Vec<SupervisionEffect>) {
+        for effect in effects {
+            self.board.apply(effect);
         }
     }
 
     async fn wait_until_drained(&self) -> bool {
-        let budget_ms = self.specs.config.kill_timeout_ms;
-        let step_ms = self.specs.config.daemon_poll_interval_ms.max(1);
         let mut waited_ms = 0;
-        while waited_ms < budget_ms {
+        while waited_ms < self.kill_timeout_ms {
             if self.drained().await {
                 return true;
             }
-            tokio::time::sleep(Duration::from_millis(step_ms)).await;
-            waited_ms = waited_ms.saturating_add(step_ms);
+            tokio::time::sleep(Duration::from_millis(self.poll_interval_ms)).await;
+            waited_ms = waited_ms.saturating_add(self.poll_interval_ms);
         }
         self.drained().await
     }
 
     async fn drained(&self) -> bool {
-        let tracked = self.ports.tracked_pids().await;
-        is_drained(&tracked, &running_pids(&self.table))
+        self.supervisor.drained(&self.ports.tracked_pids().await)
     }
 
     async fn force_kill_survivors(&self) {
-        let preserved = running_pids(&self.table);
+        let tracked = self.ports.tracked_pids().await;
         let mut sweeps = Vec::new();
-        for pid in self.ports.tracked_pids().await {
-            if preserved.contains(&pid) {
-                continue;
-            }
+        for pid in self.supervisor.survivor_pids(&tracked) {
             let ports = Arc::clone(&self.ports);
             sweeps.push(tokio::spawn(
                 async move { ports.force_kill(pid).await.ok() },
@@ -338,90 +156,6 @@ impl Daemon {
         for sweep in sweeps {
             sweep.await.ok();
         }
-    }
-
-    pub async fn on_fire(&mut self, name: &str, fire_at_ms: u64) {
-        if !self.board.fire_is_due(name, fire_at_ms) {
-            return;
-        }
-        self.restart_now(name).await;
-    }
-
-    fn with_next_fire(&self, view: ProcessView) -> ProcessView {
-        let next_fire_ms = self.board.next_fire_of(&view.name);
-        ProcessView {
-            next_fire_ms,
-            ..view
-        }
-    }
-
-    fn arm_known_timers(&mut self) {
-        for name in armed_schedule_names(&self.table) {
-            self.arm_timer(&name);
-        }
-    }
-
-    fn arm_timer(&mut self, name: &str) {
-        self.board.disarm(name);
-        let Some(cron) = schedule_of(&self.table, name) else {
-            return;
-        };
-        let now_ms = self.ports.now_ms();
-        let Some(fire_at_ms) = self.ports.next_fire_ms(&cron, now_ms) else {
-            log_unschedulable(name, &cron);
-            return;
-        };
-        log_armed(name, fire_at_ms);
-        let delay = Duration::from_millis(fire_at_ms.saturating_sub(now_ms));
-        self.board.arm(name, fire_at_ms, delay);
-    }
-
-    fn reconcile_timer(&mut self, name: &str) {
-        if schedule_of(&self.table, name).is_some() {
-            self.arm_timer(name);
-        } else {
-            self.board.disarm(name);
-        }
-    }
-
-    fn schedule_force_kill(&mut self, name: &str, pid: Option<u32>, token: Option<String>) {
-        let delay = Duration::from_millis(self.specs.config.kill_timeout_ms);
-        self.board.schedule_force_kill(name, pid, token, delay);
-    }
-
-    fn watch_all(&mut self, outcomes: &[StartOutcome]) {
-        for outcome in outcomes {
-            self.watch(outcome);
-        }
-    }
-
-    fn watch(&mut self, started: &StartOutcome) {
-        let (Some(pid), true) = (started.pid, started.kind.needs_watching()) else {
-            return;
-        };
-        let token = self.identity_token(&started.name);
-        let generation = self.board.bump(&started.name);
-        let ports = Arc::clone(&self.ports);
-        let events = self.events.clone();
-        let name = started.name.clone();
-        tokio::spawn(async move {
-            let outcome = ports
-                .wait(pid, token)
-                .await
-                .unwrap_or(ExitOutcome { exit_code: None });
-            events
-                .send(DaemonEvent::Exited {
-                    name,
-                    generation,
-                    outcome,
-                })
-                .await
-                .ok();
-        });
-    }
-
-    fn identity_token(&self, name: &str) -> Option<String> {
-        identity_token_of(&self.table, &AppSelector::Name(name.to_string()))
     }
 }
 

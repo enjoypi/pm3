@@ -50,6 +50,8 @@ pub trait ProcessLauncher: Send + Sync {
     ) -> impl Future<Output = Result<LaunchedProcess, LaunchError>> + Send;
 
     fn adopt(&self, pid: u32) -> impl Future<Output = ()> + Send;
+
+    fn tracked_pids(&self) -> impl Future<Output = Vec<u32>> + Send;
 }
 
 #[cfg(test)]

@@ -47,6 +47,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 调度
 
 - `random_expand.rs` MUST 在**每次 `arm_timer`** 才把 `~`/`a~b`/`a~b/n` 展开成具体数字交 croner；只在加载时展开一次就丢掉了「每次触发重新摇号」这个需求
+- croner 的 `find_next_occurrence` 会把入参 `start` 的**亚秒余数原样带进结果**（`10:00:00.400` 问出 `10:55:00.400`）→ 同一个 cron 周期在不同时刻问会得到不同的 `fire_at_ms`，两次 `arm` 一旦跨整秒边界，`Fire` 事件就因 `fire_is_due` 比对不上而被丢弃（症状：cron 测试约 0.5% 概率 flake，`next_fire_ms` 尾巴上多个 `001`）。MUST 在 `next_fire_ms` 里先把入参截到整秒（`after_ms - after_ms % MILLIS_PER_SECOND`）
 
 ### 服务管理器
 

@@ -36,3 +36,16 @@ fn log_file_error_names_the_path() {
         "cannot open log file '/logs/api-out.log' for app 'api': permission denied"
     );
 }
+
+#[tokio::test]
+async fn a_launcher_tracks_the_pids_it_handed_out() {
+    let ports = crate::ports_test_helpers::FakePorts::new(1000);
+    ports.adopt(4321).await;
+    assert_eq!(ports.tracked_pids().await, vec![4321]);
+}
+
+#[tokio::test]
+async fn a_launcher_that_handed_out_nothing_tracks_nothing() {
+    let ports = crate::ports_test_helpers::FakePorts::new(1000);
+    assert!(ports.tracked_pids().await.is_empty());
+}

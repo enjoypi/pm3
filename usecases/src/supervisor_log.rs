@@ -1,6 +1,8 @@
-use adapters::{ProcessStatus, UsecaseError};
+use entities::ProcessStatus;
 
-pub(super) fn log_settled(app: &str, status: ProcessStatus) {
+use crate::UsecaseError;
+
+pub fn log_settled(app: &str, status: ProcessStatus) {
     let status = status.as_str();
     tracing::debug!(
         feature = "supervisor",
@@ -11,7 +13,7 @@ pub(super) fn log_settled(app: &str, status: ProcessStatus) {
     );
 }
 
-pub(super) fn log_stale_restart(app: &str) {
+pub fn log_stale_restart(app: &str) {
     tracing::debug!(
         feature = "supervisor",
         action = "restart",
@@ -20,7 +22,7 @@ pub(super) fn log_stale_restart(app: &str) {
     );
 }
 
-pub(super) fn log_spared_force_kill(app: &str, pid: u32) {
+pub fn log_spared_force_kill(app: &str, pid: u32) {
     tracing::warn!(
         feature = "supervisor",
         action = "force_kill",
@@ -30,7 +32,7 @@ pub(super) fn log_spared_force_kill(app: &str, pid: u32) {
     );
 }
 
-pub(super) fn log_stuck_force_kill(app: &str, pid: u32, reason: &str) {
+pub fn log_stuck_force_kill(app: &str, pid: u32, reason: &str) {
     tracing::warn!(
         feature = "supervisor",
         action = "force_kill",
@@ -41,7 +43,7 @@ pub(super) fn log_stuck_force_kill(app: &str, pid: u32, reason: &str) {
     );
 }
 
-pub(super) fn log_handover(draining: usize) {
+pub fn log_handover(draining: usize) {
     tracing::debug!(
         feature = "lifecycle",
         action = "shutdown",
@@ -50,7 +52,7 @@ pub(super) fn log_handover(draining: usize) {
     );
 }
 
-pub(super) fn log_partial_start(refused: &[String], error: &UsecaseError) {
+pub fn log_partial_start(refused: &[String], error: &UsecaseError) {
     let apps = refused.join(",");
     let reason = error.to_string();
     tracing::warn!(
@@ -62,7 +64,7 @@ pub(super) fn log_partial_start(refused: &[String], error: &UsecaseError) {
     );
 }
 
-pub(super) fn log_failure(action: &str, app: &str, error: &UsecaseError) {
+pub fn log_failure(action: &str, app: &str, error: &UsecaseError) {
     let reason = error.to_string();
     tracing::warn!(
         feature = "supervisor",
@@ -70,5 +72,25 @@ pub(super) fn log_failure(action: &str, app: &str, error: &UsecaseError) {
         app,
         reason,
         "pm3 daemon cannot finish a supervision step",
+    );
+}
+
+pub fn log_armed(app: &str, fire_at_ms: u64) {
+    tracing::debug!(
+        feature = "supervisor",
+        action = "arm",
+        app,
+        fire_at_ms,
+        "pm3 daemon armed the next cron fire",
+    );
+}
+
+pub fn log_unschedulable(app: &str, cron: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "arm",
+        app,
+        cron,
+        "pm3 daemon cannot work out a next fire for a schedule",
     );
 }

@@ -144,3 +144,13 @@ fn a_pid_no_record_owns_is_labelled_a_stray() {
     assert_eq!(name, "stray-4321");
     assert!(token.is_none());
 }
+
+#[test]
+fn a_tracked_pid_already_scheduled_for_a_kill_is_not_swept_again() {
+    assert!(unswept_pids(&[100, 200], &[100, 200]).is_empty());
+}
+
+#[test]
+fn a_tracked_pid_no_kill_covers_is_swept() {
+    assert_eq!(unswept_pids(&[100, 200], &[100]), vec![200]);
+}

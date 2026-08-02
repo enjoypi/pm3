@@ -1,6 +1,9 @@
 use std::{fmt::Write as _, path::PathBuf, time::Duration};
 
-use adapters::{DaemonCommand, Pm3Paths, SupervisionOutcome, resolve_paths, service_file_of};
+use adapters::{
+    AppSelector, DaemonCommand, Pm3Paths, SupervisionOutcome, SupervisionRequest, resolve_paths,
+    service_file_of,
+};
 use tokio::sync::oneshot;
 
 use super::*;
@@ -133,6 +136,11 @@ pub fn command(
 ) -> (DaemonCommand, oneshot::Receiver<SupervisionOutcome>) {
     let (reply, answer) = oneshot::channel();
     (DaemonCommand { request, reply }, answer)
+}
+
+pub fn queue_restart(harness: &mut Harness, name: &str, delay_ms: u64) {
+    let effect = harness.daemon.supervisor.queue_restart(name, delay_ms);
+    harness.daemon.board.apply(effect);
 }
 
 pub fn selector(name: &str) -> AppSelector {

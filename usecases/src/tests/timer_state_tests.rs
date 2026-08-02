@@ -86,20 +86,6 @@ fn cancelling_every_restart_names_what_it_cancelled() {
 }
 
 #[test]
-fn a_queued_force_kill_is_visible_until_it_is_cancelled() {
-    let mut state = TimerState::new();
-    state.queue_force_kill("web");
-    assert!(state.has_force_kill("web"));
-    assert!(state.cancel_force_kill("web"));
-    assert!(!state.has_force_kill("web"));
-}
-
-#[test]
-fn cancelling_a_force_kill_that_was_never_queued_reports_nothing_to_do() {
-    assert!(!TimerState::new().cancel_force_kill("web"));
-}
-
-#[test]
 fn an_app_that_never_launched_sits_at_the_first_generation() {
     let state = TimerState::new();
     assert!(state.is_current("web", 0));

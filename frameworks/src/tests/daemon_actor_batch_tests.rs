@@ -1,3 +1,5 @@
+use adapters::{SupervisionReply, SupervisionRequest};
+
 use super::*;
 
 async fn half_started_batch(harness: &mut Harness) -> SupervisionReply {

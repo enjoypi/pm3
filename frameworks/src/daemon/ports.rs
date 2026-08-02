@@ -61,10 +61,6 @@ impl DaemonPorts {
         )
         .await
     }
-
-    pub async fn tracked_pids(&self) -> Vec<u32> {
-        self.launcher.tracked_pids().await
-    }
 }
 
 impl Clock for DaemonPorts {
@@ -118,6 +114,10 @@ impl ProcessLauncher for DaemonPorts {
 
     async fn adopt(&self, pid: u32) {
         self.launcher.adopt(pid).await;
+    }
+
+    async fn tracked_pids(&self) -> Vec<u32> {
+        self.launcher.tracked_pids().await
     }
 }
 
