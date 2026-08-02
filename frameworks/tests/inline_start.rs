@@ -9,8 +9,8 @@ use self::common::{PM3, home, pm3, pm3_with_stdin, shutdown_daemon, stderr_of, s
 
 const NAME: &str = "sleeper";
 
-fn svc_file(home: &self::common::Home) -> std::path::PathBuf {
-    home.root.join("svc").join(format!("{NAME}.yaml"))
+fn service_file_at(home: &self::common::Home) -> std::path::PathBuf {
+    home.root.join("service").join(format!("{NAME}.yaml"))
 }
 
 fn start_inline(home: &self::common::Home, extra: &[&str]) -> std::process::Output {
@@ -46,7 +46,10 @@ fn an_inline_program_becomes_a_managed_service() {
         stdout_of(&listed)
     );
 
-    assert!(svc_file(&home).is_file(), "the service file should exist");
+    assert!(
+        service_file_at(&home).is_file(),
+        "the service file should exist"
+    );
     assert!(
         home.root.join(NAME).is_dir(),
         "the working directory should exist"
@@ -60,7 +63,7 @@ fn the_config_file_carries_no_machine_specific_paths() {
     let home = home();
     let started = start_inline(&home, &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
-    let written = std::fs::read_to_string(svc_file(&home)).expect("read the config file");
+    let written = std::fs::read_to_string(service_file_at(&home)).expect("read the config file");
     assert!(written.contains("__sleep"), "{written}");
     assert!(
         !written.contains("cwd:"),
@@ -82,7 +85,7 @@ fn the_config_file_carries_no_machine_specific_paths() {
 fn a_changed_service_file_blocks_a_restart_until_forced() {
     let home = home();
     assert!(start_inline(&home, &[]).status.success(), "first start");
-    std::fs::write(svc_file(&home), "apps: []\n").expect("edit the service file");
+    std::fs::write(service_file_at(&home), "apps: []\n").expect("edit the service file");
 
     let refused = start_inline(&home, &[]);
     assert!(!refused.status.success(), "a changed file needs --force");
@@ -196,7 +199,7 @@ fn deleting_a_service_removes_its_file() {
     let deleted = pm3(&home, &["delete", NAME]);
     assert!(deleted.status.success(), "{}", stderr_of(&deleted));
     assert!(
-        !svc_file(&home).exists(),
+        !service_file_at(&home).exists(),
         "the service file should be removed"
     );
     shutdown_daemon(&home);
@@ -222,6 +225,18 @@ fn starting_without_a_target_explains_the_usage() {
     assert!(!refused.status.success(), "start needs a target");
     assert!(
         stderr_of(&refused).contains("exactly one apps file"),
+        "{}",
+        stderr_of(&refused)
+    );
+}
+
+#[test]
+fn naming_a_service_without_a_program_explains_the_usage() {
+    let home = home();
+    let refused = pm3(&home, &["start", "--name", "probe"]);
+    assert!(!refused.status.success(), "--name needs a program");
+    assert!(
+        stderr_of(&refused).contains("needs a program"),
         "{}",
         stderr_of(&refused)
     );

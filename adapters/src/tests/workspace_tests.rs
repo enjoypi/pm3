@@ -90,7 +90,10 @@ async fn every_writable_root_is_resolved_to_its_real_path() {
 #[tokio::test]
 async fn a_placeholder_argument_becomes_the_working_directory() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut spec = spec_with_args(&dir.path().to_string_lossy(), &["-d", SVC_CWD_PLACEHOLDER]);
+    let mut spec = spec_with_args(
+        &dir.path().to_string_lossy(),
+        &["-d", SERVICE_CWD_PLACEHOLDER],
+    );
     materialise_workspace(&mut spec).await;
     assert_eq!(spec.args, vec!["-d".to_string(), spec.cwd.clone()]);
 }
@@ -98,7 +101,10 @@ async fn a_placeholder_argument_becomes_the_working_directory() {
 #[tokio::test]
 async fn a_placeholder_keeps_the_rest_of_the_argument() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut spec = spec_with_args(&dir.path().to_string_lossy(), &["${PM3_SVC_CWD}/data.db"]);
+    let mut spec = spec_with_args(
+        &dir.path().to_string_lossy(),
+        &["${PM3_SERVICE_CWD}/data.db"],
+    );
     materialise_workspace(&mut spec).await;
     assert_eq!(spec.args, vec![format!("{}/data.db", spec.cwd)]);
 }
@@ -108,7 +114,7 @@ async fn every_placeholder_argument_is_expanded() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut spec = spec_with_args(
         &dir.path().to_string_lossy(),
-        &[SVC_CWD_PLACEHOLDER, SVC_CWD_PLACEHOLDER],
+        &[SERVICE_CWD_PLACEHOLDER, SERVICE_CWD_PLACEHOLDER],
     );
     materialise_workspace(&mut spec).await;
     assert_eq!(spec.args, vec![spec.cwd.clone(), spec.cwd.clone()]);
@@ -126,7 +132,7 @@ async fn an_argument_without_the_placeholder_is_left_alone() {
 async fn a_placeholder_expands_to_the_real_path_not_the_symlink() {
     let dir = tempfile::tempdir().expect("temp dir");
     let (link, real) = linked_dir(dir.path());
-    let mut spec = spec_with_args(&link, &[SVC_CWD_PLACEHOLDER]);
+    let mut spec = spec_with_args(&link, &[SERVICE_CWD_PLACEHOLDER]);
     materialise_workspace(&mut spec).await;
     assert_eq!(spec.args, vec![real]);
 }
@@ -135,9 +141,9 @@ async fn a_placeholder_expands_to_the_real_path_not_the_symlink() {
 async fn a_script_shaped_like_the_placeholder_is_left_alone() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut spec = spec_with_args(&dir.path().to_string_lossy(), &[]);
-    spec.script = SVC_CWD_PLACEHOLDER.to_string();
+    spec.script = SERVICE_CWD_PLACEHOLDER.to_string();
     materialise_workspace(&mut spec).await;
-    assert_eq!(spec.script, SVC_CWD_PLACEHOLDER);
+    assert_eq!(spec.script, SERVICE_CWD_PLACEHOLDER);
 }
 
 #[tokio::test]

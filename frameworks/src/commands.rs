@@ -5,9 +5,11 @@ use std::{
 };
 
 use adapters::{
-    APPS_PATH, AppConfig, KillSignaler, LogFollower, Pm3Config, Pm3Paths, ReplyDto,
-    SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, Signaler as _, StartRequestDto,
-    load_and_parse_config, log_paths, read_tail, validate_app_name, wait_until_released,
+    APPS_PATH, AppConfig, DAEMON_NOT_RUNNING, InlineStart, KillSignaler, LogFollower, Pm3Config,
+    Pm3Paths, Reconciled, ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext,
+    ServiceUndo, Signaler as _, app_action_path, app_path, decode_reply, encode_start_request,
+    forget, load_and_parse_config, log_paths, prepare_inline, read_tail, render_daemon_gone,
+    render_daemon_stopped, split_apps_file, validate_app_name, wait_until_released,
 };
 
 use crate::{
@@ -17,11 +19,9 @@ use crate::{
     layout::{
         canonicalize, ensure_layout, host_home, read_pid_file, resolve_cfg_dir, resolve_layout,
     },
-    svc::{self, InlineStart, Reconciled, SvcContext},
 };
 
 pub const FOLLOW_FOREVER: u32 = u32::MAX;
-pub const DAEMON_NOT_RUNNING: &str = "the pm3 daemon is not running";
 pub const STOP_ACTION: &str = "stop";
 pub const RESTART_ACTION: &str = "restart";
 
@@ -42,8 +42,8 @@ pub struct Session {
 
 impl Session {
     #[must_use]
-    pub fn svc_context<'s>(&'s self, home: Option<&'s str>) -> SvcContext<'s> {
-        SvcContext {
+    pub fn service_context<'s>(&'s self, home: Option<&'s str>) -> ServiceContext<'s> {
+        ServiceContext {
             cfg_dir: &self.cfg_dir,
             search_path: &self.config.pm3.search_path,
             home,
@@ -75,16 +75,22 @@ pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Resu
     let resolved = canonical_apps_file(apps_file)?;
     let home = host_home();
     let split =
-        svc::split_apps_file(&session.svc_context(home.as_deref()), &resolved, force).await?;
-    let asked = ask(&session, "POST", APPS_PATH, Some(&start_body(&split.names))).await;
+        split_apps_file(&session.service_context(home.as_deref()), &resolved, force).await?;
+    let asked = ask(
+        &session,
+        "POST",
+        APPS_PATH,
+        Some(&encode_start_request(&split.names)),
+    )
+    .await;
     finish_start(asked, split.changed, &split.undo).await
 }
 
 pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Result<StartReport> {
     let session = prepared_session(config_path).await?;
     let home = host_home();
-    let prepared = svc::prepare_inline(&session.svc_context(home.as_deref()), request).await?;
-    let body = start_body(std::slice::from_ref(&request.name.to_string()));
+    let prepared = prepare_inline(&session.service_context(home.as_deref()), request).await?;
+    let body = encode_start_request(std::slice::from_ref(&request.name.to_string()));
     let changed = if prepared.reconciled == Reconciled::Stale {
         vec![request.name.to_string()]
     } else {
@@ -97,7 +103,7 @@ pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Resul
 async fn finish_start(
     asked: Result<ReplyDto>,
     changed: Vec<String>,
-    undo: &svc::SvcUndo,
+    undo: &ServiceUndo,
 ) -> Result<StartReport> {
     let reply = match asked {
         Ok(reply) => reply,
@@ -138,7 +144,7 @@ pub async fn describe_app(config_path: &str, selector: &str) -> Result<String> {
 }
 
 pub async fn act_on_app(config_path: &str, selector: &str, action: &str) -> Result<String> {
-    let path = app_action(selector, action)?;
+    let path = app_action_path(selector, action)?;
     let session = prepared_session(config_path).await?;
     ask_report(&session, "POST", &path, None).await
 }
@@ -147,7 +153,7 @@ pub async fn delete_app(config_path: &str, selector: &str) -> Result<String> {
     let path = app_path(selector)?;
     let session = prepared_session(config_path).await?;
     let deleted = ask(&session, "DELETE", &path, None).await?;
-    svc::forget(
+    forget(
         &session.cfg_dir,
         deleted.service.as_deref().unwrap_or(selector),
     )
@@ -187,7 +193,7 @@ pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<Strin
             timeout_ms: budget_ms,
         });
     }
-    Ok(kill_report(stopped.as_deref(), pid))
+    Ok(render_daemon_stopped(stopped.as_deref(), pid))
 }
 
 async fn report_gone_daemon(
@@ -200,18 +206,7 @@ async fn report_gone_daemon(
             path: paths.pid_file.to_string_lossy().into_owned(),
         });
     }
-    Ok(stopped.map_or_else(
-        || DAEMON_NOT_RUNNING.to_string(),
-        |services| format!("{services}\n{DAEMON_NOT_RUNNING}"),
-    ))
-}
-
-fn kill_report(stopped: Option<&str>, pid: u32) -> String {
-    let farewell = format!("stopped the pm3 daemon (pid {pid})");
-    stopped.map_or_else(
-        || format!("{farewell}; managed services keep running"),
-        |services| format!("{services}\n{farewell}"),
-    )
+    Ok(render_daemon_gone(stopped))
 }
 
 pub async fn read_log_tail(config_path: &str, name: &str, lines: Option<usize>) -> Result<String> {
@@ -270,15 +265,6 @@ pub fn canonical_apps_file(apps_file: &str) -> Result<String> {
     Ok(resolved.to_string_lossy().into_owned())
 }
 
-#[must_use]
-pub fn start_body(services: &[String]) -> String {
-    let request = StartRequestDto {
-        services: services.to_vec(),
-    };
-    serde_json::to_string(&request)
-        .expect("internal error: StartRequestDto serialization is infallible")
-}
-
 async fn ask_report(
     session: &Session,
     method: &str,
@@ -326,31 +312,7 @@ async fn ask_with(
             body: reply.body,
         });
     }
-    decode_reply(&reply.body)
-}
-
-fn decode_reply(body: &str) -> Result<ReplyDto> {
-    serde_json::from_str(body).map_err(|e| Error::Undecodable {
-        reason: e.to_string(),
-    })
-}
-
-fn app_path(selector: &str) -> Result<String> {
-    let safe = path_safe(selector)?;
-    Ok(format!("{APPS_PATH}/{safe}"))
-}
-
-fn app_action(selector: &str, action: &str) -> Result<String> {
-    let safe = path_safe(selector)?;
-    Ok(format!("{APPS_PATH}/{safe}/{action}"))
-}
-
-fn path_safe(selector: &str) -> Result<&str> {
-    if selector.parse::<u32>().is_ok() {
-        return Ok(selector);
-    }
-    validate_app_name(selector)?;
-    Ok(selector)
+    decode_reply(&reply.body).map_err(Error::Undecodable)
 }
 
 #[cfg(test)]

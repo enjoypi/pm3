@@ -443,3 +443,26 @@ fn only_settled_registrations_skip_the_timer() {
     assert!(StartKind::Scheduled.needs_timer());
     assert!(!StartKind::AlreadyRunning.needs_timer());
 }
+
+#[test]
+fn a_batch_that_fully_started_refuses_nothing() {
+    let requested = vec!["api".to_string(), "web".to_string()];
+    let outcomes = vec![outcome_named("api"), outcome_named("web")];
+    assert!(refused_services(&requested, &outcomes).is_empty());
+}
+
+#[test]
+fn a_batch_that_half_started_refuses_the_rest() {
+    let requested = vec!["api".to_string(), "web".to_string()];
+    let outcomes = vec![outcome_named("api")];
+    assert_eq!(refused_services(&requested, &outcomes), vec!["web"]);
+}
+
+fn outcome_named(name: &str) -> StartOutcome {
+    StartOutcome {
+        pm_id: 0,
+        name: name.to_string(),
+        pid: Some(100),
+        kind: StartKind::Spawned,
+    }
+}

@@ -192,24 +192,24 @@ fn substitute_placeholder_spans_multiline_only_first_line() {
 
 #[test]
 fn substitute_keeps_the_reserved_service_cwd_placeholder() {
-    let result = substitute_fake("args: [\"${PM3_SVC_CWD}/data\"]");
-    assert_eq!(result, "args: [\"${PM3_SVC_CWD}/data\"]");
+    let result = substitute_fake("args: [\"${PM3_SERVICE_CWD}/data\"]");
+    assert_eq!(result, "args: [\"${PM3_SERVICE_CWD}/data\"]");
 }
 
 #[test]
 fn substitute_rejects_a_default_on_the_reserved_placeholder() {
-    let err = substitute_with("args: [\"${PM3_SVC_CWD:-/fallback}\"]", fake_lookup)
+    let err = substitute_with("args: [\"${PM3_SERVICE_CWD:-/fallback}\"]", fake_lookup)
         .expect_err("the reserved placeholder must not accept a default");
     assert_eq!(
         err.to_string(),
-        "cannot resolve environment variable 'PM3_SVC_CWD': the reserved placeholder does not accept a ':-' default"
+        "cannot resolve environment variable 'PM3_SERVICE_CWD': the reserved placeholder does not accept a ':-' default"
     );
 }
 
 #[test]
 fn substitute_keeps_the_reserved_placeholder_next_to_a_resolved_one() {
-    let result = substitute_fake("a: ${PM3_SVC_CWD}\nb: ${TEST_SKEL_SET}");
-    assert_eq!(result, "a: ${PM3_SVC_CWD}\nb: 192.168.1.1");
+    let result = substitute_fake("a: ${PM3_SERVICE_CWD}\nb: ${TEST_SKEL_SET}");
+    assert_eq!(result, "a: ${PM3_SERVICE_CWD}\nb: 192.168.1.1");
 }
 
 #[test]

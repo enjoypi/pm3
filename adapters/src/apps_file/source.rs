@@ -26,12 +26,12 @@ impl SpecSource {
         )
     }
 
-    pub fn service_file(&self, name: &str) -> Result<PathBuf, SpecError> {
+    pub fn service(&self, name: &str) -> Result<PathBuf, SpecError> {
         service_file_of(&self.cfg_dir, name)
     }
 
     pub async fn resolve_service(&self, name: &str) -> Result<AppSpec, AppsFileError> {
-        let path = self.service_file(name)?;
+        let path = self.service(name)?;
         let entry = load_service_file(&path.to_string_lossy()).await?;
         if entry.name != name {
             return Err(AppsFileError::MissingApp(name.to_string()));

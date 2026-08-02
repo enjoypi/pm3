@@ -20,8 +20,8 @@ fn half_startable_apps(home: &Home) -> std::path::PathBuf {
     )
 }
 
-fn svc_file(home: &Home, name: &str) -> std::path::PathBuf {
-    home.root.join("svc").join(format!("{name}.yaml"))
+fn service_file_at(home: &Home, name: &str) -> std::path::PathBuf {
+    home.root.join("service").join(format!("{name}.yaml"))
 }
 
 #[test]
@@ -49,11 +49,11 @@ fn a_batch_that_only_half_starts_keeps_the_service_it_started() {
     pm3(&home, &["start", apps.to_str().expect("path")]);
 
     assert!(
-        svc_file(&home, "web").is_file(),
+        service_file_at(&home, "web").is_file(),
         "the service that started keeps its service file"
     );
     assert!(
-        !svc_file(&home, "broken").exists(),
+        !service_file_at(&home, "broken").exists(),
         "the service that never started is rolled back"
     );
 

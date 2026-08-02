@@ -15,7 +15,7 @@ const KILL_TIMEOUT_MS: u64 = 1600;
 
 pub fn spec_source_in(root: &Path) -> SpecSource {
     let home_dir = root.to_string_lossy().into_owned();
-    let cfg_dir = root.join("svc");
+    let cfg_dir = root.join("service");
     std::fs::create_dir_all(&cfg_dir).expect("create the service directory");
     let yaml = format!(
         "{}{}",
@@ -40,7 +40,7 @@ pub fn register_service(source: &SpecSource, name: &str) {
 }
 
 pub fn write_service_file(source: &SpecSource, name: &str, body: &str) {
-    let path = source.service_file(name).expect("a safe service name");
+    let path = source.service(name).expect("a safe service name");
     std::fs::write(path, body).expect("write the service file");
 }
 

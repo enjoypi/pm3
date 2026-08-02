@@ -1,4 +1,8 @@
 use super::*;
+use crate::{
+    service::{InlineStart, prepare_inline, split_apps_file},
+    service_fixtures::*,
+};
 
 #[tokio::test]
 async fn a_partial_rollback_removes_only_the_named_service_file() {
@@ -48,10 +52,10 @@ async fn splitting_refuses_an_unsafe_app_name_before_writing_anything() {
 #[tokio::test]
 async fn an_inline_request_refuses_an_unsafe_app_name() {
     let home = home();
-    let target = shell_target();
+    let args = shell_args();
     let request = InlineStart {
         name: "../escape",
-        ..request(&target, None, false)
+        ..request(SHELL, &args, None, false)
     };
     let err = prepare_inline(&context(&home), &request)
         .await

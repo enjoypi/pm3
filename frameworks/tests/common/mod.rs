@@ -76,7 +76,7 @@ pub fn config_yaml(
     format!(
         r#"pm3:
   home: "{home}"
-  cfg_dir: "{home}/svc"
+  cfg_dir: "{home}/service"
   search_path: "/usr/bin:/bin:/opt/homebrew/bin"
   stop_signal: "TERM"
   kill_timeout_ms: 400

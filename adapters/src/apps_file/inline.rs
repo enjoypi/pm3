@@ -4,7 +4,7 @@ use super::{
     file::{AppEntry, AppsFileError, SandboxEntry},
     roots::dedup_roots,
 };
-use crate::program::{fold_home, fold_svc_cwd};
+use crate::program::{fold_home, fold_service_cwd};
 
 const ENV_SEPARATOR: char = '=';
 const REMOVED_PREFIX: char = '-';
@@ -56,7 +56,7 @@ pub fn fold_entry(entry: &AppEntry, home: Option<&str>) -> AppEntry {
     folded.args = folded
         .args
         .iter()
-        .map(|value| fold_svc_cwd(&fold_home(value, home)))
+        .map(|value| fold_service_cwd(&fold_home(value, home)))
         .collect();
     folded.env = folded
         .env

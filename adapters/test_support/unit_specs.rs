@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{ServiceKind, ServiceProgramSet, ServiceUnitSpec, service::unit_dir_of};
+use crate::{UnitKind, UnitProgramSet, UnitSpec, unit::unit_dir_of};
 
 pub const LABEL: &str = "pm3-test";
 pub const PROGRAM: &str = "/usr/local/bin/pm3";
@@ -15,9 +15,9 @@ const ROOT_DIR: &str = ".pm3";
 const CONFIG_FILE: &str = "config.yaml";
 const LOG_FILE: &str = "pm3.log";
 
-pub fn spec_for(kind: ServiceKind, home: &Path) -> ServiceUnitSpec {
+pub fn spec_for(kind: UnitKind, home: &Path) -> UnitSpec {
     let root = home.join(ROOT_DIR);
-    ServiceUnitSpec {
+    UnitSpec {
         kind,
         label: LABEL.to_string(),
         unit_dir: unit_dir_of(kind, home),
@@ -32,8 +32,8 @@ pub fn spec_for(kind: ServiceKind, home: &Path) -> ServiceUnitSpec {
     }
 }
 
-pub fn program_set(program: &str) -> ServiceProgramSet {
-    ServiceProgramSet {
+pub fn program_set(program: &str) -> UnitProgramSet {
+    UnitProgramSet {
         launchctl: program.to_string(),
         systemctl: program.to_string(),
         loginctl: program.to_string(),

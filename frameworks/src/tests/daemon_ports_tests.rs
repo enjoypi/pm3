@@ -21,7 +21,7 @@ fn ports_in(dir: &Path) -> DaemonPorts {
 }
 
 fn spec_source_in(dir: &Path) -> SpecSource {
-    let cfg_dir = dir.join("svc");
+    let cfg_dir = dir.join("service");
     std::fs::create_dir_all(&cfg_dir).expect("create the service directory");
     SpecSource {
         cfg_dir,
@@ -34,7 +34,7 @@ fn spec_source_in(dir: &Path) -> SpecSource {
 
 fn register_service(dir: &Path, name: &str) {
     std::fs::write(
-        service_file_of(&dir.join("svc"), name).expect("a safe service name"),
+        service_file_of(&dir.join("service"), name).expect("a safe service name"),
         format!("name: {name}\nscript: /bin/echo\n"),
     )
     .expect("write the service file");

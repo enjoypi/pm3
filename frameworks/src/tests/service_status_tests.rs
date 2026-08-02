@@ -12,13 +12,13 @@ async fn an_uninstall_that_cannot_remove_the_unit_is_reported() {
     .expect("make the fake launchctl executable");
     let fixture = fixture(&vanishing.to_string_lossy());
     let home = home_of(&fixture);
-    install_unit(&fixture, ServiceKind::Launchd);
+    install_unit(&fixture, UnitKind::Launchd);
     let command = ServiceCommands::Uninstall { dry_run: false };
 
     let err = dispatch_service(
         &fixture.config_path,
         Some(&command),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .unwrap_err()
@@ -31,12 +31,12 @@ async fn an_uninstall_that_cannot_remove_the_unit_is_reported() {
 async fn an_uninstall_that_the_manager_refuses_reports_what_it_skipped() {
     let fixture = fixture(FALSE_PROGRAM);
     let home = home_of(&fixture);
-    install_unit(&fixture, ServiceKind::Launchd);
+    install_unit(&fixture, UnitKind::Launchd);
     let command = ServiceCommands::Uninstall { dry_run: false };
     let report = dispatch_service(
         &fixture.config_path,
         Some(&command),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .expect("a refusal to unload must not strand the unit file");
@@ -51,7 +51,7 @@ async fn an_uninstall_without_an_install_says_so() {
     let report = dispatch_service(
         &fixture.config_path,
         Some(&command),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .expect("a missing service is not an error");
@@ -75,12 +75,12 @@ fn a_relative_service_directory_stops_the_session() {
     let home = home_of(&fixture);
     let config = crate::test_support::write_config_with_cfg_dir(
         fixture.dir.path(),
-        "/tmp/pm3-svc",
-        "relative/svc",
+        "/tmp/pm3-service",
+        "relative/service",
     );
     let err = open_service_session(
         &config.to_string_lossy(),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .unwrap_err()
     .to_string();

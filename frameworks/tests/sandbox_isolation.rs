@@ -85,7 +85,7 @@ fn a_confined_app_can_write_through_the_cwd_placeholder() {
             "/bin/sh",
             "-c",
             "cd /; echo hi > \"$0/probe.txt\" && echo done || echo failed",
-            "PM3_SVC_CWD",
+            "PM3_SERVICE_CWD",
         ],
     );
     assert!(started.status.success(), "{}", stdout_of(&started));

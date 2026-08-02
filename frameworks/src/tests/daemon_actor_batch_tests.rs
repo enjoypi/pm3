@@ -113,21 +113,6 @@ async fn stopping_everything_sweeps_a_tracked_pid_that_outlives_the_grace_period
 }
 
 #[tokio::test]
-async fn a_stray_pid_is_traced_back_to_the_record_that_owns_it() {
-    let mut harness = harness();
-    let started = start_one(&mut harness, "web", SLEEPER).await;
-    let pid = started.pid.expect("a pid");
-
-    let (name, token) = harness.daemon.stray_owner(pid);
-
-    assert_eq!(
-        (name.as_str(), token.is_some()),
-        ("web", true),
-        "a tracked pid must be swept under its own identity"
-    );
-}
-
-#[tokio::test]
 async fn shutting_down_force_kills_only_the_services_that_were_stopping() {
     let mut harness = harness_with_kill_timeout(0);
     let kept = start_one(&mut harness, "web", SLEEPER).await;

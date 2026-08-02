@@ -37,7 +37,7 @@ fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(dir.path());
     std::fs::create_dir_all(&paths.logs_dir).expect("create the log directory");
-    let cfg_dir = dir.path().join("svc");
+    let cfg_dir = dir.path().join("service");
     std::fs::create_dir_all(&cfg_dir).expect("create the service directory");
     let mut config = pm3_config_with_home(&paths.root.to_string_lossy());
     config.kill_timeout_ms = kill_timeout_ms;

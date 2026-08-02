@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use usecases::AppSpec;
 
-use crate::program::SVC_CWD_PLACEHOLDER;
+use crate::program::SERVICE_CWD_PLACEHOLDER;
 
 pub async fn materialise_workspace(spec: &mut AppSpec) {
     let declared_cwd = spec.cwd.clone();
@@ -19,7 +19,7 @@ pub async fn materialise_workspace(spec: &mut AppSpec) {
     }
     spec.cwd = real_path(&declared_cwd).await;
     for arg in &mut spec.args {
-        *arg = expand_svc_cwd(arg, &spec.cwd);
+        *arg = expand_service_cwd(arg, &spec.cwd);
     }
     let mut resolved = BTreeMap::from([(declared_cwd, spec.cwd.clone())]);
     for root in spec
@@ -39,8 +39,8 @@ pub async fn materialise_workspace(spec: &mut AppSpec) {
 }
 
 #[must_use]
-pub fn expand_svc_cwd(value: &str, cwd: &str) -> String {
-    value.replace(SVC_CWD_PLACEHOLDER, cwd)
+pub fn expand_service_cwd(value: &str, cwd: &str) -> String {
+    value.replace(SERVICE_CWD_PLACEHOLDER, cwd)
 }
 
 async fn real_path(path: &str) -> String {

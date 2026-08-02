@@ -34,7 +34,7 @@ pub fn valid_service_config() -> ServiceConfig {
 pub fn valid_pm3_config() -> Pm3Config {
     Pm3Config {
         home: "/tmp/pm3-fixture".to_string(),
-        cfg_dir: "/tmp/pm3-fixture/svc".to_string(),
+        cfg_dir: "/tmp/pm3-fixture/service".to_string(),
         search_path: "/usr/bin:/bin".to_string(),
         stop_signal: STOP_SIGNAL_TERM.to_string(),
         kill_timeout_ms: 1600,

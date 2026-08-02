@@ -10,11 +10,6 @@ use crate::daemon_fixture::{
 };
 
 #[test]
-fn a_start_body_carries_the_service_names() {
-    assert_eq!(start_body(&["web".to_string()]), "{\"services\":[\"web\"]}");
-}
-
-#[test]
 fn a_missing_apps_file_cannot_be_resolved() {
     let err = canonical_apps_file("/nonexistent/apps.yaml")
         .unwrap_err()
@@ -336,10 +331,11 @@ fn usable_config(dir: &std::path::Path) -> String {
         .into_owned()
 }
 
-fn inline_request(target: &[String]) -> InlineStart<'_> {
+fn inline_request<'s>(program: &'s str, args: &'s [String]) -> InlineStart<'s> {
     InlineStart {
         name: "probe",
-        target,
+        program,
+        args,
         cwd: None,
         env: &[],
         cron: None,
@@ -387,30 +383,30 @@ async fn starting_apps_reports_an_unreadable_apps_file() {
 
 #[tokio::test]
 async fn starting_inline_without_a_config_fails() {
-    let outcome = start_inline("/nonexistent/pm3.yaml", &inline_request(&[])).await;
+    let outcome = start_inline("/nonexistent/pm3.yaml", &inline_request("/bin/sh", &[])).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
+async fn starting_inline_with_a_program_off_the_search_path_fails() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = usable_config(dir.path());
+    let err = start_inline(&config, &inline_request("pm3-not-a-real-program", &[]))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot find"), "got: {err}");
 }
 
 #[tokio::test]
 async fn starting_inline_reports_a_blocked_home() {
     let dir = tempfile::tempdir().expect("temp dir");
     let config = blocked_home_config(dir.path());
-    let err = start_inline(&config, &inline_request(&[]))
+    let err = start_inline(&config, &inline_request("/bin/sh", &[]))
         .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
-}
-
-#[tokio::test]
-async fn starting_inline_without_a_program_fails() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let config = usable_config(dir.path());
-    let err = start_inline(&config, &inline_request(&[]))
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("needs a program"), "got: {err}");
 }
 
 #[tokio::test]
@@ -429,12 +425,8 @@ async fn deleting_an_unknown_app_fails() {
 #[tokio::test]
 async fn starting_inline_reaches_the_daemon() {
     let fixture = running_daemon().await;
-    let target = vec![
-        "/bin/sh".to_string(),
-        "-c".to_string(),
-        "sleep 5".to_string(),
-    ];
-    let started = start_inline(&fixture.config_path, &inline_request(&target))
+    let args = vec!["-c".to_string(), "sleep 5".to_string()];
+    let started = start_inline(&fixture.config_path, &inline_request("/bin/sh", &args))
         .await
         .expect("the inline app should start");
     assert!(
@@ -448,15 +440,11 @@ async fn starting_inline_reaches_the_daemon() {
 #[tokio::test]
 async fn restarting_an_unchanged_inline_app_reports_no_config_change() {
     let fixture = running_daemon().await;
-    let target = vec![
-        "/bin/sh".to_string(),
-        "-c".to_string(),
-        "sleep 5".to_string(),
-    ];
-    start_inline(&fixture.config_path, &inline_request(&target))
+    let args = vec!["-c".to_string(), "sleep 5".to_string()];
+    start_inline(&fixture.config_path, &inline_request("/bin/sh", &args))
         .await
         .expect("should start");
-    let again = start_inline(&fixture.config_path, &inline_request(&target))
+    let again = start_inline(&fixture.config_path, &inline_request("/bin/sh", &args))
         .await
         .expect("should start");
     assert!(again.changed.is_empty(), "got: {:?}", again.changed);
@@ -471,8 +459,11 @@ async fn restarting_an_unchanged_inline_app_reports_no_config_change() {
 #[test]
 fn a_relative_service_directory_cannot_open_a_session() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let config =
-        crate::test_support::write_config_with_cfg_dir(dir.path(), "/tmp/pm3-svc", "relative/svc");
+    let config = crate::test_support::write_config_with_cfg_dir(
+        dir.path(),
+        "/tmp/pm3-service",
+        "relative/service",
+    );
     let err = open_session(config.to_str().expect("path"))
         .unwrap_err()
         .to_string();

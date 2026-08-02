@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 pub const PATH_SEPARATOR: char = ':';
 pub const HOME_PLACEHOLDER: &str = "${HOME}";
-pub const SVC_CWD_NAME: &str = "PM3_SVC_CWD";
-pub const SVC_CWD_PLACEHOLDER: &str = "${PM3_SVC_CWD}";
+pub const SERVICE_CWD_NAME: &str = "PM3_SERVICE_CWD";
+pub const SERVICE_CWD_PLACEHOLDER: &str = "${PM3_SERVICE_CWD}";
 
 #[must_use]
 pub fn program_available(program: &str, path_env: Option<&str>) -> bool {
@@ -53,15 +53,15 @@ pub fn fold_home(value: &str, home: Option<&str>) -> String {
 }
 
 #[must_use]
-pub fn fold_svc_cwd(value: &str) -> String {
+pub fn fold_service_cwd(value: &str) -> String {
     let mut folded = String::with_capacity(value.len());
     let mut rest = value;
-    while let Some((head, tail)) = rest.split_once(SVC_CWD_NAME) {
+    while let Some((head, tail)) = rest.split_once(SERVICE_CWD_NAME) {
         folded.push_str(head);
         if head.ends_with("${") && tail.starts_with('}') {
-            folded.push_str(SVC_CWD_NAME);
+            folded.push_str(SERVICE_CWD_NAME);
         } else {
-            folded.push_str(SVC_CWD_PLACEHOLDER);
+            folded.push_str(SERVICE_CWD_PLACEHOLDER);
         }
         rest = tail;
     }

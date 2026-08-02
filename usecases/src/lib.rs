@@ -23,20 +23,23 @@ use thiserror::Error;
 
 pub use self::{
     delete::{DeleteOutcome, delete_app},
-    fingerprint::render_identity,
+    fingerprint::{pid_was_recycled, render_identity},
     log_paths::{LogPaths, log_paths},
     ports::{
         Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,
         LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe,
         SandboxError, Scheduler, SignalError, Signaler, WrappedCommand,
     },
-    query::{describe_app, list_apps},
+    query::{
+        armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,
+        running_pids, schedule_of, unsettled_count,
+    },
     record::{ProcessRecord, ProcessView},
     restart::{RestartOutcome, restart_app},
     resurrect::resurrect,
     selector::AppSelector,
-    start::{StartKind, StartOutcome, StartReport, start_apps},
-    stop::{StopOutcome, persist_for_handover, stop_all_apps, stop_app},
+    start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
+    stop::{StopOutcome, is_drained, persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
     table::ProcessTable,
 };

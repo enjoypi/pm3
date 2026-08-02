@@ -11,14 +11,14 @@ use tokio::{
 };
 
 use super::{
-    command::{ServiceCommand, ServiceProgramSet},
-    plan::{ServiceStep, status_command},
-    spec::{ServiceStatus, ServiceUnitSpec, parse_run_state},
+    command::{UnitCommand, UnitProgramSet},
+    plan::{UnitStep, status_command},
+    spec::{UnitSpec, UnitStatus, parse_run_state},
 };
 use crate::exit_status::{describe_refusal, exit_code_of};
 
 #[derive(Debug, Error)]
-pub enum ServiceCommandError {
+pub enum UnitCommandError {
     #[error("cannot run '{program}': {reason}")]
     Spawn { program: String, reason: String },
 
@@ -33,9 +33,9 @@ pub enum ServiceCommandError {
 }
 
 pub async fn execute_plan(
-    steps: &[ServiceStep],
+    steps: &[UnitStep],
     timeout_ms: u64,
-) -> Result<Vec<String>, ServiceCommandError> {
+) -> Result<Vec<String>, UnitCommandError> {
     let mut skipped = Vec::new();
     let mut created = Vec::new();
     for step in steps {
@@ -58,8 +58,8 @@ pub async fn execute_plan(
     Ok(skipped)
 }
 
-async fn about_to_create(step: &ServiceStep) -> Result<Option<PathBuf>, ServiceCommandError> {
-    let ServiceStep::Write { path, .. } = step else {
+async fn about_to_create(step: &UnitStep) -> Result<Option<PathBuf>, UnitCommandError> {
+    let UnitStep::Write { path, .. } = step else {
         return Ok(None);
     };
     match tokio::fs::try_exists(path).await {
@@ -79,7 +79,7 @@ async fn roll_back(created: &[PathBuf]) {
 fn log_roll_back(path: &Path, removed: bool) {
     let file = path.to_string_lossy();
     tracing::warn!(
-        feature = "service",
+        feature = "unit",
         file = %file,
         removed,
         action = "roll_back",
@@ -88,44 +88,41 @@ fn log_roll_back(path: &Path, removed: bool) {
 }
 
 pub async fn query_status(
-    spec: &ServiceUnitSpec,
-    programs: &ServiceProgramSet,
+    spec: &UnitSpec,
+    programs: &UnitProgramSet,
     timeout_ms: u64,
-) -> Result<ServiceStatus, ServiceCommandError> {
+) -> Result<UnitStatus, UnitCommandError> {
     if !spec.unit_path().is_file() {
-        return Ok(ServiceStatus::NotInstalled);
+        return Ok(UnitStatus::NotInstalled);
     }
     let captured = capture(&status_command(spec, programs), timeout_ms).await?;
     if parse_run_state(spec.kind, captured.success, &captured.stdout) {
-        return Ok(ServiceStatus::Running);
+        return Ok(UnitStatus::Running);
     }
-    Ok(ServiceStatus::InstalledNotRunning)
+    Ok(UnitStatus::InstalledNotRunning)
 }
 
-async fn run_step(
-    step: &ServiceStep,
-    timeout_ms: u64,
-) -> Result<Option<String>, ServiceCommandError> {
+async fn run_step(step: &UnitStep, timeout_ms: u64) -> Result<Option<String>, UnitCommandError> {
     match step {
-        ServiceStep::Write {
+        UnitStep::Write {
             dir,
             path,
             contents,
         } => write_file(dir, path, contents).await.map(|()| None),
-        ServiceStep::Remove { path } => remove_path(path).await.map(|()| None),
-        ServiceStep::Run(command) => run_command(command, timeout_ms).await.map(|()| None),
-        ServiceStep::TryRun(command) => Ok(tolerate(command, timeout_ms).await),
+        UnitStep::Remove { path } => remove_path(path).await.map(|()| None),
+        UnitStep::Run(command) => run_command(command, timeout_ms).await.map(|()| None),
+        UnitStep::TryRun(command) => Ok(tolerate(command, timeout_ms).await),
     }
 }
 
-async fn tolerate(command: &ServiceCommand, timeout_ms: u64) -> Option<String> {
+async fn tolerate(command: &UnitCommand, timeout_ms: u64) -> Option<String> {
     let Err(error) = run_command(command, timeout_ms).await else {
         return None;
     };
     let reason = error.to_string();
     let program = command.program.as_str();
     tracing::warn!(
-        feature = "service",
+        feature = "unit",
         program,
         reason,
         action = "skip_optional",
@@ -134,7 +131,7 @@ async fn tolerate(command: &ServiceCommand, timeout_ms: u64) -> Option<String> {
     Some(reason)
 }
 
-async fn write_file(dir: &Path, path: &Path, contents: &str) -> Result<(), ServiceCommandError> {
+async fn write_file(dir: &Path, path: &Path, contents: &str) -> Result<(), UnitCommandError> {
     tokio::fs::create_dir_all(dir)
         .await
         .map_err(|error| io_error(dir, &error))?;
@@ -143,36 +140,33 @@ async fn write_file(dir: &Path, path: &Path, contents: &str) -> Result<(), Servi
         .map_err(|error| io_error(path, &error))
 }
 
-async fn remove_path(path: &Path) -> Result<(), ServiceCommandError> {
+async fn remove_path(path: &Path) -> Result<(), UnitCommandError> {
     tokio::fs::remove_file(path)
         .await
         .map_err(|error| io_error(path, &error))
 }
 
-async fn run_command(command: &ServiceCommand, timeout_ms: u64) -> Result<(), ServiceCommandError> {
+async fn run_command(command: &UnitCommand, timeout_ms: u64) -> Result<(), UnitCommandError> {
     let captured = capture(command, timeout_ms).await?;
     if captured.success {
         return Ok(());
     }
-    Err(ServiceCommandError::Failed {
+    Err(UnitCommandError::Failed {
         program: command.program.clone(),
         reason: describe_refusal(&captured.stderr, captured.code),
     })
 }
 
-async fn capture(
-    command: &ServiceCommand,
-    timeout_ms: u64,
-) -> Result<Captured, ServiceCommandError> {
+async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, UnitCommandError> {
     let started = Instant::now();
     let call = Command::new(&command.program).args(&command.args).output();
     let output = timeout(Duration::from_millis(timeout_ms), call)
         .await
-        .map_err(|_elapsed| ServiceCommandError::Stalled {
+        .map_err(|_elapsed| UnitCommandError::Stalled {
             program: command.program.clone(),
             timeout_ms,
         })?
-        .map_err(|error| ServiceCommandError::Spawn {
+        .map_err(|error| UnitCommandError::Spawn {
             program: command.program.clone(),
             reason: error.to_string(),
         })?;
@@ -181,7 +175,7 @@ async fn capture(
     let code = captured.code;
     let duration_ms = elapsed_ms(started);
     tracing::debug!(
-        feature = "service",
+        feature = "unit",
         program,
         code,
         duration_ms,
@@ -195,8 +189,8 @@ fn elapsed_ms(started: Instant) -> u128 {
     started.elapsed().as_millis()
 }
 
-fn io_error(path: &Path, source: &std::io::Error) -> ServiceCommandError {
-    ServiceCommandError::Io {
+fn io_error(path: &Path, source: &std::io::Error) -> UnitCommandError {
+    UnitCommandError::Io {
         path: path.to_string_lossy().into_owned(),
         reason: source.to_string(),
     }
@@ -221,5 +215,5 @@ impl Captured {
 }
 
 #[cfg(test)]
-#[path = "../tests/service_runner_tests.rs"]
+#[path = "../tests/unit_runner_tests.rs"]
 mod tests;

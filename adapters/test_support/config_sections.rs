@@ -2,7 +2,7 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
     format!(
         r#"pm3:
   home: "{home}"
-  cfg_dir: "{home}/svc"
+  cfg_dir: "{home}/service"
   search_path: "/usr/bin:/bin"
   stop_signal: "TERM"
   kill_timeout_ms: {kill_timeout_ms}

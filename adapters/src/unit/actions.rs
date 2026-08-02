@@ -1,19 +1,19 @@
 use super::{
-    command::ServiceProgramSet,
-    plan::{ServiceStep, install_plan, uninstall_plan},
-    runner::{ServiceCommandError, execute_plan, query_status},
-    spec::ServiceUnitSpec,
+    command::UnitProgramSet,
+    plan::{UnitStep, install_plan, uninstall_plan},
+    runner::{UnitCommandError, execute_plan, query_status},
+    spec::UnitSpec,
 };
 
 pub const NOTHING_INSTALLED: &str = "no pm3 service is installed";
 
-pub async fn install_service(
-    spec: &ServiceUnitSpec,
-    programs: &ServiceProgramSet,
+pub async fn install_unit(
+    spec: &UnitSpec,
+    programs: &UnitProgramSet,
     config_contents: &str,
     dry_run: bool,
     timeout_ms: u64,
-) -> Result<String, ServiceCommandError> {
+) -> Result<String, UnitCommandError> {
     let steps = install_plan(spec, programs, config_contents);
     if dry_run {
         return Ok(render_plan(&steps));
@@ -29,12 +29,12 @@ pub async fn install_service(
     ))
 }
 
-pub async fn uninstall_service(
-    spec: &ServiceUnitSpec,
-    programs: &ServiceProgramSet,
+pub async fn uninstall_unit(
+    spec: &UnitSpec,
+    programs: &UnitProgramSet,
     dry_run: bool,
     timeout_ms: u64,
-) -> Result<String, ServiceCommandError> {
+) -> Result<String, UnitCommandError> {
     let steps = uninstall_plan(spec, programs);
     if dry_run {
         return Ok(render_plan(&steps));
@@ -51,10 +51,10 @@ pub async fn uninstall_service(
 }
 
 pub async fn status_report(
-    spec: &ServiceUnitSpec,
-    programs: &ServiceProgramSet,
+    spec: &UnitSpec,
+    programs: &UnitProgramSet,
     timeout_ms: u64,
-) -> Result<String, ServiceCommandError> {
+) -> Result<String, UnitCommandError> {
     let status = query_status(spec, programs, timeout_ms).await?;
     Ok(format!(
         "{} ({} service): {}\n{}",
@@ -72,27 +72,27 @@ fn render_skipped(skipped: &[String]) -> String {
     format!("\nskipped: {}", skipped.join("; "))
 }
 
-fn render_plan(steps: &[ServiceStep]) -> String {
+fn render_plan(steps: &[UnitStep]) -> String {
     steps.iter().map(render_step).collect::<Vec<_>>().join("\n")
 }
 
-fn render_step(step: &ServiceStep) -> String {
+fn render_step(step: &UnitStep) -> String {
     match step {
-        ServiceStep::Write {
+        UnitStep::Write {
             dir: _,
             path,
             contents,
         } => format!("write {}\n{contents}", path.display()),
-        ServiceStep::Remove { path } => format!("remove {}", path.display()),
-        ServiceStep::Run(command) => {
+        UnitStep::Remove { path } => format!("remove {}", path.display()),
+        UnitStep::Run(command) => {
             format!("run {} {}", command.program, command.args.join(" "))
         }
-        ServiceStep::TryRun(command) => {
+        UnitStep::TryRun(command) => {
             format!("try {} {}", command.program, command.args.join(" "))
         }
     }
 }
 
 #[cfg(test)]
-#[path = "../tests/service_actions_tests.rs"]
+#[path = "../tests/unit_actions_tests.rs"]
 mod tests;

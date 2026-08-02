@@ -7,7 +7,7 @@ async fn each_app_expands_the_placeholder_with_its_own_working_directory() {
     let mut harness = harness();
     for name in ["web", "db"] {
         let body = format!(
-            "name: {name}\nscript: /bin/sh\nargs:\n  - \"-c\"\n  - \"true\"\n  - \"${{PM3_SVC_CWD}}\"\n"
+            "name: {name}\nscript: /bin/sh\nargs:\n  - \"-c\"\n  - \"true\"\n  - \"${{PM3_SERVICE_CWD}}\"\n"
         );
         std::fs::write(
             service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
