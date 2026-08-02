@@ -10,7 +10,9 @@ pub mod selector;
 pub mod start;
 pub mod stop;
 pub mod supervise;
+pub mod supervision;
 pub mod table;
+pub mod timer_state;
 
 mod persist;
 
@@ -28,7 +30,8 @@ pub use self::{
     ports::{
         Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,
         LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe,
-        SandboxError, Scheduler, SignalError, Signaler, WrappedCommand,
+        SandboxError, Scheduler, SignalError, Signaler, SpecResolveError, SpecResolver,
+        WrappedCommand,
     },
     query::{
         armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,
@@ -41,7 +44,9 @@ pub use self::{
     start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
     stop::{StopOutcome, is_drained, persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
+    supervision::{SupervisionFailure, SupervisionOutcome, SupervisionReply, SupervisionRequest},
     table::ProcessTable,
+    timer_state::TimerState,
 };
 
 pub trait Ports:

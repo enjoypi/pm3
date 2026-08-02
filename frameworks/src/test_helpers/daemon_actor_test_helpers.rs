@@ -1,6 +1,6 @@
 use std::{fmt::Write as _, path::PathBuf, time::Duration};
 
-use adapters::{DaemonCommand, DaemonOutcome, Pm3Paths, resolve_paths, service_file_of};
+use adapters::{DaemonCommand, Pm3Paths, SupervisionOutcome, resolve_paths, service_file_of};
 use tokio::sync::oneshot;
 
 use super::*;
@@ -128,7 +128,9 @@ pub async fn next_event(events: &mut mpsc::Receiver<DaemonEvent>) -> DaemonEvent
         .expect("the event queue should stay open")
 }
 
-pub fn command(request: DaemonRequest) -> (DaemonCommand, oneshot::Receiver<DaemonOutcome>) {
+pub fn command(
+    request: SupervisionRequest,
+) -> (DaemonCommand, oneshot::Receiver<SupervisionOutcome>) {
     let (reply, answer) = oneshot::channel();
     (DaemonCommand { request, reply }, answer)
 }

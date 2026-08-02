@@ -52,7 +52,7 @@ async fn stopping_a_task_disarms_its_timer() {
 
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("tick")))
+        .handle(SupervisionRequest::Stop(selector("tick")))
         .await
         .expect("should stop");
 
@@ -71,7 +71,7 @@ async fn deleting_a_task_disarms_its_timer() {
     start_scheduled(&mut harness, "tick", "* * * * *").await;
     harness
         .daemon
-        .handle(DaemonRequest::Delete(selector("tick")))
+        .handle(SupervisionRequest::Delete(selector("tick")))
         .await
         .expect("should delete");
     assert_eq!(listed(&mut harness).await, 0);
@@ -127,7 +127,7 @@ async fn a_task_stopped_on_purpose_stays_disarmed_across_a_daemon_restart() {
     start_scheduled(&mut harness, "tick", "* * * * *").await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("tick")))
+        .handle(SupervisionRequest::Stop(selector("tick")))
         .await
         .expect("should stop");
 
@@ -148,7 +148,7 @@ async fn stopping_everything_disarms_every_timer() {
 
     harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
 
@@ -167,7 +167,7 @@ async fn everything_stopped_together_stays_disarmed_across_a_daemon_restart() {
     start_scheduled(&mut harness, "tick", "* * * * *").await;
     harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
 
@@ -202,7 +202,7 @@ async fn a_cron_fire_cancels_the_delayed_restart_it_replaces() {
 async fn re_registering_a_running_app_without_its_schedule_disarms_the_timer() {
     let mut harness = harness();
     scheduled_online_apps_file(&harness, "web", SLEEPER, "* * * * *");
-    let request = DaemonRequest::Start {
+    let request = SupervisionRequest::Start {
         services: vec!["web".to_string()],
     };
     harness
@@ -238,7 +238,7 @@ async fn re_registering_a_running_app_with_a_new_schedule_arms_a_timer() {
     scheduled_online_apps_file(&harness, "web", SLEEPER, "* * * * *");
     harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["web".to_string()],
         })
         .await
@@ -254,7 +254,7 @@ async fn re_registering_a_running_app_with_a_new_schedule_arms_a_timer() {
 async fn re_registering_a_running_app_with_a_changed_schedule_rearms_the_timer() {
     let mut harness = harness();
     scheduled_online_apps_file(&harness, "web", SLEEPER, "* * * * *");
-    let request = DaemonRequest::Start {
+    let request = SupervisionRequest::Start {
         services: vec!["web".to_string()],
     };
     harness

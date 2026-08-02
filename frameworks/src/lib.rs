@@ -39,9 +39,6 @@ pub enum Error {
     Service(#[from] adapters::UnitCommandError),
 
     #[error(transparent)]
-    Apps(#[from] adapters::AppsFileError),
-
-    #[error(transparent)]
     ServiceFile(#[from] adapters::ServiceError),
 
     #[error(transparent)]

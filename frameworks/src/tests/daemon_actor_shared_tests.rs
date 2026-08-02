@@ -8,12 +8,12 @@ pub async fn start_one(harness: &mut Harness, name: &str, script: &str) -> Start
     apps_file(harness, name, script);
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec![name.to_string()],
         })
         .await
         .expect("should start");
-    let DaemonReply::Started {
+    let SupervisionReply::Started {
         mut outcomes,
         refused: _,
         reason: _,
@@ -53,10 +53,10 @@ pub async fn next_force_kill(
 pub async fn listed(harness: &mut Harness) -> usize {
     let reply = harness
         .daemon
-        .handle(DaemonRequest::List)
+        .handle(SupervisionRequest::List)
         .await
         .expect("should list");
-    let DaemonReply::Listed(views) = reply else {
+    let SupervisionReply::Listed(views) = reply else {
         panic!("list should answer with a table")
     };
     views.len()
@@ -64,10 +64,10 @@ pub async fn listed(harness: &mut Harness) -> usize {
 pub async fn described(harness: &mut Harness, name: &str) -> adapters::ProcessView {
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector(name)))
+        .handle(SupervisionRequest::Describe(selector(name)))
         .await
         .expect("should describe");
-    let DaemonReply::Described(view) = reply else {
+    let SupervisionReply::Described(view) = reply else {
         panic!("describe should answer with a view")
     };
     view
@@ -76,12 +76,12 @@ pub async fn start_scheduled(harness: &mut Harness, name: &str, cron: &str) -> S
     scheduled_apps_file(harness, name, SLEEPER, cron);
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec![name.to_string()],
         })
         .await
         .expect("should register the task");
-    let DaemonReply::Started {
+    let SupervisionReply::Started {
         mut outcomes,
         refused: _,
         reason: _,
@@ -100,10 +100,10 @@ pub async fn armed_fire(harness: &mut Harness, name: &str) -> u64 {
 pub async fn status_of(harness: &mut Harness, name: &str) -> String {
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector(name)))
+        .handle(SupervisionRequest::Describe(selector(name)))
         .await
         .expect("should describe");
-    let DaemonReply::Described(view) = reply else {
+    let SupervisionReply::Described(view) = reply else {
         panic!("describe should answer with a view")
     };
     view.status.as_str().to_string()

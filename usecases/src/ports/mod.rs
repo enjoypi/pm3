@@ -5,6 +5,7 @@ pub mod launcher;
 pub mod probe;
 pub mod scheduler;
 pub mod signaler;
+pub mod specs;
 pub mod wrapper;
 
 pub use self::{
@@ -15,5 +16,6 @@ pub use self::{
     probe::{Liveness, ProcessProbe},
     scheduler::Scheduler,
     signaler::{SignalError, Signaler},
+    specs::{SpecResolveError, SpecResolver},
     wrapper::{CommandWrapper, SandboxError, WrappedCommand},
 };

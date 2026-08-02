@@ -17,7 +17,7 @@ async fn each_app_expands_the_placeholder_with_its_own_working_directory() {
     }
     harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["web".to_string(), "db".to_string()],
         })
         .await
@@ -41,7 +41,7 @@ async fn starting_a_service_without_a_file_is_refused() {
     let mut harness = harness();
     let outcome = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["ghost".to_string()],
         })
         .await;
@@ -53,14 +53,14 @@ async fn starting_no_services_launches_nothing() {
     let mut harness = harness();
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: Vec::new(),
         })
         .await
         .expect("an empty request is not an error");
     assert_eq!(
         reply,
-        DaemonReply::Started {
+        SupervisionReply::Started {
             outcomes: Vec::new(),
             refused: Vec::new(),
             reason: None,
@@ -81,11 +81,11 @@ async fn describing_reports_one_app() {
     start_one(&mut harness, "web", SLEEPER).await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(SupervisionRequest::Describe(selector("web")))
         .await
         .expect("should describe");
     assert!(
-        matches!(reply, DaemonReply::Described(view) if view.name == "web"),
+        matches!(reply, SupervisionReply::Described(view) if view.name == "web"),
         "describe should answer with the app"
     );
 }
@@ -95,7 +95,7 @@ async fn describing_an_unknown_app_is_refused() {
     let mut harness = harness();
     let outcome = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("ghost")))
+        .handle(SupervisionRequest::Describe(selector("ghost")))
         .await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
@@ -106,12 +106,12 @@ async fn stopping_an_app_confirms_its_name() {
     start_one(&mut harness, "web", SLEEPER).await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     assert_eq!(
         reply,
-        DaemonReply::Stopped {
+        SupervisionReply::Stopped {
             name: "web".to_string(),
         }
     );
@@ -123,12 +123,12 @@ async fn restarting_a_running_app_waits_for_its_exit() {
     start_one(&mut harness, "web", SLEEPER).await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Restart(selector("web")))
+        .handle(SupervisionRequest::Restart(selector("web")))
         .await
         .expect("should restart");
     assert_eq!(
         reply,
-        DaemonReply::Restarted {
+        SupervisionReply::Restarted {
             name: "web".to_string(),
         }
     );
@@ -140,7 +140,7 @@ async fn deleting_an_app_forgets_it() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Delete(selector("web")))
+        .handle(SupervisionRequest::Delete(selector("web")))
         .await
         .expect("should delete");
     assert_eq!(listed(&mut harness).await, 0);
@@ -151,7 +151,7 @@ async fn deleting_an_unknown_app_is_refused() {
     let mut harness = harness();
     let outcome = harness
         .daemon
-        .handle(DaemonRequest::Delete(selector("ghost")))
+        .handle(SupervisionRequest::Delete(selector("ghost")))
         .await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
@@ -162,18 +162,18 @@ async fn an_app_stopped_on_purpose_settles() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     let (name, generation, outcome) = next_exit(&mut harness.events).await;
     harness.daemon.on_exit(&name, generation, outcome).await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(SupervisionRequest::Describe(selector("web")))
         .await
         .expect("should describe");
     assert!(
-        matches!(reply, DaemonReply::Described(view) if view.status.as_str() == "stopped"),
+        matches!(reply, SupervisionReply::Described(view) if view.status.as_str() == "stopped"),
         "a deliberate stop should settle the app"
     );
 }
@@ -201,11 +201,11 @@ async fn an_exit_from_an_older_generation_is_ignored() {
         .await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(SupervisionRequest::Describe(selector("web")))
         .await
         .expect("should describe");
     assert!(
-        matches!(reply, DaemonReply::Described(view) if view.status.as_str() == "online"),
+        matches!(reply, SupervisionReply::Described(view) if view.status.as_str() == "online"),
         "a stale exit must not touch the current instance"
     );
 }
@@ -226,7 +226,7 @@ async fn restarting_a_stopped_app_launches_it_again() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     let (name, generation, outcome) = next_exit(&mut harness.events).await;
@@ -236,11 +236,11 @@ async fn restarting_a_stopped_app_launches_it_again() {
     harness.daemon.on_restart("web").await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(SupervisionRequest::Describe(selector("web")))
         .await
         .expect("should describe");
     assert!(
-        matches!(reply, DaemonReply::Described(view) if view.status.as_str() == "online"),
+        matches!(reply, SupervisionReply::Described(view) if view.status.as_str() == "online"),
         "a stopped app should come back online"
     );
 }
@@ -253,11 +253,11 @@ async fn a_scheduled_restart_of_a_running_app_waits_for_its_exit() {
     harness.daemon.on_restart("web").await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(SupervisionRequest::Describe(selector("web")))
         .await
         .expect("should describe");
     assert!(
-        matches!(reply, DaemonReply::Described(view) if view.status.as_str() == "stopping"),
+        matches!(reply, SupervisionReply::Described(view) if view.status.as_str() == "stopping"),
         "a running app must be stopped before it restarts"
     );
 }
@@ -269,7 +269,7 @@ async fn a_restart_cancelled_by_a_stop_no_longer_revives_the_service() {
     harness.daemon.board.schedule_restart("web", 60_000);
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
 
@@ -277,11 +277,11 @@ async fn a_restart_cancelled_by_a_stop_no_longer_revives_the_service() {
 
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(SupervisionRequest::Describe(selector("web")))
         .await
         .expect("should describe");
     assert!(
-        matches!(reply, DaemonReply::Described(view) if view.status.as_str() != "online"),
+        matches!(reply, SupervisionReply::Described(view) if view.status.as_str() != "online"),
         "a service the operator stopped must not come back on a stale restart"
     );
 }
@@ -360,7 +360,7 @@ async fn an_exit_cancels_the_force_kill_that_was_waiting_for_it() {
     let pid = started.pid.expect("a pid");
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     assert!(

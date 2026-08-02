@@ -1,24 +1,24 @@
 use usecases::{DumpError, SpecError, StartKind, StartOutcome};
 
 use super::{test_helpers::*, *};
-use crate::{apps_file::AppsFileError, http::HEALTH_OK, process_views::running_view};
+use crate::{SpecResolveError, http::HEALTH_OK, process_views::running_view};
 
 const SERVICE: &str = "web";
 
-fn started_reply(outcomes: Vec<StartOutcome>) -> DaemonReply {
-    DaemonReply::Started {
+fn started_reply(outcomes: Vec<StartOutcome>) -> SupervisionReply {
+    SupervisionReply::Started {
         outcomes,
         refused: Vec::new(),
         reason: None,
     }
 }
 
-fn listed_nothing() -> DaemonReply {
-    DaemonReply::Listed(Vec::new())
+fn listed_nothing() -> SupervisionReply {
+    SupervisionReply::Listed(Vec::new())
 }
 
-fn acknowledged(name: &str) -> DaemonReply {
-    DaemonReply::Stopped {
+fn acknowledged(name: &str) -> SupervisionReply {
+    SupervisionReply::Stopped {
         name: name.to_string(),
     }
 }
@@ -40,7 +40,7 @@ async fn starting_apps_forwards_the_apps_file() {
     let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
     assert_eq!(
         exchange.request,
-        Some(DaemonRequest::Start {
+        Some(SupervisionRequest::Start {
             services: vec![SERVICE.to_string()],
         })
     );
@@ -90,33 +90,33 @@ async fn a_reply_that_started_nothing_names_nothing_as_already_running() {
 #[tokio::test]
 async fn listing_apps_asks_the_daemon_for_the_whole_table() {
     let exchange = exchange(Ok(listed_nothing()), get_from("/apps")).await;
-    assert_eq!(exchange.request, Some(DaemonRequest::List));
+    assert_eq!(exchange.request, Some(SupervisionRequest::List));
 }
 
 #[tokio::test]
 async fn listing_apps_returns_the_rendered_table() {
-    let outcome = Ok(DaemonReply::Listed(vec![running_view(0, "web")]));
+    let outcome = Ok(SupervisionReply::Listed(vec![running_view(0, "web")]));
     let exchange = exchange(outcome, get_from("/apps")).await;
     assert!(exchange.body.contains("web"), "got: {}", exchange.body);
 }
 
 #[tokio::test]
 async fn a_numeric_selector_is_read_as_an_id() {
-    let outcome = Ok(DaemonReply::Described(running_view(3, "web")));
+    let outcome = Ok(SupervisionReply::Described(running_view(3, "web")));
     let exchange = exchange(outcome, get_from("/apps/3")).await;
     assert_eq!(
         exchange.request,
-        Some(DaemonRequest::Describe(AppSelector::Id(3)))
+        Some(SupervisionRequest::Describe(AppSelector::Id(3)))
     );
 }
 
 #[tokio::test]
 async fn a_textual_selector_is_read_as_a_name() {
-    let outcome = Ok(DaemonReply::Described(running_view(3, "web")));
+    let outcome = Ok(SupervisionReply::Described(running_view(3, "web")));
     let exchange = exchange(outcome, get_from("/apps/web")).await;
     assert_eq!(
         exchange.request,
-        Some(DaemonRequest::Describe(AppSelector::Name(
+        Some(SupervisionRequest::Describe(AppSelector::Name(
             "web".to_string()
         )))
     );
@@ -124,7 +124,7 @@ async fn a_textual_selector_is_read_as_a_name() {
 
 #[tokio::test]
 async fn describing_an_app_returns_its_details() {
-    let outcome = Ok(DaemonReply::Described(running_view(3, "web")));
+    let outcome = Ok(SupervisionReply::Described(running_view(3, "web")));
     let exchange = exchange(outcome, get_from("/apps/web")).await;
     assert!(
         exchange.body.contains("/usr/bin/node"),
@@ -138,7 +138,9 @@ async fn stopping_an_app_forwards_the_selector() {
     let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
     assert_eq!(
         exchange.request,
-        Some(DaemonRequest::Stop(AppSelector::Name("web".to_string())))
+        Some(SupervisionRequest::Stop(AppSelector::Name(
+            "web".to_string()
+        )))
     );
 }
 
@@ -150,25 +152,29 @@ async fn stopping_an_app_confirms_the_app() {
 
 #[tokio::test]
 async fn restarting_an_app_forwards_the_selector() {
-    let outcome = Ok(DaemonReply::Restarted {
+    let outcome = Ok(SupervisionReply::Restarted {
         name: "web".to_string(),
     });
     let exchange = exchange(outcome, post_to("/apps/web/restart", "")).await;
     assert_eq!(
         exchange.request,
-        Some(DaemonRequest::Restart(AppSelector::Name("web".to_string())))
+        Some(SupervisionRequest::Restart(AppSelector::Name(
+            "web".to_string()
+        )))
     );
 }
 
 #[tokio::test]
 async fn deleting_an_app_forwards_the_selector() {
-    let outcome = Ok(DaemonReply::Deleted {
+    let outcome = Ok(SupervisionReply::Deleted {
         name: "web".to_string(),
     });
     let exchange = exchange(outcome, delete_at("/apps/web")).await;
     assert_eq!(
         exchange.request,
-        Some(DaemonRequest::Delete(AppSelector::Name("web".to_string())))
+        Some(SupervisionRequest::Delete(AppSelector::Name(
+            "web".to_string()
+        )))
     );
 }
 
@@ -220,8 +226,12 @@ async fn a_failed_state_write_answers_server_error() {
 }
 
 #[tokio::test]
-async fn an_unreadable_apps_file_answers_bad_request() {
-    let outcome = Err(AppsFileError::NoApps.into());
+async fn an_unusable_declaration_answers_bad_request() {
+    let outcome = Err(SpecResolveError::Unusable {
+        name: "web".to_string(),
+        reason: "cannot accept an apps file with no apps".to_string(),
+    }
+    .into());
     let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
     assert_eq!(exchange.status, StatusCode::BAD_REQUEST);
 }
@@ -240,14 +250,14 @@ async fn a_daemon_that_abandoned_the_request_answers_unavailable() {
 
 #[tokio::test]
 async fn stopping_everything_asks_the_daemon_to_stop_all_services() {
-    let outcome = Ok(DaemonReply::StoppedAll { names: Vec::new() });
+    let outcome = Ok(SupervisionReply::StoppedAll { names: Vec::new() });
     let exchange = exchange(outcome, post_to("/services/stop-all", "")).await;
-    assert_eq!(exchange.request, Some(DaemonRequest::StopAll));
+    assert_eq!(exchange.request, Some(SupervisionRequest::StopAll));
 }
 
 #[tokio::test]
 async fn stopping_everything_returns_the_list_of_stopped_services() {
-    let outcome = Ok(DaemonReply::StoppedAll {
+    let outcome = Ok(SupervisionReply::StoppedAll {
         names: vec!["web".to_string()],
     });
     let exchange = exchange(outcome, post_to("/services/stop-all", "")).await;

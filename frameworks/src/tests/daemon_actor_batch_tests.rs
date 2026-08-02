@@ -1,12 +1,12 @@
 use super::*;
 
-async fn half_started_batch(harness: &mut Harness) -> DaemonReply {
+async fn half_started_batch(harness: &mut Harness) -> SupervisionReply {
     let broken = unrunnable_script(harness);
     apps_file(harness, "web", SLEEPER);
     service_with_script(harness, "broken", &broken, &["web"]);
     harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["web".to_string(), "broken".to_string()],
         })
         .await
@@ -17,7 +17,7 @@ async fn half_started_batch(harness: &mut Harness) -> DaemonReply {
 async fn a_half_started_batch_names_the_service_it_refused() {
     let mut harness = harness();
     let reply = half_started_batch(&mut harness).await;
-    let DaemonReply::Started {
+    let SupervisionReply::Started {
         outcomes: _,
         refused,
         reason: _,
@@ -32,7 +32,7 @@ async fn a_half_started_batch_names_the_service_it_refused() {
 async fn a_half_started_batch_keeps_the_service_it_did_start() {
     let mut harness = harness();
     let reply = half_started_batch(&mut harness).await;
-    let DaemonReply::Started {
+    let SupervisionReply::Started {
         outcomes,
         refused: _,
         reason,
@@ -51,7 +51,7 @@ async fn a_batch_that_started_nothing_is_refused_outright() {
     service_with_script(&harness, "broken", &broken, &[]);
     let refused = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["broken".to_string()],
         })
         .await;
@@ -65,7 +65,7 @@ async fn stopping_everything_force_kills_whatever_outlived_the_grace_period() {
     let pid = started.pid.expect("a pid");
     harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
 
@@ -95,7 +95,7 @@ async fn stopping_everything_sweeps_a_tracked_pid_that_outlives_the_grace_period
 
     harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
 
@@ -119,7 +119,7 @@ async fn shutting_down_force_kills_only_the_services_that_were_stopping() {
     start_one(&mut harness, "db", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("db")))
+        .handle(SupervisionRequest::Stop(selector("db")))
         .await
         .expect("should stop db");
 

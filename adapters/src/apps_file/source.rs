@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use usecases::{AppSpec, SpecError, validate_app_name};
+use usecases::{AppSpec, SpecError, SpecResolveError, SpecResolver, validate_app_name};
 
 use super::file::{AppsFileError, SpecDefaults, load_service_file, resolve_checked};
 use crate::config::Pm3Config;
@@ -38,6 +38,29 @@ impl SpecSource {
         }
         resolve_checked(&self.defaults()?, &entry)
     }
+}
+
+impl SpecResolver for SpecSource {
+    async fn prepare(&self, name: &str) -> Result<AppSpec, SpecResolveError> {
+        let mut spec = self
+            .resolve_service(name)
+            .await
+            .map_err(|error| resolve_failure(name, &error))?;
+        crate::workspace::materialise_workspace(&mut spec).await;
+        Ok(spec)
+    }
+}
+
+fn resolve_failure(name: &str, error: &AppsFileError) -> SpecResolveError {
+    let reason = error.to_string();
+    let name = name.to_string();
+    if matches!(
+        error,
+        AppsFileError::MissingApp(_) | AppsFileError::Io { .. }
+    ) {
+        return SpecResolveError::Missing { name, reason };
+    }
+    SpecResolveError::Unusable { name, reason }
 }
 
 pub fn service_file_of(cfg_dir: &Path, name: &str) -> Result<PathBuf, SpecError> {

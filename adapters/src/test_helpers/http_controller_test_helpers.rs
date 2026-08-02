@@ -5,12 +5,13 @@ use axum::{
 use serde_json::Value;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tower::ServiceExt;
+use usecases::SupervisionOutcome;
 
 use super::*;
 use crate::{
     http::{dto::ReplyDto, routes::router},
     response_body::{body_json, body_text},
-    state::{DaemonCommand, DaemonOutcome},
+    state::DaemonCommand,
 };
 
 const CHANNEL_DEPTH: usize = 1;
@@ -22,7 +23,7 @@ pub fn reply_of(body: &str) -> ReplyDto {
 pub struct Exchange {
     pub status: StatusCode,
     pub body: String,
-    pub request: Option<DaemonRequest>,
+    pub request: Option<SupervisionRequest>,
 }
 
 pub fn get_from(path: &str) -> Request<Body> {
@@ -37,9 +38,9 @@ pub fn delete_at(path: &str) -> Request<Body> {
     built(path, "DELETE", Body::empty())
 }
 
-pub async fn exchange(outcome: DaemonOutcome, request: Request<Body>) -> Exchange {
+pub async fn exchange(outcome: SupervisionOutcome, request: Request<Body>) -> Exchange {
     let (sender, mut receiver) = mpsc::channel(CHANNEL_DEPTH);
-    let actor: JoinHandle<DaemonRequest> = tokio::spawn(async move {
+    let actor: JoinHandle<SupervisionRequest> = tokio::spawn(async move {
         let DaemonCommand {
             request: asked,
             reply,
