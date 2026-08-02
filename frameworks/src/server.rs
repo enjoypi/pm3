@@ -30,7 +30,7 @@ where
     let addr = listener.local_addr().ok();
     tracing::info!(
         feature = "server",
-        operation = "listen",
+        action = "listen",
         result = "ok",
         ?addr,
         "pm3 daemon listening",
@@ -74,7 +74,7 @@ async fn drain(
     let drain_timeout_secs = drain_timeout.as_secs();
     tracing::info!(
         feature = "server",
-        operation = "drain.start",
+        action = "drain_start",
         result = "draining",
         drain_timeout_secs,
         "draining connections",
@@ -85,7 +85,7 @@ async fn drain(
         Err(_elapsed) => {
             tracing::warn!(
                 feature = "server",
-                operation = "drain.timeout",
+                action = "drain_timeout",
                 result = "timeout",
                 drain_timeout_secs,
                 "drain timeout exceeded; forcing shutdown",

@@ -6,6 +6,7 @@ use axum::{
 use super::controller::{delete, describe, health, list, restart, start, stop, stop_all};
 use crate::state::DaemonHandle;
 
+pub const REQUEST_ID_HEADER: &str = "x-request-id";
 pub const HEALTH_PATH: &str = "/health";
 pub const APPS_PATH: &str = "/apps";
 pub const SERVICES_STOP_ALL_PATH: &str = "/services/stop-all";

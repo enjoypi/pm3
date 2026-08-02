@@ -1,10 +1,14 @@
 use std::{
     path::{Path, PathBuf},
     process::Output,
+    time::Duration,
 };
 
 use thiserror::Error;
-use tokio::process::Command;
+use tokio::{
+    process::Command,
+    time::{Instant, timeout},
+};
 
 use super::{
     command::{ServiceCommand, ServiceProgramSet},
@@ -23,16 +27,22 @@ pub enum ServiceCommandError {
 
     #[error("cannot write '{path}': {reason}")]
     Io { path: String, reason: String },
+
+    #[error("cannot get an answer from '{program}' within {timeout_ms} ms")]
+    Stalled { program: String, timeout_ms: u64 },
 }
 
-pub async fn execute_plan(steps: &[ServiceStep]) -> Result<Vec<String>, ServiceCommandError> {
+pub async fn execute_plan(
+    steps: &[ServiceStep],
+    timeout_ms: u64,
+) -> Result<Vec<String>, ServiceCommandError> {
     let mut skipped = Vec::new();
     let mut created = Vec::new();
     for step in steps {
         let outcome = match about_to_create(step).await {
             Ok(pending) => {
                 created.extend(pending);
-                run_step(step).await
+                run_step(step, timeout_ms).await
             }
             Err(error) => Err(error),
         };
@@ -69,9 +79,10 @@ async fn roll_back(created: &[PathBuf]) {
 fn log_roll_back(path: &Path, removed: bool) {
     let file = path.to_string_lossy();
     tracing::warn!(
+        feature = "service",
         file = %file,
         removed,
-        action = "service",
+        action = "roll_back",
         "pm3 backed out a file it had written before the plan failed",
     );
 }
@@ -79,18 +90,22 @@ fn log_roll_back(path: &Path, removed: bool) {
 pub async fn query_status(
     spec: &ServiceUnitSpec,
     programs: &ServiceProgramSet,
+    timeout_ms: u64,
 ) -> Result<ServiceStatus, ServiceCommandError> {
     if !spec.unit_path().is_file() {
         return Ok(ServiceStatus::NotInstalled);
     }
-    let captured = capture(&status_command(spec, programs)).await?;
+    let captured = capture(&status_command(spec, programs), timeout_ms).await?;
     if parse_run_state(spec.kind, captured.success, &captured.stdout) {
         return Ok(ServiceStatus::Running);
     }
     Ok(ServiceStatus::InstalledNotRunning)
 }
 
-async fn run_step(step: &ServiceStep) -> Result<Option<String>, ServiceCommandError> {
+async fn run_step(
+    step: &ServiceStep,
+    timeout_ms: u64,
+) -> Result<Option<String>, ServiceCommandError> {
     match step {
         ServiceStep::Write {
             dir,
@@ -98,23 +113,25 @@ async fn run_step(step: &ServiceStep) -> Result<Option<String>, ServiceCommandEr
             contents,
         } => write_file(dir, path, contents).await.map(|()| None),
         ServiceStep::Remove { path } => remove_path(path).await.map(|()| None),
-        ServiceStep::Run(command) => run_command(command).await.map(|()| None),
-        ServiceStep::TryRun(command) => Ok(tolerate(command).await),
+        ServiceStep::Run(command) => run_command(command, timeout_ms).await.map(|()| None),
+        ServiceStep::TryRun(command) => Ok(tolerate(command, timeout_ms).await),
     }
 }
 
-async fn tolerate(command: &ServiceCommand) -> Option<String> {
-    let Err(error) = run_command(command).await else {
+async fn tolerate(command: &ServiceCommand, timeout_ms: u64) -> Option<String> {
+    let Err(error) = run_command(command, timeout_ms).await else {
         return None;
     };
-    let note = error.to_string();
+    let reason = error.to_string();
     let program = command.program.as_str();
     tracing::warn!(
+        feature = "service",
         program,
-        action = "service",
+        reason,
+        action = "skip_optional",
         "skipped an optional service manager command"
     );
-    Some(note)
+    Some(reason)
 }
 
 async fn write_file(dir: &Path, path: &Path, contents: &str) -> Result<(), ServiceCommandError> {
@@ -132,8 +149,8 @@ async fn remove_path(path: &Path) -> Result<(), ServiceCommandError> {
         .map_err(|error| io_error(path, &error))
 }
 
-async fn run_command(command: &ServiceCommand) -> Result<(), ServiceCommandError> {
-    let captured = capture(command).await?;
+async fn run_command(command: &ServiceCommand, timeout_ms: u64) -> Result<(), ServiceCommandError> {
+    let captured = capture(command, timeout_ms).await?;
     if captured.success {
         return Ok(());
     }
@@ -143,11 +160,18 @@ async fn run_command(command: &ServiceCommand) -> Result<(), ServiceCommandError
     })
 }
 
-async fn capture(command: &ServiceCommand) -> Result<Captured, ServiceCommandError> {
-    let output = Command::new(&command.program)
-        .args(&command.args)
-        .output()
+async fn capture(
+    command: &ServiceCommand,
+    timeout_ms: u64,
+) -> Result<Captured, ServiceCommandError> {
+    let started = Instant::now();
+    let call = Command::new(&command.program).args(&command.args).output();
+    let output = timeout(Duration::from_millis(timeout_ms), call)
         .await
+        .map_err(|_elapsed| ServiceCommandError::Stalled {
+            program: command.program.clone(),
+            timeout_ms,
+        })?
         .map_err(|error| ServiceCommandError::Spawn {
             program: command.program.clone(),
             reason: error.to_string(),
@@ -155,13 +179,20 @@ async fn capture(command: &ServiceCommand) -> Result<Captured, ServiceCommandErr
     let captured = Captured::from_output(&output);
     let program = command.program.as_str();
     let code = captured.code;
+    let duration_ms = elapsed_ms(started);
     tracing::debug!(
+        feature = "service",
         program,
         code,
-        action = "service",
+        duration_ms,
+        action = "service_command",
         "ran a service manager command"
     );
     Ok(captured)
+}
+
+fn elapsed_ms(started: Instant) -> u128 {
+    started.elapsed().as_millis()
 }
 
 fn io_error(path: &Path, source: &std::io::Error) -> ServiceCommandError {

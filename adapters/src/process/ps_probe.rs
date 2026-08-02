@@ -8,8 +8,6 @@ use usecases::{Liveness, ProcessProbe};
 
 pub const PS_PROGRAM: &str = "/bin/ps";
 
-const DEFAULT_POLL_INTERVAL_MS: u64 = 50;
-
 const NO_SUCH_PROCESS_CODE: i32 = 1;
 const UNKNOWN_EXIT_CODE: i32 = -1;
 const WIDE_FLAG: &str = "-ww";
@@ -29,23 +27,17 @@ pub struct PsProcessProbe {
 
 impl PsProcessProbe {
     #[must_use]
-    pub const fn new(program: String, timeout_ms: u64) -> Self {
+    pub const fn new(program: String, timeout_ms: u64, poll_interval_ms: u64) -> Self {
         Self {
             program,
             timeout_ms,
-            poll_interval_ms: DEFAULT_POLL_INTERVAL_MS,
+            poll_interval_ms,
         }
     }
 
     #[must_use]
-    pub fn with_timeout(timeout_ms: u64) -> Self {
-        Self::new(PS_PROGRAM.to_string(), timeout_ms)
-    }
-
-    #[must_use]
-    pub const fn with_poll_interval(mut self, poll_interval_ms: u64) -> Self {
-        self.poll_interval_ms = poll_interval_ms;
-        self
+    pub fn with_timeout(timeout_ms: u64, poll_interval_ms: u64) -> Self {
+        Self::new(PS_PROGRAM.to_string(), timeout_ms, poll_interval_ms)
     }
 
     pub async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
@@ -57,6 +49,7 @@ impl PsProcessProbe {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(PID_SEPARATOR);
+        let started = Instant::now();
         let call = Command::new(&self.program)
             .args([WIDE_FLAG, FORMAT_FLAG, BATCH_FORMAT, PID_FLAG])
             .arg(&joined)
@@ -76,7 +69,7 @@ impl PsProcessProbe {
             return unreadable(pids);
         }
         let listed = parse_report(&String::from_utf8_lossy(&output.stdout));
-        log_probe(&joined, listed.len());
+        log_probe(&joined, listed.len(), started.elapsed().as_millis());
         pids.iter()
             .map(|pid| (*pid, seen_as(listed.get(pid))))
             .collect()
@@ -133,10 +126,12 @@ impl ProcessProbe for PsProcessProbe {
     }
 }
 
-fn log_probe(pids: &str, alive: usize) {
+fn log_probe(pids: &str, alive: usize, duration_ms: u128) {
     tracing::debug!(
+        feature = "supervisor",
         pids,
         alive,
+        duration_ms,
         action = "probe",
         "probed the managed processes"
     );
@@ -144,6 +139,7 @@ fn log_probe(pids: &str, alive: usize) {
 
 fn log_stalled_probe(pids: &str, timeout_ms: u64) {
     tracing::warn!(
+        feature = "supervisor",
         pids,
         timeout_ms,
         action = "probe",
@@ -153,6 +149,7 @@ fn log_stalled_probe(pids: &str, timeout_ms: u64) {
 
 fn log_unusable_probe(pids: &str, program: &str) {
     tracing::warn!(
+        feature = "supervisor",
         pids,
         program,
         action = "probe",
@@ -162,6 +159,7 @@ fn log_unusable_probe(pids: &str, program: &str) {
 
 fn log_refused_probe(pids: &str, code: i32) {
     tracing::warn!(
+        feature = "supervisor",
         pids,
         code,
         action = "probe",

@@ -32,10 +32,18 @@ fn the_unit_quotes_every_exec_start_token() {
 }
 
 #[test]
-fn the_unit_restarts_the_daemon_on_failure() {
+fn the_unit_takes_the_restart_condition_from_the_spec() {
     let unit = rendered();
-    assert!(unit.contains("Restart=on-failure"), "got: {unit}");
+    assert!(unit.contains("Restart=always"), "got: {unit}");
     assert!(unit.contains("RestartSec=2"), "got: {unit}");
+}
+
+#[test]
+fn the_unit_restarts_only_on_failure_when_the_config_says_so() {
+    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    spec.restart_condition = "on-failure".to_string();
+    let unit = render_unit(&spec);
+    assert!(unit.contains("Restart=on-failure"), "got: {unit}");
 }
 
 #[test]

@@ -12,12 +12,13 @@ pub async fn install_service(
     programs: &ServiceProgramSet,
     config_contents: &str,
     dry_run: bool,
+    timeout_ms: u64,
 ) -> Result<String, ServiceCommandError> {
     let steps = install_plan(spec, programs, config_contents);
     if dry_run {
         return Ok(render_plan(&steps));
     }
-    let skipped = execute_plan(&steps).await?;
+    let skipped = execute_plan(&steps, timeout_ms).await?;
     Ok(format!(
         "installed {} as a {} service\n{}\n{}{}",
         spec.label,
@@ -32,6 +33,7 @@ pub async fn uninstall_service(
     spec: &ServiceUnitSpec,
     programs: &ServiceProgramSet,
     dry_run: bool,
+    timeout_ms: u64,
 ) -> Result<String, ServiceCommandError> {
     let steps = uninstall_plan(spec, programs);
     if dry_run {
@@ -40,7 +42,7 @@ pub async fn uninstall_service(
     if !spec.unit_path().is_file() {
         return Ok(NOTHING_INSTALLED.to_string());
     }
-    let skipped = execute_plan(&steps).await?;
+    let skipped = execute_plan(&steps, timeout_ms).await?;
     Ok(format!(
         "uninstalled {}{}",
         spec.label,
@@ -51,8 +53,9 @@ pub async fn uninstall_service(
 pub async fn status_report(
     spec: &ServiceUnitSpec,
     programs: &ServiceProgramSet,
+    timeout_ms: u64,
 ) -> Result<String, ServiceCommandError> {
-    let status = query_status(spec, programs).await?;
+    let status = query_status(spec, programs, timeout_ms).await?;
     Ok(format!(
         "{} ({} service): {}\n{}",
         spec.label,

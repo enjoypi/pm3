@@ -1,14 +1,21 @@
 use usecases::SandboxMode;
 
-use super::{
-    super::backend::{BWRAP_PROGRAM, HostSandbox, SEATBELT_PROGRAM},
-    *,
-};
+use super::{super::backend::HostSandbox, *};
+
+const BWRAP_PROGRAM: &str = "bwrap";
+const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
+
+const fn program_of(backend: SandboxBackend) -> &'static str {
+    match backend {
+        SandboxBackend::Seatbelt => SEATBELT_PROGRAM,
+        SandboxBackend::Bwrap => BWRAP_PROGRAM,
+    }
+}
 
 fn host(backend: SandboxBackend) -> HostSandbox {
     HostSandbox {
         backend,
-        program: backend.program().to_string(),
+        program: program_of(backend).to_string(),
     }
 }
 

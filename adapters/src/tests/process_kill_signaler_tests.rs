@@ -8,6 +8,8 @@ use tokio::{
 use usecases::{Liveness, ProcessProbe as _};
 
 use super::*;
+
+const POLL_STEP_MS: u64 = 20;
 use crate::{config::STOP_SIGNAL_TERM, process::ps_probe::PsProcessProbe};
 
 const MISSING_PID: u32 = 2_147_483_647;
@@ -58,7 +60,7 @@ async fn announced_pid(child: &mut Child) -> u32 {
 }
 
 async fn outlives_its_group(pid: u32) -> bool {
-    let probe = PsProcessProbe::with_timeout(SIGNAL_TIMEOUT_MS);
+    let probe = PsProcessProbe::with_timeout(SIGNAL_TIMEOUT_MS, POLL_STEP_MS);
     for _poll in 0..DEATH_POLLS {
         if probe.identity(pid).await == Liveness::Gone {
             return false;

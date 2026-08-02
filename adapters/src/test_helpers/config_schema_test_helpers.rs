@@ -15,6 +15,8 @@ pub fn valid_sandbox_config() -> SandboxConfig {
     SandboxConfig {
         mode: SandboxMode::WorkspaceWrite.as_str().to_string(),
         network: false,
+        seatbelt_program: "/usr/bin/sandbox-exec".to_string(),
+        bwrap_program: "bwrap".to_string(),
     }
 }
 
@@ -22,6 +24,10 @@ pub fn valid_service_config() -> ServiceConfig {
     ServiceConfig {
         label: "pm3-fixture".to_string(),
         restart_delay_secs: 2,
+        restart_condition: RESTART_CONDITION_ALWAYS.to_string(),
+        launchctl_path: "/bin/launchctl".to_string(),
+        systemctl_path: "/usr/bin/systemctl".to_string(),
+        loginctl_path: "/usr/bin/loginctl".to_string(),
     }
 }
 
@@ -40,6 +46,7 @@ pub fn valid_pm3_config() -> Pm3Config {
         daemon_poll_max_interval_ms: 1000,
         log_follow_interval_ms: 200,
         log_tail_lines: 20,
+        daemon_channel_depth: 32,
         restart: valid_restart_config(),
         sandbox: valid_sandbox_config(),
         service: valid_service_config(),

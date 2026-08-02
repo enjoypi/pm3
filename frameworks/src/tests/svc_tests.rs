@@ -361,6 +361,26 @@ async fn undoing_a_forced_split_restores_the_previous_config() {
 }
 
 #[tokio::test]
+async fn an_undo_that_cannot_reach_its_file_leaves_the_rest_of_the_rollback_running() {
+    let home = home();
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(
+        &apps_file,
+        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+    )
+    .expect("write the apps file");
+    let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+        .await
+        .expect("the apps file should split");
+    std::fs::remove_file(home.cfg_dir.join("web.yaml")).expect("take the file away first");
+    split.undo.run().await;
+    assert!(
+        !home.cfg_dir.join("db.yaml").exists(),
+        "a failed step must not abort the rollback"
+    );
+}
+
+#[tokio::test]
 async fn undoing_an_unchanged_split_touches_nothing() {
     let home = home();
     let apps_file = home.dir.path().join("apps.yaml");

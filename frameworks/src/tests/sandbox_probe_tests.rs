@@ -1,9 +1,16 @@
 use super::*;
 
+fn programs() -> SandboxProgramSet {
+    SandboxProgramSet {
+        seatbelt: "/usr/bin/sandbox-exec".to_string(),
+        bwrap: "bwrap".to_string(),
+    }
+}
+
 fn found(backend: SandboxBackend) -> HostSandbox {
     HostSandbox {
         backend,
-        program: backend.program().to_string(),
+        program: programs().program(backend).to_string(),
     }
 }
 
@@ -32,7 +39,11 @@ fn a_resolved_backend_carries_the_absolute_program_path() {
 #[test]
 fn the_host_offers_a_usable_sandbox_backend() {
     assert!(
-        detect_host_backend("/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin").is_some(),
+        detect_host_backend(
+            &programs(),
+            "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
+        )
+        .is_some(),
         "macOS needs /usr/bin/sandbox-exec, Linux needs bubblewrap on pm3.search_path"
     );
 }

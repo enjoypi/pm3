@@ -11,6 +11,8 @@ use usecases::{LaunchSpec, ProcessLauncher as _};
 
 use super::*;
 
+const POLL_STEP_MS: u64 = 20;
+
 const POLL_MS: u64 = 10;
 const PROBE_TIMEOUT_MS: u64 = 5000;
 const CADENCE: PollCadence = PollCadence {
@@ -56,6 +58,7 @@ fn fixture() -> Fixture {
     let probe = Arc::new(PsProcessProbe::new(
         script.to_string_lossy().into_owned(),
         PROBE_TIMEOUT_MS,
+        POLL_STEP_MS,
     ));
     Fixture {
         dir,

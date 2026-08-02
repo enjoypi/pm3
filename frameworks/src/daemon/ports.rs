@@ -39,10 +39,10 @@ impl DaemonPorts {
             wrapper: SandboxCommandWrapper::new(backend),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
-            probe: Arc::new(
-                PsProcessProbe::with_timeout(command_timeout_ms)
-                    .with_poll_interval(poll_interval_ms),
-            ),
+            probe: Arc::new(PsProcessProbe::with_timeout(
+                command_timeout_ms,
+                poll_interval_ms,
+            )),
             watch: Arc::new(AdoptedWatch::default()),
             fingerprinter: Sha256Fingerprinter,
             scheduler: CronScheduler,

@@ -1,9 +1,10 @@
 use std::{
     path::{Path, PathBuf},
-    time::Duration,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
 };
 
-use adapters::HEALTH_PATH;
+use adapters::{HEALTH_PATH, REQUEST_ID_HEADER};
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
@@ -62,12 +63,20 @@ impl UdsClient {
         path: &str,
         body: Option<&str>,
     ) -> Result<HttpReply, ClientError> {
-        let raw = self.exchange(&http_request(method, path, body)).await?;
+        let request_id = next_request_id();
+        let started = Instant::now();
+        let raw = self
+            .exchange(&http_request(method, path, body, &request_id))
+            .await?;
         let reply = parse_http_response(&raw)?;
+        let duration_ms = started.elapsed().as_millis();
         tracing::debug!(
+            feature = "client",
+            request_id,
             method,
             path,
             status = reply.status,
+            duration_ms,
             action = "request",
             "pm3 client talked to the daemon",
         );
@@ -129,15 +138,22 @@ async fn converse(
 }
 
 #[must_use]
-pub fn http_request(method: &str, path: &str, body: Option<&str>) -> String {
+pub fn next_request_id() -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{sequence}", std::process::id())
+}
+
+#[must_use]
+pub fn http_request(method: &str, path: &str, body: Option<&str>, request_id: &str) -> String {
     let Some(payload) = body else {
         return format!(
-            "{method} {path} HTTP/1.1\r\nHost: {HOST}\r\nConnection: close{HEADER_TERMINATOR}"
+            "{method} {path} HTTP/1.1\r\nHost: {HOST}\r\n{REQUEST_ID_HEADER}: {request_id}\r\nConnection: close{HEADER_TERMINATOR}"
         );
     };
     let length = payload.len();
     format!(
-        "{method} {path} HTTP/1.1\r\nHost: {HOST}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {length}{HEADER_TERMINATOR}{payload}"
+        "{method} {path} HTTP/1.1\r\nHost: {HOST}\r\n{REQUEST_ID_HEADER}: {request_id}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {length}{HEADER_TERMINATOR}{payload}"
     )
 }
 

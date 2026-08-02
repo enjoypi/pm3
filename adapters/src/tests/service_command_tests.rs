@@ -10,11 +10,19 @@ fn programs() -> ServiceProgramSet {
 }
 
 #[test]
-fn the_default_program_set_points_at_the_real_system_managers() {
-    let programs = ServiceProgramSet::default();
-    assert_eq!(programs.launchctl, LAUNCHCTL_PROGRAM);
-    assert_eq!(programs.systemctl, SYSTEMCTL_PROGRAM);
-    assert_eq!(programs.loginctl, LOGINCTL_PROGRAM);
+fn the_program_set_reads_every_manager_path_from_the_config() {
+    let service = crate::config::ServiceConfig {
+        label: "pm3-test".to_string(),
+        restart_delay_secs: 2,
+        restart_condition: "always".to_string(),
+        launchctl_path: "/opt/launchctl".to_string(),
+        systemctl_path: "/opt/systemctl".to_string(),
+        loginctl_path: "/opt/loginctl".to_string(),
+    };
+    let programs = ServiceProgramSet::from_config(&service);
+    assert_eq!(programs.launchctl, "/opt/launchctl");
+    assert_eq!(programs.systemctl, "/opt/systemctl");
+    assert_eq!(programs.loginctl, "/opt/loginctl");
 }
 
 #[test]

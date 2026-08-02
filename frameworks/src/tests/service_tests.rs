@@ -34,7 +34,7 @@ fn fixture(program: &str) -> Fixture {
 
 fn context<'c>(fixture: &'c Fixture, kind: ServiceKind, home: &'c str) -> ServiceContext<'c> {
     ServiceContext {
-        programs: &fixture.programs,
+        programs: Some(&fixture.programs),
         kind,
         home_env: Some(home),
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
@@ -140,7 +140,7 @@ fn the_spec_takes_the_restart_delay_from_the_config() {
 fn a_missing_home_stops_the_session() {
     let fixture = fixture(TRUE_PROGRAM);
     let context = ServiceContext {
-        programs: &fixture.programs,
+        programs: Some(&fixture.programs),
         kind: ServiceKind::Launchd,
         home_env: None,
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
@@ -156,7 +156,7 @@ fn a_binary_that_cannot_be_located_stops_the_session() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
     let context = ServiceContext {
-        programs: &fixture.programs,
+        programs: Some(&fixture.programs),
         kind: ServiceKind::Launchd,
         home_env: Some(&home),
         binary: Err(std::io::Error::new(
@@ -407,7 +407,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
     };
     let fake_home = dir.path().to_string_lossy().into_owned();
     let context = ServiceContext {
-        programs: &programs,
+        programs: Some(&programs),
         kind: ServiceKind::Launchd,
         home_env: Some(&fake_home),
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),

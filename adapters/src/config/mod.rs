@@ -9,8 +9,9 @@ pub use self::{
     },
     loader::{ConfigLoadError, load_config, substitute_env_vars},
     schema::{
-        AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
-        STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig, validate_config,
-        validate_pm3_config, validate_telemetry_config,
+        AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config,
+        RESTART_CONDITION_ALWAYS, RESTART_CONDITION_ON_FAILURE, RestartConfig, STOP_SIGNAL_TERM,
+        SandboxConfig, ServiceConfig, TelemetryConfig, validate_config, validate_pm3_config,
+        validate_telemetry_config,
     },
 };

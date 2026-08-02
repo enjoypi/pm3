@@ -1,6 +1,8 @@
 use usecases::{SandboxMode, SandboxPolicy};
 
-use super::{super::backend::BWRAP_PROGRAM, *};
+use super::*;
+
+const BWRAP_PROGRAM: &str = "bwrap";
 
 fn policy(network: bool, writable_roots: &[&str]) -> SandboxPolicy {
     SandboxPolicy {

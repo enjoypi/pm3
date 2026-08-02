@@ -2,6 +2,8 @@ use tokio::net::{UnixListener, UnixStream};
 
 use super::*;
 
+const REQUEST_ID: &str = "7-1";
+
 const REPLY_200: &[u8] =
     b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok";
 const REQUEST_SINK: usize = 1024;
@@ -27,16 +29,23 @@ async fn serve_once(listener: UnixListener, reply: &'static [u8]) {
 
 #[test]
 fn a_request_without_a_body_declares_no_content_length() {
-    let request = http_request("GET", "/apps", None);
+    let request = http_request("GET", "/apps", None, REQUEST_ID);
     assert_eq!(
         request,
-        "GET /apps HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+        "GET /apps HTTP/1.1\r\nHost: localhost\r\nx-request-id: 7-1\r\nConnection: close\r\n\r\n"
     );
 }
 
 #[test]
+fn every_request_carries_a_distinct_correlation_id() {
+    let first = next_request_id();
+    let second = next_request_id();
+    assert_ne!(first, second);
+}
+
+#[test]
 fn a_request_with_a_body_declares_its_length() {
-    let request = http_request("POST", "/apps", Some("{}"));
+    let request = http_request("POST", "/apps", Some("{}"), REQUEST_ID);
     assert!(
         request.ends_with("Content-Length: 2\r\n\r\n{}"),
         "{request}"

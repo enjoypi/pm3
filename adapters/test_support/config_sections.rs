@@ -14,6 +14,7 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   daemon_poll_max_interval_ms: 1000
   log_follow_interval_ms: 200
   log_tail_lines: 20
+  daemon_channel_depth: 32
   restart:
     autorestart: true
     min_uptime_ms: 1000
@@ -22,9 +23,15 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   sandbox:
     mode: "{sandbox_mode}"
     network: false
+    seatbelt_program: "/usr/bin/sandbox-exec"
+    bwrap_program: "bwrap"
   service:
     label: "pm3-fixture"
     restart_delay_secs: 2
+    restart_condition: "always"
+    launchctl_path: "/bin/launchctl"
+    systemctl_path: "/usr/bin/systemctl"
+    loginctl_path: "/usr/bin/loginctl"
 "#
     )
 }

@@ -61,7 +61,7 @@ impl ShutdownSignals {
 fn log_signal(signal: &str, result: &str) {
     tracing::info!(
         feature = "lifecycle",
-        operation = "shutdown.signal",
+        action = "shutdown_signal",
         result,
         signal,
         "pm3 daemon received a signal",

@@ -1,7 +1,10 @@
-use crate::program::resolve_executable;
+use crate::{config::SandboxConfig, program::resolve_executable};
 
-pub const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
-pub const BWRAP_PROGRAM: &str = "bwrap";
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SandboxProgramSet {
+    pub seatbelt: String,
+    pub bwrap: String,
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SandboxBackend {
@@ -15,15 +18,25 @@ pub struct HostSandbox {
     pub program: String,
 }
 
-impl SandboxBackend {
+impl SandboxProgramSet {
     #[must_use]
-    pub const fn program(self) -> &'static str {
-        match self {
-            Self::Seatbelt => SEATBELT_PROGRAM,
-            Self::Bwrap => BWRAP_PROGRAM,
+    pub fn from_config(sandbox: &SandboxConfig) -> Self {
+        Self {
+            seatbelt: sandbox.seatbelt_program.clone(),
+            bwrap: sandbox.bwrap_program.clone(),
         }
     }
 
+    #[must_use]
+    pub fn program(&self, backend: SandboxBackend) -> &str {
+        match backend {
+            SandboxBackend::Seatbelt => &self.seatbelt,
+            SandboxBackend::Bwrap => &self.bwrap,
+        }
+    }
+}
+
+impl SandboxBackend {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -33,8 +46,12 @@ impl SandboxBackend {
     }
 
     #[must_use]
-    pub fn resolve(self, search_path: Option<&str>) -> Option<HostSandbox> {
-        let program = resolve_executable(self.program(), search_path)?;
+    pub fn resolve(
+        self,
+        programs: &SandboxProgramSet,
+        search_path: Option<&str>,
+    ) -> Option<HostSandbox> {
+        let program = resolve_executable(programs.program(self), search_path)?;
         Some(HostSandbox {
             backend: self,
             program: program.to_string_lossy().into_owned(),
