@@ -6,7 +6,9 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use usecases::{AppSelector, UsecaseError};
+use usecases::{
+    AppSelector, SupervisionFailure, SupervisionReply, SupervisionRequest, UsecaseError,
+};
 
 use super::{
     dto::{HealthDto, ReplyDto, StartRequestDto},
@@ -14,7 +16,7 @@ use super::{
 };
 use crate::{
     presenter::{affected_service, already_running_names, refused_names, render_reply},
-    state::{DaemonError, DaemonFailure, DaemonHandle, DaemonReply, DaemonRequest},
+    state::{DaemonError, DaemonHandle},
 };
 
 #[allow(clippy::unused_async, reason = "axum Handler trait requires a future")]
@@ -27,14 +29,14 @@ pub async fn start(
     headers: HeaderMap,
     Json(body): Json<StartRequestDto>,
 ) -> Response {
-    let request = DaemonRequest::Start {
+    let request = SupervisionRequest::Start {
         services: body.services,
     };
     dispatch(&handle, &headers, request).await
 }
 
 pub async fn list(State(handle): State<DaemonHandle>, headers: HeaderMap) -> Response {
-    dispatch(&handle, &headers, DaemonRequest::List).await
+    dispatch(&handle, &headers, SupervisionRequest::List).await
 }
 
 pub async fn describe(
@@ -42,7 +44,12 @@ pub async fn describe(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(&handle, &headers, DaemonRequest::Describe(selector(&raw))).await
+    dispatch(
+        &handle,
+        &headers,
+        SupervisionRequest::Describe(selector(&raw)),
+    )
+    .await
 }
 
 pub async fn stop(
@@ -50,7 +57,7 @@ pub async fn stop(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(&handle, &headers, DaemonRequest::Stop(selector(&raw))).await
+    dispatch(&handle, &headers, SupervisionRequest::Stop(selector(&raw))).await
 }
 
 pub async fn restart(
@@ -58,7 +65,12 @@ pub async fn restart(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(&handle, &headers, DaemonRequest::Restart(selector(&raw))).await
+    dispatch(
+        &handle,
+        &headers,
+        SupervisionRequest::Restart(selector(&raw)),
+    )
+    .await
 }
 
 pub async fn delete(
@@ -66,21 +78,30 @@ pub async fn delete(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(&handle, &headers, DaemonRequest::Delete(selector(&raw))).await
+    dispatch(
+        &handle,
+        &headers,
+        SupervisionRequest::Delete(selector(&raw)),
+    )
+    .await
 }
 
 pub async fn stop_all(State(handle): State<DaemonHandle>, headers: HeaderMap) -> Response {
-    dispatch(&handle, &headers, DaemonRequest::StopAll).await
+    dispatch(&handle, &headers, SupervisionRequest::StopAll).await
 }
 
 fn selector(raw: &str) -> AppSelector {
     AppSelector::parse(raw)
 }
 
-async fn dispatch(handle: &DaemonHandle, headers: &HeaderMap, request: DaemonRequest) -> Response {
+async fn dispatch(
+    handle: &DaemonHandle,
+    headers: &HeaderMap,
+    request: SupervisionRequest,
+) -> Response {
     let request_id = request_id_of(headers);
-    let action = action_of(&request);
-    let target = requested_target(&request);
+    let action = request.action();
+    let target = request.target();
     log_request(&request_id, action, &target);
     let outcome = handle.send(request).await;
     let (status, body) = render(outcome);
@@ -91,7 +112,7 @@ async fn dispatch(handle: &DaemonHandle, headers: &HeaderMap, request: DaemonReq
     }
 }
 
-fn render(outcome: Result<DaemonReply, DaemonError>) -> (StatusCode, ReplyDto) {
+fn render(outcome: Result<SupervisionReply, DaemonError>) -> (StatusCode, ReplyDto) {
     match outcome {
         Ok(reply) => (StatusCode::OK, envelope(&reply)),
         Err(error) => (status_of(&error), refusal(&error)),
@@ -120,29 +141,6 @@ fn next_request_id() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-const fn action_of(request: &DaemonRequest) -> &'static str {
-    match request {
-        DaemonRequest::Start { .. } => "start",
-        DaemonRequest::List => "list",
-        DaemonRequest::Describe(_) => "describe",
-        DaemonRequest::Stop(_) => "stop",
-        DaemonRequest::Restart(_) => "restart",
-        DaemonRequest::Delete(_) => "delete",
-        DaemonRequest::StopAll => "stop_all",
-    }
-}
-
-fn requested_target(request: &DaemonRequest) -> String {
-    match request {
-        DaemonRequest::Start { services } => services.join(","),
-        DaemonRequest::List | DaemonRequest::StopAll => String::new(),
-        DaemonRequest::Describe(selector)
-        | DaemonRequest::Stop(selector)
-        | DaemonRequest::Restart(selector)
-        | DaemonRequest::Delete(selector) => selector.to_string(),
-    }
-}
-
 fn log_request(request_id: &str, action: &str, req: &str) {
     tracing::debug!(
         feature = "api",
@@ -165,7 +163,7 @@ fn log_response(request_id: &str, action: &str, req: &str, status: u16, resp: &s
     );
 }
 
-fn envelope(reply: &DaemonReply) -> ReplyDto {
+fn envelope(reply: &SupervisionReply) -> ReplyDto {
     ReplyDto {
         report: render_reply(reply),
         service: affected_service(reply),
@@ -177,8 +175,8 @@ fn envelope(reply: &DaemonReply) -> ReplyDto {
 const fn status_of(error: &DaemonError) -> StatusCode {
     match error {
         DaemonError::Unavailable | DaemonError::Dropped => StatusCode::SERVICE_UNAVAILABLE,
-        DaemonError::Failed(DaemonFailure::Apps(_)) => StatusCode::BAD_REQUEST,
-        DaemonError::Failed(DaemonFailure::Usecase(usecase)) => usecase_status(usecase),
+        DaemonError::Failed(SupervisionFailure::Spec(_)) => StatusCode::BAD_REQUEST,
+        DaemonError::Failed(SupervisionFailure::Usecase(usecase)) => usecase_status(usecase),
     }
 }
 

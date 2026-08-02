@@ -1,7 +1,6 @@
-use usecases::{StartKind, StartOutcome};
+use usecases::{StartKind, StartOutcome, SupervisionReply};
 
 use super::{describe::render_describe, fields::format_pid, table::render_table};
-use crate::state::DaemonReply;
 
 pub const NOTHING_STARTED: &str = "no apps were started";
 pub const NOTHING_TO_STOP: &str = "no services were running";
@@ -15,8 +14,8 @@ fn already_running_marker(name: &str) -> String {
 }
 
 #[must_use]
-pub fn affected_service(reply: &DaemonReply) -> Option<String> {
-    use DaemonReply as Dr;
+pub fn affected_service(reply: &SupervisionReply) -> Option<String> {
+    use SupervisionReply as Dr;
 
     match reply {
         Dr::Stopped { name } | Dr::Restarted { name } | Dr::Deleted { name } => Some(name.clone()),
@@ -32,8 +31,8 @@ pub fn affected_service(reply: &DaemonReply) -> Option<String> {
 }
 
 #[must_use]
-pub fn already_running_names(reply: &DaemonReply) -> Vec<String> {
-    let DaemonReply::Started {
+pub fn already_running_names(reply: &SupervisionReply) -> Vec<String> {
+    let SupervisionReply::Started {
         outcomes,
         refused: _,
         reason: _,
@@ -49,8 +48,8 @@ pub fn already_running_names(reply: &DaemonReply) -> Vec<String> {
 }
 
 #[must_use]
-pub fn refused_names(reply: &DaemonReply) -> Vec<String> {
-    let DaemonReply::Started {
+pub fn refused_names(reply: &SupervisionReply) -> Vec<String> {
+    let SupervisionReply::Started {
         outcomes: _,
         refused,
         reason: _,
@@ -62,19 +61,19 @@ pub fn refused_names(reply: &DaemonReply) -> Vec<String> {
 }
 
 #[must_use]
-pub fn render_reply(reply: &DaemonReply) -> String {
+pub fn render_reply(reply: &SupervisionReply) -> String {
     match reply {
-        DaemonReply::Started {
+        SupervisionReply::Started {
             outcomes,
             refused: _,
             reason,
         } => render_started(outcomes, reason.as_deref()),
-        DaemonReply::Listed(views) => render_table(views),
-        DaemonReply::Described(view) => render_describe(view),
-        DaemonReply::Stopped { name } => format!("stopped {name}"),
-        DaemonReply::Restarted { name } => format!("restarted {name}"),
-        DaemonReply::Deleted { name } => format!("deleted {name}"),
-        DaemonReply::StoppedAll { names } => render_stopped_all(names),
+        SupervisionReply::Listed(views) => render_table(views),
+        SupervisionReply::Described(view) => render_describe(view),
+        SupervisionReply::Stopped { name } => format!("stopped {name}"),
+        SupervisionReply::Restarted { name } => format!("restarted {name}"),
+        SupervisionReply::Deleted { name } => format!("deleted {name}"),
+        SupervisionReply::StoppedAll { names } => render_stopped_all(names),
     }
 }
 

@@ -1,13 +1,13 @@
 use std::{sync::Arc, time::Duration};
 
 use adapters::{
-    AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
-    ExitOutcome, ProcessProbe as _, ProcessTable, ProcessView, RestartOutcome, Scheduler as _,
-    Signaler as _, SpecSource, StartKind, StartOutcome, StartReport, armed_schedule_names,
-    delete_app, describe_app, handle_child_exit, identity_token_of, is_drained, list_apps,
-    materialise_workspace, owner_of_pid, persist_for_handover, pid_was_recycled, refused_services,
-    restart_app, resurrect, running_pids, schedule_of, start_apps, stop_all_apps, stop_app,
-    unsettled_count,
+    AppSelector, Clock as _, DaemonCommand, ExitAction, ExitOutcome, ProcessProbe as _,
+    ProcessTable, ProcessView, RestartOutcome, Scheduler as _, Signaler as _, SpecResolver as _,
+    SpecSource, StartKind, StartOutcome, StartReport, SupervisionOutcome, SupervisionReply,
+    SupervisionRequest, armed_schedule_names, delete_app, describe_app, handle_child_exit,
+    identity_token_of, is_drained, list_apps, owner_of_pid, persist_for_handover, pid_was_recycled,
+    refused_services, restart_app, resurrect, running_pids, schedule_of, start_apps, stop_all_apps,
+    stop_app, unsettled_count,
 };
 use tokio::sync::mpsc;
 
@@ -62,20 +62,20 @@ impl Daemon {
         self.arm_known_timers();
     }
 
-    pub async fn handle(&mut self, request: DaemonRequest) -> DaemonOutcome {
+    pub async fn handle(&mut self, request: SupervisionRequest) -> SupervisionOutcome {
         match request {
-            DaemonRequest::Start { services } => self.start(&services).await,
-            DaemonRequest::List => Ok(DaemonReply::Listed(
+            SupervisionRequest::Start { services } => self.start(&services).await,
+            SupervisionRequest::List => Ok(SupervisionReply::Listed(
                 list_apps(&self.table, self.ports.now_ms())
                     .into_iter()
                     .map(|view| self.with_next_fire(view))
                     .collect(),
             )),
-            DaemonRequest::Describe(selector) => self.describe(&selector),
-            DaemonRequest::Stop(selector) => self.stop(&selector).await,
-            DaemonRequest::Restart(selector) => self.restart(&selector).await,
-            DaemonRequest::Delete(selector) => self.delete(&selector).await,
-            DaemonRequest::StopAll => self.stop_all().await,
+            SupervisionRequest::Describe(selector) => self.describe(&selector),
+            SupervisionRequest::Stop(selector) => self.stop(&selector).await,
+            SupervisionRequest::Restart(selector) => self.restart(&selector).await,
+            SupervisionRequest::Delete(selector) => self.delete(&selector).await,
+            SupervisionRequest::StopAll => self.stop_all().await,
         }
     }
 
@@ -200,13 +200,10 @@ impl Daemon {
         }
     }
 
-    async fn start(&mut self, services: &[String]) -> DaemonOutcome {
+    async fn start(&mut self, services: &[String]) -> SupervisionOutcome {
         let mut specs = Vec::with_capacity(services.len());
         for name in services {
-            specs.push(self.specs.resolve_service(name).await?);
-        }
-        for spec in &mut specs {
-            materialise_workspace(spec).await;
+            specs.push(self.specs.prepare(name).await?);
         }
         let report = start_apps(&mut self.table, &specs, &self.specs.logs_dir, &*self.ports).await;
         let StartReport { outcomes, failure } = report;
@@ -221,7 +218,7 @@ impl Daemon {
             }
         }
         let Some(error) = failure else {
-            return Ok(DaemonReply::Started {
+            return Ok(SupervisionReply::Started {
                 outcomes,
                 refused: Vec::new(),
                 reason: None,
@@ -232,28 +229,28 @@ impl Daemon {
         }
         let refused = refused_services(services, &outcomes);
         log_partial_start(&refused, &error);
-        Ok(DaemonReply::Started {
+        Ok(SupervisionReply::Started {
             outcomes,
             refused,
             reason: Some(error.to_string()),
         })
     }
 
-    fn describe(&self, selector: &AppSelector) -> DaemonOutcome {
+    fn describe(&self, selector: &AppSelector) -> SupervisionOutcome {
         let view = describe_app(&self.table, selector, self.ports.now_ms())?;
-        Ok(DaemonReply::Described(self.with_next_fire(view)))
+        Ok(SupervisionReply::Described(self.with_next_fire(view)))
     }
 
-    async fn stop(&mut self, selector: &AppSelector) -> DaemonOutcome {
+    async fn stop(&mut self, selector: &AppSelector) -> SupervisionOutcome {
         let outcome = stop_app(&mut self.table, selector, &*self.ports).await?;
         self.board.disarm(&outcome.name);
         self.board.cancel_restart(&outcome.name);
         let token = self.identity_token(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
-        Ok(DaemonReply::Stopped { name: outcome.name })
+        Ok(SupervisionReply::Stopped { name: outcome.name })
     }
 
-    async fn restart(&mut self, selector: &AppSelector) -> DaemonOutcome {
+    async fn restart(&mut self, selector: &AppSelector) -> SupervisionOutcome {
         let outcome = restart_app(
             &mut self.table,
             selector,
@@ -264,20 +261,20 @@ impl Daemon {
         let name = self.dispatch_restart(outcome);
         self.board.cancel_restart(&name);
         self.arm_timer(&name);
-        Ok(DaemonReply::Restarted { name })
+        Ok(SupervisionReply::Restarted { name })
     }
 
-    async fn delete(&mut self, selector: &AppSelector) -> DaemonOutcome {
+    async fn delete(&mut self, selector: &AppSelector) -> SupervisionOutcome {
         let token = identity_token_of(&self.table, selector);
         let outcome = delete_app(&mut self.table, selector, &*self.ports).await?;
         self.board.disarm(&outcome.name);
         self.board.cancel_restart(&outcome.name);
         self.board.forget_generation(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
-        Ok(DaemonReply::Deleted { name: outcome.name })
+        Ok(SupervisionReply::Deleted { name: outcome.name })
     }
 
-    async fn stop_all(&mut self) -> DaemonOutcome {
+    async fn stop_all(&mut self) -> SupervisionOutcome {
         self.board.disarm_all();
         self.board.cancel_all_restarts();
         let stopped = stop_all_apps(&mut self.table, &*self.ports).await?;
@@ -290,7 +287,7 @@ impl Daemon {
             self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
         }
         self.sweep_strays(&covered).await;
-        Ok(DaemonReply::StoppedAll { names })
+        Ok(SupervisionReply::StoppedAll { names })
     }
 
     async fn sweep_strays(&mut self, covered: &[u32]) {
@@ -344,7 +341,7 @@ impl Daemon {
     }
 
     pub async fn on_fire(&mut self, name: &str, fire_at_ms: u64) {
-        if self.board.next_fire_of(name) != Some(fire_at_ms) {
+        if !self.board.fire_is_due(name, fire_at_ms) {
             return;
         }
         self.restart_now(name).await;

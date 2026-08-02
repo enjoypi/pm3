@@ -1,61 +1,16 @@
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
-use usecases::{AppSelector, ProcessView, StartOutcome, UsecaseError};
-
-use crate::apps_file::AppsFileError;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DaemonRequest {
-    Start { services: Vec<String> },
-    List,
-    Describe(AppSelector),
-    Stop(AppSelector),
-    Restart(AppSelector),
-    Delete(AppSelector),
-    StopAll,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DaemonReply {
-    Started {
-        outcomes: Vec<StartOutcome>,
-        refused: Vec<String>,
-        reason: Option<String>,
-    },
-    Listed(Vec<ProcessView>),
-    Described(ProcessView),
-    Stopped {
-        name: String,
-    },
-    Restarted {
-        name: String,
-    },
-    Deleted {
-        name: String,
-    },
-    StoppedAll {
-        names: Vec<String>,
-    },
-}
+use usecases::{SupervisionFailure, SupervisionOutcome, SupervisionReply, SupervisionRequest};
 
 #[derive(Debug)]
 pub struct DaemonCommand {
-    pub request: DaemonRequest,
-    pub reply: oneshot::Sender<DaemonOutcome>,
+    pub request: SupervisionRequest,
+    pub reply: oneshot::Sender<SupervisionOutcome>,
 }
 
 #[derive(Clone, Debug)]
 pub struct DaemonHandle {
     commands: mpsc::Sender<DaemonCommand>,
-}
-
-#[derive(Debug, Error)]
-pub enum DaemonFailure {
-    #[error(transparent)]
-    Usecase(#[from] UsecaseError),
-
-    #[error(transparent)]
-    Apps(#[from] AppsFileError),
 }
 
 #[derive(Debug, Error)]
@@ -67,10 +22,8 @@ pub enum DaemonError {
     Dropped,
 
     #[error(transparent)]
-    Failed(#[from] DaemonFailure),
+    Failed(#[from] SupervisionFailure),
 }
-
-pub type DaemonOutcome = Result<DaemonReply, DaemonFailure>;
 
 impl DaemonHandle {
     #[must_use]
@@ -78,7 +31,7 @@ impl DaemonHandle {
         Self { commands }
     }
 
-    pub async fn send(&self, request: DaemonRequest) -> Result<DaemonReply, DaemonError> {
+    pub async fn send(&self, request: SupervisionRequest) -> Result<SupervisionReply, DaemonError> {
         let (reply, answer) = oneshot::channel();
         self.commands
             .send(DaemonCommand { request, reply })

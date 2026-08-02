@@ -56,7 +56,7 @@ fn every_started_app_gets_its_own_line() {
 
 #[test]
 fn a_start_reply_renders_the_start_summary() {
-    let reply = DaemonReply::Started {
+    let reply = SupervisionReply::Started {
         outcomes: vec![started("web", StartKind::Spawned)],
         refused: Vec::new(),
         reason: None,
@@ -66,7 +66,7 @@ fn a_start_reply_renders_the_start_summary() {
 
 #[test]
 fn a_list_reply_renders_the_table() {
-    let reply = DaemonReply::Listed(vec![running_view(0, "web")]);
+    let reply = SupervisionReply::Listed(vec![running_view(0, "web")]);
     assert_eq!(
         render_reply(&reply),
         render_table(&[running_view(0, "web")])
@@ -75,18 +75,21 @@ fn a_list_reply_renders_the_table() {
 
 #[test]
 fn an_empty_list_reply_renders_the_empty_notice() {
-    assert_eq!(render_reply(&DaemonReply::Listed(Vec::new())), EMPTY_NOTICE);
+    assert_eq!(
+        render_reply(&SupervisionReply::Listed(Vec::new())),
+        EMPTY_NOTICE
+    );
 }
 
 #[test]
 fn a_describe_reply_renders_the_details() {
-    let reply = DaemonReply::Described(idle_view(0, "web"));
+    let reply = SupervisionReply::Described(idle_view(0, "web"));
     assert_eq!(render_reply(&reply), render_describe(&idle_view(0, "web")));
 }
 
 #[test]
 fn a_stop_reply_confirms_the_app() {
-    let reply = DaemonReply::Stopped {
+    let reply = SupervisionReply::Stopped {
         name: "web".to_string(),
     };
     assert_eq!(render_reply(&reply), "stopped web");
@@ -94,7 +97,7 @@ fn a_stop_reply_confirms_the_app() {
 
 #[test]
 fn a_restart_reply_confirms_the_app() {
-    let reply = DaemonReply::Restarted {
+    let reply = SupervisionReply::Restarted {
         name: "web".to_string(),
     };
     assert_eq!(render_reply(&reply), "restarted web");
@@ -102,7 +105,7 @@ fn a_restart_reply_confirms_the_app() {
 
 #[test]
 fn a_delete_reply_confirms_the_app() {
-    let reply = DaemonReply::Deleted {
+    let reply = SupervisionReply::Deleted {
         name: "web".to_string(),
     };
     assert_eq!(render_reply(&reply), "deleted web");
@@ -116,7 +119,7 @@ fn a_reclaimed_app_says_it_was_reclaimed() {
 
 #[test]
 fn a_stop_all_reply_lists_every_stopped_service() {
-    let reply = DaemonReply::StoppedAll {
+    let reply = SupervisionReply::StoppedAll {
         names: vec!["web".to_string(), "db".to_string()],
     };
     assert_eq!(render_reply(&reply), "stopped web, db");
@@ -124,7 +127,7 @@ fn a_stop_all_reply_lists_every_stopped_service() {
 
 #[test]
 fn a_stop_all_reply_with_nothing_to_stop_says_so() {
-    let reply = DaemonReply::StoppedAll { names: Vec::new() };
+    let reply = SupervisionReply::StoppedAll { names: Vec::new() };
     assert_eq!(render_reply(&reply), NOTHING_TO_STOP);
 }
 
@@ -165,7 +168,7 @@ fn a_half_started_batch_still_lists_what_it_started() {
 
 #[test]
 fn a_reply_carries_the_services_the_daemon_refused() {
-    let reply = DaemonReply::Started {
+    let reply = SupervisionReply::Started {
         outcomes: vec![started("web", StartKind::Spawned)],
         refused: vec!["api".to_string()],
         reason: Some("cannot spawn 'api'".to_string()),
@@ -175,5 +178,5 @@ fn a_reply_carries_the_services_the_daemon_refused() {
 
 #[test]
 fn a_reply_that_started_nothing_refuses_nothing() {
-    assert!(refused_names(&DaemonReply::Listed(Vec::new())).is_empty());
+    assert!(refused_names(&SupervisionReply::Listed(Vec::new())).is_empty());
 }

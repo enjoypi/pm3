@@ -9,7 +9,7 @@ async fn stopping_everything_takes_every_app_down() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
     assert_ne!(status_of(&mut harness, "web").await, "online");
@@ -21,11 +21,11 @@ async fn stopping_everything_names_what_it_stopped() {
     start_one(&mut harness, "web", SLEEPER).await;
     let reply = harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
     assert!(
-        matches!(reply, DaemonReply::StoppedAll { names } if names == vec!["web".to_string()]),
+        matches!(reply, SupervisionReply::StoppedAll { names } if names == vec!["web".to_string()]),
         "stop-all should report the services it stopped"
     );
 }
@@ -35,11 +35,11 @@ async fn stopping_everything_on_an_empty_table_reports_nothing() {
     let mut harness = harness();
     let reply = harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
     assert!(
-        matches!(reply, DaemonReply::StoppedAll { names } if names.is_empty()),
+        matches!(reply, SupervisionReply::StoppedAll { names } if names.is_empty()),
         "an empty table stops nothing"
     );
 }
@@ -50,7 +50,7 @@ async fn stopping_everything_reports_a_dump_it_cannot_write() {
     std::fs::create_dir_all(&harness.paths.dump_file).expect("block the dump path");
     std::fs::write(harness.paths.dump_file.join("occupied"), "state")
         .expect("fill the blocked dump path");
-    let outcome = harness.daemon.handle(DaemonRequest::StopAll).await;
+    let outcome = harness.daemon.handle(SupervisionRequest::StopAll).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
@@ -68,7 +68,7 @@ async fn shutting_down_settles_a_service_that_was_still_stopping() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     assert_eq!(status_of(&mut harness, "web").await, "stopping");
@@ -88,7 +88,7 @@ async fn a_service_stopped_before_the_handover_is_settled_by_the_next_daemon() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     harness.daemon.shutdown().await;
@@ -104,7 +104,7 @@ async fn shutting_down_tolerates_a_dump_it_cannot_write() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     std::fs::remove_file(&harness.paths.dump_file).expect("drop the dump file");
@@ -150,12 +150,12 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
     apps_file_without_restart(&harness, "web", SLEEPER);
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["web".to_string()],
         })
         .await
         .expect("should start");
-    let DaemonReply::Started {
+    let SupervisionReply::Started {
         outcomes,
         refused: _,
         reason: _,
@@ -172,7 +172,7 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
         .await;
     harness
         .daemon
-        .handle(DaemonRequest::StopAll)
+        .handle(SupervisionRequest::StopAll)
         .await
         .expect("should stop everything");
 
@@ -202,7 +202,7 @@ async fn stopping_everything_answers_while_a_stray_is_still_draining() {
     let (commands, command_queue) = mpsc::channel(CHANNEL_DEPTH);
     let supervisor = tokio::spawn(run(daemon, command_queue, events));
 
-    let (stop_all, stopped) = command(DaemonRequest::StopAll);
+    let (stop_all, stopped) = command(SupervisionRequest::StopAll);
     commands.send(stop_all).await.expect("should queue");
     tokio::time::timeout(EVENT_BUDGET, stopped)
         .await
@@ -210,7 +210,7 @@ async fn stopping_everything_answers_while_a_stray_is_still_draining() {
         .expect("should answer")
         .expect("should stop everything");
 
-    let (list, listed) = command(DaemonRequest::List);
+    let (list, listed) = command(SupervisionRequest::List);
     commands.send(list).await.expect("should queue");
     tokio::time::timeout(EVENT_BUDGET, listed)
         .await
@@ -235,10 +235,10 @@ async fn the_supervisor_answers_commands() {
     } = harness();
     let supervisor = tokio::spawn(run(daemon, command_queue, events));
 
-    let (command, answer) = command(DaemonRequest::List);
+    let (command, answer) = command(SupervisionRequest::List);
     commands.send(command).await.expect("should queue");
     let reply = answer.await.expect("should answer").expect("should list");
-    assert_eq!(reply, DaemonReply::Listed(Vec::new()));
+    assert_eq!(reply, SupervisionReply::Listed(Vec::new()));
 
     sender
         .send(DaemonEvent::Shutdown)
@@ -354,7 +354,7 @@ async fn a_confined_app_is_refused_when_no_sandbox_backend_exists() {
     .expect("write the service");
     let err = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["web".to_string()],
         })
         .await
@@ -367,7 +367,7 @@ async fn a_confined_app_is_refused_when_no_sandbox_backend_exists() {
 async fn starting_an_already_running_app_leaves_it_alone() {
     let mut harness = harness();
     apps_file(&harness, "web", SLEEPER);
-    let request = DaemonRequest::Start {
+    let request = SupervisionRequest::Start {
         services: vec!["web".to_string()],
     };
     harness
@@ -376,7 +376,7 @@ async fn starting_an_already_running_app_leaves_it_alone() {
         .await
         .expect("first start");
     let reply = harness.daemon.handle(request).await.expect("second start");
-    let DaemonReply::Started {
+    let SupervisionReply::Started {
         outcomes,
         refused: _,
         reason: _,
@@ -406,7 +406,7 @@ async fn a_writable_root_that_does_not_exist_is_kept_verbatim() {
     .expect("write the service");
     let err = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["web".to_string()],
         })
         .await
@@ -421,7 +421,7 @@ async fn an_unusable_default_sandbox_mode_is_refused() {
     apps_file(&harness, "web", SLEEPER);
     let err = harness
         .daemon
-        .handle(DaemonRequest::Start {
+        .handle(SupervisionRequest::Start {
             services: vec!["web".to_string()],
         })
         .await
@@ -435,7 +435,7 @@ async fn stopping_an_unknown_app_is_refused() {
     let mut harness = harness();
     let outcome = harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("ghost")))
+        .handle(SupervisionRequest::Stop(selector("ghost")))
         .await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
@@ -445,7 +445,7 @@ async fn restarting_an_unknown_app_through_a_command_is_refused() {
     let mut harness = harness();
     let outcome = harness
         .daemon
-        .handle(DaemonRequest::Restart(selector("ghost")))
+        .handle(SupervisionRequest::Restart(selector("ghost")))
         .await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
@@ -456,7 +456,7 @@ async fn restarting_a_stopped_app_through_a_command_starts_it_again() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("web")))
+        .handle(SupervisionRequest::Stop(selector("web")))
         .await
         .expect("should stop");
     let (name, generation, outcome) = next_exit(&mut harness.events).await;
@@ -464,22 +464,22 @@ async fn restarting_a_stopped_app_through_a_command_starts_it_again() {
 
     let reply = harness
         .daemon
-        .handle(DaemonRequest::Restart(selector("web")))
+        .handle(SupervisionRequest::Restart(selector("web")))
         .await
         .expect("should restart");
     assert_eq!(
         reply,
-        DaemonReply::Restarted {
+        SupervisionReply::Restarted {
             name: "web".to_string(),
         }
     );
     let described = harness
         .daemon
-        .handle(DaemonRequest::Describe(selector("web")))
+        .handle(SupervisionRequest::Describe(selector("web")))
         .await
         .expect("should describe");
     assert!(
-        matches!(described, DaemonReply::Described(view) if view.status.as_str() == "online"),
+        matches!(described, SupervisionReply::Described(view) if view.status.as_str() == "online"),
         "the app should be online again"
     );
 }
@@ -491,7 +491,7 @@ async fn shutting_down_counts_only_the_services_still_running() {
     start_one(&mut harness, "db", SLEEPER).await;
     harness
         .daemon
-        .handle(DaemonRequest::Stop(selector("db")))
+        .handle(SupervisionRequest::Stop(selector("db")))
         .await
         .expect("should stop db");
     harness.daemon.shutdown().await;
