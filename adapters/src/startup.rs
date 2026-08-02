@@ -5,7 +5,7 @@ pub fn log_startup_banner(cfg: &AppConfig, version: &str, socket_path: &str) {
     tracing::info!(
         target: "pm3::startup",
         feature = "lifecycle",
-        operation = "startup",
+        action = "startup",
         result = "ok",
         socket_path = %socket_path,
         home = %cfg.pm3.home,

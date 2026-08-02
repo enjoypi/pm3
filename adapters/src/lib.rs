@@ -36,14 +36,15 @@ pub use self::{
     },
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,
-        RestartConfig, STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig,
-        check_config, load_and_parse_config, load_config_file, parse_config, show_config,
-        validate_config, validate_pm3_config, validate_telemetry_config,
+        RESTART_CONDITION_ALWAYS, RESTART_CONDITION_ON_FAILURE, RestartConfig, STOP_SIGNAL_TERM,
+        SandboxConfig, ServiceConfig, TelemetryConfig, check_config, load_and_parse_config,
+        load_config_file, parse_config, show_config, validate_config, validate_pm3_config,
+        validate_telemetry_config,
     },
     exit_status::{UNKNOWN_EXIT_CODE, describe_refusal, exit_code_of},
     http::{
-        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, ReplyDto, SERVICES_STOP_ALL_PATH,
-        StartRequestDto, router,
+        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, REQUEST_ID_HEADER, ReplyDto,
+        SERVICES_STOP_ALL_PATH, StartRequestDto, router,
     },
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
     paths::{
@@ -65,7 +66,9 @@ pub use self::{
         HOME_PLACEHOLDER, SVC_CWD_NAME, SVC_CWD_PLACEHOLDER, fold_home, fold_svc_cwd,
         program_available, resolve_program,
     },
-    sandbox::{HostSandbox, SandboxBackend, SandboxCommandWrapper, seatbelt_profile},
+    sandbox::{
+        HostSandbox, SandboxBackend, SandboxCommandWrapper, SandboxProgramSet, seatbelt_profile,
+    },
     schedule::{CronError, CronScheduler, ExpandError, expand_random, validate_cron},
     service::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, ServiceCommandError, ServiceKind,

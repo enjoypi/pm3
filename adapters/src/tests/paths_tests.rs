@@ -15,13 +15,28 @@ fn every_pm3_file_lives_under_the_root() {
 
 #[test]
 fn the_default_config_lives_in_the_default_home() {
-    let path = default_config_path(Some("/home/u")).expect("the default config path resolves");
+    let path =
+        default_config_path(None, Some("/home/u")).expect("the default config path resolves");
+    assert_eq!(path, Path::new("/home/u/.pm3/config.yaml"));
+}
+
+#[test]
+fn a_pm3_home_in_the_environment_moves_the_default_config() {
+    let path = default_config_path(Some("/srv/pm3"), Some("/home/u"))
+        .expect("the default config path resolves");
+    assert_eq!(path, Path::new("/srv/pm3/config.yaml"));
+}
+
+#[test]
+fn an_empty_pm3_home_falls_back_to_the_default_home() {
+    let path =
+        default_config_path(Some(""), Some("/home/u")).expect("the default config path resolves");
     assert_eq!(path, Path::new("/home/u/.pm3/config.yaml"));
 }
 
 #[test]
 fn the_default_config_needs_a_home_environment() {
-    let err = default_config_path(None).unwrap_err().to_string();
+    let err = default_config_path(None, None).unwrap_err().to_string();
     assert!(err.contains("no HOME in the environment"), "got: {err}");
 }
 

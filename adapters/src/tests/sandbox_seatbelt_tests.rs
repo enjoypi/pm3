@@ -1,6 +1,8 @@
 use usecases::{SandboxMode, SandboxPolicy};
 
-use super::{super::backend::SEATBELT_PROGRAM, *};
+use super::*;
+
+const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
 
 fn policy(mode: SandboxMode, network: bool, writable_roots: &[&str]) -> SandboxPolicy {
     SandboxPolicy {

@@ -1,9 +1,5 @@
 use std::path::Path;
 
-pub const LAUNCHCTL_PROGRAM: &str = "/bin/launchctl";
-pub const SYSTEMCTL_PROGRAM: &str = "/usr/bin/systemctl";
-pub const LOGINCTL_PROGRAM: &str = "/usr/bin/loginctl";
-
 const USER_SCOPE: &str = "--user";
 const OVERRIDE_DISABLED: &str = "-w";
 
@@ -20,12 +16,13 @@ pub struct ServiceProgramSet {
     pub loginctl: String,
 }
 
-impl Default for ServiceProgramSet {
-    fn default() -> Self {
+impl ServiceProgramSet {
+    #[must_use]
+    pub fn from_config(service: &crate::config::ServiceConfig) -> Self {
         Self {
-            launchctl: LAUNCHCTL_PROGRAM.to_string(),
-            systemctl: SYSTEMCTL_PROGRAM.to_string(),
-            loginctl: LOGINCTL_PROGRAM.to_string(),
+            launchctl: service.launchctl_path.clone(),
+            systemctl: service.systemctl_path.clone(),
+            loginctl: service.loginctl_path.clone(),
         }
     }
 }

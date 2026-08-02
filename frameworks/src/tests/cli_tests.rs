@@ -3,14 +3,14 @@ use super::*;
 #[test]
 fn the_default_config_lives_in_the_default_pm3_home() {
     assert_eq!(
-        default_config(Some("/home/dev")),
+        default_config(None, Some("/home/dev")),
         "/home/dev/.pm3/config.yaml"
     );
 }
 
 #[test]
 fn the_default_config_falls_back_to_the_working_directory_without_a_home() {
-    assert_eq!(default_config(None), CONFIG_FILE);
+    assert_eq!(default_config(None, None), CONFIG_FILE);
 }
 
 fn parse(args: &[&str]) -> Cli {
@@ -80,7 +80,7 @@ async fn nothing_changed_offers_nothing() {
 fn the_config_path_defaults_to_the_pm3_home() {
     assert_eq!(
         parse(&["pm3", "list"]).config,
-        default_config(host_home().as_deref())
+        default_config(None, host_home().as_deref())
     );
 }
 

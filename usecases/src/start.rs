@@ -211,12 +211,23 @@ async fn launch(
     record.runtime.mark_launched(launched.pid, now_ms);
     record.runtime.mark_online();
     record.runtime.record_identity(identity);
+    log_started(name, launched.pid);
     Ok(StartOutcome {
         pm_id: record.runtime.pm_id,
         name: name.to_string(),
         pid: Some(launched.pid),
         kind: StartKind::Spawned,
     })
+}
+
+fn log_started(app: &str, pid: u32) {
+    tracing::info!(
+        feature = "lifecycle",
+        action = "start",
+        app,
+        pid,
+        "pm3 started a service",
+    );
 }
 
 pub(crate) async fn capture_identity(

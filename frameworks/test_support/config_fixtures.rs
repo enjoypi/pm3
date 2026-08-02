@@ -17,6 +17,13 @@ pub const SANDBOX_MODE: &str = "danger-full-access";
 pub const SERVICE_LABEL: &str = "pm3-fixture";
 pub const SERVICE_SEARCH_PATH: &str = "/usr/bin:/bin";
 pub const SERVICE_RESTART_DELAY_SECS: u64 = 2;
+pub const SERVICE_RESTART_CONDITION: &str = "always";
+pub const CHANNEL_DEPTH: usize = 32;
+pub const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
+pub const BWRAP_PROGRAM: &str = "bwrap";
+pub const LAUNCHCTL_PATH: &str = "/bin/launchctl";
+pub const SYSTEMCTL_PATH: &str = "/usr/bin/systemctl";
+pub const LOGINCTL_PATH: &str = "/usr/bin/loginctl";
 
 pub fn pm3_config_with_home(home: &str) -> Pm3Config {
     Pm3Config {
@@ -33,6 +40,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         daemon_poll_max_interval_ms: POLL_INTERVAL_MS,
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         log_tail_lines: LOG_TAIL_LINES,
+        daemon_channel_depth: CHANNEL_DEPTH,
         restart: RestartConfig {
             autorestart: true,
             min_uptime_ms: MIN_UPTIME_MS,
@@ -42,10 +50,16 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         sandbox: SandboxConfig {
             mode: SANDBOX_MODE.to_string(),
             network: false,
+            seatbelt_program: SEATBELT_PROGRAM.to_string(),
+            bwrap_program: BWRAP_PROGRAM.to_string(),
         },
         service: ServiceConfig {
             label: SERVICE_LABEL.to_string(),
             restart_delay_secs: SERVICE_RESTART_DELAY_SECS,
+            restart_condition: SERVICE_RESTART_CONDITION.to_string(),
+            launchctl_path: LAUNCHCTL_PATH.to_string(),
+            systemctl_path: SYSTEMCTL_PATH.to_string(),
+            loginctl_path: LOGINCTL_PATH.to_string(),
         },
     }
 }
@@ -66,6 +80,7 @@ pub fn config_yaml(home: &str) -> String {
   daemon_poll_max_interval_ms: {POLL_INTERVAL_MS}
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   log_tail_lines: {LOG_TAIL_LINES}
+  daemon_channel_depth: {CHANNEL_DEPTH}
   restart:
     autorestart: true
     min_uptime_ms: {MIN_UPTIME_MS}
@@ -74,9 +89,15 @@ pub fn config_yaml(home: &str) -> String {
   sandbox:
     mode: "{SANDBOX_MODE}"
     network: false
+    seatbelt_program: "{SEATBELT_PROGRAM}"
+    bwrap_program: "{BWRAP_PROGRAM}"
   service:
     label: "{SERVICE_LABEL}"
     restart_delay_secs: {SERVICE_RESTART_DELAY_SECS}
+    restart_condition: "{SERVICE_RESTART_CONDITION}"
+    launchctl_path: "{LAUNCHCTL_PATH}"
+    systemctl_path: "{SYSTEMCTL_PATH}"
+    loginctl_path: "{LOGINCTL_PATH}"
 
 telemetry:
   service_name: "pm3"

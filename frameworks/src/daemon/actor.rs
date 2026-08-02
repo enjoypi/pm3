@@ -13,7 +13,7 @@ use super::{
     events::DaemonEvent,
     logging::{
         log_failure, log_handover, log_partial_start, log_settled, log_spared_force_kill,
-        log_stale_restart,
+        log_stale_restart, log_stuck_force_kill,
     },
     ports::DaemonPorts,
     timers::{TimerBoard, log_armed, log_unschedulable},
@@ -146,7 +146,9 @@ impl Daemon {
             log_spared_force_kill(name, pid);
             return;
         }
-        self.ports.force_kill(pid).await.ok();
+        if let Err(error) = self.ports.force_kill(pid).await {
+            log_stuck_force_kill(name, pid, &error.to_string());
+        }
     }
 
     async fn pid_was_recycled(&self, pid: u32, token: Option<&str>) -> bool {
@@ -175,7 +177,7 @@ impl Daemon {
             .count();
         tracing::info!(
             feature = "lifecycle",
-            operation = "shutdown",
+            action = "shutdown",
             mode = "preserve",
             survivors,
             "pm3 daemon is leaving its services running for the next daemon to reclaim",

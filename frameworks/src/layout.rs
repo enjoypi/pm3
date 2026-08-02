@@ -68,6 +68,11 @@ pub fn host_home() -> Option<String> {
     std::env::var("HOME").ok()
 }
 
+#[must_use]
+pub fn host_pm3_home() -> Option<String> {
+    std::env::var("PM3_HOME").ok()
+}
+
 fn layout_error(path: &Path, source: &std::io::Error) -> Error {
     Error::Layout {
         path: path.to_string_lossy().into_owned(),

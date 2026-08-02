@@ -105,10 +105,21 @@ pub(crate) async fn request_stop(
 
     record.runtime.mark_stopping();
     ports.terminate(pid).await?;
+    log_stopping(&name, pid);
     Ok(StopOutcome {
         name,
         force_kill_pid: Some(pid),
     })
+}
+
+fn log_stopping(app: &str, pid: u32) {
+    tracing::info!(
+        feature = "lifecycle",
+        action = "stop",
+        app,
+        pid,
+        "pm3 asked a service to stop",
+    );
 }
 
 #[cfg(test)]

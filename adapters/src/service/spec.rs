@@ -73,6 +73,7 @@ pub struct ServiceUnitSpec {
     pub search_path: String,
     pub home: String,
     pub restart_delay_secs: u64,
+    pub restart_condition: String,
 }
 
 impl ServiceUnitSpec {

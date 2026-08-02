@@ -76,15 +76,14 @@ impl SvcUndo {
 
 impl UndoStep {
     async fn apply(&self) {
-        match &self.restore {
-            Restore::Remove => {
-                tokio::fs::remove_file(&self.path).await.ok();
-            }
-            Restore::Replace(previous) => {
-                tokio::fs::write(&self.path, previous).await.ok();
-            }
+        let restored = match &self.restore {
+            Restore::Remove => tokio::fs::remove_file(&self.path).await,
+            Restore::Replace(previous) => tokio::fs::write(&self.path, previous).await,
+        };
+        match restored {
+            Ok(()) => log_undo(&self.path),
+            Err(error) => log_stuck_undo(&self.path, &error.to_string()),
         }
-        log_undo(&self.path);
     }
 }
 
@@ -95,6 +94,17 @@ fn log_undo(path: &Path) {
         action = "undo",
         path,
         "pm3 rolled a service file back because the start was refused",
+    );
+}
+
+fn log_stuck_undo(path: &Path, reason: &str) {
+    let path = path.to_string_lossy().into_owned();
+    tracing::warn!(
+        feature = "svc",
+        action = "undo",
+        path,
+        reason,
+        "pm3 cannot roll a service file back, so the file on disk no longer matches what is running",
     );
 }
 

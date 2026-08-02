@@ -1,4 +1,4 @@
-use adapters::{HostSandbox, SandboxBackend};
+use adapters::{HostSandbox, SandboxBackend, SandboxProgramSet};
 
 #[cfg(target_os = "macos")]
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Seatbelt];
@@ -6,8 +6,8 @@ const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Seatbelt];
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Bwrap];
 
 #[must_use]
-pub fn detect_host_backend(search_path: &str) -> Option<HostSandbox> {
-    probe_backend(&|backend| backend.resolve(Some(search_path)))
+pub fn detect_host_backend(programs: &SandboxProgramSet, search_path: &str) -> Option<HostSandbox> {
+    probe_backend(&|backend| backend.resolve(programs, Some(search_path)))
 }
 
 #[must_use]

@@ -12,6 +12,7 @@ pub fn render_unit(spec: &ServiceUnitSpec) -> String {
     let search_path = escape_value(&spec.search_path);
     let home = escape_value(&spec.home);
     let restart_delay_secs = spec.restart_delay_secs;
+    let restart = escape_value(&spec.restart_condition);
     format!(
         "[Unit]
 Description={label}
@@ -21,7 +22,7 @@ After=default.target
 Type=simple
 ExecStart={exec_start}
 WorkingDirectory={working_directory}
-Restart=on-failure
+Restart={restart}
 RestartSec={restart_delay_secs}
 KillMode=process
 Environment=\"{HOME_VARIABLE}={home}\"

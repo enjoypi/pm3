@@ -151,6 +151,7 @@ pub async fn wait_for_exit(
     watch.until_gone(probe, pid, token, cadence).await;
     launcher.release(pid).await;
     tracing::debug!(
+        feature = "supervisor",
         pid,
         action = "adopted_exit",
         "an inherited process left; pm3 cannot read its exit code"
@@ -179,6 +180,7 @@ fn holds_the_same_process(pid: u32, token: Option<&str>, seen: &str) -> bool {
 
 fn log_recycled_pid(pid: u32, expected: &str, seen: &str) {
     tracing::warn!(
+        feature = "supervisor",
         pid,
         expected,
         seen,

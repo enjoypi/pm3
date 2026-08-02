@@ -26,7 +26,7 @@ pub fn init_telemetry(cfg: &TelemetryConfig) -> Result<(), TelemetryError> {
     match Registry::default().with(filter).with(fmt_layer).try_init() {
         Ok(()) => tracing::debug!(
             feature = "lifecycle",
-            operation = "telemetry.init",
+            action = "telemetry_init",
             result = "ok",
             log_level = %cfg.log_level,
             log_format = %cfg.log_format,
@@ -34,7 +34,7 @@ pub fn init_telemetry(cfg: &TelemetryConfig) -> Result<(), TelemetryError> {
         ),
         Err(e) => tracing::warn!(
             feature = "lifecycle",
-            operation = "telemetry.init",
+            action = "telemetry_init",
             result = "skipped",
             log_level = %cfg.log_level,
             log_format = %cfg.log_format,

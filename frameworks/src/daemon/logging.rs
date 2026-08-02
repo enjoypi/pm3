@@ -30,10 +30,21 @@ pub(super) fn log_spared_force_kill(app: &str, pid: u32) {
     );
 }
 
+pub(super) fn log_stuck_force_kill(app: &str, pid: u32, reason: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "force_kill",
+        app,
+        pid,
+        reason,
+        "pm3 daemon cannot force kill a process, so it may outlive the service",
+    );
+}
+
 pub(super) fn log_handover(draining: usize) {
     tracing::debug!(
         feature = "lifecycle",
-        operation = "shutdown",
+        action = "shutdown",
         draining,
         "pm3 daemon left the services it was told to stop for the next daemon to settle",
     );

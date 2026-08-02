@@ -1,7 +1,8 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use adapters::{
-    DaemonHandle, Pm3Paths, SpecSource, load_and_parse_config, log_startup_banner, router,
+    DaemonHandle, Pm3Paths, SandboxProgramSet, SpecSource, load_and_parse_config,
+    log_startup_banner, router,
 };
 use tokio::{net::UnixListener, sync::mpsc};
 
@@ -26,7 +27,6 @@ use crate::{
 
 type ShutdownFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
-const CHANNEL_DEPTH: usize = 32;
 const TMPDIR_VARIABLE: &str = "TMPDIR";
 
 pub async fn run_daemon(config_path: &str) -> Result<()> {
@@ -76,14 +76,16 @@ async fn serve_supervised(
     listener: UnixListener,
     shutdown: ShutdownFuture,
 ) -> Result<()> {
-    let backend = detect_host_backend(&specs.config.search_path);
+    let sandbox_programs = SandboxProgramSet::from_config(&specs.config.sandbox);
+    let backend = detect_host_backend(&sandbox_programs, &specs.config.search_path);
     let ports = Arc::new(DaemonPorts::new(
         paths.dump_file.clone(),
         specs.clone(),
         backend,
     ));
-    let (commands, command_queue) = mpsc::channel(CHANNEL_DEPTH);
-    let (events, event_queue) = mpsc::channel(CHANNEL_DEPTH);
+    let channel_depth = specs.config.daemon_channel_depth;
+    let (commands, command_queue) = mpsc::channel(channel_depth);
+    let (events, event_queue) = mpsc::channel(channel_depth);
     let drain_timeout = Duration::from_secs(specs.config.drain_timeout_secs);
     let mut daemon = Daemon::new(specs, ports, events.clone());
     daemon.resurrect_saved_apps().await;

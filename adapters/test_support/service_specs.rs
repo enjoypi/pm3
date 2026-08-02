@@ -9,6 +9,7 @@ pub const LABEL: &str = "pm3-test";
 pub const PROGRAM: &str = "/usr/local/bin/pm3";
 pub const SEARCH_PATH: &str = "/usr/bin:/bin";
 pub const MISSING_PROGRAM: &str = "/nonexistent/pm3-service-manager";
+pub const RESTART_CONDITION: &str = "always";
 
 const ROOT_DIR: &str = ".pm3";
 const CONFIG_FILE: &str = "config.yaml";
@@ -27,6 +28,7 @@ pub fn spec_for(kind: ServiceKind, home: &Path) -> ServiceUnitSpec {
         search_path: SEARCH_PATH.to_string(),
         home: home.to_string_lossy().into_owned(),
         restart_delay_secs: 2,
+        restart_condition: RESTART_CONDITION.to_string(),
     }
 }
 

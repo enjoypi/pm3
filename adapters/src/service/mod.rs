@@ -8,9 +8,7 @@ mod systemd;
 
 pub use self::{
     actions::{NOTHING_INSTALLED, install_service, status_report, uninstall_service},
-    command::{
-        LAUNCHCTL_PROGRAM, LOGINCTL_PROGRAM, SYSTEMCTL_PROGRAM, ServiceCommand, ServiceProgramSet,
-    },
+    command::{ServiceCommand, ServiceProgramSet},
     plan::ServiceStep,
     runner::ServiceCommandError,
     spec::{

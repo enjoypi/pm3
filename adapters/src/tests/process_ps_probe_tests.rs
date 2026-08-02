@@ -2,6 +2,8 @@ use std::{fs, os::unix::fs::PermissionsExt as _, path::PathBuf};
 
 use super::*;
 
+const POLL_STEP_MS: u64 = 20;
+
 const UNUSABLE_PID: u32 = u32::MAX;
 const PROBE_TIMEOUT_MS: u64 = 5000;
 
@@ -16,12 +18,15 @@ fn fake_ps(dir: &tempfile::TempDir, body: &str) -> PathBuf {
 fn probe_with(body: &str) -> (tempfile::TempDir, PsProcessProbe) {
     let dir = tempfile::tempdir().expect("temp dir");
     let program = fake_ps(&dir, body).to_string_lossy().into_owned();
-    (dir, PsProcessProbe::new(program, PROBE_TIMEOUT_MS))
+    (
+        dir,
+        PsProcessProbe::new(program, PROBE_TIMEOUT_MS, POLL_STEP_MS),
+    )
 }
 
 #[tokio::test]
 async fn a_live_process_reports_its_start_time_as_the_identity() {
-    let token = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS)
+    let token = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS)
         .identity(std::process::id())
         .await
         .into_token()
@@ -31,7 +36,7 @@ async fn a_live_process_reports_its_start_time_as_the_identity() {
 
 #[tokio::test]
 async fn the_identity_of_a_live_process_stays_stable_across_probes() {
-    let probe = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS);
+    let probe = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS);
     let pid = std::process::id();
     let first = probe.identity(pid).await;
     let second = probe.identity(pid).await;
@@ -41,7 +46,7 @@ async fn the_identity_of_a_live_process_stays_stable_across_probes() {
 #[tokio::test]
 async fn a_pid_no_process_can_hold_reads_as_gone() {
     assert_eq!(
-        PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS)
+        PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS)
             .identity(UNUSABLE_PID)
             .await,
         Liveness::Gone
@@ -50,7 +55,11 @@ async fn a_pid_no_process_can_hold_reads_as_gone() {
 
 #[tokio::test]
 async fn a_missing_ps_program_reads_as_unreadable() {
-    let probe = PsProcessProbe::new("/nonexistent/pm3-ps".to_string(), PROBE_TIMEOUT_MS);
+    let probe = PsProcessProbe::new(
+        "/nonexistent/pm3-ps".to_string(),
+        PROBE_TIMEOUT_MS,
+        POLL_STEP_MS,
+    );
     assert_eq!(probe.identity(1).await, Liveness::Unreadable);
 }
 
@@ -75,7 +84,6 @@ async fn wait_gone_returns_as_soon_as_the_process_leaves() {
 #[tokio::test]
 async fn wait_gone_reports_the_last_known_state_once_the_budget_runs_out() {
     let (_dir, probe) = probe_with("echo '  7 Tue Jul 28 14:06:28 2026'");
-    let probe = probe.with_poll_interval(5);
     assert_eq!(
         probe.wait_gone(7, 30).await,
         Liveness::Alive("Tue Jul 28 14:06:28 2026".to_string())
@@ -85,7 +93,6 @@ async fn wait_gone_reports_the_last_known_state_once_the_budget_runs_out() {
 #[tokio::test]
 async fn wait_gone_stops_polling_when_the_budget_is_already_spent() {
     let (_dir, probe) = probe_with("exit 2");
-    let probe = probe.with_poll_interval(5);
     assert_eq!(probe.wait_gone(7, 0).await, Liveness::Unreadable);
 }
 
@@ -120,7 +127,7 @@ async fn the_identity_drops_the_padding_ps_adds() {
 async fn a_ps_that_never_answers_reads_as_unreadable() {
     let dir = tempfile::tempdir().expect("temp dir");
     let program = fake_ps(&dir, "sleep 5").to_string_lossy().into_owned();
-    let probe = PsProcessProbe::new(program, 20);
+    let probe = PsProcessProbe::new(program, 20, POLL_STEP_MS);
     assert_eq!(probe.identity(1).await, Liveness::Unreadable);
 }
 
@@ -169,14 +176,18 @@ async fn a_batch_call_that_ps_refuses_leaves_every_pid_unreadable() {
 async fn a_batch_call_ps_cannot_answer_leaves_every_pid_unreadable() {
     let dir = tempfile::tempdir().expect("temp dir");
     let program = fake_ps(&dir, "sleep 5").to_string_lossy().into_owned();
-    let probe = PsProcessProbe::new(program, 20);
+    let probe = PsProcessProbe::new(program, 20, POLL_STEP_MS);
     let seen = probe.identities(&[7, 8]).await;
     assert_eq!(seen.get(&8), Some(&Liveness::Unreadable));
 }
 
 #[tokio::test]
 async fn a_missing_ps_leaves_every_batched_pid_unreadable() {
-    let probe = PsProcessProbe::new("/nonexistent/pm3-ps".to_string(), PROBE_TIMEOUT_MS);
+    let probe = PsProcessProbe::new(
+        "/nonexistent/pm3-ps".to_string(),
+        PROBE_TIMEOUT_MS,
+        POLL_STEP_MS,
+    );
     let seen = probe.identities(&[7]).await;
     assert_eq!(seen.get(&7), Some(&Liveness::Unreadable));
 }

@@ -317,6 +317,83 @@ fn parse_error_renders_reason() {
 }
 
 #[test]
+fn validate_rejects_a_zero_daemon_channel_depth() {
+    let mut cfg = valid_config();
+    cfg.pm3.daemon_channel_depth = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidChannelDepth(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_seatbelt_program() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.seatbelt_program = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.sandbox.seatbelt_program"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_bwrap_program() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.bwrap_program = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.sandbox.bwrap_program"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_launchctl_path() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.launchctl_path = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.service.launchctl_path"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_systemctl_path() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.systemctl_path = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.service.systemctl_path"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_loginctl_path() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.loginctl_path = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.service.loginctl_path"
+    );
+}
+
+#[test]
+fn validate_rejects_an_unknown_restart_condition() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.restart_condition = "sometimes".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidRestartCondition(ref raw) if raw == "sometimes"),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn every_error_variant_renders_a_message() {
     let errors = [
         ConfigError::InvalidHome,
@@ -330,6 +407,11 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidPollCeiling { max: 1, floor: 2 },
         ConfigError::InvalidFollowInterval(0),
         ConfigError::InvalidLogTailLines(0),
+        ConfigError::InvalidChannelDepth(0),
+        ConfigError::EmptyProgram {
+            field: "pm3.sandbox.bwrap_program",
+        },
+        ConfigError::InvalidRestartCondition("sometimes".to_string()),
         ConfigError::InvalidStopSignal("BOOM".to_string()),
         ConfigError::InvalidMinUptime(0),
         ConfigError::InvalidSandboxMode {

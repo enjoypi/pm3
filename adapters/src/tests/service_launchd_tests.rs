@@ -45,6 +45,17 @@ fn the_plist_asks_launchd_to_start_and_keep_the_daemon_alive() {
 }
 
 #[test]
+fn a_launch_agent_keeps_alive_only_after_a_failure_when_the_config_says_so() {
+    let mut spec = spec_for(ServiceKind::Launchd, Path::new("/home/dev"));
+    spec.restart_condition = "on-failure".to_string();
+    let plist = render_plist(&spec);
+    assert!(
+        plist.contains("<key>SuccessfulExit</key>\n        <false/>"),
+        "got: {plist}"
+    );
+}
+
+#[test]
 fn the_plist_tells_launchd_to_leave_the_service_process_group_alone() {
     assert!(
         rendered().contains("<key>AbandonProcessGroup</key>\n    <true/>"),

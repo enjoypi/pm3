@@ -41,7 +41,13 @@ impl TokioProcessLauncher {
         {
             self.tracked.lock().await.live.remove(&pid);
         }
-        tracing::debug!(pid, ?exit_code, action = "wait", "child process exited");
+        tracing::debug!(
+            feature = "supervisor",
+            pid,
+            ?exit_code,
+            action = "wait",
+            "child process exited"
+        );
         Some(ExitOutcome { exit_code })
     }
 }
@@ -66,6 +72,7 @@ impl ProcessLauncher for TokioProcessLauncher {
             tracked.children.insert(pid, child);
         }
         tracing::debug!(
+            feature = "supervisor",
             app = spec.name,
             pid,
             program = spec.program,
@@ -77,7 +84,12 @@ impl ProcessLauncher for TokioProcessLauncher {
 
     async fn adopt(&self, pid: u32) {
         self.tracked.lock().await.live.insert(pid);
-        tracing::debug!(pid, action = "adopt", "took over an inherited process");
+        tracing::debug!(
+            feature = "supervisor",
+            pid,
+            action = "adopt",
+            "took over an inherited process"
+        );
     }
 }
 

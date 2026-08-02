@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::{
     Error, Result, commands,
-    layout::host_home,
+    layout::{host_home, host_pm3_home},
     prompt,
     svc::{AMBIGUOUS_TARGET, InlineStart},
 };
@@ -15,7 +15,7 @@ use crate::{
     about = "极简进程管理器，每个服务跑在严格沙盒中"
 )]
 pub struct Cli {
-    #[arg(long, global = true, default_value_t = default_config(host_home().as_deref()))]
+    #[arg(long, global = true, default_value_t = default_config(host_pm3_home().as_deref(), host_home().as_deref()))]
     pub config: String,
 
     #[command(subcommand)]
@@ -200,8 +200,8 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
 }
 
 #[must_use]
-pub fn default_config(home_env: Option<&str>) -> String {
-    default_config_path(home_env).map_or_else(
+pub fn default_config(pm3_home_env: Option<&str>, home_env: Option<&str>) -> String {
+    default_config_path(pm3_home_env, home_env).map_or_else(
         |_unresolved| CONFIG_FILE.to_string(),
         |path| path.to_string_lossy().into_owned(),
     )

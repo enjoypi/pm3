@@ -71,8 +71,14 @@ pub fn expand_home(raw: &str, home_env: Option<&str>) -> Result<PathBuf, PathErr
     Err(PathError::NotAbsolute(raw.to_string()))
 }
 
-pub fn default_config_path(home_env: Option<&str>) -> Result<PathBuf, PathError> {
-    Ok(expand_home(DEFAULT_HOME, home_env)?.join(CONFIG_FILE))
+pub fn default_config_path(
+    pm3_home_env: Option<&str>,
+    home_env: Option<&str>,
+) -> Result<PathBuf, PathError> {
+    let root = pm3_home_env
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_HOME);
+    Ok(expand_home(root, home_env)?.join(CONFIG_FILE))
 }
 
 #[cfg(test)]

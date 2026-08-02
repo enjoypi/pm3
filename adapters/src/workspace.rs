@@ -10,6 +10,7 @@ pub async fn materialise_workspace(spec: &mut AppSpec) {
         let reason = error.to_string();
         let path = declared_cwd.as_str();
         tracing::warn!(
+            feature = "lifecycle",
             path,
             reason,
             action = "workspace",

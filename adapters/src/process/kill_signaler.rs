@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use tokio::{process::Command, time::timeout};
+use tokio::{
+    process::Command,
+    time::{Instant, timeout},
+};
 use usecases::{SignalError, Signaler};
 
 use crate::exit_status::{describe_refusal, exit_code_of};
@@ -49,6 +52,7 @@ impl KillSignaler {
 
     async fn signal(&self, signal: &str, target: &str, pid: u32) -> Result<(), SignalError> {
         let flag = format!("-{signal}");
+        let started = Instant::now();
         let call = Command::new(&self.program)
             .args([flag.as_str(), ARGUMENT_TERMINATOR, target])
             .output();
@@ -60,11 +64,14 @@ impl KillSignaler {
                 reason: e.to_string(),
             })?;
         let code = exit_code_of(&output.status);
+        let duration_ms = started.elapsed().as_millis();
         tracing::debug!(
+            feature = "supervisor",
             pid,
             signal,
             target,
             code,
+            duration_ms,
             action = "signal",
             "delivered a signal to a managed process"
         );

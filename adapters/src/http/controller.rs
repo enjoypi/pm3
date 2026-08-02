@@ -3,12 +3,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use usecases::{AppSelector, UsecaseError};
 
-use super::dto::{HealthDto, ReplyDto, StartRequestDto};
+use super::{
+    dto::{HealthDto, ReplyDto, StartRequestDto},
+    routes::REQUEST_ID_HEADER,
+};
 use crate::{
     presenter::{affected_service, already_running_names, refused_names, render_reply},
     state::{DaemonError, DaemonFailure, DaemonHandle, DaemonReply, DaemonRequest},
@@ -21,50 +24,67 @@ pub async fn health() -> Json<HealthDto> {
 
 pub async fn start(
     State(handle): State<DaemonHandle>,
+    headers: HeaderMap,
     Json(body): Json<StartRequestDto>,
 ) -> Response {
     let request = DaemonRequest::Start {
         services: body.services,
     };
-    dispatch(&handle, request).await
+    dispatch(&handle, &headers, request).await
 }
 
-pub async fn list(State(handle): State<DaemonHandle>) -> Response {
-    dispatch(&handle, DaemonRequest::List).await
+pub async fn list(State(handle): State<DaemonHandle>, headers: HeaderMap) -> Response {
+    dispatch(&handle, &headers, DaemonRequest::List).await
 }
 
-pub async fn describe(State(handle): State<DaemonHandle>, Path(raw): Path<String>) -> Response {
-    dispatch(&handle, DaemonRequest::Describe(selector(&raw))).await
+pub async fn describe(
+    State(handle): State<DaemonHandle>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+) -> Response {
+    dispatch(&handle, &headers, DaemonRequest::Describe(selector(&raw))).await
 }
 
-pub async fn stop(State(handle): State<DaemonHandle>, Path(raw): Path<String>) -> Response {
-    dispatch(&handle, DaemonRequest::Stop(selector(&raw))).await
+pub async fn stop(
+    State(handle): State<DaemonHandle>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+) -> Response {
+    dispatch(&handle, &headers, DaemonRequest::Stop(selector(&raw))).await
 }
 
-pub async fn restart(State(handle): State<DaemonHandle>, Path(raw): Path<String>) -> Response {
-    dispatch(&handle, DaemonRequest::Restart(selector(&raw))).await
+pub async fn restart(
+    State(handle): State<DaemonHandle>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+) -> Response {
+    dispatch(&handle, &headers, DaemonRequest::Restart(selector(&raw))).await
 }
 
-pub async fn delete(State(handle): State<DaemonHandle>, Path(raw): Path<String>) -> Response {
-    dispatch(&handle, DaemonRequest::Delete(selector(&raw))).await
+pub async fn delete(
+    State(handle): State<DaemonHandle>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+) -> Response {
+    dispatch(&handle, &headers, DaemonRequest::Delete(selector(&raw))).await
 }
 
-pub async fn stop_all(State(handle): State<DaemonHandle>) -> Response {
-    dispatch(&handle, DaemonRequest::StopAll).await
+pub async fn stop_all(State(handle): State<DaemonHandle>, headers: HeaderMap) -> Response {
+    dispatch(&handle, &headers, DaemonRequest::StopAll).await
 }
 
 fn selector(raw: &str) -> AppSelector {
     AppSelector::parse(raw)
 }
 
-async fn dispatch(handle: &DaemonHandle, request: DaemonRequest) -> Response {
-    let request_id = next_request_id();
+async fn dispatch(handle: &DaemonHandle, headers: &HeaderMap, request: DaemonRequest) -> Response {
+    let request_id = request_id_of(headers);
     let action = action_of(&request);
     let target = requested_target(&request);
-    log_request(request_id, action, &target);
+    log_request(&request_id, action, &target);
     let outcome = handle.send(request).await;
     let (status, body) = render(outcome);
-    log_response(request_id, action, &target, status.as_u16(), &body.report);
+    log_response(&request_id, action, &target, status.as_u16(), &body.report);
     match status {
         StatusCode::OK => (status, Json(body)).into_response(),
         refused => (refused, body.report).into_response(),
@@ -85,6 +105,14 @@ fn refusal(error: &DaemonError) -> ReplyDto {
         already_running: Vec::new(),
         refused: Vec::new(),
     }
+}
+
+pub fn request_id_of(headers: &HeaderMap) -> String {
+    headers
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| next_request_id().to_string(), ToString::to_string)
 }
 
 fn next_request_id() -> u64 {
@@ -115,7 +143,7 @@ fn requested_target(request: &DaemonRequest) -> String {
     }
 }
 
-fn log_request(request_id: u64, action: &str, req: &str) {
+fn log_request(request_id: &str, action: &str, req: &str) {
     tracing::debug!(
         feature = "api",
         request_id,
@@ -125,7 +153,7 @@ fn log_request(request_id: u64, action: &str, req: &str) {
     );
 }
 
-fn log_response(request_id: u64, action: &str, req: &str, status: u16, resp: &str) {
+fn log_response(request_id: &str, action: &str, req: &str, status: u16, resp: &str) {
     tracing::debug!(
         feature = "api",
         request_id,

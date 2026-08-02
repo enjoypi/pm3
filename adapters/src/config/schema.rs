@@ -42,6 +42,15 @@ pub enum ConfigError {
     #[error("cannot accept pm3.log_tail_lines {0}: must be >= 1")]
     InvalidLogTailLines(u64),
 
+    #[error("cannot accept pm3.daemon_channel_depth {0}: must be >= 1")]
+    InvalidChannelDepth(usize),
+
+    #[error("cannot accept empty {field}")]
+    EmptyProgram { field: &'static str },
+
+    #[error("cannot accept pm3.service.restart_condition {0}: must be one of always, on-failure")]
+    InvalidRestartCondition(String),
+
     #[error("cannot accept pm3.stop_signal {0}: must be one of TERM, INT, QUIT, HUP, USR1, USR2")]
     InvalidStopSignal(String),
 
@@ -99,6 +108,7 @@ pub struct Pm3Config {
     pub daemon_poll_max_interval_ms: u64,
     pub log_follow_interval_ms: u64,
     pub log_tail_lines: u64,
+    pub daemon_channel_depth: usize,
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
     pub service: ServiceConfig,
@@ -116,12 +126,18 @@ pub struct RestartConfig {
 pub struct SandboxConfig {
     pub mode: String,
     pub network: bool,
+    pub seatbelt_program: String,
+    pub bwrap_program: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ServiceConfig {
     pub label: String,
     pub restart_delay_secs: u64,
+    pub restart_condition: String,
+    pub launchctl_path: String,
+    pub systemctl_path: String,
+    pub loginctl_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -136,9 +152,13 @@ pub const LOG_FORMAT_PRETTY: &str = "pretty";
 
 pub const STOP_SIGNAL_TERM: &str = "TERM";
 
+pub const RESTART_CONDITION_ALWAYS: &str = "always";
+pub const RESTART_CONDITION_ON_FAILURE: &str = "on-failure";
+
 const VALID_LOG_LEVELS: &[&str] = &["trace", "debug", "info", "warn", "error"];
 const VALID_LOG_FORMATS: &[&str] = &[LOG_FORMAT_JSON, LOG_FORMAT_PRETTY];
 const VALID_STOP_SIGNALS: &[&str] = &[STOP_SIGNAL_TERM, "INT", "QUIT", "HUP", "USR1", "USR2"];
+const VALID_RESTART_CONDITIONS: &[&str] = &[RESTART_CONDITION_ALWAYS, RESTART_CONDITION_ON_FAILURE];
 
 pub fn validate_config(cfg: &AppConfig) -> Result<(), ConfigError> {
     validate_pm3_config(&cfg.pm3)?;
@@ -189,6 +209,9 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.log_tail_lines < 1 {
         return Err(ConfigError::InvalidLogTailLines(pm3.log_tail_lines));
     }
+    if pm3.daemon_channel_depth < 1 {
+        return Err(ConfigError::InvalidChannelDepth(pm3.daemon_channel_depth));
+    }
     if !VALID_STOP_SIGNALS.contains(&pm3.stop_signal.as_str()) {
         return Err(ConfigError::InvalidStopSignal(pm3.stop_signal.clone()));
     }
@@ -202,9 +225,34 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
         });
     }
     validate_service_label(&pm3.service.label)?;
+    validate_programs(pm3)?;
     reject_line_break("pm3.home", &pm3.home)?;
     reject_line_break("pm3.search_path", &pm3.search_path)?;
 
+    Ok(())
+}
+
+fn validate_programs(pm3: &Pm3Config) -> Result<(), ConfigError> {
+    reject_empty(
+        "pm3.sandbox.seatbelt_program",
+        &pm3.sandbox.seatbelt_program,
+    )?;
+    reject_empty("pm3.sandbox.bwrap_program", &pm3.sandbox.bwrap_program)?;
+    reject_empty("pm3.service.launchctl_path", &pm3.service.launchctl_path)?;
+    reject_empty("pm3.service.systemctl_path", &pm3.service.systemctl_path)?;
+    reject_empty("pm3.service.loginctl_path", &pm3.service.loginctl_path)?;
+    if !VALID_RESTART_CONDITIONS.contains(&pm3.service.restart_condition.as_str()) {
+        return Err(ConfigError::InvalidRestartCondition(
+            pm3.service.restart_condition.clone(),
+        ));
+    }
+    Ok(())
+}
+
+const fn reject_empty(field: &'static str, value: &str) -> Result<(), ConfigError> {
+    if value.is_empty() {
+        return Err(ConfigError::EmptyProgram { field });
+    }
     Ok(())
 }
 

@@ -12,6 +12,7 @@ pm3:
   daemon_poll_max_interval_ms: 1000
   log_follow_interval_ms: 200
   log_tail_lines: 20
+  daemon_channel_depth: 32
   restart:
     autorestart: true
     min_uptime_ms: 1000
@@ -20,9 +21,15 @@ pm3:
   sandbox:
     mode: "workspace-write"
     network: false
+    seatbelt_program: "${PM3_SEATBELT_PROGRAM:-/usr/bin/sandbox-exec}"
+    bwrap_program: "${PM3_BWRAP_PROGRAM:-bwrap}"
   service:
     label: "com.enjoypi.pm3"
     restart_delay_secs: 2
+    restart_condition: "always"
+    launchctl_path: "${PM3_LAUNCHCTL_PATH:-/bin/launchctl}"
+    systemctl_path: "${PM3_SYSTEMCTL_PATH:-/usr/bin/systemctl}"
+    loginctl_path: "${PM3_LOGINCTL_PATH:-/usr/bin/loginctl}"
 
 telemetry:
   service_name: "pm3"
