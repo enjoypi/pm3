@@ -4,36 +4,36 @@ use super::*;
 
 const TIMEOUT_MS: u64 = 5000;
 use crate::{
-    ServiceKind,
-    service_specs::{MISSING_PROGRAM, fake_program, program_set, spec_for},
+    UnitKind,
+    unit_specs::{MISSING_PROGRAM, fake_program, program_set, spec_for},
 };
 
 const TRUE_PROGRAM: &str = "/usr/bin/true";
 const FALSE_PROGRAM: &str = "/usr/bin/false";
 
-fn run_step_of(program: &str) -> Vec<ServiceStep> {
-    vec![ServiceStep::Run(ServiceCommand {
+fn run_step_of(program: &str) -> Vec<UnitStep> {
+    vec![UnitStep::Run(UnitCommand {
         program: program.to_string(),
         args: Vec::new(),
     })]
 }
 
-fn try_step_of(program: &str) -> Vec<ServiceStep> {
-    vec![ServiceStep::TryRun(ServiceCommand {
+fn try_step_of(program: &str) -> Vec<UnitStep> {
+    vec![UnitStep::TryRun(UnitCommand {
         program: program.to_string(),
         args: Vec::new(),
     })]
 }
 
-fn write_step(dir: &Path, path: &Path) -> ServiceStep {
-    ServiceStep::Write {
+fn write_step(dir: &Path, path: &Path) -> UnitStep {
+    UnitStep::Write {
         dir: dir.to_path_buf(),
         path: path.to_path_buf(),
         contents: "unit body".to_string(),
     }
 }
 
-fn installed_spec(home: &Path, kind: ServiceKind) -> ServiceUnitSpec {
+fn installed_spec(home: &Path, kind: UnitKind) -> UnitSpec {
     let spec = spec_for(kind, home);
     std::fs::create_dir_all(&spec.unit_dir).expect("prepare the unit directory");
     std::fs::write(spec.unit_path(), "unit body").expect("install a unit file");
@@ -172,7 +172,7 @@ async fn a_unit_path_blocked_by_a_directory_stops_the_plan() {
 async fn removing_a_unit_that_is_not_there_stops_the_plan() {
     let dir = tempfile::tempdir().expect("temp dir");
     let err = execute_plan(
-        &[ServiceStep::Remove {
+        &[UnitStep::Remove {
             path: dir.path().join("absent.plist"),
         }],
         TIMEOUT_MS,
@@ -188,7 +188,7 @@ async fn removing_an_installed_unit_finishes_the_plan() {
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("pm3-test.plist");
     std::fs::write(&path, "unit body").expect("install a unit file");
-    execute_plan(&[ServiceStep::Remove { path: path.clone() }], TIMEOUT_MS)
+    execute_plan(&[UnitStep::Remove { path: path.clone() }], TIMEOUT_MS)
         .await
         .expect("the unit should be removed");
     assert!(!path.exists(), "the unit file should be gone");
@@ -232,7 +232,7 @@ async fn a_failing_plan_backs_out_the_files_it_created() {
     let unit = dir.path().join("units").join("pm3.service");
     let steps = vec![
         write_step(unit.parent().expect("a parent"), &unit),
-        ServiceStep::Run(ServiceCommand {
+        UnitStep::Run(UnitCommand {
             program: FALSE_PROGRAM.to_string(),
             args: Vec::new(),
         }),
@@ -255,7 +255,7 @@ async fn a_failing_plan_leaves_a_file_it_only_overwrote() {
     std::fs::write(&unit, "the operator's own unit").expect("seed the unit");
     let steps = vec![
         write_step(dir.path(), &unit),
-        ServiceStep::Run(ServiceCommand {
+        UnitStep::Run(UnitCommand {
             program: FALSE_PROGRAM.to_string(),
             args: Vec::new(),
         }),
@@ -274,17 +274,17 @@ async fn a_failing_plan_leaves_a_file_it_only_overwrote() {
 #[tokio::test]
 async fn an_absent_unit_file_means_the_service_is_not_installed() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let spec = spec_for(ServiceKind::Launchd, dir.path());
+    let spec = spec_for(UnitKind::Launchd, dir.path());
     let status = query_status(&spec, &program_set(MISSING_PROGRAM), TIMEOUT_MS)
         .await
         .expect("an absent unit needs no manager");
-    assert_eq!(status, ServiceStatus::NotInstalled);
+    assert_eq!(status, UnitStatus::NotInstalled);
 }
 
 #[tokio::test]
 async fn a_missing_manager_stops_the_status_query() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let spec = installed_spec(dir.path(), ServiceKind::Launchd);
+    let spec = installed_spec(dir.path(), UnitKind::Launchd);
     let err = query_status(&spec, &program_set(MISSING_PROGRAM), TIMEOUT_MS)
         .await
         .unwrap_err()
@@ -295,45 +295,45 @@ async fn a_missing_manager_stops_the_status_query() {
 #[tokio::test]
 async fn a_launch_agent_with_a_pid_is_running() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let spec = installed_spec(dir.path(), ServiceKind::Launchd);
+    let spec = installed_spec(dir.path(), UnitKind::Launchd);
     let program = fake_program(dir.path(), "launchctl", "echo '\"PID\" = 4242;'");
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the listing should be readable");
-    assert_eq!(status, ServiceStatus::Running);
+    assert_eq!(status, UnitStatus::Running);
 }
 
 #[tokio::test]
 async fn a_launch_agent_without_a_pid_is_installed_but_stopped() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let spec = installed_spec(dir.path(), ServiceKind::Launchd);
+    let spec = installed_spec(dir.path(), UnitKind::Launchd);
     let program = fake_program(dir.path(), "launchctl", "echo 'LastExitStatus = 0;'");
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the listing should be readable");
-    assert_eq!(status, ServiceStatus::InstalledNotRunning);
+    assert_eq!(status, UnitStatus::InstalledNotRunning);
 }
 
 #[tokio::test]
 async fn an_active_systemd_unit_is_running() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let spec = installed_spec(dir.path(), ServiceKind::Systemd);
+    let spec = installed_spec(dir.path(), UnitKind::Systemd);
     let program = fake_program(dir.path(), "systemctl", "echo active");
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the probe should be readable");
-    assert_eq!(status, ServiceStatus::Running);
+    assert_eq!(status, UnitStatus::Running);
 }
 
 #[tokio::test]
 async fn an_inactive_systemd_unit_is_installed_but_stopped() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let spec = installed_spec(dir.path(), ServiceKind::Systemd);
+    let spec = installed_spec(dir.path(), UnitKind::Systemd);
     let program = fake_program(dir.path(), "systemctl", "echo inactive; exit 3");
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("a stopped unit is not an error");
-    assert_eq!(status, ServiceStatus::InstalledNotRunning);
+    assert_eq!(status, UnitStatus::InstalledNotRunning);
 }
 
 #[tokio::test]
@@ -349,19 +349,19 @@ async fn a_manager_that_never_answers_is_given_up_on() {
 #[test]
 fn every_error_variant_renders_a_message() {
     let errors = [
-        ServiceCommandError::Stalled {
+        UnitCommandError::Stalled {
             program: "systemctl".to_string(),
             timeout_ms: 30,
         },
-        ServiceCommandError::Spawn {
+        UnitCommandError::Spawn {
             program: "launchctl".to_string(),
             reason: "not found".to_string(),
         },
-        ServiceCommandError::Failed {
+        UnitCommandError::Failed {
             program: "launchctl".to_string(),
             reason: "exited with status 1".to_string(),
         },
-        ServiceCommandError::Io {
+        UnitCommandError::Io {
             path: PathBuf::from("/tmp/pm3.plist").display().to_string(),
             reason: "permission denied".to_string(),
         },

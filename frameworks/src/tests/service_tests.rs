@@ -1,4 +1,4 @@
-use adapters::{NOTHING_INSTALLED, ServiceProgramSet};
+use adapters::{NOTHING_INSTALLED, UnitProgramSet};
 
 use super::*;
 use crate::test_support::{
@@ -12,7 +12,7 @@ const MISSING_PROGRAM: &str = "/nonexistent/pm3-service-manager";
 struct Fixture {
     dir: tempfile::TempDir,
     config_path: String,
-    programs: ServiceProgramSet,
+    programs: UnitProgramSet,
 }
 
 fn fixture(program: &str) -> Fixture {
@@ -20,7 +20,7 @@ fn fixture(program: &str) -> Fixture {
     let home = dir.path().join("home");
     let config = write_config(dir.path(), &home.to_string_lossy());
     let config_path = config.to_string_lossy().into_owned();
-    let programs = ServiceProgramSet {
+    let programs = UnitProgramSet {
         launchctl: program.to_string(),
         systemctl: program.to_string(),
         loginctl: program.to_string(),
@@ -32,7 +32,7 @@ fn fixture(program: &str) -> Fixture {
     }
 }
 
-fn context<'c>(fixture: &'c Fixture, kind: ServiceKind, home: &'c str) -> ServiceContext<'c> {
+fn context<'c>(fixture: &'c Fixture, kind: UnitKind, home: &'c str) -> ServiceContext<'c> {
     ServiceContext {
         programs: Some(&fixture.programs),
         kind,
@@ -45,26 +45,26 @@ fn home_of(fixture: &Fixture) -> String {
     fixture.dir.path().to_string_lossy().into_owned()
 }
 
-fn settled_path(fixture: &Fixture, kind: ServiceKind, home: &str) -> PathBuf {
+fn settled_path(fixture: &Fixture, kind: UnitKind, home: &str) -> PathBuf {
     open_service_session(&fixture.config_path, &context(fixture, kind, home))
         .expect("the session should open")
         .spec
         .config_path
 }
 
-fn seed_settled_config(fixture: &Fixture, kind: ServiceKind, home: &str, body: &str) {
+fn seed_settled_config(fixture: &Fixture, kind: UnitKind, home: &str, body: &str) {
     let path = settled_path(fixture, kind, home);
     std::fs::create_dir_all(path.parent().expect("the pm3 home")).expect("prepare the pm3 home");
     std::fs::write(path, body).expect("seed a settled config");
 }
 
-fn settled_config(fixture: &Fixture, kind: ServiceKind, home: &str) -> String {
+fn settled_config(fixture: &Fixture, kind: UnitKind, home: &str) -> String {
     std::fs::read_to_string(settled_path(fixture, kind, home)).expect("read the settled config")
 }
 
 async fn install_with(
     fixture: &Fixture,
-    kind: ServiceKind,
+    kind: UnitKind,
     home: &str,
     force: bool,
 ) -> Result<String> {
@@ -80,12 +80,12 @@ async fn install_with(
     .await
 }
 
-async fn installed_config(fixture: &Fixture, kind: ServiceKind, home: &str) -> Result<String> {
+async fn installed_config(fixture: &Fixture, kind: UnitKind, home: &str) -> Result<String> {
     install_with(fixture, kind, home, false).await?;
     Ok(settled_config(fixture, kind, home))
 }
 
-fn install_unit(fixture: &Fixture, kind: ServiceKind) {
+fn install_unit(fixture: &Fixture, kind: UnitKind) {
     let home = home_of(fixture);
     let session = open_service_session(&fixture.config_path, &context(fixture, kind, &home))
         .expect("the session should open");
@@ -99,7 +99,7 @@ fn the_spec_carries_absolute_paths_and_the_daemon_invocation() {
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .expect("the session should open");
     assert!(session.spec.program.is_absolute(), "the binary path");
@@ -117,7 +117,7 @@ fn the_spec_takes_the_label_and_search_path_from_the_config() {
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
-        &context(&fixture, ServiceKind::Systemd, &home),
+        &context(&fixture, UnitKind::Systemd, &home),
     )
     .expect("the session should open");
     assert_eq!(session.spec.label, SERVICE_LABEL);
@@ -130,7 +130,7 @@ fn the_spec_takes_the_restart_delay_from_the_config() {
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
-        &context(&fixture, ServiceKind::Systemd, &home),
+        &context(&fixture, UnitKind::Systemd, &home),
     )
     .expect("the session should open");
     assert_eq!(session.spec.restart_delay_secs, SERVICE_RESTART_DELAY_SECS);
@@ -141,7 +141,7 @@ fn a_missing_home_stops_the_session() {
     let fixture = fixture(TRUE_PROGRAM);
     let context = ServiceContext {
         programs: Some(&fixture.programs),
-        kind: ServiceKind::Launchd,
+        kind: UnitKind::Launchd,
         home_env: None,
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     };
@@ -157,7 +157,7 @@ fn a_binary_that_cannot_be_located_stops_the_session() {
     let home = home_of(&fixture);
     let context = ServiceContext {
         programs: Some(&fixture.programs),
-        kind: ServiceKind::Launchd,
+        kind: UnitKind::Launchd,
         home_env: Some(&home),
         binary: Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -179,7 +179,7 @@ fn a_config_path_that_leads_nowhere_stops_the_session() {
     let home = home_of(&fixture);
     let err = open_service_session(
         "/nonexistent/pm3-service.yaml",
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .unwrap_err()
     .to_string();
@@ -197,7 +197,7 @@ fn an_unreadable_config_stops_the_session() {
     std::fs::write(&broken, "pm3: [not, a, mapping]\n").expect("write a broken config");
     let err = open_service_session(
         &broken.to_string_lossy(),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .unwrap_err()
     .to_string();
@@ -211,7 +211,7 @@ fn a_relative_pm3_home_stops_the_session() {
     let config = write_config(fixture.dir.path(), "relative/home");
     let err = open_service_session(
         &config.to_string_lossy(),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .unwrap_err()
     .to_string();
@@ -225,7 +225,7 @@ async fn a_status_query_reports_a_service_that_was_never_installed() {
     let report = dispatch_service(
         &fixture.config_path,
         None,
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .expect("an absent unit needs no manager");
@@ -236,11 +236,11 @@ async fn a_status_query_reports_a_service_that_was_never_installed() {
 async fn a_status_query_that_cannot_reach_the_manager_is_reported() {
     let fixture = fixture(MISSING_PROGRAM);
     let home = home_of(&fixture);
-    install_unit(&fixture, ServiceKind::Launchd);
+    install_unit(&fixture, UnitKind::Launchd);
     let err = dispatch_service(
         &fixture.config_path,
         None,
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .unwrap_err()
@@ -255,7 +255,7 @@ async fn a_broken_config_stops_a_service_command() {
     let err = dispatch_service(
         "/nonexistent/pm3-service.yaml",
         None,
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .unwrap_err()
@@ -277,7 +277,7 @@ async fn an_install_writes_the_unit_under_the_given_home() {
     let report = dispatch_service(
         &fixture.config_path,
         Some(&command),
-        &context(&fixture, ServiceKind::Systemd, &home),
+        &context(&fixture, UnitKind::Systemd, &home),
     )
     .await
     .expect("the install should succeed");
@@ -294,7 +294,7 @@ async fn an_install_writes_the_unit_under_the_given_home() {
 async fn an_install_settles_the_config_into_the_pm3_home() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
-    let settled = installed_config(&fixture, ServiceKind::Systemd, &home)
+    let settled = installed_config(&fixture, UnitKind::Systemd, &home)
         .await
         .expect("the install should succeed");
     assert_eq!(
@@ -309,7 +309,7 @@ async fn an_install_points_the_unit_at_the_settled_config() {
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
-        &context(&fixture, ServiceKind::Systemd, &home),
+        &context(&fixture, UnitKind::Systemd, &home),
     )
     .expect("the session should open");
     assert_eq!(session.spec.config_path, session.paths.config_file);
@@ -319,8 +319,8 @@ async fn an_install_points_the_unit_at_the_settled_config() {
 async fn an_install_over_a_changed_config_needs_force() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
-    seed_settled_config(&fixture, ServiceKind::Systemd, &home, "pm3: {}\n");
-    let err = install_with(&fixture, ServiceKind::Systemd, &home, false)
+    seed_settled_config(&fixture, UnitKind::Systemd, &home, "pm3: {}\n");
+    let err = install_with(&fixture, UnitKind::Systemd, &home, false)
         .await
         .unwrap_err()
         .to_string();
@@ -331,12 +331,12 @@ async fn an_install_over_a_changed_config_needs_force() {
 async fn force_replaces_a_changed_config() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
-    seed_settled_config(&fixture, ServiceKind::Systemd, &home, "pm3: {}\n");
-    install_with(&fixture, ServiceKind::Systemd, &home, true)
+    seed_settled_config(&fixture, UnitKind::Systemd, &home, "pm3: {}\n");
+    install_with(&fixture, UnitKind::Systemd, &home, true)
         .await
         .expect("force should overwrite the settled config");
     assert_eq!(
-        settled_config(&fixture, ServiceKind::Systemd, &home),
+        settled_config(&fixture, UnitKind::Systemd, &home),
         std::fs::read_to_string(&fixture.config_path).expect("read the source config")
     );
 }
@@ -345,10 +345,10 @@ async fn force_replaces_a_changed_config() {
 async fn a_second_install_of_the_same_config_is_accepted() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
-    installed_config(&fixture, ServiceKind::Systemd, &home)
+    installed_config(&fixture, UnitKind::Systemd, &home)
         .await
         .expect("the first install should succeed");
-    install_with(&fixture, ServiceKind::Systemd, &home, false)
+    install_with(&fixture, UnitKind::Systemd, &home, false)
         .await
         .expect("an unchanged config needs no force");
 }
@@ -364,7 +364,7 @@ async fn a_dry_run_install_writes_nothing() {
     let report = dispatch_service(
         &fixture.config_path,
         Some(&command),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .expect("a dry run should never fail");
@@ -386,7 +386,7 @@ async fn an_install_that_the_manager_refuses_is_reported() {
     let err = dispatch_service(
         &fixture.config_path,
         Some(&command),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .unwrap_err()
@@ -400,7 +400,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
     let home = dir.path().join("home");
     std::fs::write(&home, "blocked").expect("occupy the pm3 home");
     let config = write_config(dir.path(), &home.to_string_lossy());
-    let programs = ServiceProgramSet {
+    let programs = UnitProgramSet {
         launchctl: TRUE_PROGRAM.to_string(),
         systemctl: TRUE_PROGRAM.to_string(),
         loginctl: TRUE_PROGRAM.to_string(),
@@ -408,7 +408,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
     let fake_home = dir.path().to_string_lossy().into_owned();
     let context = ServiceContext {
         programs: Some(&programs),
-        kind: ServiceKind::Launchd,
+        kind: UnitKind::Launchd,
         home_env: Some(&fake_home),
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     };
@@ -427,12 +427,12 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
 async fn an_uninstall_removes_the_unit_it_installed() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
-    install_unit(&fixture, ServiceKind::Launchd);
+    install_unit(&fixture, UnitKind::Launchd);
     let command = ServiceCommands::Uninstall { dry_run: false };
     let report = dispatch_service(
         &fixture.config_path,
         Some(&command),
-        &context(&fixture, ServiceKind::Launchd, &home),
+        &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
     .expect("the uninstall should succeed");

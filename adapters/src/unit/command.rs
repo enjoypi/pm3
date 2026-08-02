@@ -4,19 +4,19 @@ const USER_SCOPE: &str = "--user";
 const OVERRIDE_DISABLED: &str = "-w";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ServiceCommand {
+pub struct UnitCommand {
     pub program: String,
     pub args: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ServiceProgramSet {
+pub struct UnitProgramSet {
     pub launchctl: String,
     pub systemctl: String,
     pub loginctl: String,
 }
 
-impl ServiceProgramSet {
+impl UnitProgramSet {
     #[must_use]
     pub fn from_config(service: &crate::config::ServiceConfig) -> Self {
         Self {
@@ -28,7 +28,7 @@ impl ServiceProgramSet {
 }
 
 #[must_use]
-pub fn launchctl_load(programs: &ServiceProgramSet, unit_path: &Path) -> ServiceCommand {
+pub fn launchctl_load(programs: &UnitProgramSet, unit_path: &Path) -> UnitCommand {
     command(
         &programs.launchctl,
         &["load", OVERRIDE_DISABLED, &unit_path.to_string_lossy()],
@@ -36,7 +36,7 @@ pub fn launchctl_load(programs: &ServiceProgramSet, unit_path: &Path) -> Service
 }
 
 #[must_use]
-pub fn launchctl_unload(programs: &ServiceProgramSet, unit_path: &Path) -> ServiceCommand {
+pub fn launchctl_unload(programs: &UnitProgramSet, unit_path: &Path) -> UnitCommand {
     command(
         &programs.launchctl,
         &["unload", OVERRIDE_DISABLED, &unit_path.to_string_lossy()],
@@ -44,17 +44,17 @@ pub fn launchctl_unload(programs: &ServiceProgramSet, unit_path: &Path) -> Servi
 }
 
 #[must_use]
-pub fn launchctl_list(programs: &ServiceProgramSet, label: &str) -> ServiceCommand {
+pub fn launchctl_list(programs: &UnitProgramSet, label: &str) -> UnitCommand {
     command(&programs.launchctl, &["list", label])
 }
 
 #[must_use]
-pub fn systemctl_daemon_reload(programs: &ServiceProgramSet) -> ServiceCommand {
+pub fn systemctl_daemon_reload(programs: &UnitProgramSet) -> UnitCommand {
     command(&programs.systemctl, &[USER_SCOPE, "daemon-reload"])
 }
 
 #[must_use]
-pub fn systemctl_enable_now(programs: &ServiceProgramSet, unit_name: &str) -> ServiceCommand {
+pub fn systemctl_enable_now(programs: &UnitProgramSet, unit_name: &str) -> UnitCommand {
     command(
         &programs.systemctl,
         &[USER_SCOPE, "enable", "--now", unit_name],
@@ -62,7 +62,7 @@ pub fn systemctl_enable_now(programs: &ServiceProgramSet, unit_name: &str) -> Se
 }
 
 #[must_use]
-pub fn systemctl_disable_now(programs: &ServiceProgramSet, unit_name: &str) -> ServiceCommand {
+pub fn systemctl_disable_now(programs: &UnitProgramSet, unit_name: &str) -> UnitCommand {
     command(
         &programs.systemctl,
         &[USER_SCOPE, "disable", "--now", unit_name],
@@ -70,17 +70,17 @@ pub fn systemctl_disable_now(programs: &ServiceProgramSet, unit_name: &str) -> S
 }
 
 #[must_use]
-pub fn systemctl_is_active(programs: &ServiceProgramSet, unit_name: &str) -> ServiceCommand {
+pub fn systemctl_is_active(programs: &UnitProgramSet, unit_name: &str) -> UnitCommand {
     command(&programs.systemctl, &[USER_SCOPE, "is-active", unit_name])
 }
 
 #[must_use]
-pub fn loginctl_enable_linger(programs: &ServiceProgramSet) -> ServiceCommand {
+pub fn loginctl_enable_linger(programs: &UnitProgramSet) -> UnitCommand {
     command(&programs.loginctl, &["enable-linger"])
 }
 
-fn command(program: &str, args: &[&str]) -> ServiceCommand {
-    ServiceCommand {
+fn command(program: &str, args: &[&str]) -> UnitCommand {
+    UnitCommand {
         program: program.to_string(),
         args: args
             .iter()
@@ -90,5 +90,5 @@ fn command(program: &str, args: &[&str]) -> ServiceCommand {
 }
 
 #[cfg(test)]
-#[path = "../tests/service_command_tests.rs"]
+#[path = "../tests/unit_command_tests.rs"]
 mod tests;

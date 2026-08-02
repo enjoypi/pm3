@@ -33,8 +33,8 @@ fn start_sleeper(home: &Home) -> u32 {
     described_pid(home, SERVICE)
 }
 
-fn service_file(home: &Home) -> PathBuf {
-    home.root.join("svc").join(format!("{SERVICE}.yaml"))
+fn service(home: &Home) -> PathBuf {
+    home.root.join("service").join(format!("{SERVICE}.yaml"))
 }
 
 fn revive_daemon(home: &Home) {
@@ -120,7 +120,7 @@ fn a_service_whose_config_changed_is_restarted_by_the_new_daemon() {
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
-    let path = service_file(&home);
+    let path = service(&home);
     let config = std::fs::read_to_string(&path).expect("the service file");
     std::fs::write(&path, format!("{config}env:\n  TUNED: \"1\"\n")).expect("retune the service");
     revive_daemon(&home);
@@ -141,7 +141,7 @@ fn restarting_a_changed_service_takes_the_old_process_down_first() {
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
-    let path = service_file(&home);
+    let path = service(&home);
     let config = std::fs::read_to_string(&path).expect("the service file");
     std::fs::write(&path, format!("{config}env:\n  TUNED: \"1\"\n")).expect("retune the service");
     revive_daemon(&home);
@@ -328,7 +328,7 @@ fn killing_a_daemon_whose_pid_file_is_bogus_reports_the_refused_signal() {
 fn killing_with_services_needs_a_usable_service_directory() {
     let home = home();
     start_sleeper(&home);
-    let cfg_dir = home.root.join("svc");
+    let cfg_dir = home.root.join("service");
     std::fs::remove_dir_all(&cfg_dir).expect("clear the service directory");
     std::fs::write(&cfg_dir, "not a directory").expect("occupy the service directory");
 

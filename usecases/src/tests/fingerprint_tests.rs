@@ -191,3 +191,31 @@ fn every_field_is_length_prefixed() {
         "got: {rendered}"
     );
 }
+
+#[test]
+fn a_pid_the_kernel_handed_on_no_longer_matches_its_token() {
+    let observed = Liveness::Alive("Tue Jan  2 00:00:00".to_string());
+    assert!(pid_was_recycled(&observed, Some("Mon Jan  1 00:00:00")));
+}
+
+#[test]
+fn a_pid_that_still_answers_its_own_token_was_not_recycled() {
+    let observed = Liveness::Alive("Mon Jan  1 00:00:00".to_string());
+    assert!(!pid_was_recycled(&observed, Some("Mon Jan  1 00:00:00")));
+}
+
+#[test]
+fn a_pid_with_no_token_on_record_is_never_judged_recycled() {
+    let observed = Liveness::Alive("Mon Jan  1 00:00:00".to_string());
+    assert!(!pid_was_recycled(&observed, None));
+}
+
+#[test]
+fn a_pid_that_cannot_be_read_is_never_judged_recycled() {
+    assert!(!pid_was_recycled(&Liveness::Unreadable, Some("token")));
+}
+
+#[test]
+fn a_pid_that_is_gone_is_never_judged_recycled() {
+    assert!(!pid_was_recycled(&Liveness::Gone, Some("token")));
+}

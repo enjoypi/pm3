@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use super::*;
-use crate::{ServiceKind, service_specs::spec_for};
+use crate::{UnitKind, unit_specs::spec_for};
 
 fn rendered() -> String {
-    render_plist(&spec_for(ServiceKind::Launchd, Path::new("/home/dev")))
+    render_plist(&spec_for(UnitKind::Launchd, Path::new("/home/dev")))
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn the_plist_asks_launchd_to_start_and_keep_the_daemon_alive() {
 
 #[test]
 fn a_launch_agent_keeps_alive_only_after_a_failure_when_the_config_says_so() {
-    let mut spec = spec_for(ServiceKind::Launchd, Path::new("/home/dev"));
+    let mut spec = spec_for(UnitKind::Launchd, Path::new("/home/dev"));
     spec.restart_condition = "on-failure".to_string();
     let plist = render_plist(&spec);
     assert!(
@@ -88,7 +88,7 @@ fn the_plist_forwards_the_search_path() {
 
 #[test]
 fn the_plist_escapes_every_xml_special_character() {
-    let mut spec = spec_for(ServiceKind::Launchd, Path::new("/home/dev"));
+    let mut spec = spec_for(UnitKind::Launchd, Path::new("/home/dev"));
     spec.label = "a&b<c>d\"e'f".to_string();
     let plist = render_plist(&spec);
     assert!(

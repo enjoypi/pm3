@@ -13,7 +13,6 @@
 | `daemon/` | `bootstrap` `actor`（事件循环 + 请求分发）`timers`（`TimerBoard`：cron 定时器 / 待重启任务 / generation）`socket` `service` `ports` |
 | `client/uds.rs` | CLI 侧 Unix socket 客户端（`ask` / `ask_report`） |
 | `server.rs` | `serve_listener`：接管已 bound 的 listener，避开 bind→drop→re-bind 的抢占窗口 |
-| `svc.rs` | `cfg_dir/<name>.yaml` 的读写、`reconcile`、`SvcUndo`（按服务名可部分回滚）；折叠逻辑在 `adapters::fold_entry` |
 | `service.rs` | `pm3 service install/uninstall` |
 | `signal.rs` | SIGINT 吞掉、SIGTERM 落盘退出 |
 | `layout.rs` / `telemetry.rs` / `prompt.rs` / `sandbox_probe.rs` | 路径布局、日志、交互询问、沙箱可用性探测 |
@@ -22,16 +21,16 @@
 
 ### CLI
 
-- `main() -> Result<()>` 会用 **Debug** 打印错误（`Error: SvcConflict {..}`）→ MUST 用 `main() -> ExitCode` + 显式 `eprintln!("{error}")`
+- `main() -> Result<()>` 会用 **Debug** 打印错误（`Error: ServiceConflict {..}`）→ MUST 用 `main() -> ExitCode` + 显式 `eprintln!("{error}")`
 - 全局默认值 MUST NOT 在 `execute()` 里现算，交给 clap `default_value_t` 在构建期算
   原因：e2e 的假进程是 `pm3 __sleep`，子进程环境被 `env_clear()` 清空后没有 `HOME`；「所有子命令都先解析配置路径」会让 sleeper 一启动就退出（症状：e2e 里 app 显示 `stopped ↺1`）。不读配置的命令自然不受影响
 - 早期校验 MUST 用 `pm3.search_path` 而非 `std::env::var("PATH")`，`sandbox_probe::detect_host_backend` 也是（它 MUST 返回解析后的 `HostSandbox { backend, program }` 绝对路径，不能只回一个 bool：子进程 `env_clear()` 后裸名 `bwrap` 只在 `/bin:/usr/bin` 里找，装在 `/usr/local/bin` 就每次 spawn 报 ENOENT 而探测仍宣称沙箱可用）
 
 ### 服务文件与回滚
 
-- `start` 被 daemon 拒绝时 MUST 回滚已写的 `cfg_dir/<name>.yaml`（`svc::SvcUndo` 记前态：原本不存在→删、原本存在→写回）。但 daemon 部分成功时 MUST 只回滚 `ReplyDto.refused` 里的服务（`undo.run_for`）——已经在跑的服务不能丢服务文件，详见根 `CLAUDE.md` 的「CLI ↔ daemon 协议」
+- `start` 被 daemon 拒绝时 MUST 回滚已写的 `cfg_dir/<name>.yaml`（`adapters::ServiceUndo` 记前态：原本不存在→删、原本存在→写回）。但 daemon 部分成功时 MUST 只回滚 `ReplyDto.refused` 里的服务（`undo.run_for`）——已经在跑的服务不能丢服务文件，详见根 `CLAUDE.md` 的「CLI ↔ daemon 协议」
 - 写盘 MUST NOT 挪到 `ask` 之后——daemon 落 `dump.yaml` 时服务文件必须已在
-- 写 `~/.pm3/config.yaml`（`service install` 那份）与写 `cfg_dir/<name>.yaml` 共用同一个 `svc::reconcile`：内容相同静默通过、不同则打 diff 并拒绝、`--force` 才覆盖。新增「写配置」的路径 MUST 走它，别另起一套
+- 写 `~/.pm3/config.yaml`（`service install` 那份）与写 `cfg_dir/<name>.yaml` 共用同一个 `adapters::reconcile`：内容相同静默通过、不同则打 diff 并拒绝、`--force` 才覆盖。新增「写配置」的路径 MUST 走它，别另起一套
 
 ### daemon 收尾
 

@@ -1,10 +1,10 @@
-use super::spec::ServiceUnitSpec;
+use super::spec::UnitSpec;
 
 const PATH_VARIABLE: &str = "PATH";
 const HOME_VARIABLE: &str = "HOME";
 
 #[must_use]
-pub fn render_unit(spec: &ServiceUnitSpec) -> String {
+pub fn render_unit(spec: &UnitSpec) -> String {
     let label = escape_value(&spec.label);
     let exec_start = render_exec_start(spec);
     let working_directory = escape_value(&spec.working_directory.to_string_lossy());
@@ -36,7 +36,7 @@ WantedBy=default.target
     )
 }
 
-fn render_exec_start(spec: &ServiceUnitSpec) -> String {
+fn render_exec_start(spec: &UnitSpec) -> String {
     let mut tokens = Vec::with_capacity(4);
     tokens.push(quote_token(&spec.program.to_string_lossy()));
     for argument in spec.daemon_args() {
@@ -74,5 +74,5 @@ fn escape_value(raw: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../tests/service_systemd_tests.rs"]
+#[path = "../tests/unit_systemd_tests.rs"]
 mod tests;

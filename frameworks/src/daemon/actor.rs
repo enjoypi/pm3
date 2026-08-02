@@ -2,10 +2,12 @@ use std::{sync::Arc, time::Duration};
 
 use adapters::{
     AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
-    ExitOutcome, Liveness, ProcessProbe as _, ProcessTable, ProcessView, RestartOutcome,
-    Scheduler as _, Signaler as _, SpecSource, StartKind, StartOutcome, StartReport, delete_app,
-    describe_app, handle_child_exit, list_apps, materialise_workspace, persist_for_handover,
-    restart_app, resurrect, start_apps, stop_all_apps, stop_app,
+    ExitOutcome, ProcessProbe as _, ProcessTable, ProcessView, RestartOutcome, Scheduler as _,
+    Signaler as _, SpecSource, StartKind, StartOutcome, StartReport, armed_schedule_names,
+    delete_app, describe_app, handle_child_exit, identity_token_of, is_drained, list_apps,
+    materialise_workspace, owner_of_pid, persist_for_handover, pid_was_recycled, refused_services,
+    restart_app, resurrect, running_pids, schedule_of, start_apps, stop_all_apps, stop_app,
+    unsettled_count,
 };
 use tokio::sync::mpsc;
 
@@ -142,21 +144,13 @@ impl Daemon {
         if !self.ports.tracked_pids().await.contains(&pid) {
             return;
         }
-        if self.pid_was_recycled(pid, token).await {
+        if pid_was_recycled(&self.ports.identity(pid).await, token) {
             log_spared_force_kill(name, pid);
             return;
         }
         if let Err(error) = self.ports.force_kill(pid).await {
             log_stuck_force_kill(name, pid, &error.to_string());
         }
-    }
-
-    async fn pid_was_recycled(&self, pid: u32, token: Option<&str>) -> bool {
-        let (Liveness::Alive(current), Some(expected)) = (self.ports.identity(pid).await, token)
-        else {
-            return false;
-        };
-        current != expected
     }
 
     pub async fn shutdown(&mut self) {
@@ -169,12 +163,7 @@ impl Daemon {
         if !self.wait_until_drained().await {
             self.force_kill_survivors().await;
         }
-        let survivors = self
-            .table
-            .records()
-            .iter()
-            .filter(|record| !record.runtime.status.is_settled())
-            .count();
+        let survivors = unsettled_count(&self.table);
         tracing::info!(
             feature = "lifecycle",
             action = "shutdown",
@@ -279,7 +268,7 @@ impl Daemon {
     }
 
     async fn delete(&mut self, selector: &AppSelector) -> DaemonOutcome {
-        let token = self.identity_token_of(selector);
+        let token = identity_token_of(&self.table, selector);
         let outcome = delete_app(&mut self.table, selector, &*self.ports).await?;
         self.board.disarm(&outcome.name);
         self.board.cancel_restart(&outcome.name);
@@ -313,26 +302,9 @@ impl Daemon {
             .filter(|pid| !covered.contains(pid))
             .collect();
         for pid in strays {
-            let (name, token) = self.stray_owner(pid);
+            let (name, token) = owner_of_pid(&self.table, pid);
             self.schedule_force_kill(&name, Some(pid), token);
         }
-    }
-
-    fn stray_owner(&self, pid: u32) -> (String, Option<String>) {
-        let Some(record) = self
-            .table
-            .records()
-            .iter()
-            .find(|record| record.runtime.pid == Some(pid))
-        else {
-            return (format!("stray-{pid}"), None);
-        };
-        let token = record
-            .runtime
-            .identity
-            .as_ref()
-            .map(|identity| identity.token.clone());
-        (record.runtime.name.clone(), token)
     }
 
     async fn wait_until_drained(&self) -> bool {
@@ -351,21 +323,11 @@ impl Daemon {
 
     async fn drained(&self) -> bool {
         let tracked = self.ports.tracked_pids().await;
-        let preserved = self.preserved_pids();
-        tracked.iter().all(|pid| preserved.contains(pid))
-    }
-
-    fn preserved_pids(&self) -> Vec<u32> {
-        self.table
-            .records()
-            .iter()
-            .filter(|record| record.runtime.status.is_running())
-            .filter_map(|record| record.runtime.pid)
-            .collect()
+        is_drained(&tracked, &running_pids(&self.table))
     }
 
     async fn force_kill_survivors(&self) {
-        let preserved = self.preserved_pids();
+        let preserved = running_pids(&self.table);
         let mut sweeps = Vec::new();
         for pid in self.ports.tracked_pids().await {
             if preserved.contains(&pid) {
@@ -397,23 +359,14 @@ impl Daemon {
     }
 
     fn arm_known_timers(&mut self) {
-        for name in self.scheduled_names() {
+        for name in armed_schedule_names(&self.table) {
             self.arm_timer(&name);
         }
     }
 
-    fn scheduled_names(&self) -> Vec<String> {
-        self.table
-            .records()
-            .iter()
-            .filter(|record| record.spec.schedule.is_some() && record.runtime.schedule_armed)
-            .map(|record| record.runtime.name.clone())
-            .collect()
-    }
-
     fn arm_timer(&mut self, name: &str) {
         self.board.disarm(name);
-        let Some(cron) = self.schedule_of(name) else {
+        let Some(cron) = schedule_of(&self.table, name) else {
             return;
         };
         let now_ms = self.ports.now_ms();
@@ -426,14 +379,8 @@ impl Daemon {
         self.board.arm(name, fire_at_ms, delay);
     }
 
-    fn schedule_of(&self, name: &str) -> Option<String> {
-        self.table
-            .find(&AppSelector::Name(name.to_string()))
-            .and_then(|record| record.spec.schedule.clone())
-    }
-
     fn reconcile_timer(&mut self, name: &str) {
-        if self.schedule_of(name).is_some() {
+        if schedule_of(&self.table, name).is_some() {
             self.arm_timer(name);
         } else {
             self.board.disarm(name);
@@ -477,23 +424,8 @@ impl Daemon {
     }
 
     fn identity_token(&self, name: &str) -> Option<String> {
-        self.identity_token_of(&AppSelector::Name(name.to_string()))
+        identity_token_of(&self.table, &AppSelector::Name(name.to_string()))
     }
-
-    fn identity_token_of(&self, selector: &AppSelector) -> Option<String> {
-        self.table
-            .find(selector)
-            .and_then(|record| record.runtime.identity.as_ref())
-            .map(|identity| identity.token.clone())
-    }
-}
-
-fn refused_services(requested: &[String], outcomes: &[StartOutcome]) -> Vec<String> {
-    requested
-        .iter()
-        .filter(|name| !outcomes.iter().any(|outcome| &outcome.name == *name))
-        .cloned()
-        .collect()
 }
 
 #[cfg(test)]

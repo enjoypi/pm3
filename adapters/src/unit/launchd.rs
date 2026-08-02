@@ -1,4 +1,4 @@
-use super::spec::ServiceUnitSpec;
+use super::spec::UnitSpec;
 use crate::config::RESTART_CONDITION_ON_FAILURE;
 
 const PLIST_HEADER: &str = concat!(
@@ -20,7 +20,7 @@ const KEEP_ALIVE_ON_FAILURE: &str = concat!(
 );
 
 #[must_use]
-pub fn render_plist(spec: &ServiceUnitSpec) -> String {
+pub fn render_plist(spec: &UnitSpec) -> String {
     let arguments = spec
         .daemon_args()
         .iter()
@@ -95,5 +95,5 @@ fn escape_xml(raw: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../tests/service_launchd_tests.rs"]
+#[path = "../tests/unit_launchd_tests.rs"]
 mod tests;

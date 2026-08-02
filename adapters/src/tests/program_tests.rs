@@ -138,44 +138,53 @@ fn a_sibling_that_merely_shares_the_prefix_is_left_alone() {
 
 #[test]
 fn a_bare_service_cwd_token_folds_into_the_braced_form() {
-    assert_eq!(fold_svc_cwd("PM3_SVC_CWD"), SVC_CWD_PLACEHOLDER);
+    assert_eq!(fold_service_cwd("PM3_SERVICE_CWD"), SERVICE_CWD_PLACEHOLDER);
 }
 
 #[test]
 fn a_bare_service_cwd_token_folds_inside_a_larger_argument() {
-    assert_eq!(fold_svc_cwd("PM3_SVC_CWD/data"), "${PM3_SVC_CWD}/data");
+    assert_eq!(
+        fold_service_cwd("PM3_SERVICE_CWD/data"),
+        "${PM3_SERVICE_CWD}/data"
+    );
 }
 
 #[test]
 fn an_already_braced_service_cwd_token_is_left_alone() {
-    assert_eq!(fold_svc_cwd(SVC_CWD_PLACEHOLDER), SVC_CWD_PLACEHOLDER);
+    assert_eq!(
+        fold_service_cwd(SERVICE_CWD_PLACEHOLDER),
+        SERVICE_CWD_PLACEHOLDER
+    );
 }
 
 #[test]
 fn a_bare_token_next_to_a_braced_one_still_folds() {
     assert_eq!(
-        fold_svc_cwd("--opts=${PM3_SVC_CWD}/a,PM3_SVC_CWD"),
-        "--opts=${PM3_SVC_CWD}/a,${PM3_SVC_CWD}"
+        fold_service_cwd("--opts=${PM3_SERVICE_CWD}/a,PM3_SERVICE_CWD"),
+        "--opts=${PM3_SERVICE_CWD}/a,${PM3_SERVICE_CWD}"
     );
 }
 
 #[test]
 fn a_brace_opened_token_without_a_closing_brace_still_folds() {
-    assert_eq!(fold_svc_cwd("${PM3_SVC_CWDx}"), "${${PM3_SVC_CWD}x}");
+    assert_eq!(
+        fold_service_cwd("${PM3_SERVICE_CWDx}"),
+        "${${PM3_SERVICE_CWD}x}"
+    );
 }
 
 #[test]
 fn folding_then_expanding_restores_every_token_position() {
-    let folded = fold_svc_cwd("--opts=${PM3_SVC_CWD}/a,PM3_SVC_CWD");
+    let folded = fold_service_cwd("--opts=${PM3_SERVICE_CWD}/a,PM3_SERVICE_CWD");
     assert_eq!(
-        crate::workspace::expand_svc_cwd(&folded, "/srv/web"),
+        crate::workspace::expand_service_cwd(&folded, "/srv/web"),
         "--opts=/srv/web/a,/srv/web"
     );
 }
 
 #[test]
 fn a_value_without_the_service_cwd_token_is_left_alone() {
-    assert_eq!(fold_svc_cwd("/srv/data"), "/srv/data");
+    assert_eq!(fold_service_cwd("/srv/data"), "/srv/data");
 }
 
 #[test]

@@ -1,5 +1,7 @@
 use entities::AppSpec;
 
+use crate::ports::Liveness;
+
 const NAME_LABEL: &str = "name";
 const PROGRAM_LABEL: &str = "program";
 const CWD_LABEL: &str = "cwd";
@@ -51,6 +53,14 @@ pub fn render_identity(spec: &AppSpec) -> String {
         text.push_str(&field(ENV_LABEL, &entry_line(entry)));
         text
     })
+}
+
+#[must_use]
+pub fn pid_was_recycled(observed: &Liveness, expected: Option<&str>) -> bool {
+    let (Liveness::Alive(current), Some(expected)) = (observed, expected) else {
+        return false;
+    };
+    current != expected
 }
 
 const fn network_label(allowed: bool) -> &'static str {

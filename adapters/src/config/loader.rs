@@ -2,7 +2,7 @@ use std::{env, fs};
 
 use thiserror::Error;
 
-use crate::program::SVC_CWD_NAME;
+use crate::program::SERVICE_CWD_NAME;
 
 #[derive(Debug, Error)]
 pub enum ConfigLoadError {
@@ -82,7 +82,7 @@ fn substitute_with(raw: &str, lookup: EnvLookup) -> Result<String, ConfigLoadErr
         out.push_str(&rest[..start]);
         let body = &rest[start + 2..];
         match parse_placeholder(body) {
-            Some(parsed) if parsed.name == SVC_CWD_NAME => {
+            Some(parsed) if parsed.name == SERVICE_CWD_NAME => {
                 if parsed.default.is_some() {
                     return Err(ConfigLoadError::ReservedPlaceholderDefault {
                         name: parsed.name.to_string(),

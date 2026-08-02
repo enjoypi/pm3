@@ -29,8 +29,8 @@ fn a_dotted_service_name_keeps_every_part() {
 #[test]
 fn the_source_locates_the_service_file_in_the_config_directory() {
     let fixture = fixture();
-    let expected = fixture.dir.path().join("svc/web.yaml");
-    assert_eq!(fixture.source.service_file("web"), Ok(expected));
+    let expected = fixture.dir.path().join("service/web.yaml");
+    assert_eq!(fixture.source.service("web"), Ok(expected));
 }
 
 #[test]

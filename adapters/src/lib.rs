@@ -13,6 +13,7 @@ pub mod schedule;
 pub mod service;
 pub mod startup;
 pub mod state;
+pub mod unit;
 pub mod workspace;
 
 use thiserror::Error;
@@ -22,9 +23,11 @@ pub use usecases::{
     Liveness, Ports, ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime,
     ProcessStatus, ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode,
     SandboxPolicy, Scheduler, SignalError, Signaler, SpecError, StartKind, StartOutcome,
-    StartReport, StopOutcome, UsecaseError, WrappedCommand, delete_app, describe_app,
-    handle_child_exit, list_apps, log_paths, persist_for_handover, render_identity, restart_app,
-    resurrect, start_apps, stop_all_apps, stop_app, topo_sort, validate_app_name,
+    StartReport, StopOutcome, UsecaseError, WrappedCommand, armed_schedule_names, delete_app,
+    describe_app, handle_child_exit, identity_token_of, is_drained, list_apps, log_paths,
+    owner_of_pid, persist_for_handover, pid_was_recycled, refused_services, render_identity,
+    restart_app, resurrect, running_pids, schedule_of, start_apps, stop_all_apps, stop_app,
+    topo_sort, unsettled_count, validate_app_name,
 };
 
 pub use self::{
@@ -43,8 +46,9 @@ pub use self::{
     },
     exit_status::{UNKNOWN_EXIT_CODE, describe_refusal, exit_code_of},
     http::{
-        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, REQUEST_ID_HEADER, ReplyDto,
-        SERVICES_STOP_ALL_PATH, StartRequestDto, router,
+        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, REQUEST_ID_HEADER, ReplyDecodeError,
+        ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto, app_action_path, app_path, decode_reply,
+        encode_start_request, router,
     },
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
     paths::{
@@ -55,15 +59,16 @@ pub use self::{
         DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state, encode_states,
     },
     presenter::{
-        EMPTY_NOTICE, NOTHING_STARTED, affected_service, already_running_names, render_describe,
-        render_reply, render_started, render_table,
+        DAEMON_NOT_RUNNING, EMPTY_NOTICE, NOTHING_STARTED, affected_service, already_running_names,
+        render_daemon_gone, render_daemon_stopped, render_describe, render_reply, render_started,
+        render_table,
     },
     process::{
         AdoptedWatch, KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
         Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
     },
     program::{
-        HOME_PLACEHOLDER, SVC_CWD_NAME, SVC_CWD_PLACEHOLDER, fold_home, fold_svc_cwd,
+        HOME_PLACEHOLDER, SERVICE_CWD_NAME, SERVICE_CWD_PLACEHOLDER, fold_home, fold_service_cwd,
         program_available, resolve_program,
     },
     sandbox::{
@@ -71,16 +76,20 @@ pub use self::{
     },
     schedule::{CronError, CronScheduler, ExpandError, expand_random, validate_cron},
     service::{
-        CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, ServiceCommandError, ServiceKind,
-        ServiceProgramSet, ServiceStatus, ServiceUnitSpec, install_service, status_report,
-        uninstall_service, unit_dir_of,
+        InlineStart, PreparedService, Reconciled, ServiceContext, ServiceError, ServiceUndo,
+        SplitApps, forget, prepare_inline, reconcile, split_apps_file,
     },
     startup::log_startup_banner,
     state::{
         DaemonCommand, DaemonError, DaemonFailure, DaemonHandle, DaemonOutcome, DaemonReply,
         DaemonRequest,
     },
-    workspace::{expand_svc_cwd, materialise_workspace},
+    unit::{
+        CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, UnitCommandError, UnitKind,
+        UnitProgramSet, UnitSpec, UnitStatus, install_unit, status_report, uninstall_unit,
+        unit_dir_of,
+    },
+    workspace::{expand_service_cwd, materialise_workspace},
 };
 
 #[derive(Debug, Error)]
@@ -110,8 +119,11 @@ pub(crate) mod process_views;
 #[path = "../test_support/response_body.rs"]
 pub(crate) mod response_body;
 #[cfg(test)]
-#[path = "../test_support/service_specs.rs"]
-pub(crate) mod service_specs;
+#[path = "../test_support/service_fixtures.rs"]
+pub(crate) mod service_fixtures;
 #[cfg(test)]
 #[path = "../test_support/spec_sources.rs"]
 pub(crate) mod spec_sources;
+#[cfg(test)]
+#[path = "../test_support/unit_specs.rs"]
+pub(crate) mod unit_specs;

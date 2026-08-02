@@ -1,11 +1,11 @@
 use super::*;
-use crate::service_specs::program_set;
+use crate::unit_specs::program_set;
 
 const FAKE: &str = "/tmp/pm3-fake-manager";
 const UNIT_PATH: &str = "/home/dev/Library/LaunchAgents/pm3-test.plist";
 const UNIT_NAME: &str = "pm3-test.service";
 
-fn programs() -> ServiceProgramSet {
+fn programs() -> UnitProgramSet {
     program_set(FAKE)
 }
 
@@ -19,7 +19,7 @@ fn the_program_set_reads_every_manager_path_from_the_config() {
         systemctl_path: "/opt/systemctl".to_string(),
         loginctl_path: "/opt/loginctl".to_string(),
     };
-    let programs = ServiceProgramSet::from_config(&service);
+    let programs = UnitProgramSet::from_config(&service);
     assert_eq!(programs.launchctl, "/opt/launchctl");
     assert_eq!(programs.systemctl, "/opt/systemctl");
     assert_eq!(programs.loginctl, "/opt/loginctl");

@@ -99,6 +99,11 @@ fn frameworks_must_not_depend_on_entities() {
 }
 
 #[test]
+fn frameworks_must_not_depend_on_serde_json_at_runtime() {
+    assert_no_runtime_dependency("frameworks/Cargo.toml", &["serde_json"]);
+}
+
+#[test]
 fn entities_must_not_depend_on_serde() {
     assert_no_dependency("entities/Cargo.toml", &["serde"]);
 }

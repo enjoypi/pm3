@@ -1,17 +1,9 @@
-mod actions;
-mod command;
-mod launchd;
-mod plan;
-mod runner;
-mod spec;
-mod systemd;
+mod prepare;
+mod store;
 
 pub use self::{
-    actions::{NOTHING_INSTALLED, install_service, status_report, uninstall_service},
-    command::{ServiceCommand, ServiceProgramSet},
-    plan::ServiceStep,
-    runner::ServiceCommandError,
-    spec::{
-        CONFIG_FLAG, DAEMON_SUBCOMMAND, ServiceKind, ServiceStatus, ServiceUnitSpec, unit_dir_of,
+    prepare::{
+        InlineStart, PreparedService, ServiceContext, SplitApps, prepare_inline, split_apps_file,
     },
+    store::{Reconciled, ServiceError, ServiceUndo, forget, reconcile},
 };

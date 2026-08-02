@@ -481,6 +481,15 @@ fn a_failing_command_reports_failure() {
 }
 
 #[tokio::test]
+async fn naming_a_service_without_a_program_explains_the_usage() {
+    let err = execute(parse(&["pm3", "start", "--name", "probe"]))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("needs a program"), "got: {err}");
+}
+
+#[tokio::test]
 async fn starting_without_a_target_explains_the_usage() {
     let err = execute(parse(&["pm3", "start"]))
         .await

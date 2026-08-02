@@ -15,7 +15,8 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 | `process/` | `tokio_launcher` `kill_signaler` `ps_probe` `sha256_fingerprinter` `system_clock` `watcher` |
 | `sandbox/` | `seatbelt`（macOS，含 `.sbpl`）/ `bwrap`（Linux）/ `wrapper` / `backend` |
 | `schedule/` | `cron_scheduler` + `random_expand`（OpenBSD `~` 展开） |
-| `service/` | `spec.rs`（`ServiceKind` / `unit_dir_of`）、`launchd` / `systemd` unit 渲染、`plan` `actions` `runner` `command` |
+| `unit/` | OS 服务单元：`spec.rs`（`UnitKind` / `unit_dir_of`）、`launchd` / `systemd` unit 渲染、`plan` `actions` `runner` `command` |
+| `service/` | pm3 服务文件 Gateway：`store`（读写 / `reconcile` / `ServiceUndo`）、`prepare`（`prepare_inline` / `split_apps_file`） |
 | 根文件 | `paths.rs` `program.rs` `startup.rs` `state.rs` `workspace.rs` |
 
 ## 本层规则
@@ -34,7 +35,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 
 - macOS `sandbox-exec` 的 `subpath` 只认真实路径，`/var/...` 这类符号链接不匹配 → spawn 前必须 canonicalize `cwd` 与 `writable_roots`
 - 后端程序名从 `SandboxProgramSet` 取（`SandboxBackend::resolve(&programs, search_path)`），`SandboxBackend` 本身只是 `Seatbelt`/`Bwrap` 两个标签、不再持有路径常量；`detect_host_backend` 在 `frameworks` 侧由 `SandboxProgramSet::from_config(&config.sandbox)` 喂入
-- `materialise_workspace` 里展开 `${PM3_SVC_CWD}` MUST 排在 `spec.cwd = real_path(...)` **之后**；提前替换会把未 canonicalize 的 cwd 写进 args，正好复现上面那个陷阱
+- `materialise_workspace` 里展开 `${PM3_SERVICE_CWD}` MUST 排在 `spec.cwd = real_path(...)` **之后**；提前替换会把未 canonicalize 的 cwd 写进 args，正好复现上面那个陷阱
   回归测试：`src/tests/workspace_tests.rs::a_placeholder_expands_to_the_real_path_not_the_symlink` 与 `frameworks/tests/sandbox_isolation.rs::a_confined_app_can_write_through_the_cwd_placeholder`
 
 ### 进程

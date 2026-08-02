@@ -83,7 +83,7 @@ fn a_refused_start_leaves_no_service_files_behind() {
     let apps = cyclic_apps(&home);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
     assert!(!started.status.success(), "a cycle must fail the command");
-    let leftovers: Vec<String> = std::fs::read_dir(home.root.join("svc"))
+    let leftovers: Vec<String> = std::fs::read_dir(home.root.join("service"))
         .expect("the service directory")
         .map(|entry| {
             entry

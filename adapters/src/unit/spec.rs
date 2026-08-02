@@ -12,12 +12,12 @@ const LAUNCHD_PID_KEY: &str = "\"PID\"";
 const SYSTEMD_ACTIVE: &str = "active";
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum ServiceKind {
+pub enum UnitKind {
     Launchd,
     Systemd,
 }
 
-impl ServiceKind {
+impl UnitKind {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -44,13 +44,13 @@ impl ServiceKind {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum ServiceStatus {
+pub enum UnitStatus {
     NotInstalled,
     InstalledNotRunning,
     Running,
 }
 
-impl ServiceStatus {
+impl UnitStatus {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -62,8 +62,8 @@ impl ServiceStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ServiceUnitSpec {
-    pub kind: ServiceKind,
+pub struct UnitSpec {
+    pub kind: UnitKind,
     pub label: String,
     pub unit_dir: PathBuf,
     pub program: PathBuf,
@@ -76,7 +76,7 @@ pub struct ServiceUnitSpec {
     pub restart_condition: String,
 }
 
-impl ServiceUnitSpec {
+impl UnitSpec {
     #[must_use]
     pub fn unit_name(&self) -> String {
         format!("{}.{}", self.label, self.kind.unit_suffix())
@@ -98,18 +98,18 @@ impl ServiceUnitSpec {
 }
 
 #[must_use]
-pub fn unit_dir_of(kind: ServiceKind, home: &Path) -> PathBuf {
+pub fn unit_dir_of(kind: UnitKind, home: &Path) -> PathBuf {
     home.join(kind.unit_dir())
 }
 
 #[must_use]
-pub fn parse_run_state(kind: ServiceKind, exit_success: bool, stdout: &str) -> bool {
+pub fn parse_run_state(kind: UnitKind, exit_success: bool, stdout: &str) -> bool {
     match kind {
-        ServiceKind::Launchd => exit_success && stdout.contains(LAUNCHD_PID_KEY),
-        ServiceKind::Systemd => stdout.trim() == SYSTEMD_ACTIVE,
+        UnitKind::Launchd => exit_success && stdout.contains(LAUNCHD_PID_KEY),
+        UnitKind::Systemd => stdout.trim() == SYSTEMD_ACTIVE,
     }
 }
 
 #[cfg(test)]
-#[path = "../tests/service_spec_tests.rs"]
+#[path = "../tests/unit_spec_tests.rs"]
 mod tests;

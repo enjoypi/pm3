@@ -7,6 +7,8 @@ use usecases::Scheduler;
 
 use super::random_expand::{ExpandError, expand_random};
 
+const MILLIS_PER_SECOND: u64 = 1000;
+
 #[derive(Copy, Clone, Debug)]
 pub struct CronScheduler;
 
@@ -48,7 +50,7 @@ impl Scheduler for CronScheduler {
         let mut rng = fastrand::Rng::new();
         let expanded = expand_random(cron, &mut rng).ok()?;
         let schedule = Cron::from_str(&expanded).ok()?;
-        let after = i64::try_from(after_ms).ok()?;
+        let after = i64::try_from(after_ms - after_ms % MILLIS_PER_SECOND).ok()?;
         let start = DateTime::from_timestamp_millis(after)?.with_timezone(&Local);
         let next = schedule.find_next_occurrence(&start, false).ok()?;
         Some(next.timestamp_millis().max(0).cast_unsigned())

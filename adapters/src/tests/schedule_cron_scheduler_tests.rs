@@ -122,3 +122,21 @@ fn every_cron_error_renders_a_message() {
         );
     }
 }
+
+#[test]
+fn the_next_occurrence_ignores_the_subsecond_part_of_the_asking_instant() {
+    let on_the_second = CronScheduler.next_fire_ms("* * * * *", SOME_INSTANT_MS);
+    let late_in_the_second = CronScheduler.next_fire_ms("* * * * *", SOME_INSTANT_MS + 999);
+    assert_eq!(
+        on_the_second, late_in_the_second,
+        "the same cycle must resolve to one instant whenever it is asked"
+    );
+}
+
+#[test]
+fn the_next_occurrence_lands_on_a_whole_second() {
+    let next = CronScheduler
+        .next_fire_ms("* * * * *", SOME_INSTANT_MS + 1)
+        .expect("an every-minute schedule always has a next occurrence");
+    assert_eq!(next % 1000, 0, "cron resolves to seconds, got: {next}");
+}

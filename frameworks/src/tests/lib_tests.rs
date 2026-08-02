@@ -106,7 +106,7 @@ fn an_unready_daemon_reports_the_budget() {
 
 #[test]
 fn a_service_manager_failure_is_passed_through() {
-    let error = Error::Service(adapters::ServiceCommandError::Failed {
+    let error = Error::Service(adapters::UnitCommandError::Failed {
         program: "/bin/launchctl".to_string(),
         reason: "exited with status 1".to_string(),
     });

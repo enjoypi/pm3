@@ -345,3 +345,18 @@ async fn stopping_everything_cancels_a_queued_restart() {
     let record = table.find(&AppSelector::Id(0)).expect("record present");
     assert!(!record.runtime.pending_restart);
 }
+
+#[test]
+fn nothing_tracked_counts_as_drained() {
+    assert!(is_drained(&[], &[100]));
+}
+
+#[test]
+fn a_tracked_pid_that_is_preserved_on_purpose_counts_as_drained() {
+    assert!(is_drained(&[100, 200], &[100, 200, 300]));
+}
+
+#[test]
+fn a_tracked_pid_nobody_preserves_is_still_draining() {
+    assert!(!is_drained(&[100, 200], &[100]));
+}

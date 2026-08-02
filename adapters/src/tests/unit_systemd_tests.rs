@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use super::*;
-use crate::{ServiceKind, service_specs::spec_for};
+use crate::{UnitKind, unit_specs::spec_for};
 
 fn rendered() -> String {
-    render_unit(&spec_for(ServiceKind::Systemd, Path::new("/home/dev")))
+    render_unit(&spec_for(UnitKind::Systemd, Path::new("/home/dev")))
 }
 
 #[test]
@@ -40,7 +40,7 @@ fn the_unit_takes_the_restart_condition_from_the_spec() {
 
 #[test]
 fn the_unit_restarts_only_on_failure_when_the_config_says_so() {
-    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
     spec.restart_condition = "on-failure".to_string();
     let unit = render_unit(&spec);
     assert!(unit.contains("Restart=on-failure"), "got: {unit}");
@@ -48,7 +48,7 @@ fn the_unit_restarts_only_on_failure_when_the_config_says_so() {
 
 #[test]
 fn the_unit_takes_the_restart_delay_from_the_spec() {
-    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
     spec.restart_delay_secs = 9;
     assert!(
         render_unit(&spec).contains("RestartSec=9"),
@@ -99,7 +99,7 @@ fn the_unit_wants_to_start_with_the_default_target() {
 
 #[test]
 fn the_unit_doubles_percent_signs_in_plain_values() {
-    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
     spec.label = "pm3 100% ready".to_string();
     assert!(
         render_unit(&spec).contains("Description=pm3 100%% ready"),
@@ -110,7 +110,7 @@ fn the_unit_doubles_percent_signs_in_plain_values() {
 
 #[test]
 fn the_unit_escapes_quotes_and_backslashes_inside_quoted_environment_values() {
-    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
     spec.home = "/home/we\"ird\\dev".to_string();
     assert!(
         render_unit(&spec).contains("Environment=\"HOME=/home/we\\\"ird\\\\dev\""),
@@ -121,10 +121,10 @@ fn the_unit_escapes_quotes_and_backslashes_inside_quoted_environment_values() {
 
 #[test]
 fn the_unit_escapes_quotes_and_backslashes_in_plain_values() {
-    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
-    spec.working_directory = std::path::PathBuf::from("/opt/we\"ird\\svc");
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
+    spec.working_directory = std::path::PathBuf::from("/opt/we\"ird\\dir");
     assert!(
-        render_unit(&spec).contains("WorkingDirectory=/opt/we\\\"ird\\\\svc"),
+        render_unit(&spec).contains("WorkingDirectory=/opt/we\\\"ird\\\\dir"),
         "got: {}",
         render_unit(&spec)
     );
@@ -132,7 +132,7 @@ fn the_unit_escapes_quotes_and_backslashes_in_plain_values() {
 
 #[test]
 fn the_unit_escapes_quotes_backslashes_and_percent_signs_inside_tokens() {
-    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
     spec.program = std::path::PathBuf::from("/opt/a b\\c\"d%e/pm3");
     assert!(
         render_unit(&spec).contains("ExecStart=\"/opt/a b\\\\c\\\"d%%e/pm3\""),

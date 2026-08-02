@@ -8,7 +8,6 @@ pub mod sandbox_probe;
 pub mod server;
 pub mod service;
 pub mod signal;
-pub mod svc;
 pub mod telemetry;
 
 use thiserror::Error;
@@ -37,10 +36,13 @@ pub enum Error {
     Client(#[from] client::ClientError),
 
     #[error(transparent)]
-    Service(#[from] adapters::ServiceCommandError),
+    Service(#[from] adapters::UnitCommandError),
 
     #[error(transparent)]
     Apps(#[from] adapters::AppsFileError),
+
+    #[error(transparent)]
+    ServiceFile(#[from] adapters::ServiceError),
 
     #[error(transparent)]
     Signal(#[from] adapters::SignalError),
@@ -63,17 +65,8 @@ pub enum Error {
     #[error("cannot locate the service directory: no HOME in the environment")]
     ServiceHome,
 
-    #[error("cannot find '{program}' on PATH")]
-    ProgramNotFound { program: String },
-
     #[error("cannot start: {reason}")]
     InlineUsage { reason: String },
-
-    #[error("cannot write the service file '{path}': {reason}")]
-    SvcWrite { path: String, reason: String },
-
-    #[error("cannot overwrite '{path}' without --force:\n{diff}")]
-    SvcConflict { path: String, diff: String },
 
     #[error("cannot prepare the pm3 home '{path}': {reason}")]
     Layout { path: String, reason: String },
@@ -96,8 +89,8 @@ pub enum Error {
     #[error("cannot read the pm3 daemon pid from '{path}'")]
     DaemonPidUnknown { path: String },
 
-    #[error("cannot decode the pm3 daemon reply: {reason}")]
-    Undecodable { reason: String },
+    #[error(transparent)]
+    Undecodable(#[from] adapters::ReplyDecodeError),
 
     #[error(
         "cannot confirm the pm3 daemon (pid {pid}) stopped: '{path}' is still there after {timeout_ms} ms"

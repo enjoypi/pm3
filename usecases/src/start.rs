@@ -277,6 +277,15 @@ pub(crate) fn build_launch_spec(
     })
 }
 
+#[must_use]
+pub fn refused_services(requested: &[String], outcomes: &[StartOutcome]) -> Vec<String> {
+    requested
+        .iter()
+        .filter(|name| !outcomes.iter().any(|outcome| &outcome.name == *name))
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 #[path = "tests/start_tests.rs"]
 mod tests;

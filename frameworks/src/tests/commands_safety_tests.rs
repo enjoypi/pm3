@@ -45,7 +45,7 @@ fn half_startable_apps_file(fixture: &Fixture) -> (String, PathBuf) {
         unrunnable.display()
     );
     let apps_file = crate::test_support::write_apps_file(fixture.dir.path(), &body);
-    let cfg_dir = fixture.paths.root.join("svc");
+    let cfg_dir = fixture.paths.root.join("service");
     (apps_file.to_string_lossy().into_owned(), cfg_dir)
 }
 

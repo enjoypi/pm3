@@ -31,7 +31,7 @@ fn the_host_home_comes_from_the_environment() {
 async fn preparing_the_layout_creates_the_log_directory() {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(&dir.path().join("home"));
-    let cfg_dir = dir.path().join("svc");
+    let cfg_dir = dir.path().join("service");
     ensure_layout(&paths, &cfg_dir)
         .await
         .expect("should prepare");
@@ -67,7 +67,7 @@ async fn preparing_the_layout_reports_a_blocked_root() {
     let dir = tempfile::tempdir().expect("temp dir");
     let root = dir.path().join("home");
     std::fs::write(&root, "blocked").expect("occupy the root");
-    let err = ensure_layout(&resolve_paths(&root), &root.join("svc"))
+    let err = ensure_layout(&resolve_paths(&root), &root.join("service"))
         .await
         .unwrap_err()
         .to_string();
@@ -80,7 +80,7 @@ async fn preparing_the_layout_reports_a_blocked_log_directory() {
     let paths = resolve_paths(&dir.path().join("home"));
     std::fs::create_dir_all(&paths.root).expect("create the root");
     std::fs::write(&paths.logs_dir, "blocked").expect("occupy the log directory");
-    let err = ensure_layout(&paths, &dir.path().join("svc"))
+    let err = ensure_layout(&paths, &dir.path().join("service"))
         .await
         .unwrap_err()
         .to_string();
@@ -91,7 +91,7 @@ async fn preparing_the_layout_reports_a_blocked_log_directory() {
 async fn preparing_the_layout_restricts_the_home_to_its_owner() {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(&dir.path().join("home"));
-    ensure_layout(&paths, &dir.path().join("svc"))
+    ensure_layout(&paths, &dir.path().join("service"))
         .await
         .expect("should prepare");
     let mode = std::fs::metadata(&paths.root)
@@ -180,7 +180,7 @@ fn the_service_directory_comes_from_the_config() {
 #[test]
 fn a_relative_service_directory_is_rejected() {
     let mut config = pm3_config_with_home("/srv/pm3");
-    config.cfg_dir = "relative/svc".to_string();
+    config.cfg_dir = "relative/service".to_string();
     let err = resolve_cfg_dir(&config, Some("/home/dev"))
         .unwrap_err()
         .to_string();

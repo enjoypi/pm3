@@ -1,12 +1,12 @@
 use std::path::Path;
 
 use super::*;
-use crate::service_specs::{program_set, spec_for};
+use crate::unit_specs::{program_set, spec_for};
 
 const FAKE: &str = "/tmp/pm3-fake-manager";
 const CONFIG_BODY: &str = "pm3:\n  home: \"~/.pm3\"\n";
 
-fn plan_for(kind: ServiceKind, install: bool) -> Vec<ServiceStep> {
+fn plan_for(kind: UnitKind, install: bool) -> Vec<UnitStep> {
     let spec = spec_for(kind, Path::new("/home/dev"));
     let programs = program_set(FAKE);
     if install {
@@ -15,25 +15,25 @@ fn plan_for(kind: ServiceKind, install: bool) -> Vec<ServiceStep> {
     uninstall_plan(&spec, &programs)
 }
 
-fn described(steps: &[ServiceStep]) -> Vec<String> {
+fn described(steps: &[UnitStep]) -> Vec<String> {
     steps
         .iter()
         .map(|step| match step {
-            ServiceStep::Write {
+            UnitStep::Write {
                 dir: _,
                 path,
                 contents: _,
             } => format!("write {}", path.display()),
-            ServiceStep::Remove { path } => format!("remove {}", path.display()),
-            ServiceStep::Run(command) => format!("run {}", command.args.join(" ")),
-            ServiceStep::TryRun(command) => format!("try {}", command.args.join(" ")),
+            UnitStep::Remove { path } => format!("remove {}", path.display()),
+            UnitStep::Run(command) => format!("run {}", command.args.join(" ")),
+            UnitStep::TryRun(command) => format!("try {}", command.args.join(" ")),
         })
         .collect()
 }
 
 #[test]
 fn a_launchd_install_writes_the_plist_before_loading_it() {
-    let steps = plan_for(ServiceKind::Launchd, true);
+    let steps = plan_for(UnitKind::Launchd, true);
     assert_eq!(
         described(&steps),
         [
@@ -46,7 +46,7 @@ fn a_launchd_install_writes_the_plist_before_loading_it() {
 
 #[test]
 fn a_systemd_install_reloads_enables_and_tries_to_linger() {
-    let steps = plan_for(ServiceKind::Systemd, true);
+    let steps = plan_for(UnitKind::Systemd, true);
     assert_eq!(
         described(&steps),
         [
@@ -61,7 +61,7 @@ fn a_systemd_install_reloads_enables_and_tries_to_linger() {
 
 #[test]
 fn a_launchd_uninstall_unloads_before_removing_the_plist() {
-    let steps = plan_for(ServiceKind::Launchd, false);
+    let steps = plan_for(UnitKind::Launchd, false);
     assert_eq!(
         described(&steps),
         [
@@ -74,7 +74,7 @@ fn a_launchd_uninstall_unloads_before_removing_the_plist() {
 
 #[test]
 fn a_systemd_uninstall_disables_removes_then_reloads() {
-    let steps = plan_for(ServiceKind::Systemd, false);
+    let steps = plan_for(UnitKind::Systemd, false);
     assert_eq!(
         described(&steps),
         [
@@ -88,7 +88,7 @@ fn a_systemd_uninstall_disables_removes_then_reloads() {
 
 #[test]
 fn a_launchd_install_carries_the_rendered_plist() {
-    let steps = plan_for(ServiceKind::Launchd, true);
+    let steps = plan_for(UnitKind::Launchd, true);
     assert!(
         contents_of(&steps).contains("<key>RunAtLoad</key>"),
         "got: {}",
@@ -98,7 +98,7 @@ fn a_launchd_install_carries_the_rendered_plist() {
 
 #[test]
 fn a_systemd_install_carries_the_rendered_unit() {
-    let steps = plan_for(ServiceKind::Systemd, true);
+    let steps = plan_for(UnitKind::Systemd, true);
     assert!(
         contents_of(&steps).contains("WantedBy=default.target"),
         "got: {}",
@@ -108,8 +108,8 @@ fn a_systemd_install_carries_the_rendered_unit() {
 
 #[test]
 fn an_install_settles_the_config_next_to_the_runtime_state() {
-    let steps = plan_for(ServiceKind::Launchd, true);
-    let ServiceStep::Write {
+    let steps = plan_for(UnitKind::Launchd, true);
+    let UnitStep::Write {
         dir,
         path: _,
         contents,
@@ -123,21 +123,21 @@ fn an_install_settles_the_config_next_to_the_runtime_state() {
 
 #[test]
 fn launchd_status_asks_for_the_agent_listing() {
-    let spec = spec_for(ServiceKind::Launchd, Path::new("/home/dev"));
+    let spec = spec_for(UnitKind::Launchd, Path::new("/home/dev"));
     let command = status_command(&spec, &program_set(FAKE));
     assert_eq!(command.args, ["list", "pm3-test"]);
 }
 
 #[test]
 fn systemd_status_asks_whether_the_unit_is_active() {
-    let spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    let spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
     let command = status_command(&spec, &program_set(FAKE));
     assert_eq!(command.args, ["--user", "is-active", "pm3-test.service"]);
 }
 
-fn contents_of(steps: &[ServiceStep]) -> String {
+fn contents_of(steps: &[UnitStep]) -> String {
     for step in steps {
-        if let ServiceStep::Write {
+        if let UnitStep::Write {
             dir: _,
             path,
             contents,

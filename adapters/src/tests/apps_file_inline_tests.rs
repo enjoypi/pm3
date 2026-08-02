@@ -56,11 +56,11 @@ fn the_program_arguments_are_carried_verbatim() {
 
 #[test]
 fn a_bare_service_cwd_token_is_stored_braced() {
-    let args = ["-d".to_string(), "PM3_SVC_CWD".to_string()];
+    let args = ["-d".to_string(), "PM3_SERVICE_CWD".to_string()];
     let mut asked = request(&[], &[]);
     asked.args = &args;
     let entry = inline_entry(&asked).expect("the request should resolve");
-    assert_eq!(entry.args, ["-d", "${PM3_SVC_CWD}"]);
+    assert_eq!(entry.args, ["-d", "${PM3_SERVICE_CWD}"]);
 }
 
 #[test]

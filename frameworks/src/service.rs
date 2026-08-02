@@ -1,26 +1,25 @@
 use std::path::{Path, PathBuf};
 
 use adapters::{
-    AppConfig, Pm3Paths, ServiceKind, ServiceProgramSet, ServiceUnitSpec, install_service,
-    load_config_file, status_report, uninstall_service, unit_dir_of,
+    AppConfig, Pm3Paths, UnitKind, UnitProgramSet, UnitSpec, install_unit, load_config_file,
+    status_report, uninstall_unit, unit_dir_of,
 };
 
 use crate::{
     Error, Result,
     cli::ServiceCommands,
     layout::{canonicalize, ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
-    svc,
 };
 
 #[cfg(target_os = "macos")]
-const HOST_SERVICE_KIND: ServiceKind = ServiceKind::Launchd;
+const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
 #[cfg(not(target_os = "macos"))]
-const HOST_SERVICE_KIND: ServiceKind = ServiceKind::Systemd;
+const HOST_SERVICE_KIND: UnitKind = UnitKind::Systemd;
 
 #[derive(Debug)]
 pub struct ServiceContext<'c> {
-    pub programs: Option<&'c ServiceProgramSet>,
-    pub kind: ServiceKind,
+    pub programs: Option<&'c UnitProgramSet>,
+    pub kind: UnitKind,
     pub home_env: Option<&'c str>,
     pub binary: std::io::Result<PathBuf>,
 }
@@ -29,9 +28,9 @@ pub struct ServiceContext<'c> {
 pub struct ServiceSession {
     pub paths: Pm3Paths,
     pub cfg_dir: PathBuf,
-    pub spec: ServiceUnitSpec,
+    pub spec: UnitSpec,
     pub source: String,
-    pub programs: ServiceProgramSet,
+    pub programs: UnitProgramSet,
     pub command_timeout_ms: u64,
 }
 
@@ -60,7 +59,7 @@ pub async fn dispatch_service(
             install(&session, programs, *dry_run, *force).await
         }
         Some(ServiceCommands::Uninstall { dry_run }) => {
-            Ok(uninstall_service(&session.spec, programs, *dry_run, timeout_ms).await?)
+            Ok(uninstall_unit(&session.spec, programs, *dry_run, timeout_ms).await?)
         }
     }
 }
@@ -74,7 +73,7 @@ pub fn open_service_session(
     let paths = resolve_layout(&loaded.config.pm3, context.home_env)?;
     let cfg_dir = resolve_cfg_dir(&loaded.config.pm3, context.home_env)?;
     let spec = build_spec(&loaded.config, &paths, context)?;
-    let programs = ServiceProgramSet::from_config(&loaded.config.pm3.service);
+    let programs = UnitProgramSet::from_config(&loaded.config.pm3.service);
     let command_timeout_ms = loaded.config.pm3.command_timeout_ms;
     Ok(ServiceSession {
         paths,
@@ -88,15 +87,15 @@ pub fn open_service_session(
 
 async fn install(
     session: &ServiceSession,
-    programs: &ServiceProgramSet,
+    programs: &UnitProgramSet,
     dry_run: bool,
     force: bool,
 ) -> Result<String> {
     if !dry_run {
         ensure_layout(&session.paths, &session.cfg_dir).await?;
-        svc::reconcile(&session.spec.config_path, &session.source, force).await?;
+        adapters::reconcile(&session.spec.config_path, &session.source, force).await?;
     }
-    Ok(install_service(
+    Ok(install_unit(
         &session.spec,
         programs,
         &session.source,
@@ -110,7 +109,7 @@ fn build_spec(
     config: &AppConfig,
     paths: &Pm3Paths,
     context: &ServiceContext<'_>,
-) -> Result<ServiceUnitSpec> {
+) -> Result<UnitSpec> {
     let home = context.home_env.ok_or(Error::ServiceHome)?;
     let program = context
         .binary
@@ -129,7 +128,7 @@ fn build_spec(
     let home_dir = home.to_string();
     let restart_delay_secs = config.pm3.service.restart_delay_secs;
     let restart_condition = config.pm3.service.restart_condition.clone();
-    Ok(ServiceUnitSpec {
+    Ok(UnitSpec {
         kind,
         label,
         unit_dir,

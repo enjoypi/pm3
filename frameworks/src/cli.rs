@@ -1,12 +1,15 @@
-use adapters::{CONFIG_FILE, default_config_path, validate_cron};
+use adapters::{CONFIG_FILE, InlineStart, default_config_path, validate_cron};
 use clap::{Args, Parser, Subcommand};
 
 use crate::{
     Error, Result, commands,
     layout::{host_home, host_pm3_home},
     prompt,
-    svc::{AMBIGUOUS_TARGET, InlineStart},
 };
+
+pub const MISSING_COMMAND: &str = "--name needs a program to run after it";
+pub const AMBIGUOUS_TARGET: &str =
+    "without --name, start takes exactly one apps file; pm3 options must come before the program";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -221,9 +224,15 @@ async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
             if let Some(cron) = args.cron.as_deref() {
                 validate_cron(name, cron)?;
             }
+            let Some((program, rest)) = args.target.split_first() else {
+                return Err(Error::InlineUsage {
+                    reason: MISSING_COMMAND.to_string(),
+                });
+            };
             let request = InlineStart {
                 name,
-                target: &args.target,
+                program,
+                args: rest,
                 cwd: args.cwd.as_deref(),
                 env: &args.env,
                 cron: args.cron.as_deref(),

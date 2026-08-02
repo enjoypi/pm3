@@ -189,7 +189,7 @@ async fn a_relative_service_directory_stops_the_daemon() {
     let config = crate::test_support::write_config_with_cfg_dir(
         dir.path(),
         &home.to_string_lossy(),
-        "relative/svc",
+        "relative/service",
     );
     let err = run_daemon_with_shutdown(config.to_str().expect("path"), Box::pin(async {}))
         .await
