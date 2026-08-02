@@ -83,6 +83,19 @@ pub fn scheduled_apps_file(harness: &Harness, name: &str, script: &str, cron: &s
     write_both(harness, name, &fields)
 }
 
+pub fn scheduled_online_apps_file(
+    harness: &Harness,
+    name: &str,
+    script: &str,
+    cron: &str,
+) -> PathBuf {
+    let cwd = harness.paths.root.to_string_lossy();
+    let fields = format!(
+        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nschedule: \"{cron}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
+    );
+    write_both(harness, name, &fields)
+}
+
 fn written_apps_file(harness: &Harness, name: &str, script: &str, autorestart: bool) -> PathBuf {
     let cwd = harness.paths.root.to_string_lossy();
     let fields = format!(

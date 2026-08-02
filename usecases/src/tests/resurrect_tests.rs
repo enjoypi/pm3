@@ -8,6 +8,7 @@ use crate::{
 };
 
 const SURVIVOR_PID: u32 = 7;
+const KILL_TIMEOUT_MS: u64 = 1600;
 
 fn stored_record(name: &str, pm_id: u32, status: ProcessStatus) -> ProcessRecord {
     let mut runtime = ProcessRuntime::new(pm_id, name.to_string(), 1000);
@@ -36,7 +37,7 @@ fn survivor(ports: &FakePorts, name: &str) -> ProcessRecord {
 
 async fn resurrected(ports: &FakePorts) -> ProcessTable {
     let mut table = ProcessTable::new();
-    resurrect(&mut table, LOGS_DIR, ports)
+    resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, ports)
         .await
         .expect("resurrect should succeed");
     table
@@ -55,7 +56,7 @@ fn revived_pid(table: &ProcessTable) -> u32 {
 async fn an_empty_state_file_revives_nothing() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
-    let outcomes = resurrect(&mut table, LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert!(outcomes.is_empty());
@@ -67,7 +68,7 @@ async fn apps_that_were_online_are_started_again() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Online)]);
     let mut table = ProcessTable::new();
-    let outcomes = resurrect(&mut table, LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert_eq!(outcomes.len(), 1);
@@ -81,7 +82,7 @@ async fn apps_caught_mid_shutdown_are_settled_rather_than_started_again() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Stopping)]);
     let mut table = ProcessTable::new();
-    resurrect(&mut table, LOGS_DIR, &ports)
+    resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert!(ports.spawned_names().is_empty());
@@ -92,7 +93,7 @@ async fn an_app_caught_mid_shutdown_stays_known_as_stopped() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Stopping)]);
     let mut table = ProcessTable::new();
-    resurrect(&mut table, LOGS_DIR, &ports)
+    resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     let record = table.find(&AppSelector::Id(0)).expect("record present");
@@ -104,7 +105,7 @@ async fn apps_that_were_stopped_stay_stopped_but_remain_known() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Stopped)]);
     let mut table = ProcessTable::new();
-    let outcomes = resurrect(&mut table, LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert!(outcomes.is_empty());
@@ -117,7 +118,7 @@ async fn errored_apps_are_not_revived() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Errored)]);
     let mut table = ProcessTable::new();
-    resurrect(&mut table, LOGS_DIR, &ports)
+    resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert!(ports.spawned_names().is_empty());
@@ -130,7 +131,7 @@ async fn revived_apps_follow_their_dependency_order() {
     web.spec = spec_with_deps("web", &["api"]);
     ports.seed_stored(vec![web, stored_record("api", 0, ProcessStatus::Online)]);
     let mut table = ProcessTable::new();
-    resurrect(&mut table, LOGS_DIR, &ports)
+    resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert_eq!(ports.spawned_names(), vec!["api", "web"]);
@@ -141,7 +142,7 @@ async fn a_stale_pid_is_discarded_before_restarting() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![stored_record("api", 0, ProcessStatus::Online)]);
     let mut table = ProcessTable::new();
-    resurrect(&mut table, LOGS_DIR, &ports)
+    resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     let record = table.find(&AppSelector::Id(0)).expect("record present");
@@ -155,7 +156,7 @@ async fn a_pending_restart_flag_does_not_survive_a_daemon_restart() {
     record.runtime.request_restart();
     ports.seed_stored(vec![record]);
     let mut table = ProcessTable::new();
-    resurrect(&mut table, LOGS_DIR, &ports)
+    resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     let stored = table.find(&AppSelector::Id(0)).expect("record present");
@@ -167,7 +168,9 @@ async fn a_read_failure_propagates() {
     let ports = FakePorts::new(1000);
     ports.fail_load();
     let mut table = ProcessTable::new();
-    let err = resurrect(&mut table, LOGS_DIR, &ports).await.unwrap_err();
+    let err = resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
+        .await
+        .unwrap_err();
     assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
 }
 
@@ -175,7 +178,7 @@ async fn a_read_failure_propagates() {
 async fn an_untouched_survivor_is_reclaimed_instead_of_restarted() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert_eq!(outcomes[0].kind, StartKind::Adopted);
@@ -297,6 +300,51 @@ async fn a_stale_survivor_is_stopped_before_its_replacement_starts() {
 }
 
 #[tokio::test]
+async fn a_replacement_waits_for_the_stale_survivor_to_leave() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    resurrected(&ports).await;
+    assert_eq!(ports.waited(), vec![SURVIVOR_PID]);
+    assert!(ports.force_killed().is_empty());
+}
+
+#[tokio::test]
+async fn a_stubborn_stale_survivor_is_force_killed_before_the_replacement_starts() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.make_stubborn(SURVIVOR_PID);
+    resurrected(&ports).await;
+    assert_eq!(ports.force_killed(), vec![SURVIVOR_PID]);
+    assert_eq!(ports.spawned_names(), vec!["api"]);
+}
+
+#[tokio::test]
+async fn a_refused_force_kill_does_not_block_the_replacement() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.make_stubborn(SURVIVOR_PID);
+    ports.fail_force_kill_for(SURVIVOR_PID);
+    resurrected(&ports).await;
+    assert!(ports.force_killed().is_empty());
+    assert_eq!(ports.spawned_names(), vec!["api"]);
+}
+
+#[tokio::test]
 async fn a_survivor_that_already_left_is_not_signalled_again() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
@@ -320,12 +368,16 @@ async fn a_stale_survivor_that_refuses_the_signal_still_gets_a_replacement() {
 }
 
 #[tokio::test]
-async fn a_service_whose_program_cannot_be_digested_is_restarted() {
+async fn a_digest_read_failure_keeps_the_confirmed_survivor_running() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.fail_file_digest_for("/usr/bin/true");
-    resurrected(&ports).await;
-    assert_eq!(ports.spawned_names(), vec!["api"]);
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
+        .await
+        .expect("resurrect should succeed");
+    assert_eq!(outcomes[0].kind, StartKind::Adopted);
+    assert!(ports.spawned_names().is_empty());
+    assert!(ports.terminated().is_empty());
 }
 
 #[tokio::test]
@@ -335,7 +387,7 @@ async fn a_service_that_must_respawn_without_a_sandbox_is_skipped() {
     record.runtime.identity = None;
     ports.seed_stored(vec![record]);
     ports.fail_wrap_for("api");
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("an unwrappable service must not abort the whole recovery");
     assert!(outcomes.is_empty());
@@ -374,7 +426,7 @@ async fn reclaimed_and_restarted_services_can_be_mixed() {
     let mut lost = stored_record("web", 1, ProcessStatus::Online);
     lost.runtime.identity = None;
     ports.seed_stored(vec![kept, lost]);
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     let kinds: Vec<(&str, StartKind)> = outcomes
@@ -400,7 +452,7 @@ async fn a_survivor_pm3_cannot_probe_is_replaced_rather_than_trusted() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.break_probe_for(SURVIVOR_PID);
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert_eq!(outcomes[0].kind, StartKind::Spawned);
@@ -411,7 +463,7 @@ async fn a_survivor_pm3_cannot_probe_is_stopped_before_its_replacement_starts() 
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.break_probe_for(SURVIVOR_PID);
-    resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
     assert_eq!(ports.terminated(), vec![SURVIVOR_PID]);
@@ -421,7 +473,7 @@ async fn a_survivor_pm3_cannot_probe_is_stopped_before_its_replacement_starts() 
 async fn an_unorderable_state_file_still_reclaims_the_survivors() {
     let ports = FakePorts::new(1000);
     cycle(&ports);
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("a broken dependency graph must not abandon live services");
     let names: Vec<&str> = outcomes
@@ -435,7 +487,7 @@ async fn an_unorderable_state_file_still_reclaims_the_survivors() {
 async fn an_unorderable_state_file_still_persists_the_table() {
     let ports = FakePorts::new(1000);
     cycle(&ports);
-    resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("a broken dependency graph must not abandon live services");
     assert_eq!(ports.save_count(), 1);
@@ -449,7 +501,7 @@ async fn a_service_that_cannot_respawn_does_not_abandon_the_rest() {
         survivor(&ports, "api"),
         stored_record("web", 1, ProcessStatus::Online),
     ]);
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("one broken service must not abandon the ones already reclaimed");
     let names: Vec<&str> = outcomes
@@ -464,7 +516,7 @@ async fn a_persistence_failure_still_reports_the_services_it_reclaimed() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.fail_save();
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, &ports)
+    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("a persistence failure must not hide the services already reclaimed");
     assert_eq!(outcomes.len(), 1);

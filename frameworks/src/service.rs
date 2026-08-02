@@ -113,6 +113,7 @@ fn build_spec(
     let working_directory = paths.root.clone();
     let log_path = paths.daemon_log.clone();
     let home_dir = home.to_string();
+    let restart_delay_secs = config.pm3.service.restart_delay_secs;
     Ok(ServiceUnitSpec {
         kind,
         label,
@@ -123,6 +124,7 @@ fn build_spec(
         log_path,
         search_path,
         home: home_dir,
+        restart_delay_secs,
     })
 }
 

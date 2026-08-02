@@ -54,6 +54,13 @@ impl ProcessTable {
             .find(|record| record.runtime.name == name)
     }
 
+    #[must_use]
+    pub fn find_by_name(&self, name: &str) -> Option<&ProcessRecord> {
+        self.records
+            .iter()
+            .find(|record| record.runtime.name == name)
+    }
+
     pub fn upsert(&mut self, spec: AppSpec, now_ms: u64) -> u32 {
         if let Some(existing) = self.find_by_name_mut(&spec.name) {
             existing.spec = spec;

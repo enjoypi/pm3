@@ -1,4 +1,4 @@
-use crate::program::resolve_program;
+use crate::program::resolve_executable;
 
 pub const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
 pub const BWRAP_PROGRAM: &str = "bwrap";
@@ -34,7 +34,7 @@ impl SandboxBackend {
 
     #[must_use]
     pub fn resolve(self, search_path: Option<&str>) -> Option<HostSandbox> {
-        let program = resolve_program(self.program(), search_path)?;
+        let program = resolve_executable(self.program(), search_path)?;
         Some(HostSandbox {
             backend: self,
             program: program.to_string_lossy().into_owned(),

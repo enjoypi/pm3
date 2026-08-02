@@ -6,8 +6,8 @@ use thiserror::Error;
 pub use self::{
     process::{
         AppSpec, DependencyError, DependencyNode, ProcessIdentity, ProcessRuntime, ProcessStatus,
-        RestartDecision, RestartPolicy, SpecError, decide_restart, topo_sort, validate_app_name,
-        validate_spec,
+        RestartDecision, RestartPolicy, RuntimeError, SpecError, decide_restart, topo_sort,
+        validate_app_name, validate_spec,
     },
     sandbox::{PolicyError, SandboxMode, SandboxPolicy, validate_policy},
 };
@@ -22,6 +22,9 @@ pub enum EntityError {
 
     #[error(transparent)]
     Policy(#[from] PolicyError),
+
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
 }
 
 pub type Result<T> = std::result::Result<T, EntityError>;

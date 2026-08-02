@@ -11,6 +11,7 @@ pm3:
   daemon_poll_interval_ms: 50
   daemon_poll_max_interval_ms: 1000
   log_follow_interval_ms: 200
+  log_tail_lines: 20
   restart:
     autorestart: true
     min_uptime_ms: 1000
@@ -21,6 +22,7 @@ pm3:
     network: false
   service:
     label: "com.enjoypi.pm3"
+    restart_delay_secs: 2
 
 telemetry:
   service_name: "pm3"

@@ -86,9 +86,9 @@ fn uptime_is_absent_once_the_process_stopped() {
 }
 
 #[test]
-fn uptime_saturates_when_clock_moves_backwards() {
+fn uptime_is_unknown_when_the_clock_moves_backwards() {
     let runtime = online_at(5000);
-    assert_eq!(runtime.uptime_ms(1000), Some(0));
+    assert_eq!(runtime.uptime_ms(1000), None);
 }
 
 #[test]
@@ -147,6 +147,14 @@ fn request_restart_records_the_intent() {
 }
 
 #[test]
+fn cancel_restart_drops_a_queued_restart() {
+    let mut runtime = online_at(1000);
+    runtime.request_restart();
+    runtime.cancel_restart();
+    assert!(!runtime.pending_restart);
+}
+
+#[test]
 fn take_restart_request_consumes_the_intent() {
     let mut runtime = online_at(1000);
     runtime.request_restart();
@@ -158,6 +166,47 @@ fn take_restart_request_consumes_the_intent() {
 fn take_restart_request_is_false_without_an_intent() {
     let mut runtime = online_at(1000);
     assert!(!runtime.take_restart_request());
+}
+
+#[test]
+fn a_running_process_with_a_pid_is_consistent() {
+    online_at(1000)
+        .validate_consistency()
+        .expect("online with a pid is consistent");
+}
+
+#[test]
+fn a_settled_process_without_a_pid_is_consistent() {
+    ProcessRuntime::new(1, "api".to_string(), 1000)
+        .validate_consistency()
+        .expect("stopped without a pid is consistent");
+}
+
+#[test]
+fn an_online_process_without_a_pid_is_rejected() {
+    let runtime = ProcessRuntime {
+        pid: None,
+        ..online_at(1000)
+    };
+    let err = runtime.validate_consistency().unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept process 'api' marked 'online' without a pid"
+    );
+}
+
+#[test]
+fn a_launching_process_without_a_pid_is_rejected() {
+    let runtime = ProcessRuntime {
+        pid: None,
+        status: ProcessStatus::Launching,
+        ..online_at(1000)
+    };
+    let err = runtime.validate_consistency().unwrap_err();
+    assert!(
+        matches!(err, RuntimeError::RunningWithoutPid { app: _, status: _ }),
+        "got: {err}"
+    );
 }
 
 #[test]

@@ -1,9 +1,6 @@
-use usecases::RestartPolicy;
+use usecases::{RestartPolicy, SandboxMode};
 
 use super::{test_helpers::*, *};
-use crate::config::{
-    SANDBOX_MODE_DANGER_FULL_ACCESS, SANDBOX_MODE_READ_ONLY, SANDBOX_MODE_WORKSPACE_WRITE,
-};
 
 #[test]
 fn parse_apps_file_reads_a_minimal_entry() {
@@ -51,7 +48,10 @@ fn parse_apps_file_reads_the_sandbox_section() {
         .first()
         .and_then(|entry| entry.sandbox.as_ref())
         .expect("sandbox section");
-    assert_eq!(sandbox.mode.as_deref(), Some(SANDBOX_MODE_READ_ONLY));
+    assert_eq!(
+        sandbox.mode.as_deref(),
+        Some(SandboxMode::ReadOnly.as_str())
+    );
     assert_eq!(sandbox.network, Some(true));
     assert_eq!(sandbox.writable_roots, Some(Vec::new()));
 }
@@ -170,7 +170,7 @@ fn resolve_specs_fills_the_restart_defaults_from_the_config() {
         min_uptime_ms,
         max_restarts,
         restart_delay_ms,
-    } = pm3_config(SANDBOX_MODE_WORKSPACE_WRITE).restart;
+    } = pm3_config(SandboxMode::WorkspaceWrite.as_str()).restart;
     let spec = resolve_one(&defaults(), &minimal_entry());
     assert_eq!(
         spec.restart_policy(),
@@ -220,7 +220,7 @@ fn resolve_specs_takes_the_sandbox_network_flag_from_the_config() {
 fn resolve_specs_honours_an_explicit_sandbox_mode() {
     let entry = AppEntry {
         sandbox: Some(SandboxEntry {
-            mode: Some(SANDBOX_MODE_DANGER_FULL_ACCESS.to_string()),
+            mode: Some(SandboxMode::DangerFullAccess.as_str().to_string()),
             ..sandbox_entry()
         }),
         ..minimal_entry()
@@ -394,7 +394,7 @@ fn a_declared_writable_root_stays_out_of_the_derived_set() {
 
 #[test]
 fn spec_defaults_reads_the_pm3_sandbox_section() {
-    let mut pm3 = pm3_config(SANDBOX_MODE_WORKSPACE_WRITE);
+    let mut pm3 = pm3_config(SandboxMode::WorkspaceWrite.as_str());
     pm3.sandbox.network = true;
     let defaults =
         SpecDefaults::from_config(&pm3, HOME_DIR, LOGS_DIR, Some(TMP_DIR)).expect("should build");
@@ -405,7 +405,7 @@ fn spec_defaults_reads_the_pm3_sandbox_section() {
 
 #[test]
 fn spec_defaults_rejects_an_unknown_configured_sandbox_mode() {
-    let mut pm3 = pm3_config(SANDBOX_MODE_WORKSPACE_WRITE);
+    let mut pm3 = pm3_config(SandboxMode::WorkspaceWrite.as_str());
     pm3.sandbox.mode = "yolo".to_string();
     let err = SpecDefaults::from_config(&pm3, HOME_DIR, LOGS_DIR, Some(TMP_DIR))
         .unwrap_err()

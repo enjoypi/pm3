@@ -1,4 +1,12 @@
+use thiserror::Error;
+
 use super::status::ProcessStatus;
+
+#[derive(Debug, Eq, PartialEq, Error)]
+pub enum RuntimeError {
+    #[error("cannot accept process '{app}' marked '{status}' without a pid")]
+    RunningWithoutPid { app: String, status: String },
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessIdentity {
@@ -46,7 +54,17 @@ impl ProcessRuntime {
             return None;
         }
         self.started_at_ms
-            .map(|started| now_ms.saturating_sub(started))
+            .and_then(|started| now_ms.checked_sub(started))
+    }
+
+    pub fn validate_consistency(&self) -> Result<(), RuntimeError> {
+        if self.status.is_running() && self.pid.is_none() {
+            return Err(RuntimeError::RunningWithoutPid {
+                app: self.name.clone(),
+                status: self.status.as_str().to_string(),
+            });
+        }
+        Ok(())
     }
 
     pub fn mark_launched(&mut self, pid: u32, now_ms: u64) {
@@ -84,6 +102,10 @@ impl ProcessRuntime {
         self.pending_restart = true;
     }
 
+    pub const fn cancel_restart(&mut self) {
+        self.pending_restart = false;
+    }
+
     pub const fn arm_schedule(&mut self) {
         self.schedule_armed = true;
     }
@@ -94,7 +116,7 @@ impl ProcessRuntime {
 
     pub const fn take_restart_request(&mut self) -> bool {
         let requested = self.pending_restart;
-        self.pending_restart = false;
+        self.cancel_restart();
         requested
     }
 }

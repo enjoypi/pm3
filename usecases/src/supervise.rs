@@ -32,7 +32,6 @@ fn classify_exit(
         .find_by_name_mut(name)
         .ok_or_else(|| UsecaseError::NotFound(name.to_string()))?;
 
-    let last_uptime_ms = record.runtime.uptime_ms(now_ms).unwrap_or(0);
     let was_stopping = record.runtime.status.is_shutting_down();
     let restart_requested = record.runtime.take_restart_request();
 
@@ -50,7 +49,7 @@ fn classify_exit(
 
     let decision = decide_restart(
         record.spec.restart_policy(),
-        last_uptime_ms,
+        record.runtime.uptime_ms(now_ms),
         record.runtime.unstable_restarts,
     );
     match decision {

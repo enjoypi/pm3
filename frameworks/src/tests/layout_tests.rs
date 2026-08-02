@@ -75,6 +75,44 @@ async fn preparing_the_layout_reports_a_blocked_root() {
 }
 
 #[tokio::test]
+async fn preparing_the_layout_reports_a_blocked_log_directory() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(&dir.path().join("home"));
+    std::fs::create_dir_all(&paths.root).expect("create the root");
+    std::fs::write(&paths.logs_dir, "blocked").expect("occupy the log directory");
+    let err = ensure_layout(&paths, &dir.path().join("svc"))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
+}
+
+#[tokio::test]
+async fn preparing_the_layout_restricts_the_home_to_its_owner() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(&dir.path().join("home"));
+    ensure_layout(&paths, &dir.path().join("svc"))
+        .await
+        .expect("should prepare");
+    let mode = std::fs::metadata(&paths.root)
+        .expect("stat the home")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o700, "got: {mode:o}");
+}
+
+#[tokio::test]
+async fn an_unrestrictable_home_is_reported() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let err = restrict_to_owner(&dir.path().join("absent"))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
+}
+
+#[tokio::test]
 async fn the_pid_file_records_this_process() {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(dir.path());

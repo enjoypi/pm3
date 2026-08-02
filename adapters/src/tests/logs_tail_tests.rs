@@ -250,3 +250,57 @@ async fn following_reports_a_log_it_cannot_read() {
     let err = follower.poll_appended().await.unwrap_err().to_string();
     assert!(err.contains("cannot read log file"), "got: {err}");
 }
+
+#[tokio::test]
+async fn following_rereads_a_truncated_log_from_the_start() {
+    let (_dir, path) = temp_log(THREE_LINES.as_bytes());
+    let mut follower = LogFollower::start_at_end(&path)
+        .await
+        .expect("should start");
+    std::fs::write(&path, b"fresh\n").expect("truncate the log");
+    let lines = follower.poll_appended().await.expect("should poll");
+    assert_eq!(lines, vec!["fresh"]);
+}
+
+#[tokio::test]
+async fn following_drops_a_partial_line_when_the_log_is_truncated() {
+    let (_dir, path) = temp_log(b"");
+    let mut follower = LogFollower::start_at_end(&path)
+        .await
+        .expect("should start");
+    append(&path, b"halfway").await;
+    follower.poll_appended().await.expect("first poll");
+    std::fs::write(&path, b"new\n").expect("truncate the log");
+    let lines = follower.poll_appended().await.expect("second poll");
+    assert_eq!(lines, vec!["new"]);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn following_switches_to_the_new_file_after_rotation() {
+    let (_dir, path) = temp_log(THREE_LINES.as_bytes());
+    let mut follower = LogFollower::start_at_end(&path)
+        .await
+        .expect("should start");
+    std::fs::rename(&path, path.with_extension("1")).expect("rotate the log");
+    std::fs::write(&path, b"rotated\n").expect("recreate the log");
+    let lines = follower.poll_appended().await.expect("should poll");
+    assert_eq!(lines, vec!["rotated"]);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn following_keeps_waiting_when_the_log_is_renamed_away() {
+    let (_dir, path) = temp_log(THREE_LINES.as_bytes());
+    let mut follower = LogFollower::start_at_end(&path)
+        .await
+        .expect("should start");
+    std::fs::rename(&path, path.with_extension("1")).expect("rename the log away");
+    assert!(
+        follower
+            .poll_appended()
+            .await
+            .expect("a missing path must not abort the follow")
+            .is_empty()
+    );
+}

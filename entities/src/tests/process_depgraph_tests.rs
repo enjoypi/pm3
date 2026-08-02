@@ -110,6 +110,26 @@ fn self_cycle_is_reported_as_a_cycle() {
 }
 
 #[test]
+fn apps_merely_blocked_by_a_cycle_are_not_reported_as_involved() {
+    let err = sort(&[("a", &["b"]), ("b", &["a"]), ("c", &["a"])]).unwrap_err();
+    let DependencyError::Cycle { mut involved } = err else {
+        panic!("expected a cycle error, got: {err}");
+    };
+    involved.sort();
+    assert_eq!(involved, vec!["a", "b"]);
+}
+
+#[test]
+fn downstream_of_blocked_apps_stays_out_of_the_cycle_report() {
+    let err = sort(&[("a", &["b"]), ("b", &["a"]), ("c", &["a"]), ("d", &["c"])]).unwrap_err();
+    let DependencyError::Cycle { mut involved } = err else {
+        panic!("expected a cycle error, got: {err}");
+    };
+    involved.sort();
+    assert_eq!(involved, vec!["a", "b"]);
+}
+
+#[test]
 fn cycle_alongside_acyclic_component_is_still_rejected() {
     let err = sort(&[("ok", &[]), ("a", &["b"]), ("b", &["a"])]).unwrap_err();
     let DependencyError::Cycle { involved } = err else {

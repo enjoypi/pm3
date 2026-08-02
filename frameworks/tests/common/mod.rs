@@ -87,6 +87,7 @@ pub fn config_yaml(
   daemon_poll_interval_ms: 40
   daemon_poll_max_interval_ms: 200
   log_follow_interval_ms: 200
+  log_tail_lines: 20
   restart:
     autorestart: true
     min_uptime_ms: 1000
@@ -97,6 +98,7 @@ pub fn config_yaml(
     network: {network}
   service:
     label: "{SERVICE_LABEL}"
+    restart_delay_secs: 2
 
 telemetry:
   service_name: "pm3"

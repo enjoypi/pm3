@@ -23,11 +23,21 @@ pub enum PolicyError {
     #[error("cannot accept relative sandbox writable root '{0}': must be an absolute path")]
     RelativeWritableRoot(String),
 
+    #[error("cannot accept empty derived sandbox root (from cwd, logs_dir or tmp dir)")]
+    EmptyDerivedRoot,
+
+    #[error(
+        "cannot accept relative derived sandbox root '{0}' (from cwd, logs_dir or tmp dir): must be an absolute path"
+    )]
+    RelativeDerivedRoot(String),
+
     #[error("cannot accept sandbox writable roots under a mode that denies writes")]
     WritableRootsWithoutWriteAccess,
 }
 
 impl SandboxMode {
+    pub const ALL: [Self; 3] = [Self::ReadOnly, Self::WorkspaceWrite, Self::DangerFullAccess];
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -75,15 +85,31 @@ pub fn validate_policy(policy: &SandboxPolicy) -> Result<(), PolicyError> {
         return Err(PolicyError::WritableRootsWithoutWriteAccess);
     }
 
-    for root in granted {
+    validate_roots(
+        &policy.writable_roots,
+        || PolicyError::EmptyWritableRoot,
+        PolicyError::RelativeWritableRoot,
+    )?;
+    validate_roots(
+        &policy.derived_roots,
+        || PolicyError::EmptyDerivedRoot,
+        PolicyError::RelativeDerivedRoot,
+    )
+}
+
+fn validate_roots(
+    roots: &[String],
+    empty: fn() -> PolicyError,
+    relative: fn(String) -> PolicyError,
+) -> Result<(), PolicyError> {
+    for root in roots {
         if root.is_empty() {
-            return Err(PolicyError::EmptyWritableRoot);
+            return Err(empty());
         }
         if !root.starts_with('/') {
-            return Err(PolicyError::RelativeWritableRoot(root.to_string()));
+            return Err(relative(root.clone()));
         }
     }
-
     Ok(())
 }
 

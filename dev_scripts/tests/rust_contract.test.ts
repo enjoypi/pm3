@@ -57,4 +57,37 @@ describe("install.ts mirrors the rust side", () => {
       `const runningStatus = "${armOf(spec, "Running")}";`,
     );
   });
+
+  test("the systemd kind matches service/spec.rs", async () => {
+    const spec = await sourceOf("adapters/src/service/spec.rs");
+    const install = await sourceOf("dev_scripts/install.ts");
+    expect(install).toContain(
+      `const systemdKind = "${armOf(spec, "Systemd")}";`,
+    );
+  });
+
+  test("the systemctl program matches service/command.rs", async () => {
+    const command = await sourceOf("adapters/src/service/command.rs");
+    const install = await sourceOf("dev_scripts/install.ts");
+    expect(install).toContain(
+      `const systemctlProgram = "${constantOf(command, "SYSTEMCTL_PROGRAM")}";`,
+    );
+  });
+});
+
+describe("monitor.ts mirrors the rust side", () => {
+  test("the daemon log file name matches paths.rs", async () => {
+    const paths = await sourceOf("adapters/src/paths.rs");
+    const monitor = await sourceOf("dev_scripts/monitor.ts");
+    expect(monitor).toContain(
+      `const daemonLogFile = "${constantOf(paths, "DAEMON_LOG_FILE")}";`,
+    );
+  });
+
+  test("the default runtime home matches paths.rs", async () => {
+    const paths = await sourceOf("adapters/src/paths.rs");
+    const monitor = await sourceOf("dev_scripts/monitor.ts");
+    const home = constantOf(paths, "DEFAULT_HOME").replace("~/", "");
+    expect(monitor).toContain(`const defaultRuntimeHome = "${home}";`);
+  });
 });

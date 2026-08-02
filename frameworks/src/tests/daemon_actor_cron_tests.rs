@@ -175,3 +175,101 @@ async fn everything_stopped_together_stays_disarmed_across_a_daemon_restart() {
 
     assert_eq!(described(&mut harness, "tick").await.next_fire_ms, None);
 }
+
+#[tokio::test]
+async fn a_cron_fire_cancels_the_delayed_restart_it_replaces() {
+    let mut harness = harness();
+    start_scheduled(&mut harness, "tick", "* * * * *").await;
+    harness.daemon.board.schedule_restart("tick", 60_000);
+    let armed = armed_fire(&mut harness, "tick").await;
+    harness.daemon.on_fire("tick", armed).await;
+    let pid = described(&mut harness, "tick")
+        .await
+        .pid
+        .expect("the fire should have spawned the task");
+
+    harness.daemon.on_restart("tick").await;
+
+    let view = described(&mut harness, "tick").await;
+    assert_eq!(
+        (view.status, view.pid),
+        (adapters::ProcessStatus::Online, Some(pid)),
+        "a stale delayed restart must not kill the instance the fire started"
+    );
+}
+
+#[tokio::test]
+async fn re_registering_a_running_app_without_its_schedule_disarms_the_timer() {
+    let mut harness = harness();
+    scheduled_online_apps_file(&harness, "web", SLEEPER, "* * * * *");
+    let request = DaemonRequest::Start {
+        services: vec!["web".to_string()],
+    };
+    harness
+        .daemon
+        .handle(request.clone())
+        .await
+        .expect("first start");
+    let armed = armed_fire(&mut harness, "web").await;
+    let pid = described(&mut harness, "web").await.pid;
+
+    apps_file(&harness, "web", SLEEPER);
+    harness.daemon.handle(request).await.expect("second start");
+
+    assert_eq!(
+        described(&mut harness, "web").await.next_fire_ms,
+        None,
+        "a removed schedule must disarm the timer"
+    );
+    harness.daemon.on_fire("web", armed).await;
+    assert_eq!(
+        described(&mut harness, "web").await.pid,
+        pid,
+        "a disarmed timer must not restart the app"
+    );
+}
+
+#[tokio::test]
+async fn re_registering_a_running_app_with_a_new_schedule_arms_a_timer() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    assert_eq!(described(&mut harness, "web").await.next_fire_ms, None);
+
+    scheduled_online_apps_file(&harness, "web", SLEEPER, "* * * * *");
+    harness
+        .daemon
+        .handle(DaemonRequest::Start {
+            services: vec!["web".to_string()],
+        })
+        .await
+        .expect("second start");
+
+    assert!(
+        described(&mut harness, "web").await.next_fire_ms.is_some(),
+        "a schedule added to a running app must arm a timer"
+    );
+}
+
+#[tokio::test]
+async fn re_registering_a_running_app_with_a_changed_schedule_rearms_the_timer() {
+    let mut harness = harness();
+    scheduled_online_apps_file(&harness, "web", SLEEPER, "* * * * *");
+    let request = DaemonRequest::Start {
+        services: vec!["web".to_string()],
+    };
+    harness
+        .daemon
+        .handle(request.clone())
+        .await
+        .expect("first start");
+    let first = armed_fire(&mut harness, "web").await;
+
+    scheduled_online_apps_file(&harness, "web", SLEEPER, "0 0 29 2 *");
+    harness.daemon.handle(request).await.expect("second start");
+
+    assert_ne!(
+        armed_fire(&mut harness, "web").await,
+        first,
+        "a changed schedule must move the next fire"
+    );
+}

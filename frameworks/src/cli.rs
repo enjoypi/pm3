@@ -8,8 +8,6 @@ use crate::{
     svc::{AMBIGUOUS_TARGET, InlineStart},
 };
 
-pub const DEFAULT_LOG_LINES: usize = 20;
-
 #[derive(Debug, Parser)]
 #[command(
     name = "pm3",
@@ -51,8 +49,8 @@ pub enum Commands {
     Logs {
         name: String,
 
-        #[arg(short = 'n', long, default_value_t = DEFAULT_LOG_LINES)]
-        lines: usize,
+        #[arg(short = 'n', long)]
+        lines: Option<usize>,
 
         #[arg(short = 'f', long)]
         follow: bool,
@@ -269,7 +267,7 @@ fn confirm_via_stdio(name: &str) -> bool {
 async fn run_logs(
     config: &str,
     name: &str,
-    lines: usize,
+    lines: Option<usize>,
     follow: bool,
     polls: u32,
 ) -> Result<Option<String>> {

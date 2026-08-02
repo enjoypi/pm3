@@ -6,7 +6,7 @@ use std::{
 use tokio::fs;
 use usecases::{DumpError, DumpStore, ProcessRecord};
 
-use super::dto::{DumpDocument, StateDto, decode_state, encode_states};
+use super::dto::{DecodeError, DumpDocument, StateDto, decode_state, encode_states};
 use crate::{
     apps_file::{AppsFileError, SpecSource},
     workspace::materialise_workspace,
@@ -31,16 +31,22 @@ impl YamlDumpStore {
         self.path.as_path()
     }
 
-    async fn rejoin(&self, state: StateDto) -> Result<Option<ProcessRecord>, DumpError> {
-        let runtime = decode_state(state).map_err(|e| read_error(&self.path, &e.to_string()))?;
+    async fn rejoin(&self, state: StateDto) -> Option<ProcessRecord> {
+        let runtime = match decode_state(state) {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                warn_undecodable(&error);
+                return None;
+            }
+        };
         match self.specs.resolve_service(&runtime.name).await {
             Ok(mut spec) => {
                 materialise_workspace(&mut spec).await;
-                Ok(Some(ProcessRecord { spec, runtime }))
+                Some(ProcessRecord { spec, runtime })
             }
             Err(error) => {
                 warn_unusable(&runtime.name, &error);
-                Ok(None)
+                None
             }
         }
     }
@@ -55,7 +61,7 @@ impl DumpStore for YamlDumpStore {
             serde_yaml2::from_str(&raw).map_err(|e| read_error(&self.path, &e.to_string()))?;
         let mut records = Vec::with_capacity(doc.services.len());
         for state in doc.services {
-            if let Some(record) = self.rejoin(state).await? {
+            if let Some(record) = self.rejoin(state).await {
                 records.push(record);
             }
         }
@@ -101,6 +107,21 @@ fn warn_unusable(app: &str, error: &AppsFileError) {
         app,
         reason,
         "pm3 cannot restore a saved app from its service file",
+    );
+}
+
+fn warn_undecodable(error: &DecodeError) {
+    let reason = error.to_string();
+    let app = match error {
+        DecodeError::UnknownStatus { app, status: _ }
+        | DecodeError::InconsistentState { app, source: _ } => app.as_str(),
+    };
+    tracing::warn!(
+        feature = "persistence",
+        action = "rejoin",
+        app,
+        reason,
+        "pm3 cannot restore a saved app from the state file",
     );
 }
 

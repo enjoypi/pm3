@@ -129,6 +129,25 @@ async fn a_unit_directory_blocked_by_a_file_stops_the_plan() {
     assert!(err.starts_with("cannot write "), "got: {err}");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn a_unit_directory_that_cannot_be_created_stops_the_plan() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().expect("temp dir");
+    let readonly = dir.path().join("readonly");
+    std::fs::create_dir(&readonly).expect("create the readonly parent");
+    std::fs::set_permissions(&readonly, std::fs::Permissions::from_mode(0o555))
+        .expect("make the parent readonly");
+    let unit_dir = readonly.join("units");
+    let err = execute_plan(&[write_step(&unit_dir, &unit_dir.join("pm3.plist"))])
+        .await
+        .unwrap_err()
+        .to_string();
+    std::fs::set_permissions(&readonly, std::fs::Permissions::from_mode(0o755))
+        .expect("restore the parent permissions");
+    assert!(err.starts_with("cannot write "), "got: {err}");
+}
+
 #[tokio::test]
 async fn a_unit_path_blocked_by_a_directory_stops_the_plan() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -174,6 +193,23 @@ async fn the_plan_stops_at_the_first_failing_step() {
         .await
         .expect_err("the failing step should stop the plan");
     assert!(!unit_path.exists(), "later steps must not run");
+}
+
+#[tokio::test]
+async fn an_unreadable_unit_path_stops_the_plan_and_rolls_back_earlier_writes() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let blocker = dir.path().join("blocked");
+    std::fs::write(&blocker, "occupied").expect("occupy the unit directory");
+    let created = dir.path().join("created.plist");
+    let steps = vec![
+        write_step(dir.path(), &created),
+        write_step(&blocker, &blocker.join("pm3.plist")),
+    ];
+
+    let err = execute_plan(&steps).await.unwrap_err().to_string();
+
+    assert!(err.contains("pm3.plist"), "got: {err}");
+    assert!(!created.exists(), "the earlier write must be rolled back");
 }
 
 #[tokio::test]

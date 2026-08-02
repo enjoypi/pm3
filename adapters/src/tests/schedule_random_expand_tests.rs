@@ -23,6 +23,14 @@ fn minute_of(pattern: &str, seed: u64) -> u32 {
         .expect("a bounded tilde expands to a bare number")
 }
 
+fn weekday_of(pattern: &str, seed: u64) -> String {
+    expanded(pattern, seed)
+        .split_whitespace()
+        .nth(4)
+        .expect("weekday field present")
+        .to_string()
+}
+
 #[test]
 fn a_pattern_without_a_tilde_is_left_alone() {
     assert_eq!(expanded("30 9,18 * * *", 7), "30 9,18 * * *");
@@ -231,4 +239,45 @@ fn a_non_numeric_high_bound_is_rejected_on_its_own() {
             field: "25~b".to_string()
         }
     );
+}
+
+#[test]
+fn the_weekday_field_accepts_sunday_written_as_seven() {
+    for seed in 0..32 {
+        let day: u32 = weekday_of("0 0 * * 5~7", seed)
+            .parse()
+            .expect("a bounded tilde expands to a bare number");
+        assert!(
+            matches!(day, 0 | 5 | 6),
+            "seven must normalise to sunday-zero: {day}"
+        );
+    }
+}
+
+#[test]
+fn a_weekday_tilde_never_renders_a_bare_seven() {
+    for seed in 0..64 {
+        let day = weekday_of("0 0 * * ~", seed);
+        assert_ne!(day, "7", "cron semantics render sunday as zero");
+    }
+}
+
+#[test]
+fn a_weekday_bound_above_seven_is_rejected() {
+    let mut rng = seeded(1);
+    let err = expand_random("0 0 * * 0~8", &mut rng).unwrap_err();
+    assert_eq!(
+        err,
+        ExpandError::OutOfRange {
+            field: "0~8".to_string(),
+            low: 0,
+            high: 7,
+        }
+    );
+}
+
+#[test]
+fn a_stepped_weekday_range_keeps_its_ceiling() {
+    let field = weekday_of("0 0 * * 0~7/3", 5);
+    assert!(field.ends_with("-7/3"), "got: {field}");
 }

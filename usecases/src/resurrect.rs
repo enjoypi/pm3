@@ -4,7 +4,7 @@ use entities::ProcessStatus;
 use futures_util::future::join_all;
 
 use crate::{
-    Liveness, Ports, Result, UsecaseError,
+    FingerprintError, Liveness, Ports, Result, UsecaseError,
     fingerprint::render_identity,
     persist::save_table,
     record::ProcessRecord,
@@ -32,6 +32,7 @@ enum Change {
 pub async fn resurrect(
     table: &mut ProcessTable,
     logs_dir: &str,
+    kill_timeout_ms: u64,
     ports: &impl Ports,
 ) -> Result<Vec<StartOutcome>> {
     let stored = ports.load().await?;
@@ -54,11 +55,11 @@ pub async fn resurrect(
             Verdict::Adopt => outcomes.push(adopt(table, &name, ports).await),
             Verdict::Settle { stale } => {
                 log_settle(&name);
-                evict(&name, stale, ports).await;
+                evict(&name, stale, kill_timeout_ms, ports).await;
             }
             Verdict::Respawn { change, stale } => {
                 log_respawn(&name, change);
-                evict(&name, stale, ports).await;
+                evict(&name, stale, kill_timeout_ms, ports).await;
                 match start_one(table, &name, logs_dir, ports).await {
                     Ok(outcome) => outcomes.push(outcome),
                     Err(error) => log_recovery_failure("respawn", &name, &error),
@@ -115,8 +116,12 @@ async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
     if ports.digest(&render_identity(&record.spec)) != identity.launch_digest {
         return respawn(Change::Launch, Some(pid));
     }
-    let Ok(binary) = ports.file_digest(&record.spec.script).await else {
-        return respawn(Change::Binary, Some(pid));
+    let binary = match ports.file_digest(&record.spec.script).await {
+        Ok(binary) => binary,
+        Err(error) => {
+            log_unverifiable_binary(&record.runtime.name, &error);
+            return Verdict::Adopt;
+        }
     };
     if binary != identity.binary_digest {
         return respawn(Change::Binary, Some(pid));
@@ -128,12 +133,18 @@ const fn respawn(change: Change, stale: Option<u32>) -> Verdict {
     Verdict::Respawn { change, stale }
 }
 
-async fn evict(name: &str, stale: Option<u32>, ports: &impl Ports) {
+async fn evict(name: &str, stale: Option<u32>, kill_timeout_ms: u64, ports: &impl Ports) {
     let Some(pid) = stale else {
         return;
     };
     let refused = ports.terminate(pid).await.err().map(|e| e.to_string());
     log_evict(name, pid, refused.as_deref());
+    let liveness = ports.wait_gone(pid, kill_timeout_ms).await;
+    if matches!(liveness, Liveness::Gone) {
+        return;
+    }
+    let forced = ports.force_kill(pid).await.err().map(|e| e.to_string());
+    log_force_evict(name, pid, forced.as_deref());
 }
 
 async fn adopt(table: &mut ProcessTable, name: &str, ports: &impl Ports) -> StartOutcome {
@@ -202,6 +213,29 @@ fn log_evict(app: &str, pid: u32, refused: Option<&str>) {
         pid,
         reason,
         "pm3 stopped the stale survivor before starting its replacement",
+    );
+}
+
+fn log_force_evict(app: &str, pid: u32, refused: Option<&str>) {
+    let reason = refused.unwrap_or_default();
+    tracing::debug!(
+        feature = "resurrect",
+        action = "force_evict",
+        service = app,
+        pid,
+        reason,
+        "pm3 force killed the stale survivor that ignored the stop signal",
+    );
+}
+
+fn log_unverifiable_binary(app: &str, error: &FingerprintError) {
+    let reason = error.to_string();
+    tracing::debug!(
+        feature = "resurrect",
+        action = "adopt",
+        service = app,
+        reason,
+        "pm3 cannot read the program to verify it, so it keeps the confirmed survivor under watch",
     );
 }
 

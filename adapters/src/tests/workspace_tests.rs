@@ -57,6 +57,19 @@ async fn a_missing_working_directory_is_created() {
 }
 
 #[tokio::test]
+async fn a_working_directory_blocked_by_a_file_is_left_unresolved() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let blocked = dir.path().join("web");
+    std::fs::write(&blocked, "occupied").expect("occupy the working directory path");
+    let mut spec = spec_at(&blocked.to_string_lossy(), Vec::new());
+    materialise_workspace(&mut spec).await;
+    assert!(
+        Path::new(&spec.cwd).is_file(),
+        "the blocked path must not silently become a directory"
+    );
+}
+
+#[tokio::test]
 async fn the_working_directory_is_resolved_to_its_real_path() {
     let dir = tempfile::tempdir().expect("temp dir");
     let (link, real) = linked_dir(dir.path());

@@ -39,6 +39,17 @@ fn the_unit_restarts_the_daemon_on_failure() {
 }
 
 #[test]
+fn the_unit_takes_the_restart_delay_from_the_spec() {
+    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    spec.restart_delay_secs = 9;
+    assert!(
+        render_unit(&spec).contains("RestartSec=9"),
+        "got: {}",
+        render_unit(&spec)
+    );
+}
+
+#[test]
 fn the_unit_kills_only_the_daemon_and_not_its_whole_control_group() {
     assert!(
         rendered().contains("KillMode=process"),
@@ -84,6 +95,28 @@ fn the_unit_doubles_percent_signs_in_plain_values() {
     spec.label = "pm3 100% ready".to_string();
     assert!(
         render_unit(&spec).contains("Description=pm3 100%% ready"),
+        "got: {}",
+        render_unit(&spec)
+    );
+}
+
+#[test]
+fn the_unit_escapes_quotes_and_backslashes_inside_quoted_environment_values() {
+    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    spec.home = "/home/we\"ird\\dev".to_string();
+    assert!(
+        render_unit(&spec).contains("Environment=\"HOME=/home/we\\\"ird\\\\dev\""),
+        "got: {}",
+        render_unit(&spec)
+    );
+}
+
+#[test]
+fn the_unit_escapes_quotes_and_backslashes_in_plain_values() {
+    let mut spec = spec_for(ServiceKind::Systemd, Path::new("/home/dev"));
+    spec.working_directory = std::path::PathBuf::from("/opt/we\"ird\\svc");
+    assert!(
+        render_unit(&spec).contains("WorkingDirectory=/opt/we\\\"ird\\\\svc"),
         "got: {}",
         render_unit(&spec)
     );

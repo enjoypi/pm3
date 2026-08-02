@@ -25,3 +25,14 @@ fn policy_errors_convert_and_render_transparently() {
     let wrapped = EntityError::from(source);
     assert_eq!(wrapped.to_string(), expected);
 }
+
+#[test]
+fn runtime_errors_convert_and_render_transparently() {
+    let source = RuntimeError::RunningWithoutPid {
+        app: "api".to_string(),
+        status: "online".to_string(),
+    };
+    let expected = source.to_string();
+    let wrapped = EntityError::from(source);
+    assert_eq!(wrapped.to_string(), expected);
+}

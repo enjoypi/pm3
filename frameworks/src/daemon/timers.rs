@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use super::actor::DaemonEvent;
+use super::events::DaemonEvent;
 
 #[derive(Debug)]
 struct Timer {
@@ -15,6 +15,7 @@ pub struct TimerBoard {
     events: mpsc::Sender<DaemonEvent>,
     timers: HashMap<String, Timer>,
     restarts: HashMap<String, JoinHandle<()>>,
+    force_kills: HashMap<String, JoinHandle<()>>,
     generations: HashMap<String, u64>,
     next_generation: u64,
 }
@@ -26,6 +27,7 @@ impl TimerBoard {
             events,
             timers: HashMap::new(),
             restarts: HashMap::new(),
+            force_kills: HashMap::new(),
             generations: HashMap::new(),
             next_generation: 0,
         }
@@ -96,24 +98,44 @@ impl TimerBoard {
         }
     }
 
-    pub fn schedule_force_kill(&self, name: &str, pid: Option<u32>, delay: Duration) {
+    pub fn schedule_force_kill(
+        &mut self,
+        name: &str,
+        pid: Option<u32>,
+        token: Option<String>,
+        delay: Duration,
+    ) {
         let Some(pid) = pid else {
             return;
         };
+        self.cancel_force_kill(name);
         let events = self.events.clone();
-        let name = name.to_string();
-        let generation = self.current_generation(&name);
-        tokio::spawn(async move {
+        let doomed = name.to_string();
+        let generation = self.current_generation(name);
+        let task = tokio::spawn(async move {
             tokio::time::sleep(delay).await;
             events
                 .send(DaemonEvent::ForceKill {
-                    name,
+                    name: doomed,
                     generation,
                     pid,
+                    token,
                 })
                 .await
                 .ok();
         });
+        self.force_kills.insert(name.to_string(), task);
+    }
+
+    pub fn cancel_force_kill(&mut self, name: &str) {
+        if let Some(task) = self.force_kills.remove(name) {
+            task.abort();
+        }
+    }
+
+    #[must_use]
+    pub fn has_force_kill(&self, name: &str) -> bool {
+        self.force_kills.contains_key(name)
     }
 
     pub fn bump(&mut self, name: &str) -> u64 {

@@ -2,8 +2,11 @@ use entities::ProcessStatus;
 
 use super::*;
 use crate::{
+    ports::ExitOutcome,
     ports_test_helpers::{FakePorts, LOGS_DIR, spec, spec_with_deps},
+    restart::restart_app,
     start::start_apps,
+    supervise::{ExitAction, handle_child_exit},
 };
 
 fn stopped_names(stopped: &[StopOutcome]) -> Vec<String> {
@@ -283,4 +286,62 @@ async fn stopping_persists_the_table() {
         .await
         .expect("stop should succeed");
     assert_eq!(ports.save_count(), 2);
+}
+
+#[tokio::test]
+async fn stopping_a_service_cancels_a_queued_restart() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+        .await
+        .expect("restart should succeed");
+
+    stop_app(&mut table, &AppSelector::Id(0), &ports)
+        .await
+        .expect("stop should succeed");
+
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert!(!record.runtime.pending_restart);
+}
+
+#[tokio::test]
+async fn a_stopped_service_stays_down_when_the_draining_process_finally_exits() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+        .await
+        .expect("restart should succeed");
+    stop_app(&mut table, &AppSelector::Id(0), &ports)
+        .await
+        .expect("stop should succeed");
+
+    let exit = ExitOutcome {
+        exit_code: Some(143),
+    };
+    let action = handle_child_exit(&mut table, "api", exit, &ports)
+        .await
+        .expect("exit handled");
+
+    assert_eq!(
+        action,
+        ExitAction::Settled {
+            status: ProcessStatus::Stopped,
+        }
+    );
+}
+
+#[tokio::test]
+async fn stopping_everything_cancels_a_queued_restart() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+        .await
+        .expect("restart should succeed");
+
+    stop_all_apps(&mut table, &ports)
+        .await
+        .expect("stop all should succeed");
+
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert!(!record.runtime.pending_restart);
 }

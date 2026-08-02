@@ -21,6 +21,11 @@ pub enum ConfigLoadError {
     EnvVarNotSet { name: String },
 
     #[error(
+        "cannot resolve environment variable '{name}': the reserved placeholder does not accept a ':-' default"
+    )]
+    ReservedPlaceholderDefault { name: String },
+
+    #[error(
         "cannot substitute environment variable '{name}': value contains '{character}', which would change the YAML document structure"
     )]
     EnvVarNotYamlSafe { name: String, character: String },
@@ -78,6 +83,11 @@ fn substitute_with(raw: &str, lookup: EnvLookup) -> Result<String, ConfigLoadErr
         let body = &rest[start + 2..];
         match parse_placeholder(body) {
             Some(parsed) if parsed.name == SVC_CWD_NAME => {
+                if parsed.default.is_some() {
+                    return Err(ConfigLoadError::ReservedPlaceholderDefault {
+                        name: parsed.name.to_string(),
+                    });
+                }
                 out.push_str("${");
                 out.push_str(&body[..parsed.consumed]);
                 rest = &body[parsed.consumed..];

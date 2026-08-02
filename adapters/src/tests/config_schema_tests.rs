@@ -1,3 +1,5 @@
+use usecases::SandboxMode;
+
 use super::{test_helpers::*, *};
 
 #[test]
@@ -80,6 +82,17 @@ fn validate_rejects_a_zero_log_follow_interval() {
 }
 
 #[test]
+fn validate_rejects_a_zero_log_tail_lines() {
+    let mut cfg = valid_config();
+    cfg.pm3.log_tail_lines = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidLogTailLines(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn validate_rejects_an_unknown_stop_signal() {
     let mut cfg = valid_config();
     cfg.pm3.stop_signal = "BOOM".to_string();
@@ -157,20 +170,27 @@ fn validate_rejects_unknown_sandbox_mode() {
     cfg.pm3.sandbox.mode = "yolo".to_string();
     let err = validate_config(&cfg).unwrap_err();
     assert!(
-        matches!(err, ConfigError::InvalidSandboxMode(_)),
+        matches!(err, ConfigError::InvalidSandboxMode { .. }),
         "got: {err}"
     );
 }
 
 #[test]
+fn an_invalid_sandbox_mode_lists_the_modes_the_domain_knows() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.mode = "yolo".to_string();
+    let err = validate_config(&cfg).unwrap_err().to_string();
+    assert_eq!(
+        err,
+        "cannot accept pm3.sandbox.mode yolo: must be one of read-only, workspace-write, danger-full-access"
+    );
+}
+
+#[test]
 fn validate_accepts_every_sandbox_mode() {
-    for mode in [
-        SANDBOX_MODE_READ_ONLY,
-        SANDBOX_MODE_WORKSPACE_WRITE,
-        SANDBOX_MODE_DANGER_FULL_ACCESS,
-    ] {
+    for mode in SandboxMode::ALL {
         let mut cfg = valid_config();
-        cfg.pm3.sandbox.mode = mode.to_string();
+        cfg.pm3.sandbox.mode = mode.as_str().to_string();
         validate_config(&cfg).expect("documented sandbox mode should validate");
     }
 }
@@ -182,6 +202,61 @@ fn validate_rejects_an_empty_service_label() {
     let err = validate_config(&cfg).unwrap_err();
     assert!(
         matches!(err, ConfigError::InvalidServiceLabel),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_service_label_with_a_path_separator() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.label = "team/pm3".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::UnsafeServiceLabel { .. }),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_service_label_with_a_control_character() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.label = "pm3\nWantedBy=evil.target".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::UnsafeServiceLabel { .. }),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_service_label_starting_with_a_dot() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.label = ".pm3".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::DottedServiceLabel(_)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_home_with_a_line_break() {
+    let mut cfg = valid_config();
+    cfg.pm3.home = "/home/dev\nWantedBy=evil.target".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::UnsafeLineBreak { .. }),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_search_path_with_a_line_break() {
+    let mut cfg = valid_config();
+    cfg.pm3.search_path = "/usr/bin\nWantedBy=evil.target".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::UnsafeLineBreak { .. }),
         "got: {err}"
     );
 }
@@ -254,10 +329,20 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidPollInterval(0),
         ConfigError::InvalidPollCeiling { max: 1, floor: 2 },
         ConfigError::InvalidFollowInterval(0),
+        ConfigError::InvalidLogTailLines(0),
         ConfigError::InvalidStopSignal("BOOM".to_string()),
         ConfigError::InvalidMinUptime(0),
-        ConfigError::InvalidSandboxMode("yolo".to_string()),
+        ConfigError::InvalidSandboxMode {
+            mode: "yolo".to_string(),
+            expected: "read-only, workspace-write, danger-full-access".to_string(),
+        },
         ConfigError::InvalidServiceLabel,
+        ConfigError::UnsafeServiceLabel {
+            label: "a/b".to_string(),
+            character: '/',
+        },
+        ConfigError::DottedServiceLabel(".pm3".to_string()),
+        ConfigError::UnsafeLineBreak { field: "pm3.home" },
         ConfigError::InvalidSearchPath,
         ConfigError::InvalidServiceName,
         ConfigError::InvalidLogLevel("verbose".to_string()),

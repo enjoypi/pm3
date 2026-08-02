@@ -37,9 +37,14 @@ impl PollCadence {
 }
 
 #[derive(Debug)]
-struct Watched {
+struct Waiter {
     token: Option<String>,
     departed: oneshot::Sender<()>,
+}
+
+#[derive(Debug)]
+struct Watched {
+    waiters: Vec<Waiter>,
 }
 
 #[derive(Debug, Default)]
@@ -64,7 +69,14 @@ impl AdoptedWatch {
         let (departed, gone) = oneshot::channel();
         let start_poller = {
             let mut state = self.state.lock().await;
-            state.watched.insert(pid, Watched { token, departed });
+            state
+                .watched
+                .entry(pid)
+                .or_insert_with(|| Watched {
+                    waiters: Vec::new(),
+                })
+                .waiters
+                .push(Waiter { token, departed });
             let idle = !state.polling;
             state.polling = true;
             idle
@@ -103,15 +115,24 @@ impl AdoptedWatch {
     async fn release(&self, seen: &HashMap<u32, Liveness>) {
         let departed = {
             let mut state = self.state.lock().await;
-            let (departed, kept): (HashMap<u32, Watched>, HashMap<u32, Watched>) =
-                state.watched.drain().partition(|(pid, entry)| {
-                    !still_running(*pid, entry.token.as_deref(), seen.get(pid))
-                });
+            let mut departed = Vec::new();
+            let watched = std::mem::take(&mut state.watched);
+            let mut kept = HashMap::with_capacity(watched.len());
+            for (pid, entry) in watched {
+                let (gone, waiting): (Vec<Waiter>, Vec<Waiter>) =
+                    entry.waiters.into_iter().partition(|waiter| {
+                        !still_running(pid, waiter.token.as_deref(), seen.get(&pid))
+                    });
+                departed.extend(gone);
+                if !waiting.is_empty() {
+                    kept.insert(pid, Watched { waiters: waiting });
+                }
+            }
             state.watched = kept;
             departed
         };
-        for (_pid, entry) in departed {
-            entry.departed.send(()).ok();
+        for waiter in departed {
+            waiter.departed.send(()).ok();
         }
     }
 }

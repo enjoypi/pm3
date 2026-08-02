@@ -105,3 +105,77 @@ fn the_hidden_sleep_target_exits_cleanly() {
     let slept = pm3(&home, &["__sleep", "10"]);
     assert!(slept.status.success(), "__sleep should exit cleanly");
 }
+
+#[test]
+fn a_shutdown_force_kills_a_service_that_ignores_the_stop_signal() {
+    let home = home();
+    let cwd = home.root.to_string_lossy();
+    let apps = self::common::write_apps(
+        &home,
+        &format!(
+            "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
+        ),
+    );
+    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+    let pid = self::common::described_pid(&home, "stubborn");
+
+    shutdown_daemon(&home);
+
+    let deadline = std::time::Instant::now() + self::common::READY_BUDGET;
+    while self::common::process_is_alive(pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "pid {pid} should be force killed"
+        );
+        std::thread::sleep(self::common::PROBE_INTERVAL);
+    }
+}
+
+#[test]
+fn a_plain_kill_spares_online_services_but_sweeps_a_stuck_stopping_one() {
+    let home = home();
+    let keeper_apps = sleeper_apps(&home, "keeper");
+    let keeper_started = pm3(&home, &["start", keeper_apps.to_str().expect("path")]);
+    assert!(
+        keeper_started.status.success(),
+        "{}",
+        stdout_of(&keeper_started)
+    );
+    let keeper_pid = self::common::described_pid(&home, "keeper");
+
+    let cwd = home.root.to_string_lossy();
+    let stubborn_apps = self::common::write_apps(
+        &home,
+        &format!(
+            "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
+        ),
+    );
+    let stubborn_started = pm3(&home, &["start", stubborn_apps.to_str().expect("path")]);
+    assert!(
+        stubborn_started.status.success(),
+        "{}",
+        stdout_of(&stubborn_started)
+    );
+    let stubborn_pid = self::common::described_pid(&home, "stubborn");
+
+    let stopped = pm3(&home, &["stop", "stubborn"]);
+    assert_eq!(stdout_of(&stopped).trim(), "stopped stubborn");
+    let killed = pm3(&home, &["kill"]);
+    assert!(killed.status.success(), "{}", stdout_of(&killed));
+    self::common::wait_until_gone(&home.root.join("pm3.sock"));
+
+    let deadline = std::time::Instant::now() + self::common::READY_BUDGET;
+    while self::common::process_is_alive(stubborn_pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "pid {stubborn_pid} should be swept after the drain budget"
+        );
+        std::thread::sleep(self::common::PROBE_INTERVAL);
+    }
+    assert!(
+        self::common::process_is_alive(keeper_pid),
+        "a plain kill must preserve online services"
+    );
+    self::common::signal(keeper_pid, "-TERM");
+}

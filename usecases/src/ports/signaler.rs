@@ -10,6 +10,7 @@ pub enum SignalError {
 
 pub trait Signaler: Send + Sync {
     fn terminate(&self, pid: u32) -> impl Future<Output = Result<(), SignalError>> + Send;
+    fn force_kill(&self, pid: u32) -> impl Future<Output = Result<(), SignalError>> + Send;
 }
 
 #[cfg(test)]

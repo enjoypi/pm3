@@ -1,7 +1,9 @@
-use std::path::Path;
+use std::{os::unix::fs::PermissionsExt as _, path::Path};
 
 use thiserror::Error;
 use tokio::net::{UnixListener, UnixStream};
+
+const OWNER_ONLY_SOCKET: u32 = 0o600;
 
 #[derive(Debug)]
 pub enum BindOutcome {
@@ -16,6 +18,9 @@ pub enum SocketError {
 
     #[error("cannot bind the pm3 socket '{path}': {reason}")]
     Bind { path: String, reason: String },
+
+    #[error("cannot restrict the pm3 socket '{path}' to its owner: {reason}")]
+    Permissions { path: String, reason: String },
 }
 
 pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
@@ -34,7 +39,19 @@ pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
         path: text(path),
         reason: e.to_string(),
     })?;
-    Ok(BindOutcome::Bound(listener))
+    restrict_to_owner(path)
+        .await
+        .map(|()| BindOutcome::Bound(listener))
+}
+
+async fn restrict_to_owner(path: &Path) -> Result<(), SocketError> {
+    let permissions = std::fs::Permissions::from_mode(OWNER_ONLY_SOCKET);
+    tokio::fs::set_permissions(path, permissions)
+        .await
+        .map_err(|e| SocketError::Permissions {
+            path: text(path),
+            reason: e.to_string(),
+        })
 }
 
 fn text(path: &Path) -> String {

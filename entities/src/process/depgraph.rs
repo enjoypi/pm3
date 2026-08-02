@@ -23,7 +23,7 @@ pub fn topo_sort(nodes: &[DependencyNode<'_>]) -> Result<Vec<String>, Dependency
         let ready = next_ready_names(nodes, &order);
         if ready.is_empty() {
             return Err(DependencyError::Cycle {
-                involved: unresolved_names(nodes, &order),
+                involved: cycle_members(nodes, &order),
             });
         }
         order.extend(ready);
@@ -58,12 +58,33 @@ fn next_ready_names(nodes: &[DependencyNode<'_>], order: &[String]) -> Vec<Strin
         .collect()
 }
 
-fn unresolved_names(nodes: &[DependencyNode<'_>], order: &[String]) -> Vec<String> {
+fn cycle_members(nodes: &[DependencyNode<'_>], order: &[String]) -> Vec<String> {
     nodes
         .iter()
         .filter(|node| !contains_name(order, node.name))
+        .filter(|node| reaches_itself(node, nodes))
         .map(|node| node.name.to_string())
         .collect()
+}
+
+fn reaches_itself(origin: &DependencyNode<'_>, nodes: &[DependencyNode<'_>]) -> bool {
+    let mut visited: Vec<&str> = Vec::new();
+    let mut pending: Vec<&str> = origin.depends_on.iter().map(String::as_str).collect();
+    while let Some(name) = pending.pop() {
+        if name == origin.name {
+            return true;
+        }
+        if visited.contains(&name) {
+            continue;
+        }
+        visited.push(name);
+        let node = nodes
+            .iter()
+            .find(|candidate| candidate.name == name)
+            .expect("internal error: dependency names are verified before cycle detection");
+        pending.extend(node.depends_on.iter().map(String::as_str));
+    }
+    false
 }
 
 fn contains_name(names: &[String], candidate: &str) -> bool {

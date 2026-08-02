@@ -1,6 +1,7 @@
 use adapters::{StartKind, service_file_of};
 
 use super::{shared::*, test_helpers::*, *};
+use crate::daemon::runner::run;
 
 #[tokio::test]
 async fn stopping_everything_takes_every_app_down() {
@@ -129,6 +130,21 @@ async fn shutting_down_signals_nothing() {
 }
 
 #[tokio::test]
+async fn shutting_down_sweeps_a_stray_once_the_drain_budget_expires() {
+    let mut harness = harness_with_kill_timeout(60);
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    let pid = started.pid.expect("a pid");
+    adapters::ProcessLauncher::adopt(&*harness.ports, u32::MAX).await;
+
+    harness.daemon.shutdown().await;
+
+    assert!(
+        harness.ports.tracked_pids().await.contains(&pid),
+        "the sweep must spare preserved services"
+    );
+}
+
+#[tokio::test]
 async fn stopping_everything_force_kills_a_child_the_table_forgot() {
     let mut harness = harness_with_kill_timeout(0);
     apps_file_without_restart(&harness, "web", SLEEPER);
@@ -160,8 +176,49 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
         .await
         .expect("should stop everything");
 
+    let (name, generation, killed, token) = next_force_kill(&mut harness.events).await;
+    assert_eq!(killed, pid, "the sweep must target the forgotten child");
+    harness
+        .daemon
+        .on_force_kill(&name, generation, killed, token.as_deref())
+        .await;
+
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
     assert_eq!(outcome.exit_code, None, "pid {pid} should be force killed");
+}
+
+#[tokio::test]
+async fn stopping_everything_answers_while_a_stray_is_still_draining() {
+    let Harness {
+        dir: _dir,
+        paths: _paths,
+        cfg_dir: _cfg_dir,
+        daemon,
+        ports,
+        events,
+        sender: _sender,
+    } = harness_with_kill_timeout(60_000);
+    adapters::ProcessLauncher::adopt(&*ports, u32::MAX).await;
+    let (commands, command_queue) = mpsc::channel(CHANNEL_DEPTH);
+    let supervisor = tokio::spawn(run(daemon, command_queue, events));
+
+    let (stop_all, stopped) = command(DaemonRequest::StopAll);
+    commands.send(stop_all).await.expect("should queue");
+    tokio::time::timeout(EVENT_BUDGET, stopped)
+        .await
+        .expect("stop-all must answer long before the kill timeout expires")
+        .expect("should answer")
+        .expect("should stop everything");
+
+    let (list, listed) = command(DaemonRequest::List);
+    commands.send(list).await.expect("should queue");
+    tokio::time::timeout(EVENT_BUDGET, listed)
+        .await
+        .expect("the actor must keep serving while a stray drains")
+        .expect("should answer")
+        .expect("should list");
+
+    supervisor.abort();
 }
 
 #[tokio::test]
@@ -265,6 +322,7 @@ async fn the_supervisor_handles_internal_events() {
             name: "ghost".to_string(),
             generation: 7,
             pid: 1,
+            token: None,
         })
         .await
         .expect("should queue");

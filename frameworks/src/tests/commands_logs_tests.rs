@@ -1,10 +1,34 @@
+use std::fmt::Write as _;
+
 use super::*;
+use crate::test_support::LOG_TAIL_LINES;
+
+#[tokio::test]
+async fn reading_a_log_tail_without_a_count_falls_back_to_the_configured_default() {
+    let fixture = running_daemon().await;
+    let configured = usize::try_from(LOG_TAIL_LINES).expect("the fixture count fits usize");
+    let total = configured + 5;
+    let body = (1..=total).fold(String::new(), |mut text, n| {
+        let _ = writeln!(text, "line-{n}");
+        text
+    });
+    seed_log(&fixture, "web", &body);
+    let tail = read_log_tail(&fixture.config_path, "web", None)
+        .await
+        .expect("should read");
+    let expected = ((total - configured + 1)..=total)
+        .map(|n| format!("line-{n}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(tail, expected);
+    stop_daemon(fixture).await;
+}
 
 #[tokio::test]
 async fn reading_a_log_tail_returns_the_last_lines() {
     let fixture = running_daemon().await;
     seed_log(&fixture, "web", "first\nsecond\nthird\n");
-    let tail = read_log_tail(&fixture.config_path, "web", 2)
+    let tail = read_log_tail(&fixture.config_path, "web", Some(2))
         .await
         .expect("should read");
     assert_eq!(tail, "second\nthird");
@@ -14,7 +38,7 @@ async fn reading_a_log_tail_returns_the_last_lines() {
 #[tokio::test]
 async fn reading_a_missing_log_fails() {
     let fixture = running_daemon().await;
-    let err = read_log_tail(&fixture.config_path, "ghost", 5)
+    let err = read_log_tail(&fixture.config_path, "ghost", Some(5))
         .await
         .unwrap_err()
         .to_string();
@@ -77,7 +101,7 @@ async fn following_the_log_of_an_unsafe_name_is_refused() {
 #[tokio::test]
 async fn reading_the_log_tail_of_an_unsafe_name_is_refused() {
     let fixture = running_daemon().await;
-    let outcome = read_log_tail(&fixture.config_path, "../escape", 1).await;
+    let outcome = read_log_tail(&fixture.config_path, "../escape", Some(1)).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
     stop_daemon(fixture).await;
 }
@@ -91,7 +115,7 @@ async fn following_a_log_without_a_config_fails() {
 #[tokio::test]
 async fn reading_a_log_without_a_config_fails() {
     assert!(
-        read_log_tail("/nonexistent/pm3.yaml", "web", 5)
+        read_log_tail("/nonexistent/pm3.yaml", "web", Some(5))
             .await
             .is_err()
     );

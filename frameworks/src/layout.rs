@@ -1,8 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::{
+    os::unix::fs::PermissionsExt as _,
+    path::{Path, PathBuf},
+};
 
 use adapters::{Pm3Config, Pm3Paths, expand_home, resolve_paths};
 
 use crate::{Error, Result};
+
+const OWNER_ONLY_DIR: u32 = 0o700;
 
 pub fn resolve_layout(pm3: &Pm3Config, home_env: Option<&str>) -> Result<Pm3Paths> {
     let root = expand_home(&pm3.home, home_env)?;
@@ -18,12 +23,27 @@ pub fn canonicalize<F: FnOnce(String) -> Error>(path: &str, wrap: F) -> Result<P
 }
 
 pub async fn ensure_layout(paths: &Pm3Paths, cfg_dir: &Path) -> Result<()> {
+    prepare_home(&paths.root).await?;
     tokio::fs::create_dir_all(&paths.logs_dir)
         .await
         .map_err(|e| layout_error(&paths.logs_dir, &e))?;
     tokio::fs::create_dir_all(cfg_dir)
         .await
         .map_err(|e| layout_error(cfg_dir, &e))
+}
+
+async fn prepare_home(root: &Path) -> Result<()> {
+    tokio::fs::create_dir_all(root)
+        .await
+        .map_err(|e| layout_error(root, &e))?;
+    restrict_to_owner(root).await
+}
+
+async fn restrict_to_owner(path: &Path) -> Result<()> {
+    let permissions = std::fs::Permissions::from_mode(OWNER_ONLY_DIR);
+    tokio::fs::set_permissions(path, permissions)
+        .await
+        .map_err(|e| layout_error(path, &e))
 }
 
 pub async fn write_pid_file(paths: &Pm3Paths) -> Result<()> {

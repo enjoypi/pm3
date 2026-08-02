@@ -1,12 +1,13 @@
 use std::{
+    io,
     path::{Path, PathBuf},
     time::Duration,
 };
 
 use adapters::{
-    APPS_PATH, AppConfig, KillSignaler, LogFollower, Pm3Paths, ReplyDto, SERVICES_STOP_ALL_PATH,
-    STOP_SIGNAL_TERM, Signaler as _, StartRequestDto, load_and_parse_config, log_paths, read_tail,
-    validate_app_name, wait_until_released,
+    APPS_PATH, AppConfig, KillSignaler, LogFollower, Pm3Config, Pm3Paths, ReplyDto,
+    SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, Signaler as _, StartRequestDto,
+    load_and_parse_config, log_paths, read_tail, validate_app_name, wait_until_released,
 };
 
 use crate::{
@@ -167,9 +168,7 @@ pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<Strin
         None
     };
     let Some(pid) = read_pid_file(&session.paths).await else {
-        return Err(Error::DaemonPidUnknown {
-            path: session.paths.pid_file.to_string_lossy().into_owned(),
-        });
+        return report_gone_daemon(&client, &session.paths, stopped.as_deref()).await;
     };
     KillSignaler::with_stop_signal(STOP_SIGNAL_TERM.to_string(), pm3.command_timeout_ms)
         .terminate(pid)
@@ -191,6 +190,22 @@ pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<Strin
     Ok(kill_report(stopped.as_deref(), pid))
 }
 
+async fn report_gone_daemon(
+    client: &UdsClient,
+    paths: &Pm3Paths,
+    stopped: Option<&str>,
+) -> Result<String> {
+    if client.daemon_is_healthy().await {
+        return Err(Error::DaemonPidUnknown {
+            path: paths.pid_file.to_string_lossy().into_owned(),
+        });
+    }
+    Ok(stopped.map_or_else(
+        || DAEMON_NOT_RUNNING.to_string(),
+        |services| format!("{services}\n{DAEMON_NOT_RUNNING}"),
+    ))
+}
+
 fn kill_report(stopped: Option<&str>, pid: u32) -> String {
     let farewell = format!("stopped the pm3 daemon (pid {pid})");
     stopped.map_or_else(
@@ -199,10 +214,16 @@ fn kill_report(stopped: Option<&str>, pid: u32) -> String {
     )
 }
 
-pub async fn read_log_tail(config_path: &str, name: &str, lines: usize) -> Result<String> {
-    let stdout = stdout_log(&open_session(config_path)?.paths, name)?;
-    let tail = read_tail(Path::new(&stdout), lines).await?;
+pub async fn read_log_tail(config_path: &str, name: &str, lines: Option<usize>) -> Result<String> {
+    let session = open_session(config_path)?;
+    let count = lines.unwrap_or_else(|| log_tail_lines(&session.config.pm3));
+    let stdout = stdout_log(&session.paths, name)?;
+    let tail = read_tail(Path::new(&stdout), count).await?;
     Ok(tail.join("\n"))
+}
+
+fn log_tail_lines(pm3: &Pm3Config) -> usize {
+    usize::try_from(pm3.log_tail_lines).unwrap_or(usize::MAX)
 }
 
 pub async fn follow_log(
@@ -270,7 +291,22 @@ async fn ask_report(
 }
 
 async fn ask(session: &Session, method: &str, path: &str, body: Option<&str>) -> Result<ReplyDto> {
-    let program = std::env::current_exe().unwrap_or_default();
+    ask_with(session, method, path, body, &std::env::current_exe()).await
+}
+
+async fn ask_with(
+    session: &Session,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    program: &io::Result<PathBuf>,
+) -> Result<ReplyDto> {
+    let program = program
+        .as_ref()
+        .map_err(|e| Error::ServiceProgram {
+            reason: e.to_string(),
+        })?
+        .clone();
     let launch = DaemonLaunch::from_config(
         &session.paths,
         &session.config_path,

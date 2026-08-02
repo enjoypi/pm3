@@ -36,6 +36,10 @@ struct FakeState {
     wrap_failures: Vec<String>,
     terminated: Vec<u32>,
     signal_failures: Vec<u32>,
+    stubborn: Vec<u32>,
+    waited: Vec<u32>,
+    force_killed: Vec<u32>,
+    force_failures: Vec<u32>,
     stored: Vec<ProcessRecord>,
     saves: usize,
     load_fails: bool,
@@ -79,6 +83,14 @@ impl FakePorts {
 
     pub fn fail_signal_for(&self, pid: u32) {
         self.with_state(|state| state.signal_failures.push(pid));
+    }
+
+    pub fn fail_force_kill_for(&self, pid: u32) {
+        self.with_state(|state| state.force_failures.push(pid));
+    }
+
+    pub fn make_stubborn(&self, pid: u32) {
+        self.with_state(|state| state.stubborn.push(pid));
     }
 
     pub fn fail_load(&self) {
@@ -149,6 +161,16 @@ impl FakePorts {
     }
 
     #[must_use]
+    pub fn waited(&self) -> Vec<u32> {
+        self.read(|state| state.waited.clone())
+    }
+
+    #[must_use]
+    pub fn force_killed(&self) -> Vec<u32> {
+        self.read(|state| state.force_killed.clone())
+    }
+
+    #[must_use]
     pub fn save_count(&self) -> usize {
         self.read(|state| state.saves)
     }
@@ -200,6 +222,24 @@ impl FakePorts {
                 });
             }
             guard.terminated.push(pid);
+            if !guard.stubborn.contains(&pid) {
+                guard.live.remove(&pid);
+            }
+        }
+        Ok(())
+    }
+
+    fn record_force_kill(&self, pid: u32) -> Result<(), SignalError> {
+        {
+            let mut guard = self.locked();
+            if guard.force_failures.contains(&pid) {
+                return Err(SignalError::Delivery {
+                    pid,
+                    reason: "injected force kill failure".to_string(),
+                });
+            }
+            guard.force_killed.push(pid);
+            guard.live.remove(&pid);
         }
         Ok(())
     }
@@ -247,6 +287,10 @@ impl ProcessLauncher for FakePorts {
 impl Signaler for FakePorts {
     async fn terminate(&self, pid: u32) -> Result<(), SignalError> {
         self.record_signal(pid)
+    }
+
+    async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
+        self.record_force_kill(pid)
     }
 }
 
@@ -300,6 +344,12 @@ impl ProcessProbe for FakePorts {
                 .cloned()
                 .map_or(Liveness::Gone, Liveness::Alive)
         })
+    }
+
+    async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
+        let _ = timeout_ms;
+        self.with_state(|state| state.waited.push(pid));
+        self.identity(pid).await
     }
 }
 

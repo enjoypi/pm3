@@ -204,13 +204,13 @@ fn list_takes_no_argument() {
 }
 
 #[test]
-fn logs_default_to_a_bounded_tail_without_following() {
+fn logs_leave_the_line_count_to_the_config_without_following() {
     let cli = parse(&["pm3", "logs", "web"]);
     assert!(
         matches!(
             &cli.command,
             Commands::Logs { name, lines, follow }
-                if name == "web" && *lines == DEFAULT_LOG_LINES && !follow
+                if name == "web" && lines.is_none() && !follow
         ),
         "got: {:?}",
         cli.command
@@ -223,7 +223,7 @@ fn logs_accept_a_line_count_and_the_follow_flag() {
     assert!(
         matches!(
             &cli.command,
-            Commands::Logs { name: _, lines, follow } if *lines == 5 && *follow
+            Commands::Logs { name: _, lines, follow } if *lines == Some(5) && *follow
         ),
         "got: {:?}",
         cli.command

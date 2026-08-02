@@ -6,8 +6,10 @@ use adapters::{
 use tokio::{net::UnixListener, sync::mpsc};
 
 use super::{
-    actor::{self, Daemon, DaemonEvent},
+    actor::Daemon,
+    events::DaemonEvent,
     ports::DaemonPorts,
+    runner::run,
     socket::{BindOutcome, bind_uds},
 };
 use crate::{
@@ -18,7 +20,7 @@ use crate::{
     },
     sandbox_probe::detect_host_backend,
     server::serve_listener,
-    signal::daemon_shutdown_signal,
+    signal::{ShutdownSignals, SignalRegisterError},
     telemetry::init_telemetry,
 };
 
@@ -28,7 +30,15 @@ const CHANNEL_DEPTH: usize = 32;
 const TMPDIR_VARIABLE: &str = "TMPDIR";
 
 pub async fn run_daemon(config_path: &str) -> Result<()> {
-    run_daemon_with_shutdown(config_path, Box::pin(daemon_shutdown_signal())).await
+    run_daemon_with_signals(config_path, ShutdownSignals::register()).await
+}
+
+async fn run_daemon_with_signals(
+    config_path: &str,
+    signals: std::result::Result<ShutdownSignals, SignalRegisterError>,
+) -> Result<()> {
+    let signals = signals?;
+    run_daemon_with_shutdown(config_path, Box::pin(signals.wait())).await
 }
 
 pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFuture) -> Result<()> {
@@ -78,7 +88,7 @@ async fn serve_supervised(
     let mut daemon = Daemon::new(specs, ports, events.clone());
     daemon.resurrect_saved_apps().await;
 
-    let supervisor = tokio::spawn(actor::run(daemon, command_queue, event_queue));
+    let supervisor = tokio::spawn(run(daemon, command_queue, event_queue));
     let served = serve_listener(
         listener,
         router(DaemonHandle::new(commands.clone())),

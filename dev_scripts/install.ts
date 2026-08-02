@@ -9,6 +9,7 @@ import {
   parseListedServices,
   parseServiceReport,
   parseLaunchdPid,
+  parseMainPid,
   parsePidFile,
   parseWriteTargets,
   type ServiceReport,
@@ -27,6 +28,9 @@ const supervisionPolls = 100;
 const exitIntervalMs = 50;
 const runningStatus = "running";
 const launchdKind = "launchd";
+const systemdKind = "systemd";
+const systemctlProgram = "/usr/bin/systemctl";
+const mainPidProperty = "MainPID";
 const homeVariable = "PM3_HOME";
 const defaultRuntimeHome = ".pm3";
 const pidFileName = "pm3.pid";
@@ -84,11 +88,17 @@ async function buildOptimisedRelease(): Promise<number> {
   );
 }
 
-async function listedServices(binary: string): Promise<ServiceRow[]> {
+export async function listedServices(
+  binary: string,
+  source: string,
+): Promise<ServiceRow[]> {
   if (!(await Bun.file(binary).exists())) {
     return [];
   }
-  const listed = await capture([binary, "list"]);
+  const listed = await capture([binary, "--config", source, "list"]);
+  if (listed.code !== 0) {
+    throw new Error(`cannot list the running pm3 services:\n${listed.output}`);
+  }
   return parseListedServices(listed.output);
 }
 
@@ -179,8 +189,11 @@ async function reinstallService(
     .join("\n");
 }
 
-async function readServiceReport(binary: string): Promise<ServiceReport> {
-  const reported = await capture([binary, "service"]);
+export async function readServiceReport(
+  binary: string,
+  source: string,
+): Promise<ServiceReport> {
+  const reported = await capture([binary, "--config", source, "service"]);
   const report = parseServiceReport(reported.output);
   if (report === undefined) {
     throw new Error(`cannot read the pm3 service status:\n${reported.output}`);
@@ -196,26 +209,56 @@ async function servingPid(): Promise<number | undefined> {
   return parsePidFile(await file.text());
 }
 
-async function supervisedPid(report: ServiceReport): Promise<number | undefined> {
-  if (report.kind !== launchdKind) {
-    return servingPid();
+export async function systemdMainPid(
+  systemctl: string,
+  unit: string,
+): Promise<number | undefined> {
+  const shown = await capture([
+    systemctl,
+    "--user",
+    "show",
+    "-p",
+    mainPidProperty,
+    "--value",
+    unit,
+  ]);
+  if (shown.code !== 0) {
+    return undefined;
   }
-  const listed = await capture(["/bin/launchctl", "list", report.label]);
-  return parseLaunchdPid(listed.output);
+  return parseMainPid(shown.output);
 }
 
-async function waitForSupervision(
+export async function supervisedPid(
+  report: ServiceReport,
+  systemctl: string = systemctlProgram,
+): Promise<number | undefined> {
+  if (report.kind === launchdKind) {
+    const listed = await capture(["/bin/launchctl", "list", report.label]);
+    return parseLaunchdPid(listed.output);
+  }
+  if (report.kind === systemdKind) {
+    return systemdMainPid(systemctl, basename(report.unitPath));
+  }
+  return servingPid();
+}
+
+export async function waitForSupervision(
   binary: string,
+  source: string,
+  systemctl: string = systemctlProgram,
 ): Promise<ServiceReport | undefined> {
   for (let poll = 0; poll < supervisionPolls; poll += 1) {
-    const report = await readServiceReport(binary);
-    const supervised = await supervisedPid(report);
-    if (
-      report.status === runningStatus &&
-      supervised !== undefined &&
-      supervised === (await servingPid())
-    ) {
-      return report;
+    try {
+      const report = await readServiceReport(binary, source);
+      const supervised = await supervisedPid(report, systemctl);
+      if (
+        report.status === runningStatus &&
+        supervised !== undefined &&
+        supervised === (await servingPid())
+      ) {
+        return report;
+      }
+    } catch {
     }
     await Bun.sleep(exitIntervalMs);
   }
@@ -234,17 +277,20 @@ async function handBackToLaunchd(report: ServiceReport): Promise<void> {
   }
 }
 
-async function verifySupervision(binary: string): Promise<string> {
-  const supervised = await waitForSupervision(binary);
+async function verifySupervision(
+  binary: string,
+  source: string,
+): Promise<string> {
+  const supervised = await waitForSupervision(binary, source);
   if (supervised !== undefined) {
     return `${supervised.label} (${supervised.kind}) is ${supervised.status}`;
   }
-  const stalled = await readServiceReport(binary);
+  const stalled = await readServiceReport(binary, source);
   if (stalled.kind !== launchdKind) {
     throw new Error(`the pm3 service is ${stalled.status} after installing`);
   }
   await handBackToLaunchd(stalled);
-  const kicked = await waitForSupervision(binary);
+  const kicked = await waitForSupervision(binary, source);
   if (kicked === undefined) {
     throw new Error(`the pm3 service is ${stalled.status} after a kickstart`);
   }
@@ -258,17 +304,21 @@ export async function install(): Promise<number> {
     return built;
   }
 
-  const before = await listedServices(destination);
+  const before = await listedServices(destination, source);
   const stamp = join(backups, backupStamp(new Date()));
   await backUp([destination], stamp);
+  const planned = await overwrittenByInstall(destination, source);
   await replaceBinary(destination);
-  await backUp(await overwrittenByInstall(destination, source), stamp);
+  await backUp(planned, stamp);
   await announce("backed up", stamp);
 
   await announce("reinstalled", await reinstallService(destination, source));
-  await announce("service", await verifySupervision(destination));
+  await announce("service", await verifySupervision(destination, source));
 
-  const comparison = compareServices(before, await listedServices(destination));
+  const comparison = compareServices(
+    before,
+    await listedServices(destination, source),
+  );
   await announce("services", describeComparison(comparison));
   if (comparison.lost.length > 0) {
     return 1;

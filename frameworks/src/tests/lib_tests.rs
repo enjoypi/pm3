@@ -169,6 +169,16 @@ fn a_signal_failure_is_passed_through() {
 }
 
 #[test]
+fn a_signal_registration_failure_is_passed_through() {
+    let inner = signal::SignalRegisterError::Register {
+        signal: "SIGINT",
+        reason: "too many open files".to_string(),
+    };
+    let expected = inner.to_string();
+    assert_eq!(Error::from(inner).to_string(), expected);
+}
+
+#[test]
 fn an_unreadable_daemon_pid_names_the_file() {
     let error = Error::DaemonPidUnknown {
         path: "/tmp/pm3.pid".to_string(),

@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt as _;
 use std::{
     mem,
     path::{Path, PathBuf},
@@ -22,6 +24,7 @@ pub struct LogReadError {
 pub struct LogFollower {
     path: PathBuf,
     file: File,
+    offset: u64,
     pending: Vec<u8>,
 }
 
@@ -81,22 +84,60 @@ impl LogFollower {
         let mut file = File::open(path)
             .await
             .map_err(|e| read_error(path, &e.to_string()))?;
-        seek_to_end(&mut file).await;
+        let offset = seek_to_end(&mut file).await;
         Ok(Self {
             path: path.to_path_buf(),
             file,
+            offset,
             pending: Vec::new(),
         })
     }
 
     pub async fn poll_appended(&mut self) -> Result<Vec<String>, LogReadError> {
+        self.resync().await;
         let mut chunk = Vec::new();
-        self.file
+        let read = self
+            .file
             .read_to_end(&mut chunk)
             .await
             .map_err(|e| read_error(&self.path, &e.to_string()))?;
+        self.offset += read as u64;
         self.pending.extend_from_slice(&chunk);
         Ok(self.take_complete_lines())
+    }
+
+    async fn resync(&mut self) {
+        let meta = self
+            .file
+            .metadata()
+            .await
+            .expect("internal error: metadata of an open log file cannot fail");
+        #[cfg(unix)]
+        if let Some(file) = self.reopen_if_rotated(meta.ino()).await {
+            self.file = file;
+            self.offset = 0;
+            self.pending.clear();
+            return;
+        }
+        if meta.len() < self.offset {
+            self.file
+                .seek(SeekFrom::Start(0))
+                .await
+                .expect("internal error: seeking to the start of an open log cannot overflow");
+            self.offset = 0;
+            self.pending.clear();
+        }
+    }
+
+    #[cfg(unix)]
+    async fn reopen_if_rotated(&self, open_ino: u64) -> Option<File> {
+        let Ok(meta) = tokio::fs::metadata(&self.path).await else {
+            return None;
+        };
+        if meta.ino() == open_ino {
+            return None;
+        }
+        File::open(&self.path).await.ok()
     }
 
     fn take_complete_lines(&mut self) -> Vec<String> {

@@ -1,7 +1,9 @@
 use adapters::{NOTHING_INSTALLED, ServiceProgramSet};
 
 use super::*;
-use crate::test_support::{SERVICE_LABEL, SERVICE_SEARCH_PATH, write_config};
+use crate::test_support::{
+    SERVICE_LABEL, SERVICE_RESTART_DELAY_SECS, SERVICE_SEARCH_PATH, write_config,
+};
 
 const TRUE_PROGRAM: &str = "/usr/bin/true";
 const FALSE_PROGRAM: &str = "/usr/bin/false";
@@ -120,6 +122,18 @@ fn the_spec_takes_the_label_and_search_path_from_the_config() {
     .expect("the session should open");
     assert_eq!(session.spec.label, SERVICE_LABEL);
     assert_eq!(session.spec.search_path, SERVICE_SEARCH_PATH);
+}
+
+#[test]
+fn the_spec_takes_the_restart_delay_from_the_config() {
+    let fixture = fixture(TRUE_PROGRAM);
+    let home = home_of(&fixture);
+    let session = open_service_session(
+        &fixture.config_path,
+        &context(&fixture, ServiceKind::Systemd, &home),
+    )
+    .expect("the session should open");
+    assert_eq!(session.spec.restart_delay_secs, SERVICE_RESTART_DELAY_SECS);
 }
 
 #[test]

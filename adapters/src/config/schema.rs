@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use usecases::SandboxMode;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -38,19 +39,29 @@ pub enum ConfigError {
     #[error("cannot accept pm3.log_follow_interval_ms {0}: must be >= 1")]
     InvalidFollowInterval(u64),
 
+    #[error("cannot accept pm3.log_tail_lines {0}: must be >= 1")]
+    InvalidLogTailLines(u64),
+
     #[error("cannot accept pm3.stop_signal {0}: must be one of TERM, INT, QUIT, HUP, USR1, USR2")]
     InvalidStopSignal(String),
 
     #[error("cannot accept pm3.restart.min_uptime_ms {0}: must be >= 1")]
     InvalidMinUptime(u64),
 
-    #[error(
-        "cannot accept pm3.sandbox.mode {0}: must be one of read-only, workspace-write, danger-full-access"
-    )]
-    InvalidSandboxMode(String),
+    #[error("cannot accept pm3.sandbox.mode {mode}: must be one of {expected}")]
+    InvalidSandboxMode { mode: String, expected: String },
 
     #[error("cannot accept empty pm3.service.label")]
     InvalidServiceLabel,
+
+    #[error("cannot accept pm3.service.label {label}: unsafe character '{character}'")]
+    UnsafeServiceLabel { label: String, character: char },
+
+    #[error("cannot accept pm3.service.label {0}: must not start with '.'")]
+    DottedServiceLabel(String),
+
+    #[error("cannot accept {field}: must not contain a line break")]
+    UnsafeLineBreak { field: &'static str },
 
     #[error("cannot accept empty pm3.search_path")]
     InvalidSearchPath,
@@ -87,6 +98,7 @@ pub struct Pm3Config {
     pub daemon_poll_interval_ms: u64,
     pub daemon_poll_max_interval_ms: u64,
     pub log_follow_interval_ms: u64,
+    pub log_tail_lines: u64,
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
     pub service: ServiceConfig,
@@ -109,6 +121,7 @@ pub struct SandboxConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ServiceConfig {
     pub label: String,
+    pub restart_delay_secs: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -123,18 +136,9 @@ pub const LOG_FORMAT_PRETTY: &str = "pretty";
 
 pub const STOP_SIGNAL_TERM: &str = "TERM";
 
-pub const SANDBOX_MODE_READ_ONLY: &str = "read-only";
-pub const SANDBOX_MODE_WORKSPACE_WRITE: &str = "workspace-write";
-pub const SANDBOX_MODE_DANGER_FULL_ACCESS: &str = "danger-full-access";
-
 const VALID_LOG_LEVELS: &[&str] = &["trace", "debug", "info", "warn", "error"];
 const VALID_LOG_FORMATS: &[&str] = &[LOG_FORMAT_JSON, LOG_FORMAT_PRETTY];
 const VALID_STOP_SIGNALS: &[&str] = &[STOP_SIGNAL_TERM, "INT", "QUIT", "HUP", "USR1", "USR2"];
-const VALID_SANDBOX_MODES: &[&str] = &[
-    SANDBOX_MODE_READ_ONLY,
-    SANDBOX_MODE_WORKSPACE_WRITE,
-    SANDBOX_MODE_DANGER_FULL_ACCESS,
-];
 
 pub fn validate_config(cfg: &AppConfig) -> Result<(), ConfigError> {
     validate_pm3_config(&cfg.pm3)?;
@@ -182,20 +186,63 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
             pm3.log_follow_interval_ms,
         ));
     }
+    if pm3.log_tail_lines < 1 {
+        return Err(ConfigError::InvalidLogTailLines(pm3.log_tail_lines));
+    }
     if !VALID_STOP_SIGNALS.contains(&pm3.stop_signal.as_str()) {
         return Err(ConfigError::InvalidStopSignal(pm3.stop_signal.clone()));
     }
     if pm3.restart.min_uptime_ms < 1 {
         return Err(ConfigError::InvalidMinUptime(pm3.restart.min_uptime_ms));
     }
-    if !VALID_SANDBOX_MODES.contains(&pm3.sandbox.mode.as_str()) {
-        return Err(ConfigError::InvalidSandboxMode(pm3.sandbox.mode.clone()));
+    if SandboxMode::parse(&pm3.sandbox.mode).is_none() {
+        return Err(ConfigError::InvalidSandboxMode {
+            mode: pm3.sandbox.mode.clone(),
+            expected: sandbox_mode_names(),
+        });
     }
-    if pm3.service.label.is_empty() {
-        return Err(ConfigError::InvalidServiceLabel);
-    }
+    validate_service_label(&pm3.service.label)?;
+    reject_line_break("pm3.home", &pm3.home)?;
+    reject_line_break("pm3.search_path", &pm3.search_path)?;
 
     Ok(())
+}
+
+fn validate_service_label(label: &str) -> Result<(), ConfigError> {
+    if label.is_empty() {
+        return Err(ConfigError::InvalidServiceLabel);
+    }
+    if label.starts_with('.') {
+        return Err(ConfigError::DottedServiceLabel(label.to_string()));
+    }
+    label
+        .chars()
+        .find(|letter| !is_label_letter(*letter))
+        .map_or(Ok(()), |character| {
+            Err(ConfigError::UnsafeServiceLabel {
+                label: label.to_string(),
+                character,
+            })
+        })
+}
+
+const fn is_label_letter(letter: char) -> bool {
+    letter.is_ascii_alphanumeric() || matches!(letter, '-' | '_' | '.')
+}
+
+fn reject_line_break(field: &'static str, value: &str) -> Result<(), ConfigError> {
+    if value.contains(['\n', '\r']) {
+        return Err(ConfigError::UnsafeLineBreak { field });
+    }
+    Ok(())
+}
+
+fn sandbox_mode_names() -> String {
+    SandboxMode::ALL
+        .iter()
+        .map(|mode| mode.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 pub fn validate_telemetry_config(t: &TelemetryConfig) -> Result<(), ConfigError> {

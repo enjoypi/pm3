@@ -64,7 +64,7 @@ ENV PM3_HOME=/home/nonroot/.pm3
 USER nonroot
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD ["/usr/local/bin/pm3", "--config", "/config.yaml", "list"]
+    CMD ["pgrep", "-x", "pm3"]
 
 ENTRYPOINT ["/usr/local/bin/pm3", "--config", "/config.yaml"]
 CMD ["daemon"]

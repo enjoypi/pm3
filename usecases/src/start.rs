@@ -2,7 +2,7 @@ use entities::{AppSpec, DependencyNode, ProcessIdentity, topo_sort, validate_spe
 
 use crate::{
     Ports, Result, UsecaseError, fingerprint::render_identity, log_paths::log_paths,
-    persist::save_table, ports::LaunchSpec, table::ProcessTable,
+    persist::save_table, ports::LaunchSpec, selector::AppSelector, table::ProcessTable,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -66,7 +66,11 @@ pub async fn start_apps(
     };
 
     let now_ms = ports.now_ms();
+    let mut fresh = Vec::with_capacity(specs.len());
     for spec in specs {
+        if table.find_by_name(&spec.name).is_none() {
+            fresh.push(spec.name.clone());
+        }
         table.upsert(spec.clone(), now_ms);
     }
 
@@ -74,19 +78,49 @@ pub async fn start_apps(
         outcomes: Vec::with_capacity(order.len()),
         failure: None,
     };
+    let mut failed_app = String::new();
     for name in &order {
         match launch(table, name, logs_dir, ports, StartMode::Register).await {
             Ok(outcome) => report.outcomes.push(outcome),
             Err(error) => {
                 log_abandoned_start(name, &error);
+                failed_app.clone_from(name);
                 report.failure = Some(error);
                 break;
             }
         }
     }
-    let unsaved = save_table(table, ports).await.err();
-    report.failure = report.failure.or(unsaved);
+    if report.failure.is_some() {
+        forget_unlaunched(table, &fresh, &report.outcomes);
+    }
+    if let Err(error) = save_table(table, ports).await {
+        if report.failure.is_none() {
+            report.failure = Some(error);
+        } else {
+            log_unsaved_table(&failed_app, &error);
+        }
+    }
     report
+}
+
+fn forget_unlaunched(table: &mut ProcessTable, fresh: &[String], outcomes: &[StartOutcome]) {
+    for name in fresh {
+        let launched = outcomes.iter().any(|outcome| outcome.name == *name);
+        if !launched {
+            table.remove(&AppSelector::Name(name.clone()));
+        }
+    }
+}
+
+fn log_unsaved_table(app: &str, error: &UsecaseError) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "lifecycle",
+        action = "start",
+        app,
+        reason,
+        "pm3 cannot persist the process table after a failed start, so a daemon restart may lose the services it just started",
+    );
 }
 
 fn accepted_order(table: &ProcessTable, specs: &[AppSpec]) -> Result<Vec<String>> {

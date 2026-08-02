@@ -174,8 +174,23 @@ fn mapping(env: &BTreeMap<String, String>) -> String {
 }
 
 fn quote(raw: &str) -> String {
-    let escaped = raw.replace('\\', "\\\\").replace('"', "\\\"");
+    let mut escaped = String::with_capacity(raw.len() + 2);
+    for ch in raw.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            ch if ch.is_control() => push_hex_escape(&mut escaped, ch),
+            ch => escaped.push(ch),
+        }
+    }
     format!("\"{escaped}\"")
+}
+
+fn push_hex_escape(escaped: &mut String, ch: char) {
+    let _ = write!(escaped, "\\x{:02x}", ch as u32);
 }
 
 fn parse_env_pairs(pairs: &[String]) -> Result<BTreeMap<String, String>, AppsFileError> {

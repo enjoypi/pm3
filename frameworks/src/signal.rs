@@ -1,20 +1,58 @@
-use tokio::signal::unix::{SignalKind, signal};
+use std::io;
+
+use thiserror::Error;
+use tokio::signal::unix::{Signal, SignalKind, signal};
 
 const SIGNAL_INTERRUPT: &str = "SIGINT";
 const SIGNAL_TERMINATE: &str = "SIGTERM";
 
-pub async fn daemon_shutdown_signal() {
-    let mut interrupt = signal(SignalKind::interrupt())
-        .expect("internal error: SIGINT handler registration is infallible on unix targets");
-    let mut terminate = signal(SignalKind::terminate())
-        .expect("internal error: SIGTERM handler registration is infallible on unix targets");
+#[derive(Debug, Error)]
+pub enum SignalRegisterError {
+    #[error("cannot register the {signal} handler: {reason}")]
+    Register {
+        signal: &'static str,
+        reason: String,
+    },
+}
 
-    loop {
-        tokio::select! {
-            _ = interrupt.recv() => log_signal(SIGNAL_INTERRUPT, "ignored"),
-            _ = terminate.recv() => {
-                log_signal(SIGNAL_TERMINATE, "ok");
-                return;
+#[derive(Debug)]
+pub struct ShutdownSignals {
+    interrupt: Signal,
+    terminate: Signal,
+}
+
+impl ShutdownSignals {
+    pub fn register() -> Result<Self, SignalRegisterError> {
+        Self::register_with(&signal)
+    }
+
+    fn register_with(
+        register: &dyn Fn(SignalKind) -> io::Result<Signal>,
+    ) -> Result<Self, SignalRegisterError> {
+        let interrupt =
+            register(SignalKind::interrupt()).map_err(|e| SignalRegisterError::Register {
+                signal: SIGNAL_INTERRUPT,
+                reason: e.to_string(),
+            })?;
+        let terminate =
+            register(SignalKind::terminate()).map_err(|e| SignalRegisterError::Register {
+                signal: SIGNAL_TERMINATE,
+                reason: e.to_string(),
+            })?;
+        Ok(Self {
+            interrupt,
+            terminate,
+        })
+    }
+
+    pub async fn wait(mut self) {
+        loop {
+            tokio::select! {
+                _ = self.interrupt.recv() => log_signal(SIGNAL_INTERRUPT, "ignored"),
+                _ = self.terminate.recv() => {
+                    log_signal(SIGNAL_TERMINATE, "ok");
+                    return;
+                }
             }
         }
     }

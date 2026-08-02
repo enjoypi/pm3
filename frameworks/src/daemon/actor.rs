@@ -2,76 +2,30 @@ use std::{sync::Arc, time::Duration};
 
 use adapters::{
     AppSelector, Clock as _, DaemonCommand, DaemonOutcome, DaemonReply, DaemonRequest, ExitAction,
-    ExitOutcome, ProcessStatus, ProcessTable, ProcessView, RestartOutcome, Scheduler as _,
-    SpecSource, StartOutcome, StartReport, UsecaseError, delete_app, describe_app,
-    handle_child_exit, list_apps, materialise_workspace, persist_for_handover, restart_app,
-    resurrect, start_apps, stop_all_apps, stop_app,
+    ExitOutcome, Liveness, ProcessProbe as _, ProcessTable, ProcessView, RestartOutcome,
+    Scheduler as _, Signaler as _, SpecSource, StartKind, StartOutcome, StartReport, delete_app,
+    describe_app, handle_child_exit, list_apps, materialise_workspace, persist_for_handover,
+    restart_app, resurrect, start_apps, stop_all_apps, stop_app,
 };
 use tokio::sync::mpsc;
 
 use super::{
+    events::DaemonEvent,
+    logging::{
+        log_failure, log_handover, log_partial_start, log_settled, log_spared_force_kill,
+        log_stale_restart,
+    },
     ports::DaemonPorts,
     timers::{TimerBoard, log_armed, log_unschedulable},
 };
 
 #[derive(Debug)]
-pub enum DaemonEvent {
-    Command(DaemonCommand),
-    Exited {
-        name: String,
-        generation: u64,
-        outcome: ExitOutcome,
-    },
-    Restart {
-        name: String,
-    },
-    Fire {
-        name: String,
-        fire_at_ms: u64,
-    },
-    ForceKill {
-        name: String,
-        generation: u64,
-        pid: u32,
-    },
-    Shutdown,
-}
-
-#[derive(Debug)]
 pub struct Daemon {
+    pub(super) events: mpsc::Sender<DaemonEvent>,
     table: ProcessTable,
     ports: Arc<DaemonPorts>,
     specs: SpecSource,
-    events: mpsc::Sender<DaemonEvent>,
     board: TimerBoard,
-}
-
-pub async fn run(
-    mut daemon: Daemon,
-    commands: mpsc::Receiver<DaemonCommand>,
-    mut events: mpsc::Receiver<DaemonEvent>,
-) {
-    tokio::spawn(forward_commands(commands, daemon.events.clone()));
-    loop {
-        let event = events
-            .recv()
-            .await
-            .expect("internal error: the daemon holds an event sender, so the queue stays open");
-        let last = matches!(event, DaemonEvent::Shutdown);
-        daemon.apply(event).await;
-        if last {
-            return;
-        }
-    }
-}
-
-async fn forward_commands(
-    mut commands: mpsc::Receiver<DaemonCommand>,
-    events: mpsc::Sender<DaemonEvent>,
-) {
-    while let Some(command) = commands.recv().await {
-        events.send(DaemonEvent::Command(command)).await.ok();
-    }
 }
 
 impl Daemon {
@@ -91,7 +45,15 @@ impl Daemon {
     }
 
     pub async fn resurrect_saved_apps(&mut self) {
-        match resurrect(&mut self.table, &self.specs.logs_dir, &*self.ports).await {
+        let kill_timeout_ms = self.specs.config.kill_timeout_ms;
+        match resurrect(
+            &mut self.table,
+            &self.specs.logs_dir,
+            kill_timeout_ms,
+            &*self.ports,
+        )
+        .await
+        {
             Ok(outcomes) => self.watch_all(&outcomes),
             Err(error) => log_failure("resurrect", "-", &error),
         }
@@ -119,6 +81,7 @@ impl Daemon {
         if !self.board.is_current(name, generation) {
             return;
         }
+        self.board.cancel_force_kill(name);
         match handle_child_exit(&mut self.table, name, outcome, &*self.ports).await {
             Ok(ExitAction::RestartAfter { delay_ms }) => {
                 self.board.schedule_restart(name, delay_ms);
@@ -137,6 +100,7 @@ impl Daemon {
     }
 
     pub(super) async fn restart_now(&mut self, name: &str) {
+        self.board.cancel_restart(name);
         let attempt = restart_app(
             &mut self.table,
             &AppSelector::Name(name.to_string()),
@@ -164,20 +128,33 @@ impl Daemon {
                 name,
                 force_kill_pid,
             } => {
-                self.schedule_force_kill(&name, force_kill_pid);
+                let token = self.identity_token(&name);
+                self.schedule_force_kill(&name, force_kill_pid, token);
                 name
             }
         }
     }
 
-    pub async fn on_force_kill(&self, name: &str, generation: u64, pid: u32) {
+    pub async fn on_force_kill(&self, name: &str, generation: u64, pid: u32, token: Option<&str>) {
         if !self.board.is_current(name, generation) {
             return;
         }
         if !self.ports.tracked_pids().await.contains(&pid) {
             return;
         }
+        if self.pid_was_recycled(pid, token).await {
+            log_spared_force_kill(name, pid);
+            return;
+        }
         self.ports.force_kill(pid).await.ok();
+    }
+
+    async fn pid_was_recycled(&self, pid: u32, token: Option<&str>) -> bool {
+        let (Liveness::Alive(current), Some(expected)) = (self.ports.identity(pid).await, token)
+        else {
+            return false;
+        };
+        current != expected
     }
 
     pub async fn shutdown(&mut self) {
@@ -186,6 +163,9 @@ impl Daemon {
         match persist_for_handover(&self.table, &*self.ports).await {
             Ok(draining) => log_handover(draining.len()),
             Err(error) => log_failure("shutdown", "-", &error),
+        }
+        if !self.wait_until_drained().await {
+            self.force_kill_survivors().await;
         }
         let survivors = self
             .table
@@ -202,7 +182,7 @@ impl Daemon {
         );
     }
 
-    async fn apply(&mut self, event: DaemonEvent) {
+    pub(super) async fn apply(&mut self, event: DaemonEvent) {
         match event {
             DaemonEvent::Command(command) => {
                 let DaemonCommand { request, reply } = command;
@@ -220,7 +200,11 @@ impl Daemon {
                 name,
                 generation,
                 pid,
-            } => self.on_force_kill(&name, generation, pid).await,
+                token,
+            } => {
+                self.on_force_kill(&name, generation, pid, token.as_deref())
+                    .await;
+            }
             DaemonEvent::Shutdown => self.shutdown().await,
         }
     }
@@ -238,8 +222,11 @@ impl Daemon {
         self.watch_all(&outcomes);
         for outcome in &outcomes {
             self.board.cancel_restart(&outcome.name);
-            if outcome.kind.needs_timer() {
-                self.arm_timer(&outcome.name);
+            match outcome.kind {
+                StartKind::AlreadyRunning => self.reconcile_timer(&outcome.name),
+                StartKind::Spawned | StartKind::Adopted | StartKind::Scheduled => {
+                    self.arm_timer(&outcome.name);
+                }
             }
         }
         let Some(error) = failure else {
@@ -270,7 +257,8 @@ impl Daemon {
         let outcome = stop_app(&mut self.table, selector, &*self.ports).await?;
         self.board.disarm(&outcome.name);
         self.board.cancel_restart(&outcome.name);
-        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid);
+        let token = self.identity_token(&outcome.name);
+        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
         Ok(DaemonReply::Stopped { name: outcome.name })
     }
 
@@ -289,11 +277,12 @@ impl Daemon {
     }
 
     async fn delete(&mut self, selector: &AppSelector) -> DaemonOutcome {
+        let token = self.identity_token_of(selector);
         let outcome = delete_app(&mut self.table, selector, &*self.ports).await?;
         self.board.disarm(&outcome.name);
         self.board.cancel_restart(&outcome.name);
         self.board.forget_generation(&outcome.name);
-        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid);
+        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
         Ok(DaemonReply::Deleted { name: outcome.name })
     }
 
@@ -301,11 +290,47 @@ impl Daemon {
         self.board.disarm_all();
         self.board.cancel_all_restarts();
         let stopped = stop_all_apps(&mut self.table, &*self.ports).await?;
-        let names: Vec<String> = stopped.into_iter().map(|outcome| outcome.name).collect();
-        if !self.wait_until_drained().await {
-            self.force_kill_survivors().await;
+        let mut names = Vec::with_capacity(stopped.len());
+        let mut covered = Vec::with_capacity(stopped.len());
+        for outcome in &stopped {
+            names.push(outcome.name.clone());
+            covered.extend(outcome.force_kill_pid);
+            let token = self.identity_token(&outcome.name);
+            self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token);
         }
+        self.sweep_strays(&covered).await;
         Ok(DaemonReply::StoppedAll { names })
+    }
+
+    async fn sweep_strays(&mut self, covered: &[u32]) {
+        let strays: Vec<u32> = self
+            .ports
+            .tracked_pids()
+            .await
+            .into_iter()
+            .filter(|pid| !covered.contains(pid))
+            .collect();
+        for pid in strays {
+            let (name, token) = self.stray_owner(pid);
+            self.schedule_force_kill(&name, Some(pid), token);
+        }
+    }
+
+    fn stray_owner(&self, pid: u32) -> (String, Option<String>) {
+        let Some(record) = self
+            .table
+            .records()
+            .iter()
+            .find(|record| record.runtime.pid == Some(pid))
+        else {
+            return (format!("stray-{pid}"), None);
+        };
+        let token = record
+            .runtime
+            .identity
+            .as_ref()
+            .map(|identity| identity.token.clone());
+        (record.runtime.name.clone(), token)
     }
 
     async fn wait_until_drained(&self) -> bool {
@@ -313,18 +338,37 @@ impl Daemon {
         let step_ms = self.specs.config.daemon_poll_interval_ms.max(1);
         let mut waited_ms = 0;
         while waited_ms < budget_ms {
-            if self.ports.tracked_pids().await.is_empty() {
+            if self.drained().await {
                 return true;
             }
             tokio::time::sleep(Duration::from_millis(step_ms)).await;
             waited_ms = waited_ms.saturating_add(step_ms);
         }
-        self.ports.tracked_pids().await.is_empty()
+        self.drained().await
+    }
+
+    async fn drained(&self) -> bool {
+        let tracked = self.ports.tracked_pids().await;
+        let preserved = self.preserved_pids();
+        tracked.iter().all(|pid| preserved.contains(pid))
+    }
+
+    fn preserved_pids(&self) -> Vec<u32> {
+        self.table
+            .records()
+            .iter()
+            .filter(|record| record.runtime.status.is_running())
+            .filter_map(|record| record.runtime.pid)
+            .collect()
     }
 
     async fn force_kill_survivors(&self) {
+        let preserved = self.preserved_pids();
         let mut sweeps = Vec::new();
         for pid in self.ports.tracked_pids().await {
+            if preserved.contains(&pid) {
+                continue;
+            }
             let ports = Arc::clone(&self.ports);
             sweeps.push(tokio::spawn(
                 async move { ports.force_kill(pid).await.ok() },
@@ -386,9 +430,17 @@ impl Daemon {
             .and_then(|record| record.spec.schedule.clone())
     }
 
-    fn schedule_force_kill(&self, name: &str, pid: Option<u32>) {
+    fn reconcile_timer(&mut self, name: &str) {
+        if self.schedule_of(name).is_some() {
+            self.arm_timer(name);
+        } else {
+            self.board.disarm(name);
+        }
+    }
+
+    fn schedule_force_kill(&mut self, name: &str, pid: Option<u32>, token: Option<String>) {
         let delay = Duration::from_millis(self.specs.config.kill_timeout_ms);
-        self.board.schedule_force_kill(name, pid, delay);
+        self.board.schedule_force_kill(name, pid, token, delay);
     }
 
     fn watch_all(&mut self, outcomes: &[StartOutcome]) {
@@ -423,8 +475,12 @@ impl Daemon {
     }
 
     fn identity_token(&self, name: &str) -> Option<String> {
+        self.identity_token_of(&AppSelector::Name(name.to_string()))
+    }
+
+    fn identity_token_of(&self, selector: &AppSelector) -> Option<String> {
         self.table
-            .find(&AppSelector::Name(name.to_string()))
+            .find(selector)
             .and_then(|record| record.runtime.identity.as_ref())
             .map(|identity| identity.token.clone())
     }
@@ -436,58 +492,6 @@ fn refused_services(requested: &[String], outcomes: &[StartOutcome]) -> Vec<Stri
         .filter(|name| !outcomes.iter().any(|outcome| &outcome.name == *name))
         .cloned()
         .collect()
-}
-
-fn log_settled(app: &str, status: ProcessStatus) {
-    let status = status.as_str();
-    tracing::debug!(
-        feature = "supervisor",
-        action = "settled",
-        app,
-        status,
-        "managed app settled",
-    );
-}
-
-fn log_stale_restart(app: &str) {
-    tracing::debug!(
-        feature = "supervisor",
-        action = "restart",
-        app,
-        "pm3 daemon dropped a restart that was cancelled while it was waiting",
-    );
-}
-
-fn log_handover(draining: usize) {
-    tracing::debug!(
-        feature = "lifecycle",
-        operation = "shutdown",
-        draining,
-        "pm3 daemon left the services it was told to stop for the next daemon to settle",
-    );
-}
-
-fn log_partial_start(refused: &[String], error: &UsecaseError) {
-    let apps = refused.join(",");
-    let reason = error.to_string();
-    tracing::warn!(
-        feature = "lifecycle",
-        action = "start",
-        apps,
-        reason,
-        "pm3 daemon started part of the batch and keeps the service files of what it started",
-    );
-}
-
-fn log_failure(action: &str, app: &str, error: &UsecaseError) {
-    let reason = error.to_string();
-    tracing::warn!(
-        feature = "supervisor",
-        action,
-        app,
-        reason,
-        "pm3 daemon cannot finish a supervision step",
-    );
 }
 
 #[cfg(test)]

@@ -135,6 +135,23 @@ async fn an_operator_restart_reschedules_without_delay() {
 }
 
 #[tokio::test]
+async fn an_exit_after_a_clock_rollback_does_not_count_as_unstable() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        max_restarts: 1,
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    ports.advance_to(500);
+    let action = handle_child_exit(&mut table, "api", CRASH, &ports)
+        .await
+        .expect("exit handled");
+    assert_eq!(action, ExitAction::RestartAfter { delay_ms: 250 });
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.unstable_restarts, 0);
+}
+
+#[tokio::test]
 async fn an_exit_for_an_unknown_app_reports_not_found() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();

@@ -28,6 +28,7 @@ impl DaemonPorts {
     pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<HostSandbox>) -> Self {
         let stop_signal = specs.config.stop_signal.clone();
         let command_timeout_ms = specs.config.command_timeout_ms;
+        let poll_interval_ms = specs.config.daemon_poll_interval_ms;
         let cadence = PollCadence {
             interval_ms: specs.config.daemon_poll_interval_ms,
             max_interval_ms: specs.config.daemon_poll_max_interval_ms,
@@ -38,7 +39,10 @@ impl DaemonPorts {
             wrapper: SandboxCommandWrapper::new(backend),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
-            probe: Arc::new(PsProcessProbe::with_timeout(command_timeout_ms)),
+            probe: Arc::new(
+                PsProcessProbe::with_timeout(command_timeout_ms)
+                    .with_poll_interval(poll_interval_ms),
+            ),
             watch: Arc::new(AdoptedWatch::default()),
             fingerprinter: Sha256Fingerprinter,
             scheduler: CronScheduler,
@@ -60,10 +64,6 @@ impl DaemonPorts {
 
     pub async fn tracked_pids(&self) -> Vec<u32> {
         self.launcher.tracked_pids().await
-    }
-
-    pub async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
-        self.signaler.force_kill(pid).await
     }
 }
 
@@ -125,6 +125,10 @@ impl ProcessProbe for DaemonPorts {
     async fn identity(&self, pid: u32) -> Liveness {
         self.probe.identity(pid).await
     }
+
+    async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
+        self.probe.wait_gone(pid, timeout_ms).await
+    }
 }
 
 impl Ports for DaemonPorts {}
@@ -132,6 +136,10 @@ impl Ports for DaemonPorts {}
 impl Signaler for DaemonPorts {
     async fn terminate(&self, pid: u32) -> Result<(), SignalError> {
         self.signaler.terminate(pid).await
+    }
+
+    async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
+        self.signaler.force_kill(pid).await
     }
 }
 

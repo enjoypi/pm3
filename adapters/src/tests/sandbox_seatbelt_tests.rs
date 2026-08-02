@@ -69,6 +69,12 @@ fn a_writable_root_keeps_no_trailing_slash() {
 }
 
 #[test]
+fn the_filesystem_root_stays_a_root_when_writable() {
+    let profile = seatbelt_profile(&policy(SandboxMode::WorkspaceWrite, false, &["/"]));
+    assert!(profile.contains("(subpath \"/\")"), "got: {profile}");
+}
+
+#[test]
 fn the_command_is_handed_to_sandbox_exec_after_a_separator() {
     let wrapped = seatbelt_argv(
         SEATBELT_PROGRAM,

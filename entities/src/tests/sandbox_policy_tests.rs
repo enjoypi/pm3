@@ -11,11 +11,7 @@ fn workspace_policy() -> SandboxPolicy {
 
 #[test]
 fn parse_round_trips_every_mode() {
-    for mode in [
-        SandboxMode::ReadOnly,
-        SandboxMode::WorkspaceWrite,
-        SandboxMode::DangerFullAccess,
-    ] {
+    for mode in SandboxMode::ALL {
         assert_eq!(SandboxMode::parse(mode.as_str()), Some(mode));
     }
 }
@@ -95,6 +91,30 @@ fn validate_rejects_relative_writable_root() {
 }
 
 #[test]
+fn validate_rejects_empty_derived_root() {
+    let policy = SandboxPolicy {
+        derived_roots: vec![String::new()],
+        ..workspace_policy()
+    };
+    let err = validate_policy(&policy).unwrap_err();
+    assert!(matches!(err, PolicyError::EmptyDerivedRoot), "got: {err}");
+}
+
+#[test]
+fn validate_rejects_relative_derived_root_without_blaming_the_declaration() {
+    let policy = SandboxPolicy {
+        derived_roots: vec!["var/log".to_string()],
+        ..workspace_policy()
+    };
+    let err = validate_policy(&policy).unwrap_err();
+    assert!(
+        matches!(err, PolicyError::RelativeDerivedRoot(ref root) if root == "var/log"),
+        "got: {err}"
+    );
+    assert!(err.to_string().contains("derived"), "got: {err}");
+}
+
+#[test]
 fn validate_rejects_writable_roots_under_read_only_mode() {
     let policy = SandboxPolicy {
         mode: SandboxMode::ReadOnly,
@@ -112,6 +132,8 @@ fn every_policy_error_renders_a_message() {
     let errors = [
         PolicyError::EmptyWritableRoot,
         PolicyError::RelativeWritableRoot("srv".to_string()),
+        PolicyError::EmptyDerivedRoot,
+        PolicyError::RelativeDerivedRoot("var/log".to_string()),
         PolicyError::WritableRootsWithoutWriteAccess,
     ];
     for err in errors {

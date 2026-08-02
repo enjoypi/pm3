@@ -13,7 +13,7 @@ fn gives_up_when_autorestart_is_disabled() {
         autorestart: false,
         ..POLICY
     };
-    let decision = decide_restart(policy, 5000, 0);
+    let decision = decide_restart(policy, Some(5000), 0);
     assert_eq!(
         decision,
         RestartDecision::GiveUp {
@@ -28,7 +28,7 @@ fn autorestart_disabled_preserves_unstable_counter() {
         autorestart: false,
         ..POLICY
     };
-    let decision = decide_restart(policy, 10, 7);
+    let decision = decide_restart(policy, Some(10), 7);
     assert_eq!(
         decision,
         RestartDecision::GiveUp {
@@ -39,7 +39,7 @@ fn autorestart_disabled_preserves_unstable_counter() {
 
 #[test]
 fn stable_run_resets_unstable_counter() {
-    let decision = decide_restart(POLICY, 5000, 2);
+    let decision = decide_restart(POLICY, Some(5000), 2);
     assert_eq!(
         decision,
         RestartDecision::Restart {
@@ -51,7 +51,7 @@ fn stable_run_resets_unstable_counter() {
 
 #[test]
 fn uptime_equal_to_min_uptime_counts_as_stable() {
-    let decision = decide_restart(POLICY, 1000, 2);
+    let decision = decide_restart(POLICY, Some(1000), 2);
     assert_eq!(
         decision,
         RestartDecision::Restart {
@@ -63,7 +63,7 @@ fn uptime_equal_to_min_uptime_counts_as_stable() {
 
 #[test]
 fn uptime_one_ms_below_min_uptime_counts_as_unstable() {
-    let decision = decide_restart(POLICY, 999, 0);
+    let decision = decide_restart(POLICY, Some(999), 0);
     assert_eq!(
         decision,
         RestartDecision::Restart {
@@ -75,7 +75,7 @@ fn uptime_one_ms_below_min_uptime_counts_as_unstable() {
 
 #[test]
 fn unstable_run_reaching_max_restarts_gives_up() {
-    let decision = decide_restart(POLICY, 10, 1);
+    let decision = decide_restart(POLICY, Some(10), 1);
     assert_eq!(
         decision,
         RestartDecision::GiveUp {
@@ -90,7 +90,7 @@ fn unstable_run_one_below_max_restarts_still_restarts() {
         max_restarts: 3,
         ..POLICY
     };
-    let decision = decide_restart(policy, 10, 1);
+    let decision = decide_restart(policy, Some(10), 1);
     assert_eq!(
         decision,
         RestartDecision::Restart {
@@ -102,7 +102,7 @@ fn unstable_run_one_below_max_restarts_still_restarts() {
 
 #[test]
 fn unstable_run_beyond_max_restarts_gives_up() {
-    let decision = decide_restart(POLICY, 10, 2);
+    let decision = decide_restart(POLICY, Some(10), 2);
     assert_eq!(
         decision,
         RestartDecision::GiveUp {
@@ -112,23 +112,52 @@ fn unstable_run_beyond_max_restarts_gives_up() {
 }
 
 #[test]
-fn zero_max_restarts_gives_up_on_first_unstable_exit() {
+fn zero_max_restarts_disables_the_breaker() {
     let policy = RestartPolicy {
         max_restarts: 0,
         ..POLICY
     };
-    let decision = decide_restart(policy, 10, 0);
+    let decision = decide_restart(policy, Some(10), 5);
     assert_eq!(
         decision,
-        RestartDecision::GiveUp {
-            unstable_restarts: 1
+        RestartDecision::Restart {
+            delay_ms: 250,
+            unstable_restarts: 6,
+        }
+    );
+}
+
+#[test]
+fn a_stable_exit_with_zero_max_restarts_still_restarts() {
+    let policy = RestartPolicy {
+        max_restarts: 0,
+        ..POLICY
+    };
+    let decision = decide_restart(policy, Some(5000), 0);
+    assert_eq!(
+        decision,
+        RestartDecision::Restart {
+            delay_ms: 250,
+            unstable_restarts: 0,
+        }
+    );
+}
+
+#[test]
+fn an_unknown_uptime_does_not_count_as_unstable() {
+    let decision = decide_restart(POLICY, None, 1);
+    assert_eq!(
+        decision,
+        RestartDecision::Restart {
+            delay_ms: 250,
+            unstable_restarts: 0,
         }
     );
 }
 
 #[test]
 fn unstable_counter_saturates_instead_of_wrapping() {
-    let decision = decide_restart(POLICY, 10, u32::MAX);
+    let decision = decide_restart(POLICY, Some(10), u32::MAX);
     assert_eq!(
         decision,
         RestartDecision::GiveUp {

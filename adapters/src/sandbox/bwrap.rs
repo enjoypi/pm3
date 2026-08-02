@@ -1,5 +1,7 @@
 use usecases::{SandboxPolicy, WrappedCommand};
 
+use super::roots::normalize_root;
+
 #[must_use]
 pub fn bwrap_argv(
     sandbox_program: &str,
@@ -19,7 +21,7 @@ pub fn bwrap_argv(
     sandbox_args.push("--proc".to_string());
     sandbox_args.push("/proc".to_string());
     for root in policy.granted_roots() {
-        let trimmed = root.trim_end_matches('/');
+        let trimmed = normalize_root(root);
         sandbox_args.push("--bind".to_string());
         sandbox_args.push(trimmed.to_string());
         sandbox_args.push(trimmed.to_string());

@@ -34,6 +34,12 @@ pub enum ClientError {
     #[error("cannot connect to the pm3 daemon socket '{path}': {reason}")]
     Connect { path: String, reason: String },
 
+    #[error("cannot send the request to the pm3 daemon on '{path}': {reason}")]
+    Send { path: String, reason: String },
+
+    #[error("cannot read the pm3 daemon reply from '{path}': {reason}")]
+    Receive { path: String, reason: String },
+
     #[error("cannot read the pm3 daemon reply from '{path}': the daemon answered nothing")]
     Silent { path: String },
 
@@ -90,16 +96,36 @@ impl UdsClient {
                     path: text(&self.socket),
                     reason: e.to_string(),
                 })?;
-        stream.write_all(request.as_bytes()).await.ok();
-        let mut raw = String::new();
-        stream.read_to_string(&mut raw).await.ok();
-        if raw.is_empty() {
-            return Err(ClientError::Silent {
-                path: text(&self.socket),
-            });
-        }
-        Ok(raw)
+        converse(&mut stream, request, &text(&self.socket)).await
     }
+}
+
+async fn converse(
+    stream: &mut UnixStream,
+    request: &str,
+    path: &str,
+) -> Result<String, ClientError> {
+    let sent = stream.write_all(request.as_bytes()).await;
+    let mut raw = String::new();
+    let received = stream.read_to_string(&mut raw).await;
+    if !raw.is_empty() {
+        return Ok(raw);
+    }
+    if let Err(error) = sent {
+        return Err(ClientError::Send {
+            path: path.to_string(),
+            reason: error.to_string(),
+        });
+    }
+    if let Err(error) = received {
+        return Err(ClientError::Receive {
+            path: path.to_string(),
+            reason: error.to_string(),
+        });
+    }
+    Err(ClientError::Silent {
+        path: path.to_string(),
+    })
 }
 
 #[must_use]
