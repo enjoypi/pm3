@@ -47,6 +47,7 @@ async function instrumentAndExport(
   fresh: boolean,
 ): Promise<number> {
   const cleaned = await runCargo([
+    "+nightly",
     "llvm-cov",
     "clean",
     fresh ? "--workspace" : "--profraw-only",
