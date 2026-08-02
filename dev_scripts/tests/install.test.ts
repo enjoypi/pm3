@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   listedServices,
+  overwrittenByInstall,
   readServiceReport,
   systemdMainPid,
   waitForSupervision,
@@ -87,6 +88,15 @@ describe("listedServices", () => {
     expect(await listedServices(join(dir, "missing"), configSource)).toEqual(
       [],
     );
+  });
+});
+
+describe("overwrittenByInstall", () => {
+  test("yields nothing when the binary is absent", async () => {
+    const dir = await sandbox();
+    expect(
+      await overwrittenByInstall(join(dir, "missing"), configSource),
+    ).toEqual([]);
   });
 });
 
