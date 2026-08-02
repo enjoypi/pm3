@@ -33,6 +33,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 沙箱与路径
 
 - macOS `sandbox-exec` 的 `subpath` 只认真实路径，`/var/...` 这类符号链接不匹配 → spawn 前必须 canonicalize `cwd` 与 `writable_roots`
+- 后端程序名从 `SandboxProgramSet` 取（`SandboxBackend::resolve(&programs, search_path)`），`SandboxBackend` 本身只是 `Seatbelt`/`Bwrap` 两个标签、不再持有路径常量；`detect_host_backend` 在 `frameworks` 侧由 `SandboxProgramSet::from_config(&config.sandbox)` 喂入
 - `materialise_workspace` 里展开 `${PM3_SVC_CWD}` MUST 排在 `spec.cwd = real_path(...)` **之后**；提前替换会把未 canonicalize 的 cwd 写进 args，正好复现上面那个陷阱
   回归测试：`src/tests/workspace_tests.rs::a_placeholder_expands_to_the_real_path_not_the_symlink` 与 `frameworks/tests/sandbox_isolation.rs::a_confined_app_can_write_through_the_cwd_placeholder`
 
@@ -48,7 +49,9 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 
 ### 服务管理器
 
-- unit 文件位置由 OS 约定在**本层**派生（`~/Library/LaunchAgents/{label}.plist` / `~/.config/systemd/user/{label}.service`），**不进配置**——单个配置项无法同时对两个平台正确；`$HOME` 由 `frameworks` 注入，测试传 tempdir 就不会碰真实 `~`
+- unit 文件位置由 OS 约定在**本层**派生（`~/Library/LaunchAgents/{label}.plist` / `~/.config/systemd/user/{label}.service`），**不进配置**——单个配置项无法同时对两个平台正确；`$HOME` 由 `frameworks` 注入，测试传 tempdir 就不会碰真实 `~`。但**管理器二进制的路径进配置**（`ServiceProgramSet::from_config`，见根 `CLAUDE.md`「配置与路径」）：`ServiceProgramSet` 刻意没有 `Default` impl，唯一生产构造点是 `open_service_session`，测试仍可经 `ServiceContext.programs: Option<&_>` 注入替身
+- **两平台的「何时重启」语义靠 `restart_condition` 统一**：`always` → systemd `Restart=always` / launchd `KeepAlive=<true/>`；`on-failure` → systemd `Restart=on-failure` / launchd `KeepAlive=<dict><key>SuccessfulExit</key><false/></dict>`。此前 systemd 侧写死 `on-failure` 而 launchd 侧写死无条件 `KeepAlive`，同一份配置在两个平台上行为相反（macOS 正常退出会被拉起、Linux 不会）。默认值取 `always`（与 `restart.autorestart: true` 的意图一致），所以**从旧版升上来的 Linux 机器跑 `service install --force` 后重启行为会变**，要旧语义就把 `pm3.service.restart_condition` 设回 `on-failure`
+- `capture()` MUST 包 `command_timeout_ms` 超时：`systemctl --user` 在无 bus 的非登录会话里、`launchctl load` 在 launchd 繁忙时都可能长时间挂住，没有超时会让 `pm3 service install/uninstall` 无限期卡死。失败走 `ServiceCommandError::Stalled`
 - `ServiceStep::Run` 失败即中止整个 plan，`TryRun` 失败只记 warn 并把原因收进 `execute_plan` 返回的 skipped 列表（`install_service`/`uninstall_service` 都追加到报告末尾）→ 「装不上就该报错」的步骤用 `Run`，「装不上也无妨、只影响后续可用性」的用 `TryRun`
 - **卸载路径的服务管理器调用一律 `TryRun`**：`launchctl unload` / `systemctl --user disable --now` / `daemon-reload` 用 `Run` 会让「job 未 load」或「无 bus 的非登录会话」把 `Remove{unit_path}` 挡在后面，unit 文件永远删不掉、重跑每次同样失败，而根 `CLAUDE.md` 的换代顺序第一步正是 `service uninstall`。卸载的成败标准是「unit 文件没了」，不是「管理器答应了」
 - `execute_plan` 失败时会**回滚本次新建的文件**（`Write` 前 `try_exists` 为 false 的那些）：install 的 `load` 失败不会留下半装状态让 `query_status` 谎报 `installed, not running`；已存在、只是被覆写的文件不回滚（那可能是运维自己的）
