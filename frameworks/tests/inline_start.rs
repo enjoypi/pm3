@@ -5,7 +5,9 @@
 
 mod common;
 
-use self::common::{PM3, home, pm3, pm3_with_stdin, shutdown_daemon, stderr_of, stdout_of};
+use self::common::{
+    PM3, home, pm3, pm3_with_stdin, shutdown_daemon, stderr_of, stdout_of, wait_for_listing,
+};
 
 const NAME: &str = "sleeper";
 
@@ -117,12 +119,7 @@ fn answering_yes_restarts_the_running_service_after_a_config_change() {
     assert!(shown.contains("restart to apply? [y/N]"), "{shown}");
     assert!(shown.contains("restarted sleeper"), "{shown}");
 
-    let listed = pm3(&home, &["list"]);
-    assert!(
-        stdout_of(&listed).contains("online"),
-        "{}",
-        stdout_of(&listed)
-    );
+    wait_for_listing(&home, "online");
     shutdown_daemon(&home);
 }
 
