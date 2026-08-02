@@ -47,6 +47,30 @@ async fn a_socket_path_blocked_by_a_directory_is_reported() {
 }
 
 #[tokio::test]
+async fn a_bound_socket_is_owner_only() {
+    let dir = temp_dir();
+    let path = dir.path().join("pm3.sock");
+    let outcome = bind_uds(&path).await.expect("should bind");
+    assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
+    let mode = std::fs::metadata(&path)
+        .expect("stat the socket")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600, "got: {mode:o}");
+}
+
+#[tokio::test]
+async fn an_unrestrictable_socket_path_is_reported() {
+    let dir = temp_dir();
+    let err = restrict_to_owner(&dir.path().join("absent.sock"))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot restrict the pm3 socket"), "got: {err}");
+}
+
+#[tokio::test]
 async fn an_unbindable_socket_path_is_reported() {
     let dir = temp_dir();
     let path = dir.path().join("absent").join("pm3.sock");

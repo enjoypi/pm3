@@ -1,10 +1,18 @@
-use std::{fs, os::unix::fs::PermissionsExt as _, sync::Arc};
+use std::{
+    fs,
+    os::unix::fs::PermissionsExt as _,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use usecases::{LaunchSpec, ProcessLauncher as _};
 
 use super::*;
 
 const POLL_MS: u64 = 10;
+const PROBE_TIMEOUT_MS: u64 = 5000;
 const CADENCE: PollCadence = PollCadence {
     interval_ms: POLL_MS,
     max_interval_ms: POLL_MS,
@@ -45,8 +53,9 @@ fn fixture() -> Fixture {
     .expect("should write a fake ps");
     fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
         .expect("should make the fake ps executable");
-    let probe = Arc::new(PsProcessProbe::with_program(
+    let probe = Arc::new(PsProcessProbe::new(
         script.to_string_lossy().into_owned(),
+        PROBE_TIMEOUT_MS,
     ));
     Fixture {
         dir,
@@ -302,6 +311,63 @@ async fn the_shared_poller_stops_once_the_last_watched_process_leaves() {
         tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;
     }
     panic!("the shared poller should wind down once nothing is watched");
+}
+
+#[tokio::test]
+async fn a_second_waiter_for_the_same_pid_does_not_release_the_first() {
+    let fixture = fixture();
+    fixture.mark_alive();
+    let launcher = Arc::new(TokioProcessLauncher::default());
+    launcher.adopt(ADOPTED_PID).await;
+    let really_gone = Arc::new(AtomicBool::new(false));
+    let first = {
+        let launcher = Arc::clone(&launcher);
+        let watch = Arc::clone(&fixture.watch);
+        let probe = Arc::clone(&fixture.probe);
+        let really_gone = Arc::clone(&really_gone);
+        tokio::spawn(async move {
+            let outcome = wait_for_exit(
+                &launcher,
+                &watch,
+                probe,
+                ADOPTED_PID,
+                Some(FIXTURE_TOKEN.to_string()),
+                CADENCE,
+            )
+            .await;
+            assert!(
+                really_gone.load(Ordering::SeqCst),
+                "a duplicate registration must not complete the waiter that came first"
+            );
+            outcome
+        })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;
+    let recycled = wait_for_exit(
+        &launcher,
+        &fixture.watch,
+        Arc::clone(&fixture.probe),
+        ADOPTED_PID,
+        Some("Mon Jan 01 00:00:00 2020".to_string()),
+        CADENCE,
+    );
+    let reaper = async {
+        tokio::time::sleep(std::time::Duration::from_millis(POLL_MS * 4)).await;
+        fixture.mark_gone();
+        really_gone.store(true, Ordering::SeqCst);
+    };
+    let (outcome, ()) = tokio::join!(recycled, reaper);
+    assert_eq!(
+        outcome.expect("a recycled pid reports an exit").exit_code,
+        None
+    );
+    let first_outcome = first.await.expect("join the first waiter");
+    assert_eq!(
+        first_outcome
+            .expect("the first waiter reports an exit")
+            .exit_code,
+        None
+    );
 }
 
 #[tokio::test]

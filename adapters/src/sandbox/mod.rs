@@ -2,6 +2,7 @@ pub mod backend;
 pub mod bwrap;
 pub mod seatbelt;
 
+mod roots;
 mod wrapper;
 
 pub use self::{

@@ -3,7 +3,9 @@ use std::fmt::Write as _;
 use thiserror::Error;
 
 const FIELD_COUNT: usize = 5;
-const FIELD_BOUNDS: [(u32, u32); FIELD_COUNT] = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)];
+const FIELD_BOUNDS: [(u32, u32); FIELD_COUNT] = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)];
+const WEEKDAY_INDEX: usize = 4;
+const SUNDAY_ALIAS: u32 = 7;
 const RANDOM_MARK: char = '~';
 const STEP_MARK: char = '/';
 
@@ -31,7 +33,7 @@ pub fn expand_random(pattern: &str, rng: &mut fastrand::Rng) -> Result<String, E
     let mut expanded = String::with_capacity(pattern.len());
     for (index, field) in fields.iter().enumerate() {
         let bounds = FIELD_BOUNDS[index];
-        let rendered = expand_field(field, bounds, rng)?;
+        let rendered = expand_field(field, bounds, index == WEEKDAY_INDEX, rng)?;
         let separator = if index == 0 { "" } else { " " };
         let _ = write!(expanded, "{separator}{rendered}");
     }
@@ -41,6 +43,7 @@ pub fn expand_random(pattern: &str, rng: &mut fastrand::Rng) -> Result<String, E
 fn expand_field(
     field: &str,
     bounds: (u32, u32),
+    weekday: bool,
     rng: &mut fastrand::Rng,
 ) -> Result<String, ExpandError> {
     let Some((low_text, tail)) = field.split_once(RANDOM_MARK) else {
@@ -50,10 +53,19 @@ fn expand_field(
     let (low, high) = parse_bounds(field, low_text, high_text, bounds)?;
 
     let Some(step) = step else {
-        return Ok(rng.u32(low..=high).to_string());
+        return Ok(normalise_weekday(rng.u32(low..=high), weekday).to_string());
     };
     let offset = low.saturating_add(rng.u32(0..step));
-    Ok(format!("{}-{high}/{step}", offset.min(high)))
+    let offset = normalise_weekday(offset.min(high), weekday);
+    Ok(format!("{offset}-{high}/{step}"))
+}
+
+const fn normalise_weekday(value: u32, weekday: bool) -> u32 {
+    if weekday && value == SUNDAY_ALIAS {
+        0
+    } else {
+        value
+    }
 }
 
 fn split_step<'t>(field: &str, tail: &'t str) -> Result<(&'t str, Option<u32>), ExpandError> {

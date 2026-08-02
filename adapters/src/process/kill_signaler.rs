@@ -3,13 +3,9 @@ use std::time::Duration;
 use tokio::{process::Command, time::timeout};
 use usecases::{SignalError, Signaler};
 
-use crate::{
-    config::STOP_SIGNAL_TERM,
-    exit_status::{describe_refusal, exit_code_of},
-};
+use crate::exit_status::{describe_refusal, exit_code_of};
 
 pub const KILL_PROGRAM: &str = "/bin/kill";
-pub const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 5000;
 
 const FORCE_SIGNAL: &str = "KILL";
 const ARGUMENT_TERMINATOR: &str = "--";
@@ -34,21 +30,8 @@ impl KillSignaler {
     }
 
     #[must_use]
-    pub fn with_program(program: String) -> Self {
-        Self::new(
-            program,
-            STOP_SIGNAL_TERM.to_string(),
-            DEFAULT_COMMAND_TIMEOUT_MS,
-        )
-    }
-
-    #[must_use]
     pub fn with_stop_signal(stop_signal: String, timeout_ms: u64) -> Self {
         Self::new(KILL_PROGRAM.to_string(), stop_signal, timeout_ms)
-    }
-
-    pub async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
-        self.deliver(FORCE_SIGNAL, pid).await
     }
 
     async fn deliver(&self, signal: &str, pid: u32) -> Result<(), SignalError> {
@@ -105,16 +88,14 @@ impl KillSignaler {
     }
 }
 
-impl Default for KillSignaler {
-    fn default() -> Self {
-        Self::with_program(KILL_PROGRAM.to_string())
-    }
-}
-
 impl Signaler for KillSignaler {
     async fn terminate(&self, pid: u32) -> Result<(), SignalError> {
         let signal = self.stop_signal.clone();
         self.deliver(&signal, pid).await
+    }
+
+    async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
+        self.deliver(FORCE_SIGNAL, pid).await
     }
 }
 

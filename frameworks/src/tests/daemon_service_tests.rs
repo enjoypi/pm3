@@ -5,6 +5,7 @@ use adapters::resolve_paths;
 use super::*;
 use crate::{
     client::UdsClient,
+    signal::SignalRegisterError,
     test_support::{REQUEST_TIMEOUT_MS, write_config},
 };
 
@@ -20,6 +21,30 @@ async fn wait_until_healthy(client: &UdsClient) {
         tokio::time::sleep(PROBE_INTERVAL).await;
     }
     panic!("the daemon should answer inside the budget")
+}
+
+#[tokio::test]
+async fn a_daemon_whose_signal_handlers_cannot_register_refuses_to_start() {
+    let failed: std::result::Result<ShutdownSignals, SignalRegisterError> =
+        Err(SignalRegisterError::Register {
+            signal: "SIGTERM",
+            reason: "too many open files".to_string(),
+        });
+    let err = run_daemon_with_signals("/nonexistent/pm3.yaml", failed)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("cannot register the SIGTERM handler"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn a_daemon_with_registered_handlers_still_needs_a_config() {
+    let signals = ShutdownSignals::register().expect("register the shutdown handlers");
+    let outcome = run_daemon_with_signals("/nonexistent/pm3.yaml", Ok(signals)).await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
 #[tokio::test]

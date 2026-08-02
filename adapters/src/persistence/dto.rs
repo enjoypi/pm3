@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use usecases::{ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus};
+use usecases::{ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus, RuntimeError};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DumpDocument {
@@ -41,6 +41,9 @@ pub struct IdentityDto {
 pub enum DecodeError {
     #[error("cannot decode app '{app}': unknown status '{status}'")]
     UnknownStatus { app: String, status: String },
+
+    #[error("cannot decode app '{app}': {source}")]
+    InconsistentState { app: String, source: RuntimeError },
 }
 
 #[must_use]
@@ -67,7 +70,7 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         app: name.clone(),
         status,
     })?;
-    Ok(ProcessRuntime {
+    let decoded = ProcessRuntime {
         pm_id,
         name,
         pid,
@@ -79,7 +82,14 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         identity: identity.map(decode_identity),
         pending_restart: false,
         schedule_armed,
-    })
+    };
+    decoded
+        .validate_consistency()
+        .map_err(|source| DecodeError::InconsistentState {
+            app: decoded.name.clone(),
+            source,
+        })?;
+    Ok(decoded)
 }
 
 fn decode_identity(dto: IdentityDto) -> ProcessIdentity {

@@ -4,8 +4,57 @@ const PROBE_TARGET: &str = "pm3-probe-target";
 
 fn directory_holding_the_target() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("temp dir");
-    std::fs::write(dir.path().join(PROBE_TARGET), "#!/bin/sh\n").expect("write the target");
+    let target = dir.path().join(PROBE_TARGET);
+    std::fs::write(&target, "#!/bin/sh\n").expect("write the target");
+    make_executable(&target);
     dir
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) {}
+
+#[cfg(unix)]
+#[test]
+fn a_non_executable_search_path_match_is_skipped_for_executables() {
+    let first = tempfile::tempdir().expect("temp dir");
+    std::fs::write(first.path().join(PROBE_TARGET), "#!/bin/sh\n").expect("write the target");
+    let second = directory_holding_the_target();
+    let path_env = format!(
+        "{}:{}",
+        first.path().to_string_lossy(),
+        second.path().to_string_lossy()
+    );
+    assert_eq!(
+        resolve_executable(PROBE_TARGET, Some(&path_env)),
+        Some(second.path().join(PROBE_TARGET))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_non_executable_absolute_program_is_not_an_executable() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let target = dir.path().join(PROBE_TARGET);
+    std::fs::write(&target, "#!/bin/sh\n").expect("write the target");
+    assert_eq!(resolve_executable(&target.to_string_lossy(), None), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_non_executable_script_still_resolves_so_spawn_can_refuse_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let target = dir.path().join(PROBE_TARGET);
+    std::fs::write(&target, "#!/bin/sh\n").expect("write the target");
+    assert_eq!(
+        resolve_program(&target.to_string_lossy(), None),
+        Some(target)
+    );
 }
 
 #[test]
@@ -100,6 +149,28 @@ fn a_bare_service_cwd_token_folds_inside_a_larger_argument() {
 #[test]
 fn an_already_braced_service_cwd_token_is_left_alone() {
     assert_eq!(fold_svc_cwd(SVC_CWD_PLACEHOLDER), SVC_CWD_PLACEHOLDER);
+}
+
+#[test]
+fn a_bare_token_next_to_a_braced_one_still_folds() {
+    assert_eq!(
+        fold_svc_cwd("--opts=${PM3_SVC_CWD}/a,PM3_SVC_CWD"),
+        "--opts=${PM3_SVC_CWD}/a,${PM3_SVC_CWD}"
+    );
+}
+
+#[test]
+fn a_brace_opened_token_without_a_closing_brace_still_folds() {
+    assert_eq!(fold_svc_cwd("${PM3_SVC_CWDx}"), "${${PM3_SVC_CWD}x}");
+}
+
+#[test]
+fn folding_then_expanding_restores_every_token_position() {
+    let folded = fold_svc_cwd("--opts=${PM3_SVC_CWD}/a,PM3_SVC_CWD");
+    assert_eq!(
+        crate::workspace::expand_svc_cwd(&folded, "/srv/web"),
+        "--opts=/srv/web/a,/srv/web"
+    );
 }
 
 #[test]

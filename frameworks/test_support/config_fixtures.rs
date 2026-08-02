@@ -9,12 +9,14 @@ pub const REQUEST_TIMEOUT_MS: u64 = 30000;
 pub const COMMAND_TIMEOUT_MS: u64 = 5000;
 pub const POLL_INTERVAL_MS: u64 = 20;
 pub const FOLLOW_INTERVAL_MS: u64 = 200;
+pub const LOG_TAIL_LINES: u64 = 20;
 pub const DRAIN_TIMEOUT_SECS: u64 = 5;
 pub const MIN_UPTIME_MS: u64 = 1000;
 pub const MAX_RESTARTS: u32 = 15;
 pub const SANDBOX_MODE: &str = "danger-full-access";
 pub const SERVICE_LABEL: &str = "pm3-fixture";
 pub const SERVICE_SEARCH_PATH: &str = "/usr/bin:/bin";
+pub const SERVICE_RESTART_DELAY_SECS: u64 = 2;
 
 pub fn pm3_config_with_home(home: &str) -> Pm3Config {
     Pm3Config {
@@ -30,6 +32,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         daemon_poll_interval_ms: POLL_INTERVAL_MS,
         daemon_poll_max_interval_ms: POLL_INTERVAL_MS,
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
+        log_tail_lines: LOG_TAIL_LINES,
         restart: RestartConfig {
             autorestart: true,
             min_uptime_ms: MIN_UPTIME_MS,
@@ -42,6 +45,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         },
         service: ServiceConfig {
             label: SERVICE_LABEL.to_string(),
+            restart_delay_secs: SERVICE_RESTART_DELAY_SECS,
         },
     }
 }
@@ -61,6 +65,7 @@ pub fn config_yaml(home: &str) -> String {
   daemon_poll_interval_ms: {POLL_INTERVAL_MS}
   daemon_poll_max_interval_ms: {POLL_INTERVAL_MS}
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
+  log_tail_lines: {LOG_TAIL_LINES}
   restart:
     autorestart: true
     min_uptime_ms: {MIN_UPTIME_MS}
@@ -71,6 +76,7 @@ pub fn config_yaml(home: &str) -> String {
     network: false
   service:
     label: "{SERVICE_LABEL}"
+    restart_delay_secs: {SERVICE_RESTART_DELAY_SECS}
 
 telemetry:
   service_name: "pm3"

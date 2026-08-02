@@ -23,6 +23,7 @@ pub async fn stop_app(
         .find_mut(selector)
         .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
     record.runtime.disarm_schedule();
+    record.runtime.cancel_restart();
     let outcome = request_stop(record, ports).await?;
     save_table(table, ports).await?;
     Ok(outcome)
@@ -39,6 +40,7 @@ pub async fn stop_all_apps(
             .find_by_name_mut(name)
             .expect("internal error: the topological order only names records the table holds");
         record.runtime.disarm_schedule();
+        record.runtime.cancel_restart();
         if record.runtime.status.is_settled() {
             continue;
         }

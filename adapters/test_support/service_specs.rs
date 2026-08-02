@@ -26,6 +26,7 @@ pub fn spec_for(kind: ServiceKind, home: &Path) -> ServiceUnitSpec {
         log_path: root.join(LOG_FILE),
         search_path: SEARCH_PATH.to_string(),
         home: home.to_string_lossy().into_owned(),
+        restart_delay_secs: 2,
     }
 }
 

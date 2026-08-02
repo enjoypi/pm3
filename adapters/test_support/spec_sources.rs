@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use usecases::SandboxMode;
+
 use crate::{
     SpecSource,
     config_sections::{pm3_section, telemetry_section},
@@ -7,7 +9,7 @@ use crate::{
 };
 
 pub const SERVICE_SCRIPT: &str = "/bin/sh";
-pub const SANDBOX_MODE: &str = "workspace-write";
+pub const SANDBOX_MODE: &str = SandboxMode::WorkspaceWrite.as_str();
 
 const KILL_TIMEOUT_MS: u64 = 1600;
 

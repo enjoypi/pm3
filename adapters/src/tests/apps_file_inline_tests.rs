@@ -1,6 +1,8 @@
+use usecases::SandboxMode;
+
 use super::*;
 use crate::{
-    SANDBOX_MODE_WORKSPACE_WRITE, SpecDefaults,
+    SpecDefaults,
     config_sections::{pm3_section, telemetry_section},
     load_service_file, parse_config, parse_service_file, resolve_checked,
 };
@@ -196,7 +198,11 @@ fn an_encoded_app_with_no_collections_still_reads_back() {
 fn an_encoded_inline_app_resolves_into_a_spec() {
     let yaml = format!(
         "{}{}",
-        pm3_section("/tmp/pm3-fixture", 1600, SANDBOX_MODE_WORKSPACE_WRITE),
+        pm3_section(
+            "/tmp/pm3-fixture",
+            1600,
+            SandboxMode::WorkspaceWrite.as_str()
+        ),
         telemetry_section("info")
     );
     let config = parse_config(&yaml).expect("the fixture config should parse");
@@ -272,7 +278,7 @@ fn fully_declared_entry() -> AppEntry {
         restart_delay_ms: Some(50),
         schedule: None,
         sandbox: Some(SandboxEntry {
-            mode: Some(SANDBOX_MODE_WORKSPACE_WRITE.to_string()),
+            mode: Some(SandboxMode::WorkspaceWrite.as_str().to_string()),
             network: Some(false),
             writable_roots: Some(vec!["/srv".to_string()]),
         }),
@@ -323,6 +329,32 @@ fn an_app_without_a_sandbox_section_is_encoded_plainly() {
     entry.sandbox = None;
     let yaml = encode_service_file(&entry);
     assert!(!yaml.contains("sandbox"), "got: {yaml}");
+}
+
+#[test]
+fn control_characters_in_environment_values_survive_a_round_trip() {
+    let env = [
+        "MULTILINE=line one\nline two".to_string(),
+        "TABBED=a\tb".to_string(),
+        "CARRIAGE=a\rb".to_string(),
+        "BELL=a\u{7}b".to_string(),
+        "MIXED=quote\"back\\slash\nnewline".to_string(),
+    ];
+    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
+    let yaml = encode_service_file(&entry);
+    let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
+    assert_eq!(reparsed.env, entry.env);
+}
+
+#[test]
+fn a_value_with_a_newline_is_encoded_on_a_single_line() {
+    let env = ["MULTILINE=line one\nline two".to_string()];
+    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
+    let yaml = encode_service_file(&entry);
+    assert!(
+        yaml.contains(r#""MULTILINE": "line one\nline two""#),
+        "got: {yaml}"
+    );
 }
 
 #[test]

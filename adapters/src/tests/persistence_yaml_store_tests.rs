@@ -221,14 +221,45 @@ async fn load_reports_a_broken_document() {
 }
 
 #[tokio::test]
-async fn load_reports_an_unknown_status() {
+async fn load_skips_a_record_with_an_unknown_status() {
     let fixture = fixture();
+    register_service(&fixture.source, "web");
     let yaml = saved_yaml(&fixture.store, &[sample_record("web")]).await;
     tokio::fs::write(fixture.store.path(), yaml.replace("online", "zombie"))
         .await
         .expect("write");
-    let err = fixture.store.load().await.unwrap_err().to_string();
-    assert!(err.contains("unknown status 'zombie'"), "got: {err}");
+    assert!(fixture.store.load().await.expect("load").is_empty());
+}
+
+#[tokio::test]
+async fn load_skips_a_running_record_without_a_pid() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    let yaml = saved_yaml(&fixture.store, &[sample_record("web")]).await;
+    let mut doc: DumpDocument = serde_yaml2::from_str(&yaml).expect("the saved dump parses");
+    doc.services[0].runtime.pid = None;
+    let broken = serde_yaml2::to_string(&doc).expect("the edited dump serializes");
+    tokio::fs::write(fixture.store.path(), broken)
+        .await
+        .expect("write");
+    assert!(fixture.store.load().await.expect("load").is_empty());
+}
+
+#[tokio::test]
+async fn load_keeps_the_records_around_a_corrupt_one() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    register_service(&fixture.source, "db");
+    let yaml = saved_yaml(&fixture.store, &[sample_record("web"), sample_record("db")]).await;
+    tokio::fs::write(fixture.store.path(), yaml.replacen("online", "zombie", 1))
+        .await
+        .expect("write");
+    let loaded = fixture.store.load().await.expect("load");
+    let names: Vec<&str> = loaded
+        .iter()
+        .map(|record| record.runtime.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["db"]);
 }
 
 #[tokio::test]

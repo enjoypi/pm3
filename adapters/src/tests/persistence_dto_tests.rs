@@ -126,3 +126,14 @@ fn decode_rejects_an_unknown_status() {
     let err = decode_state(dto).unwrap_err().to_string();
     assert_eq!(err, "cannot decode app 'web': unknown status 'zombie'");
 }
+
+#[test]
+fn decode_rejects_a_running_status_without_a_pid() {
+    let mut dto = encoded("web");
+    dto.runtime.pid = None;
+    let err = decode_state(dto).unwrap_err().to_string();
+    assert_eq!(
+        err,
+        "cannot decode app 'web': cannot accept process 'web' marked 'online' without a pid"
+    );
+}

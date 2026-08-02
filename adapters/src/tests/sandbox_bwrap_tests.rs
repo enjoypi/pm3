@@ -75,6 +75,17 @@ fn a_writable_root_keeps_no_trailing_slash() {
 }
 
 #[test]
+fn the_filesystem_root_stays_a_root_when_writable() {
+    let args = argv(false, &["/"]);
+    let index = args
+        .iter()
+        .position(|arg| arg == "--bind")
+        .expect("a writable bind is required");
+    assert_eq!(args.get(index + 1).map(String::as_str), Some("/"));
+    assert_eq!(args.get(index + 2).map(String::as_str), Some("/"));
+}
+
+#[test]
 fn the_command_follows_a_separator() {
     let args = argv(false, &[]);
     let index = args

@@ -34,6 +34,22 @@ pub async fn next_exit(events: &mut mpsc::Receiver<DaemonEvent>) -> (String, u64
     };
     (name, generation, outcome)
 }
+pub async fn next_force_kill(
+    events: &mut mpsc::Receiver<DaemonEvent>,
+) -> (String, u64, u32, Option<String>) {
+    loop {
+        let DaemonEvent::ForceKill {
+            name,
+            generation,
+            pid,
+            token,
+        } = next_event(events).await
+        else {
+            continue;
+        };
+        return (name, generation, pid, token);
+    }
+}
 pub async fn listed(harness: &mut Harness) -> usize {
     let reply = harness
         .daemon

@@ -5,7 +5,11 @@
 
 mod common;
 
-use std::path::{Path, PathBuf};
+use std::{
+    io::{Read as _, Write as _},
+    os::unix::net::UnixListener,
+    path::{Path, PathBuf},
+};
 
 use self::common::{
     Home, daemon_log, described_pid, detach_daemon, home, pm3, process_is_alive, shutdown_daemon,
@@ -234,6 +238,38 @@ fn killing_the_daemon_alone_leaves_the_service_running() {
         "a plain kill should leave the service alone"
     );
     shutdown_daemon(&home);
+}
+
+const HEALTH_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+const REQUEST_SINK: usize = 1024;
+
+fn answer_one_probe_then_vanish(socket: &Path) {
+    let listener = UnixListener::bind(socket).expect("bind the impostor socket");
+    let socket = socket.to_path_buf();
+    std::thread::spawn(move || {
+        if let Ok((mut stream, _addr)) = listener.accept() {
+            let mut sink = vec![0_u8; REQUEST_SINK];
+            let read = stream.read(&mut sink).unwrap_or_default();
+            sink.truncate(read);
+            stream.write_all(HEALTH_REPLY).ok();
+        }
+        drop(listener);
+        std::fs::remove_file(&socket).ok();
+    });
+}
+
+#[test]
+fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
+    let home = home();
+    answer_one_probe_then_vanish(&home.root.join("pm3.sock"));
+
+    let killed = pm3(&home, &["kill"]);
+    assert!(killed.status.success(), "{}", common::stderr_of(&killed));
+    assert!(
+        stdout_of(&killed).contains("not running"),
+        "{}",
+        stdout_of(&killed)
+    );
 }
 
 #[test]

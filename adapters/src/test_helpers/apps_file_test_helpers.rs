@@ -1,7 +1,9 @@
+use usecases::SandboxMode;
+
 use super::*;
 use crate::{
     apps_sections::{apps_section, every_optional_field_section},
-    config::{SANDBOX_MODE_WORKSPACE_WRITE, parse_config},
+    config::parse_config,
     config_sections::{pm3_section, telemetry_section},
 };
 
@@ -24,7 +26,7 @@ pub fn pm3_config(sandbox_mode: &str) -> Pm3Config {
 }
 
 static FIXTURE_CONFIG: std::sync::LazyLock<Pm3Config> =
-    std::sync::LazyLock::new(|| pm3_config(SANDBOX_MODE_WORKSPACE_WRITE));
+    std::sync::LazyLock::new(|| pm3_config(SandboxMode::WorkspaceWrite.as_str()));
 
 pub fn defaults() -> SpecDefaults<'static> {
     SpecDefaults::from_config(&FIXTURE_CONFIG, HOME_DIR, LOGS_DIR, Some(TMP_DIR))

@@ -7,7 +7,7 @@ mod status;
 pub use self::{
     depgraph::{DependencyError, DependencyNode, topo_sort},
     restart::{RestartDecision, RestartPolicy, decide_restart},
-    runtime::{ProcessIdentity, ProcessRuntime},
+    runtime::{ProcessIdentity, ProcessRuntime, RuntimeError},
     spec::{AppSpec, SpecError, validate_app_name, validate_spec},
     status::ProcessStatus,
 };

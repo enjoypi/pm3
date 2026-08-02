@@ -30,6 +30,11 @@ pub enum PathError {
 
     #[error("cannot resolve pm3.home '{0}': must be absolute or start with '~'")]
     NotAbsolute(String),
+
+    #[error(
+        "cannot resolve pm3.home '{0}': expanding another user's home ('~name') is not supported"
+    )]
+    NamedHome(String),
 }
 
 #[must_use]
@@ -48,6 +53,9 @@ pub fn resolve_paths(root: &Path) -> Pm3Paths {
 
 pub fn expand_home(raw: &str, home_env: Option<&str>) -> Result<PathBuf, PathError> {
     if let Some(suffix) = raw.strip_prefix('~') {
+        if !suffix.is_empty() && !suffix.starts_with('/') {
+            return Err(PathError::NamedHome(raw.to_string()));
+        }
         let Some(home) = home_env.filter(|value| !value.is_empty()) else {
             return Err(PathError::MissingHome(raw.to_string()));
         };

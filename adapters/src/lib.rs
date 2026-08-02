@@ -36,10 +36,9 @@ pub use self::{
     },
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,
-        RestartConfig, SANDBOX_MODE_DANGER_FULL_ACCESS, SANDBOX_MODE_READ_ONLY,
-        SANDBOX_MODE_WORKSPACE_WRITE, STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig,
-        TelemetryConfig, check_config, load_and_parse_config, load_config_file, parse_config,
-        show_config, validate_config, validate_pm3_config, validate_telemetry_config,
+        RestartConfig, STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig,
+        check_config, load_and_parse_config, load_config_file, parse_config, show_config,
+        validate_config, validate_pm3_config, validate_telemetry_config,
     },
     exit_status::{UNKNOWN_EXIT_CODE, describe_refusal, exit_code_of},
     http::{

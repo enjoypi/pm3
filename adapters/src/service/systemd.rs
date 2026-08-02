@@ -1,6 +1,5 @@
 use super::spec::ServiceUnitSpec;
 
-const RESTART_DELAY_SECS: u64 = 2;
 const PATH_VARIABLE: &str = "PATH";
 const HOME_VARIABLE: &str = "HOME";
 
@@ -12,6 +11,7 @@ pub fn render_unit(spec: &ServiceUnitSpec) -> String {
     let log_path = escape_value(&spec.log_path.to_string_lossy());
     let search_path = escape_value(&spec.search_path);
     let home = escape_value(&spec.home);
+    let restart_delay_secs = spec.restart_delay_secs;
     format!(
         "[Unit]
 Description={label}
@@ -22,7 +22,7 @@ Type=simple
 ExecStart={exec_start}
 WorkingDirectory={working_directory}
 Restart=on-failure
-RestartSec={RESTART_DELAY_SECS}
+RestartSec={restart_delay_secs}
 KillMode=process
 Environment=\"{HOME_VARIABLE}={home}\"
 Environment=\"{PATH_VARIABLE}={search_path}\"
@@ -60,7 +60,16 @@ fn quote_token(raw: &str) -> String {
 }
 
 fn escape_value(raw: &str) -> String {
-    raw.replace('%', "%%")
+    let mut escaped = String::with_capacity(raw.len());
+    for character in raw.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '%' => escaped.push_str("%%"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 #[cfg(test)]

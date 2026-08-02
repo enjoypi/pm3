@@ -20,7 +20,7 @@ pub enum RestartDecision {
 #[must_use]
 pub const fn decide_restart(
     policy: RestartPolicy,
-    last_uptime_ms: u64,
+    last_uptime_ms: Option<u64>,
     previous_unstable_restarts: u32,
 ) -> RestartDecision {
     let RestartPolicy {
@@ -36,13 +36,14 @@ pub const fn decide_restart(
         };
     }
 
-    let unstable_restarts = if last_uptime_ms >= min_uptime_ms {
-        0
-    } else {
-        previous_unstable_restarts.saturating_add(1)
+    let unstable_restarts = match last_uptime_ms {
+        Some(uptime_ms) if uptime_ms < min_uptime_ms => {
+            previous_unstable_restarts.saturating_add(1)
+        }
+        Some(_) | None => 0,
     };
 
-    if unstable_restarts >= max_restarts {
+    if max_restarts > 0 && unstable_restarts >= max_restarts {
         return RestartDecision::GiveUp { unstable_restarts };
     }
 

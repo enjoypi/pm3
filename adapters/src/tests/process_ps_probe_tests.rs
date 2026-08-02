@@ -3,6 +3,7 @@ use std::{fs, os::unix::fs::PermissionsExt as _, path::PathBuf};
 use super::*;
 
 const UNUSABLE_PID: u32 = u32::MAX;
+const PROBE_TIMEOUT_MS: u64 = 5000;
 
 fn fake_ps(dir: &tempfile::TempDir, body: &str) -> PathBuf {
     let path = dir.path().join("ps");
@@ -15,12 +16,12 @@ fn fake_ps(dir: &tempfile::TempDir, body: &str) -> PathBuf {
 fn probe_with(body: &str) -> (tempfile::TempDir, PsProcessProbe) {
     let dir = tempfile::tempdir().expect("temp dir");
     let program = fake_ps(&dir, body).to_string_lossy().into_owned();
-    (dir, PsProcessProbe::with_program(program))
+    (dir, PsProcessProbe::new(program, PROBE_TIMEOUT_MS))
 }
 
 #[tokio::test]
 async fn a_live_process_reports_its_start_time_as_the_identity() {
-    let token = PsProcessProbe::default()
+    let token = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS)
         .identity(std::process::id())
         .await
         .into_token()
@@ -30,7 +31,7 @@ async fn a_live_process_reports_its_start_time_as_the_identity() {
 
 #[tokio::test]
 async fn the_identity_of_a_live_process_stays_stable_across_probes() {
-    let probe = PsProcessProbe::default();
+    let probe = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS);
     let pid = std::process::id();
     let first = probe.identity(pid).await;
     let second = probe.identity(pid).await;
@@ -40,14 +41,16 @@ async fn the_identity_of_a_live_process_stays_stable_across_probes() {
 #[tokio::test]
 async fn a_pid_no_process_can_hold_reads_as_gone() {
     assert_eq!(
-        PsProcessProbe::default().identity(UNUSABLE_PID).await,
+        PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS)
+            .identity(UNUSABLE_PID)
+            .await,
         Liveness::Gone
     );
 }
 
 #[tokio::test]
 async fn a_missing_ps_program_reads_as_unreadable() {
-    let probe = PsProcessProbe::with_program("/nonexistent/pm3-ps".to_string());
+    let probe = PsProcessProbe::new("/nonexistent/pm3-ps".to_string(), PROBE_TIMEOUT_MS);
     assert_eq!(probe.identity(1).await, Liveness::Unreadable);
 }
 
@@ -61,6 +64,29 @@ async fn a_ps_that_prints_nothing_reads_as_gone() {
 async fn a_ps_that_prints_only_whitespace_reads_as_gone() {
     let (_dir, probe) = probe_with("echo '   '");
     assert_eq!(probe.identity(1).await, Liveness::Gone);
+}
+
+#[tokio::test]
+async fn wait_gone_returns_as_soon_as_the_process_leaves() {
+    let (_dir, probe) = probe_with("exit 0");
+    assert_eq!(probe.wait_gone(7, 60_000).await, Liveness::Gone);
+}
+
+#[tokio::test]
+async fn wait_gone_reports_the_last_known_state_once_the_budget_runs_out() {
+    let (_dir, probe) = probe_with("echo '  7 Tue Jul 28 14:06:28 2026'");
+    let probe = probe.with_poll_interval(5);
+    assert_eq!(
+        probe.wait_gone(7, 30).await,
+        Liveness::Alive("Tue Jul 28 14:06:28 2026".to_string())
+    );
+}
+
+#[tokio::test]
+async fn wait_gone_stops_polling_when_the_budget_is_already_spent() {
+    let (_dir, probe) = probe_with("exit 2");
+    let probe = probe.with_poll_interval(5);
+    assert_eq!(probe.wait_gone(7, 0).await, Liveness::Unreadable);
 }
 
 #[tokio::test]
@@ -150,7 +176,7 @@ async fn a_batch_call_ps_cannot_answer_leaves_every_pid_unreadable() {
 
 #[tokio::test]
 async fn a_missing_ps_leaves_every_batched_pid_unreadable() {
-    let probe = PsProcessProbe::with_program("/nonexistent/pm3-ps".to_string());
+    let probe = PsProcessProbe::new("/nonexistent/pm3-ps".to_string(), PROBE_TIMEOUT_MS);
     let seen = probe.identities(&[7]).await;
     assert_eq!(seen.get(&7), Some(&Liveness::Unreadable));
 }

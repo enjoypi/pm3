@@ -46,6 +46,9 @@ pub enum Error {
     Signal(#[from] adapters::SignalError),
 
     #[error(transparent)]
+    SignalRegister(#[from] signal::SignalRegisterError),
+
+    #[error(transparent)]
     Cron(#[from] adapters::CronError),
 
     #[error(transparent)]

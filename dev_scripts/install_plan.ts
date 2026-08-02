@@ -40,6 +40,14 @@ export function parsePidFile(contents: string): number | undefined {
   return Number.parseInt(trimmed, 10);
 }
 
+export function parseMainPid(output: string): number | undefined {
+  const pid = parsePidFile(output);
+  if (pid === undefined || pid <= 0) {
+    return undefined;
+  }
+  return pid;
+}
+
 export function parseServiceReport(report: string): ServiceReport | undefined {
   const [headline, unitPath] = report.trim().split("\n");
   if (headline === undefined || unitPath === undefined) {

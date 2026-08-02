@@ -6,7 +6,16 @@ use crate::program::SVC_CWD_PLACEHOLDER;
 
 pub async fn materialise_workspace(spec: &mut AppSpec) {
     let declared_cwd = spec.cwd.clone();
-    tokio::fs::create_dir_all(&declared_cwd).await.ok();
+    if let Err(error) = tokio::fs::create_dir_all(&declared_cwd).await {
+        let reason = error.to_string();
+        let path = declared_cwd.as_str();
+        tracing::warn!(
+            path,
+            reason,
+            action = "workspace",
+            "cannot create the working directory"
+        );
+    }
     spec.cwd = real_path(&declared_cwd).await;
     for arg in &mut spec.args {
         *arg = expand_svc_cwd(arg, &spec.cwd);

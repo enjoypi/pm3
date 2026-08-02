@@ -61,17 +61,35 @@ async fn a_batch_that_started_nothing_is_refused_outright() {
 #[tokio::test]
 async fn stopping_everything_force_kills_whatever_outlived_the_grace_period() {
     let mut harness = harness_with_kill_timeout(0);
-    start_one(&mut harness, "web", SLEEPER).await;
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    let pid = started.pid.expect("a pid");
     harness
         .daemon
         .handle(DaemonRequest::StopAll)
         .await
         .expect("should stop everything");
-    assert!(harness.ports.tracked_pids().await.is_empty());
+
+    let (name, generation, killed, token) = next_force_kill(&mut harness.events).await;
+    assert_eq!(
+        (name.as_str(), killed, token.is_some()),
+        ("web", pid, true),
+        "the sweep must target the stopped service with its identity token"
+    );
+    harness
+        .daemon
+        .on_force_kill(&name, generation, killed, token.as_deref())
+        .await;
+    for _attempt in 0..100 {
+        if harness.ports.tracked_pids().await.is_empty() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the force kill should reap the lingering child");
 }
 
 #[tokio::test]
-async fn stopping_everything_waits_out_the_grace_period_for_a_child_that_lingers() {
+async fn stopping_everything_sweeps_a_tracked_pid_that_outlives_the_grace_period() {
     let mut harness = harness_with_kill_timeout(120);
     adapters::ProcessLauncher::adopt(&*harness.ports, u32::MAX).await;
 
@@ -81,9 +99,56 @@ async fn stopping_everything_waits_out_the_grace_period_for_a_child_that_lingers
         .await
         .expect("should stop everything");
 
+    let (name, generation, pid, token) = next_force_kill(&mut harness.events).await;
+    assert_eq!(pid, u32::MAX, "the sweep must target the stray pid");
+    harness
+        .daemon
+        .on_force_kill(&name, generation, pid, token.as_deref())
+        .await;
     assert_eq!(
         harness.ports.tracked_pids().await,
         vec![u32::MAX],
         "an unsignalable pid stays tracked after the sweep"
+    );
+}
+
+#[tokio::test]
+async fn a_stray_pid_is_traced_back_to_the_record_that_owns_it() {
+    let mut harness = harness();
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    let pid = started.pid.expect("a pid");
+
+    let (name, token) = harness.daemon.stray_owner(pid);
+
+    assert_eq!(
+        (name.as_str(), token.is_some()),
+        ("web", true),
+        "a tracked pid must be swept under its own identity"
+    );
+}
+
+#[tokio::test]
+async fn shutting_down_force_kills_only_the_services_that_were_stopping() {
+    let mut harness = harness_with_kill_timeout(0);
+    let kept = start_one(&mut harness, "web", SLEEPER).await;
+    start_one(&mut harness, "db", SLEEPER).await;
+    harness
+        .daemon
+        .handle(DaemonRequest::Stop(selector("db")))
+        .await
+        .expect("should stop db");
+
+    harness.daemon.shutdown().await;
+
+    loop {
+        let event = next_event(&mut harness.events).await;
+        if matches!(event, DaemonEvent::Exited { .. }) {
+            break;
+        }
+    }
+    assert_eq!(
+        harness.ports.tracked_pids().await,
+        vec![kept.pid.expect("a pid")],
+        "a service that was not stopping must survive the shutdown sweep"
     );
 }

@@ -199,6 +199,52 @@ async fn a_later_failure_still_persists_the_services_that_already_started() {
 }
 
 #[tokio::test]
+async fn a_failed_launch_leaves_no_record_of_the_unstarted_service() {
+    let ports = FakePorts::new(1000);
+    ports.fail_spawn_for("web");
+    let mut table = ProcessTable::new();
+    let specs = [spec_with_deps("web", &["api"]), spec("api")];
+    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
+    assert!(table.find(&AppSelector::Name("web".to_string())).is_none());
+}
+
+#[tokio::test]
+async fn a_failed_launch_persists_only_the_services_that_started() {
+    let ports = FakePorts::new(1000);
+    ports.fail_spawn_for("web");
+    let mut table = ProcessTable::new();
+    let specs = [spec_with_deps("web", &["api"]), spec("api")];
+    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
+    let stored_names: Vec<String> = ports
+        .stored()
+        .iter()
+        .map(|record| record.runtime.name.clone())
+        .collect();
+    assert_eq!(stored_names, vec!["api".to_string()]);
+}
+
+#[tokio::test]
+async fn a_service_skipped_by_an_early_batch_failure_leaves_no_record() {
+    let ports = FakePorts::new(1000);
+    ports.fail_spawn_for("api");
+    let mut table = ProcessTable::new();
+    let specs = [spec_with_deps("web", &["api"]), spec("api")];
+    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
+    assert!(table.records().is_empty());
+    assert!(ports.stored().is_empty());
+}
+
+#[tokio::test]
+async fn a_preexisting_record_survives_a_failed_relaunch() {
+    let ports = FakePorts::new(1000);
+    ports.fail_spawn_for("web");
+    let mut table = ProcessTable::new();
+    table.upsert(spec("web"), 1000);
+    start_apps(&mut table, &[spec("web")], LOGS_DIR, &ports).await;
+    assert!(table.find(&AppSelector::Name("web".to_string())).is_some());
+}
+
+#[tokio::test]
 async fn starting_an_already_running_app_is_idempotent() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();

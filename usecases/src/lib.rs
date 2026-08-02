@@ -16,8 +16,8 @@ mod persist;
 
 pub use entities::{
     AppSpec, DependencyError, DependencyNode, PolicyError, ProcessIdentity, ProcessRuntime,
-    ProcessStatus, RestartDecision, RestartPolicy, SandboxMode, SandboxPolicy, SpecError,
-    decide_restart, topo_sort, validate_app_name, validate_spec,
+    ProcessStatus, RestartDecision, RestartPolicy, RuntimeError, SandboxMode, SandboxPolicy,
+    SpecError, decide_restart, topo_sort, validate_app_name, validate_spec,
 };
 use thiserror::Error;
 

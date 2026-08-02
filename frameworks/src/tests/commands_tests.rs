@@ -1,3 +1,9 @@
+use tokio::{
+    io::{AsyncReadExt as _, AsyncWriteExt as _},
+    net::UnixListener,
+    task::JoinHandle,
+};
+
 use super::*;
 use crate::daemon_fixture::{
     Collected, Fixture, running_daemon, seed_log, sleeper_apps_file, stop_daemon,
@@ -471,6 +477,88 @@ fn a_relative_service_directory_cannot_open_a_session() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("must be absolute"), "got: {err}");
+}
+
+const HEALTH_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+const STOP_ALL_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 24\r\n\r\n{\"report\":\"stopped all\"}";
+const SCRIPT_SINK: usize = 1024;
+
+fn vanishing_daemon(socket: PathBuf, replies: &'static [&'static [u8]]) -> JoinHandle<()> {
+    let listener = UnixListener::bind(&socket).expect("bind the scripted daemon");
+    tokio::spawn(async move {
+        for reply in replies {
+            let Ok((mut stream, _addr)) = listener.accept().await else {
+                break;
+            };
+            let mut sink = vec![0_u8; SCRIPT_SINK];
+            let read = stream.read(&mut sink).await.unwrap_or_default();
+            sink.truncate(read);
+            stream.write_all(reply).await.ok();
+            stream.shutdown().await.ok();
+        }
+        drop(listener);
+        std::fs::remove_file(&socket).ok();
+    })
+}
+
+#[tokio::test]
+async fn killing_a_daemon_whose_pid_file_vanished_reports_the_loss() {
+    let fixture = running_daemon().await;
+    std::fs::remove_file(&fixture.paths.pid_file).expect("drop the pid file");
+    let err = kill_daemon(&fixture.config_path, false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot read the pm3 daemon pid"), "got: {err}");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
+    let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
+    let answering = crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock"));
+    let gone = kill_daemon(config.to_str().expect("path"), false)
+        .await
+        .expect("a daemon that already left counts as stopped");
+    answering.await.expect("join the probe answerer");
+    assert_eq!(gone, DAEMON_NOT_RUNNING);
+}
+
+#[tokio::test]
+async fn killing_with_services_reports_them_even_when_the_daemon_left_mid_kill() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
+    let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
+    vanishing_daemon(
+        home.join("pm3.sock"),
+        &[HEALTH_REPLY, HEALTH_REPLY, STOP_ALL_REPLY],
+    );
+    let gone = kill_daemon(config.to_str().expect("path"), true)
+        .await
+        .expect("stop-all succeeded, so the vanished daemon counts as stopped");
+    assert!(gone.contains("stopped all"), "got: {gone}");
+    assert!(gone.contains("not running"), "got: {gone}");
+}
+
+#[tokio::test]
+async fn a_command_that_cannot_locate_the_pm3_binary_is_reported() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
+    let session = open_session(config.to_str().expect("path")).expect("open a session");
+    let broken: std::io::Result<PathBuf> = Err(std::io::Error::other("image gone"));
+    let err = ask_with(&session, "GET", APPS_PATH, None, &broken)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("cannot determine the pm3 binary path"),
+        "got: {err}"
+    );
 }
 
 #[path = "commands_safety_tests.rs"]

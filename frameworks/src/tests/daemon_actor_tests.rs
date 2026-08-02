@@ -1,4 +1,4 @@
-use adapters::service_file_of;
+use adapters::{Liveness, service_file_of};
 
 use super::{shared::*, test_helpers::*, *};
 
@@ -299,7 +299,7 @@ async fn a_force_kill_from_an_older_generation_is_ignored() {
     let mut harness = harness();
     let started = start_one(&mut harness, "web", SLEEPER).await;
     let pid = started.pid.expect("a pid");
-    harness.daemon.on_force_kill("web", 0, pid).await;
+    harness.daemon.on_force_kill("web", 0, pid, None).await;
     assert_eq!(listed(&mut harness).await, 1);
 }
 
@@ -307,7 +307,7 @@ async fn a_force_kill_from_an_older_generation_is_ignored() {
 async fn a_force_kill_of_an_untracked_pid_is_ignored() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;
-    harness.daemon.on_force_kill("web", 1, 1).await;
+    harness.daemon.on_force_kill("web", 1, 1, None).await;
     assert_eq!(listed(&mut harness).await, 1);
 }
 
@@ -316,9 +316,67 @@ async fn a_force_kill_stops_a_tracked_app() {
     let mut harness = harness();
     let started = start_one(&mut harness, "web", SLEEPER).await;
     let pid = started.pid.expect("a pid");
-    harness.daemon.on_force_kill("web", 1, pid).await;
+    harness.daemon.on_force_kill("web", 1, pid, None).await;
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
     assert_eq!(outcome.exit_code, None);
+}
+
+#[tokio::test]
+async fn a_force_kill_with_a_mismatched_token_spares_the_process() {
+    let mut harness = harness();
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    let pid = started.pid.expect("a pid");
+    harness
+        .daemon
+        .on_force_kill("web", 1, pid, Some("Mon Jan 01 00:00:00 2020"))
+        .await;
+    assert_eq!(
+        status_of(&mut harness, "web").await,
+        "online",
+        "a pid the kernel handed to another process must not be signalled"
+    );
+}
+
+#[tokio::test]
+async fn a_force_kill_with_the_matching_token_stops_the_app() {
+    let mut harness = harness();
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    let pid = started.pid.expect("a pid");
+    let Liveness::Alive(token) = harness.ports.identity(pid).await else {
+        panic!("a live process reports its identity")
+    };
+    harness
+        .daemon
+        .on_force_kill("web", 1, pid, Some(&token))
+        .await;
+    let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
+    assert_eq!(outcome.exit_code, None);
+}
+
+#[tokio::test]
+async fn an_exit_cancels_the_force_kill_that_was_waiting_for_it() {
+    let mut harness = harness();
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    let pid = started.pid.expect("a pid");
+    harness
+        .daemon
+        .handle(DaemonRequest::Stop(selector("web")))
+        .await
+        .expect("should stop");
+    assert!(
+        harness.daemon.board.has_force_kill("web"),
+        "a stop arms the force kill that waits on pid {pid}"
+    );
+
+    harness
+        .daemon
+        .on_exit("web", 1, ExitOutcome { exit_code: Some(0) })
+        .await;
+
+    assert!(
+        !harness.daemon.board.has_force_kill("web"),
+        "a settled exit must cancel the force kill that was waiting on pid {pid}"
+    );
 }
 
 #[tokio::test]

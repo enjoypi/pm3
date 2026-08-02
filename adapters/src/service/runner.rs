@@ -29,8 +29,14 @@ pub async fn execute_plan(steps: &[ServiceStep]) -> Result<Vec<String>, ServiceC
     let mut skipped = Vec::new();
     let mut created = Vec::new();
     for step in steps {
-        created.extend(about_to_create(step).await);
-        match run_step(step).await {
+        let outcome = match about_to_create(step).await {
+            Ok(pending) => {
+                created.extend(pending);
+                run_step(step).await
+            }
+            Err(error) => Err(error),
+        };
+        match outcome {
             Ok(None) => {}
             Ok(Some(note)) => skipped.push(note),
             Err(error) => {
@@ -42,14 +48,14 @@ pub async fn execute_plan(steps: &[ServiceStep]) -> Result<Vec<String>, ServiceC
     Ok(skipped)
 }
 
-async fn about_to_create(step: &ServiceStep) -> Option<PathBuf> {
+async fn about_to_create(step: &ServiceStep) -> Result<Option<PathBuf>, ServiceCommandError> {
     let ServiceStep::Write { path, .. } = step else {
-        return None;
+        return Ok(None);
     };
     match tokio::fs::try_exists(path).await {
-        Ok(false) => Some(path.clone()),
-        Ok(true) => None,
-        Err(_unreadable) => None,
+        Ok(false) => Ok(Some(path.clone())),
+        Ok(true) => Ok(None),
+        Err(error) => Err(io_error(path, &error)),
     }
 }
 

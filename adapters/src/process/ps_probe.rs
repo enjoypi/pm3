@@ -1,11 +1,14 @@
 use std::{collections::HashMap, time::Duration};
 
-use tokio::{process::Command, time::timeout};
+use tokio::{
+    process::Command,
+    time::{Instant, sleep, timeout},
+};
 use usecases::{Liveness, ProcessProbe};
 
-use super::kill_signaler::DEFAULT_COMMAND_TIMEOUT_MS;
-
 pub const PS_PROGRAM: &str = "/bin/ps";
+
+const DEFAULT_POLL_INTERVAL_MS: u64 = 50;
 
 const NO_SUCH_PROCESS_CODE: i32 = 1;
 const UNKNOWN_EXIT_CODE: i32 = -1;
@@ -21,6 +24,7 @@ const FIXED_LOCALE: &str = "C";
 pub struct PsProcessProbe {
     program: String,
     timeout_ms: u64,
+    poll_interval_ms: u64,
 }
 
 impl PsProcessProbe {
@@ -29,17 +33,19 @@ impl PsProcessProbe {
         Self {
             program,
             timeout_ms,
+            poll_interval_ms: DEFAULT_POLL_INTERVAL_MS,
         }
-    }
-
-    #[must_use]
-    pub const fn with_program(program: String) -> Self {
-        Self::new(program, DEFAULT_COMMAND_TIMEOUT_MS)
     }
 
     #[must_use]
     pub fn with_timeout(timeout_ms: u64) -> Self {
         Self::new(PS_PROGRAM.to_string(), timeout_ms)
+    }
+
+    #[must_use]
+    pub const fn with_poll_interval(mut self, poll_interval_ms: u64) -> Self {
+        self.poll_interval_ms = poll_interval_ms;
+        self
     }
 
     pub async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
@@ -101,18 +107,29 @@ fn parse_report(stdout: &str) -> HashMap<u32, String> {
         .collect()
 }
 
-impl Default for PsProcessProbe {
-    fn default() -> Self {
-        Self::with_program(PS_PROGRAM.to_string())
-    }
-}
-
 impl ProcessProbe for PsProcessProbe {
     async fn identity(&self, pid: u32) -> Liveness {
         self.identities(&[pid])
             .await
             .remove(&pid)
             .unwrap_or(Liveness::Unreadable)
+    }
+
+    async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
+        let started = Instant::now();
+        let budget = Duration::from_millis(timeout_ms);
+        loop {
+            let liveness = self.identity(pid).await;
+            if matches!(liveness, Liveness::Gone) {
+                return liveness;
+            }
+            let remaining = budget.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return liveness;
+            }
+            let step = Duration::from_millis(self.poll_interval_ms.max(1));
+            sleep(remaining.min(step)).await;
+        }
     }
 }
 

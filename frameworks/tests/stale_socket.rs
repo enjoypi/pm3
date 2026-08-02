@@ -7,7 +7,7 @@ mod common;
 
 use std::{
     io::{Read as _, Write as _},
-    os::unix::net::UnixListener,
+    os::unix::{fs::PermissionsExt as _, net::UnixListener},
     path::Path,
 };
 
@@ -61,6 +61,26 @@ fn a_socket_that_answers_something_other_than_a_pm3_reply_is_reported() {
         "got: {}",
         stderr_of(&listed)
     );
+}
+
+fn mode_of(path: &Path) -> u32 {
+    std::fs::metadata(path)
+        .expect("stat the path")
+        .permissions()
+        .mode()
+        & 0o777
+}
+
+#[test]
+fn the_control_plane_is_owner_only() {
+    let home = home();
+    let listed = pm3(&home, &["list"]);
+    assert!(listed.status.success(), "{}", stdout_of(&listed));
+    let socket_mode = mode_of(&home.root.join("pm3.sock"));
+    assert_eq!(socket_mode, 0o600, "got: {socket_mode:o}");
+    let home_mode = mode_of(&home.root);
+    assert_eq!(home_mode, 0o700, "got: {home_mode:o}");
+    shutdown_daemon(&home);
 }
 
 #[test]

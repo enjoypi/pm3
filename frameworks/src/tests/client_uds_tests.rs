@@ -1,4 +1,4 @@
-use tokio::net::UnixListener;
+use tokio::net::{UnixListener, UnixStream};
 
 use super::*;
 
@@ -118,6 +118,48 @@ async fn a_missing_socket_is_reported() {
         err.contains("cannot connect to the pm3 daemon"),
         "got: {err}"
     );
+}
+
+#[tokio::test]
+async fn a_daemon_that_closes_before_reading_the_request_is_reported() {
+    let (mut client_side, server_side) = UnixStream::pair().expect("pair");
+    drop(server_side);
+    let err = converse(
+        &mut client_side,
+        "GET /apps HTTP/1.1\r\n\r\n",
+        "/tmp/pm3.sock",
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(
+        err.contains("cannot send the request to the pm3 daemon"),
+        "got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn a_daemon_reply_that_is_not_text_is_reported() {
+    let (mut client_side, mut server_side) = UnixStream::pair().expect("pair");
+    let server = tokio::spawn(async move {
+        let mut sink = vec![0_u8; 64];
+        let read = server_side.read(&mut sink).await.unwrap_or_default();
+        sink.truncate(read);
+        server_side
+            .write_all(&[0xff, 0xfe])
+            .await
+            .expect("write junk");
+    });
+    let err = converse(
+        &mut client_side,
+        "GET /apps HTTP/1.1\r\n\r\n",
+        "/tmp/pm3.sock",
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    server.await.expect("join");
+    assert!(err.contains("valid UTF-8"), "got: {err}");
 }
 
 #[tokio::test]

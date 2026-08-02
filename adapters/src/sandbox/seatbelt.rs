@@ -1,5 +1,7 @@
 use usecases::{SandboxPolicy, WrappedCommand};
 
+use super::roots::normalize_root;
+
 const BASE_POLICY: &str = include_str!("seatbelt_base_policy.sbpl");
 const NETWORK_POLICY: &str = include_str!("seatbelt_network_policy.sbpl");
 
@@ -34,8 +36,7 @@ pub fn seatbelt_profile(policy: &SandboxPolicy) -> String {
 }
 
 fn writable_root_rule(root: &str) -> String {
-    let escaped = root
-        .trim_end_matches('/')
+    let escaped = normalize_root(root)
         .replace('\\', "\\\\")
         .replace('"', "\\\"");
     format!("\n(allow file-write* (subpath \"{escaped}\"))\n")

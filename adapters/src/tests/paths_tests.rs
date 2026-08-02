@@ -68,10 +68,17 @@ fn a_relative_home_is_rejected() {
 }
 
 #[test]
+fn another_users_home_is_rejected_instead_of_expanding_against_ours() {
+    let err = expand_home("~deploy/.pm3", Some("/home/u")).unwrap_err();
+    assert_eq!(err, PathError::NamedHome("~deploy/.pm3".to_string()));
+}
+
+#[test]
 fn every_path_error_renders_a_message() {
     let errors = [
         PathError::MissingHome("~/.pm3".to_string()),
         PathError::NotAbsolute("rel".to_string()),
+        PathError::NamedHome("~deploy/.pm3".to_string()),
     ];
     for err in errors {
         assert!(

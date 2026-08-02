@@ -10,7 +10,6 @@ pub use self::{
     loader::{ConfigLoadError, load_config, substitute_env_vars},
     schema::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
-        SANDBOX_MODE_DANGER_FULL_ACCESS, SANDBOX_MODE_READ_ONLY, SANDBOX_MODE_WORKSPACE_WRITE,
         STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig, validate_config,
         validate_pm3_config, validate_telemetry_config,
     },
