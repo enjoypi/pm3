@@ -1,4 +1,4 @@
-use adapters::{StartKind, service_file_of};
+use adapters::{StartKind, SupervisionReply, SupervisionRequest, service_file_of};
 
 use super::{shared::*, test_helpers::*, *};
 use crate::daemon::runner::run;

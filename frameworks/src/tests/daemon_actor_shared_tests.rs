@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use adapters::service_file_of;
+use adapters::{StartOutcome, SupervisionReply, SupervisionRequest, service_file_of};
 
 use super::{test_helpers::*, *};
 

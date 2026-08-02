@@ -11,10 +11,12 @@ pub mod start;
 pub mod stop;
 pub mod supervise;
 pub mod supervision;
+pub mod supervisor;
 pub mod table;
 pub mod timer_state;
 
 mod persist;
+mod supervisor_log;
 
 pub use entities::{
     AppSpec, DependencyError, DependencyNode, PolicyError, ProcessIdentity, ProcessRuntime,
@@ -45,6 +47,7 @@ pub use self::{
     stop::{StopOutcome, is_drained, persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
     supervision::{SupervisionFailure, SupervisionOutcome, SupervisionReply, SupervisionRequest},
+    supervisor::{SupervisionEffect, Supervisor},
     table::ProcessTable,
     timer_state::TimerState,
 };

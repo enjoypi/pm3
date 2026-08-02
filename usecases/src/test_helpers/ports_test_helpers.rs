@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
@@ -48,6 +48,7 @@ struct FakeState {
     probe_blind: Vec<u32>,
     probe_broken: Vec<u32>,
     adopted: Vec<u32>,
+    tracked: BTreeSet<u32>,
     file_digests: BTreeMap<String, String>,
     digest_failures: Vec<String>,
 }
@@ -204,6 +205,7 @@ impl FakePorts {
             guard.spawned.push(spec.clone());
             let assigned = guard.next_pid;
             guard.next_pid = assigned.saturating_add(1);
+            guard.tracked.insert(assigned);
             if !guard.probe_blind.contains(&assigned) {
                 guard.live.insert(assigned, live_token(assigned));
             }
@@ -280,7 +282,14 @@ impl ProcessLauncher for FakePorts {
     }
 
     async fn adopt(&self, pid: u32) {
-        self.with_state(|state| state.adopted.push(pid));
+        self.with_state(|state| {
+            state.adopted.push(pid);
+            state.tracked.insert(pid);
+        });
+    }
+
+    async fn tracked_pids(&self) -> Vec<u32> {
+        self.read(|state| state.tracked.iter().copied().collect())
     }
 }
 

@@ -22,10 +22,6 @@ struct Tracked {
 }
 
 impl TokioProcessLauncher {
-    pub async fn tracked_pids(&self) -> Vec<u32> {
-        self.tracked.lock().await.live.iter().copied().collect()
-    }
-
     pub async fn is_child(&self, pid: u32) -> bool {
         self.tracked.lock().await.children.contains_key(&pid)
     }
@@ -53,6 +49,10 @@ impl TokioProcessLauncher {
 }
 
 impl ProcessLauncher for TokioProcessLauncher {
+    async fn tracked_pids(&self) -> Vec<u32> {
+        self.tracked.lock().await.live.iter().copied().collect()
+    }
+
     async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
         let stdout = open_for_append(&spec.name, &spec.stdout_path).await?;
         let stderr = open_for_append(&spec.name, &spec.stderr_path).await?;

@@ -1,7 +1,6 @@
 pub mod actor;
 pub mod bootstrap;
 mod events;
-mod logging;
 pub mod ports;
 mod runner;
 pub mod service;

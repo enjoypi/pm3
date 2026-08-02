@@ -10,7 +10,7 @@
 |---|---|
 | `main.rs` | 只调 `frameworks::cli`，无重复 mod 编译 |
 | `cli.rs` / `commands.rs` | clap 定义与子命令分发 |
-| `daemon/` | `bootstrap` `actor`（事件循环 + 请求分发）`timers`（`TimerBoard`：cron 定时器 / 待重启任务 / generation）`socket` `service` `ports` |
+| `daemon/` | `bootstrap` `actor`（事件循环：把事件交给 `adapters::Supervisor`，再把返回的 `SupervisionEffect` 逐条交给 `TaskBoard`）`timers`（`TaskBoard`：纯 `JoinHandle` 表，spawn/abort cron 定时器、待重启任务、强杀延时、退出监听）`socket` `service` `ports` |
 | `client/uds.rs` | CLI 侧 Unix socket 客户端（`ask` / `ask_report`） |
 | `server.rs` | `serve_listener`：接管已 bound 的 listener，避开 bind→drop→re-bind 的抢占窗口 |
 | `service.rs` | `pm3 service install/uninstall` |
@@ -18,6 +18,11 @@
 | `layout.rs` / `telemetry.rs` / `prompt.rs` / `sandbox_probe.rs` | 路径布局、日志、交互询问、沙箱可用性探测 |
 
 ## 本层规则
+
+### daemon 编排
+
+- 业务判断一律不在本层：`Daemon` 只做「收事件 → 问 `Supervisor` → 派发效果」，新增行为改 `usecases/supervisor.rs`，本层只在 `TaskBoard::apply` 里补一条 spawn/abort
+- 一种效果 MUST 只有一个执行者：`WatchExit` 的 spawn 也在 `TaskBoard` 里，别让 `Daemon::run` 提前截胡——那会让 `TaskBoard` 的对应 match arm 永不可达，覆盖率补不上（不可达分支应重写消除，不是加测试掩盖）
 
 ### CLI
 

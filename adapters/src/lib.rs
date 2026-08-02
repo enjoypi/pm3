@@ -23,12 +23,13 @@ pub use usecases::{
     Liveness, Ports, ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime,
     ProcessStatus, ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode,
     SandboxPolicy, Scheduler, SignalError, Signaler, SpecError, SpecResolveError, SpecResolver,
-    StartKind, StartOutcome, StartReport, StopOutcome, SupervisionFailure, SupervisionOutcome,
-    SupervisionReply, SupervisionRequest, TimerState, UsecaseError, WrappedCommand,
-    armed_schedule_names, delete_app, describe_app, handle_child_exit, identity_token_of,
-    is_drained, list_apps, log_paths, owner_of_pid, persist_for_handover, pid_was_recycled,
-    refused_services, render_identity, restart_app, resurrect, running_pids, schedule_of,
-    start_apps, stop_all_apps, stop_app, topo_sort, unsettled_count, validate_app_name,
+    StartKind, StartOutcome, StartReport, StopOutcome, SupervisionEffect, SupervisionFailure,
+    SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor, TimerState, UsecaseError,
+    WrappedCommand, armed_schedule_names, delete_app, describe_app, handle_child_exit,
+    identity_token_of, is_drained, list_apps, log_paths, owner_of_pid, persist_for_handover,
+    pid_was_recycled, refused_services, render_identity, restart_app, resurrect, running_pids,
+    schedule_of, start_apps, stop_all_apps, stop_app, topo_sort, unsettled_count,
+    validate_app_name,
 };
 
 pub use self::{

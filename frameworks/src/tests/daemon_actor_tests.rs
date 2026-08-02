@@ -1,4 +1,6 @@
-use adapters::{Liveness, service_file_of};
+use adapters::{
+    Liveness, ProcessProbe as _, SupervisionReply, SupervisionRequest, service_file_of,
+};
 
 use super::{shared::*, test_helpers::*, *};
 
@@ -232,7 +234,7 @@ async fn restarting_a_stopped_app_launches_it_again() {
     let (name, generation, outcome) = next_exit(&mut harness.events).await;
     harness.daemon.on_exit(&name, generation, outcome).await;
 
-    harness.daemon.board.schedule_restart("web", 0);
+    queue_restart(&mut harness, "web", 0);
     harness.daemon.on_restart("web").await;
     let reply = harness
         .daemon
@@ -249,7 +251,7 @@ async fn restarting_a_stopped_app_launches_it_again() {
 async fn a_scheduled_restart_of_a_running_app_waits_for_its_exit() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;
-    harness.daemon.board.schedule_restart("web", 0);
+    queue_restart(&mut harness, "web", 0);
     harness.daemon.on_restart("web").await;
     let reply = harness
         .daemon
@@ -266,7 +268,7 @@ async fn a_scheduled_restart_of_a_running_app_waits_for_its_exit() {
 async fn a_restart_cancelled_by_a_stop_no_longer_revives_the_service() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;
-    harness.daemon.board.schedule_restart("web", 60_000);
+    queue_restart(&mut harness, "web", 60_000);
     harness
         .daemon
         .handle(SupervisionRequest::Stop(selector("web")))
@@ -289,7 +291,7 @@ async fn a_restart_cancelled_by_a_stop_no_longer_revives_the_service() {
 #[tokio::test]
 async fn restarting_an_unknown_app_is_tolerated() {
     let mut harness = harness();
-    harness.daemon.board.schedule_restart("ghost", 0);
+    queue_restart(&mut harness, "ghost", 0);
     harness.daemon.on_restart("ghost").await;
     assert_eq!(listed(&mut harness).await, 0);
 }

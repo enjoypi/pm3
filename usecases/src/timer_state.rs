@@ -4,7 +4,6 @@ use std::collections::{HashMap, HashSet};
 pub struct TimerState {
     fires: HashMap<String, u64>,
     restarts: HashSet<String>,
-    force_kills: HashSet<String>,
     generations: HashMap<String, u64>,
     next_generation: u64,
 }
@@ -51,19 +50,6 @@ impl TimerState {
 
     pub fn cancel_all_restarts(&mut self) -> Vec<String> {
         self.restarts.drain().collect()
-    }
-
-    pub fn queue_force_kill(&mut self, name: &str) {
-        self.force_kills.insert(name.to_string());
-    }
-
-    pub fn cancel_force_kill(&mut self, name: &str) -> bool {
-        self.force_kills.remove(name)
-    }
-
-    #[must_use]
-    pub fn has_force_kill(&self, name: &str) -> bool {
-        self.force_kills.contains(name)
     }
 
     pub fn bump(&mut self, name: &str) -> u64 {

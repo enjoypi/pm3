@@ -69,6 +69,15 @@ pub fn identity_token_of(table: &ProcessTable, selector: &AppSelector) -> Option
 }
 
 #[must_use]
+pub fn unswept_pids(tracked: &[u32], scheduled: &[u32]) -> Vec<u32> {
+    tracked
+        .iter()
+        .filter(|pid| !scheduled.contains(pid))
+        .copied()
+        .collect()
+}
+
+#[must_use]
 pub fn owner_of_pid(table: &ProcessTable, pid: u32) -> (String, Option<String>) {
     table
         .records()

@@ -15,7 +15,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 | crate | 职责 | 层内坑 |
 |---|---|---|
 | `entities` | 业务对象与状态机：`AppSpec`/`ProcessStatus`/`RestartPolicy`/`DepGraph`/`SandboxPolicy` | `entities/CLAUDE.md` |
-| `usecases` | Interactor 与 Port trait：`start`/`stop`/`restart`/`delete`/`resurrect`/`supervise`/`query` | `usecases/CLAUDE.md` |
+| `usecases` | Interactor 与 Port trait：`supervisor`（daemon 编排总入口）/`start`/`stop`/`restart`/`delete`/`resurrect`/`supervise`/`query` | `usecases/CLAUDE.md` |
 | `adapters` | 格式转换与外部实现：config/http/persistence/presenter/process/sandbox/schedule/service/unit | `adapters/CLAUDE.md` |
 | `frameworks` | 组装与入口：`main.rs`/`cli.rs`/`daemon/`/`client/`/`service.rs`/`signal.rs` | `frameworks/CLAUDE.md` |
 | `arch_tests` | 依赖方向强制 | `arch_tests/CLAUDE.md` |
@@ -133,6 +133,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 ### 门禁运行（`just cov`，四指标 100%）
 
+- 顺序 MUST 是 `just lint` → `just cov`：`cov` 只跑 nextest 不跑 clippy，`#[expect]` 失效这类问题它看不见；反过来 `cov` 又能暴露 `lint` 漏报的 test target `unused_imports`（clippy 增量缓存可能不重编测试目标）→ 两个都要跑
 - `cargo-llvm-cov` 忽略路径含 `tests/` 的文件；`test_helpers/` 与 `test_support/` **计入**门禁，helper 里的 `panic!` 会变成未覆盖行
 - 改动令行号位移后必须 `just cov --fresh`，否则残留旧实例化产生幽灵 `FNDA:0`
 - **全零自救** — 症状：所有文件 0%、`FNDA:0` 上千条；原因：二进制与 profraw 哈希错位（非 fresh 与手动 `cargo llvm-cov report` 交叉跑会触发）；修法：重跑 `just cov --fresh` 且中途不插任何其他 cargo 命令
@@ -141,6 +142,9 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
   - 无输出且 lines 也缺 → 缺口在 bin 副本（lib+bin 双编译，region 按实例化计数）：补 e2e 走真实 binary，或让分支只存在于一处
   - 无输出而 lines 100% → 缺的是 `?`/短路的纯 region，重点怀疑新加的 `?`
   - 查完回到 `--fresh`
+- **lcov 明细全绿而门禁仍挂** — 症状：门禁报 `lines 382/383, branches 29/30`，但该文件的 `DA:`/`BRDA:` 逐条全非零、`--show-missing-lines` 不出列、`llvm-cov report --text` 里也找不到计数为 0 的行
+  原因：`DA:` 是**按源码行合并**后写的（多实例化取并集），而门禁读的 `LF/LH/BRF/BRH` 是 llvm-cov **按函数实例化组**统计后相加、组内取 `max` 而非并集 —— 两份实例化各覆盖一半，`max(1/2,1/2)=1/2` 就报缺失。**解析 lcov 永远查不出来**，`DA` 条数天然少于 `LF`（全仓库每个文件都如此，不是异常信号）
+  修法：`cargo +nightly llvm-cov report --release --offline --json --output-path <f>`，按 `data[0].functions[]` 过滤 `filenames` 含目标文件，逐实例化找 `branches[]` 里 `b[4]==0 || b[5]==0` 的项 —— 同一 `line:col` 出现两条、一条只有 true 一条只有 false，就是它
 
 ### region 修法
 
@@ -155,6 +159,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - 轮询循环的 fall-through `}` 不产生计数（`for _ in 0..=n` 尤甚）→ 让函数返回值并在循环后以 `true` 收尾（`while cond { if 超预算 { return false } ... } true`），fall-through 才有可命中的 region
 - `tokio::select!` 展开出的不可达 region 无法覆盖；用一个 forward task 把两个 channel 汇成一个，主循环只 `recv()` 一个 queue
 - 泛型/`impl Trait` 参数会按实例化各算一份 region：把 `shutdown: impl Future` 改成 `Pin<Box<dyn Future + Send>>` 可把实例化收敛为一份
+- 泛型函数里的 `if` 若被两份实例化各走一半（lib 测试只走 true、e2e 只走 false），覆盖率**加多少测试都补不满**（组内取 max，见上一节）→ MUST 把判断抽成**非泛型**纯函数放进 `usecases`，在那里单测两条臂。踩过的坑：`Supervisor::stop_all` 里的 `if covered.contains(&pid)` → 抽成 `query::unswept_pids(tracked, scheduled)`。这类判断本就是业务查询，抽出去顺带把分层也修对了
 - 不可达的防御分支应**重写消除**，而非加测试掩盖
 
 ### 集成 / e2e 技法
@@ -174,7 +179,8 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 ### 残留清理
 
-- e2e 会泄漏 daemon 与子进程（tempdir 已删、进程仍在）：排查真机状态前先 `pgrep -f 'pm3 daemon --config /var/folders'` 与 `pgrep -f 'pm3 __sleep'` 各清一遍，否则 `pgrep`/端口结果会误导；子进程自 `process_group(0)` 起不再随测试进程组被连带清理
+- e2e 会泄漏 daemon 与子进程（tempdir 已删、进程仍在）：排查真机状态前先 `pgrep -f 'pm3 daemon --config /var/folders'`（Linux 是 `/tmp/.tmp*`）与 `pgrep -f 'pm3 __sleep'` 各清一遍，否则 `pgrep`/端口结果会误导；子进程自 `process_group(0)` 起不再随测试进程组被连带清理
+- 列残留 MUST 用 `pgrep -x pm3` 再逐个 `ps -o pid=,args= -p <pid>` 核对：`pgrep -f` 会把发起它的 shell 一起匹配进来（本轮就误报了两个 pid）。泄漏的 e2e daemon 特征是 `ppid=1` + `--config` 指向已不存在的 tempdir，真机那份指向 `~/.pm3/config.yaml`，别杀错
 - **nextest 中断残留** — 症状：flake 触发取消剩余测试 → `TempDir` 的 Drop 跑不到，`$TMPDIR` 留下 e2e fixture 目录（`config.yaml` + `home/{logs,service,pm3.sock}`）
   修法：`rg -l --hidden 'pm3-e2e-never-installed|pm3-fixture' "$TMPDIR" -g config.yaml` 定位
   陷阱：`rg` 默认跳过隐藏目录而这些正是 `.tmp*`，漏 `--hidden` 会得到假阴性；按 label 指纹而非目录名匹配，才不会误删真机配置
