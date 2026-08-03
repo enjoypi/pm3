@@ -66,6 +66,7 @@ async fn starting_no_services_launches_nothing() {
             outcomes: Vec::new(),
             refused: Vec::new(),
             reason: None,
+            unsaved: None,
         }
     );
 }
@@ -199,7 +200,7 @@ async fn an_exit_from_an_older_generation_is_ignored() {
     start_one(&mut harness, "web", SLEEPER).await;
     harness
         .daemon
-        .on_exit("web", 0, ExitOutcome { exit_code: None })
+        .on_exit("web", 0, ExitOutcome::Unobserved)
         .await;
     let reply = harness
         .daemon
@@ -217,7 +218,7 @@ async fn an_exit_for_an_unknown_app_is_tolerated() {
     let mut harness = harness();
     harness
         .daemon
-        .on_exit("ghost", 0, ExitOutcome { exit_code: None })
+        .on_exit("ghost", 0, ExitOutcome::Unobserved)
         .await;
     assert_eq!(listed(&mut harness).await, 0);
 }
@@ -320,7 +321,7 @@ async fn a_force_kill_stops_a_tracked_app() {
     let pid = started.pid.expect("a pid");
     harness.daemon.on_force_kill("web", 1, pid, None).await;
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
-    assert_eq!(outcome.exit_code, None);
+    assert_eq!(outcome, ExitOutcome::Signalled);
 }
 
 #[tokio::test]
@@ -352,7 +353,7 @@ async fn a_force_kill_with_the_matching_token_stops_the_app() {
         .on_force_kill("web", 1, pid, Some(&token))
         .await;
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
-    assert_eq!(outcome.exit_code, None);
+    assert_eq!(outcome, ExitOutcome::Signalled);
 }
 
 #[tokio::test]
@@ -370,10 +371,7 @@ async fn an_exit_cancels_the_force_kill_that_was_waiting_for_it() {
         "a stop arms the force kill that waits on pid {pid}"
     );
 
-    harness
-        .daemon
-        .on_exit("web", 1, ExitOutcome { exit_code: Some(0) })
-        .await;
+    harness.daemon.on_exit("web", 1, ExitOutcome::Code(0)).await;
 
     assert!(
         !harness.daemon.board.has_force_kill("web"),

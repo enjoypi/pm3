@@ -302,24 +302,40 @@ async fn starting_a_service_that_is_still_stopping_re_arms_its_schedule() {
 }
 
 #[tokio::test]
-async fn a_persistence_failure_lands_in_the_report() {
+async fn a_persistence_failure_lands_in_its_own_field() {
     let ports = FakePorts::new(1000);
     ports.fail_save();
     let mut table = ProcessTable::new();
     let report = start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
-    let err = failure(report);
+    let err = report
+        .unsaved
+        .expect("the report should carry the persistence failure");
     assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
 }
 
 #[tokio::test]
-async fn a_launch_failure_outranks_a_later_persistence_failure() {
+async fn a_persistence_failure_does_not_pose_as_a_refused_service() {
+    let ports = FakePorts::new(1000);
+    ports.fail_save();
+    let mut table = ProcessTable::new();
+    let report = start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
+    assert!(report.failure.is_none(), "the service did start");
+    assert_eq!(report.outcomes.len(), 1);
+}
+
+#[tokio::test]
+async fn a_launch_failure_and_a_persistence_failure_are_reported_apart() {
     let ports = FakePorts::new(1000);
     ports.fail_spawn_for("api");
     ports.fail_save();
     let mut table = ProcessTable::new();
     let report = start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
-    let err = failure(report);
-    assert!(matches!(err, UsecaseError::Launch(_)), "got: {err}");
+    let launch = report.failure.expect("the launch failure is kept");
+    assert!(matches!(launch, UsecaseError::Launch(_)), "got: {launch}");
+    let unsaved = report
+        .unsaved
+        .expect("the persistence failure is kept as well");
+    assert!(matches!(unsaved, UsecaseError::Dump(_)), "got: {unsaved}");
 }
 
 #[tokio::test]

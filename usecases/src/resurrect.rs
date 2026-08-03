@@ -5,7 +5,7 @@ use futures_util::future::join_all;
 
 use crate::{
     FingerprintError, Liveness, Ports, Result, UsecaseError,
-    fingerprint::render_identity,
+    fingerprint::{pid_was_recycled, render_identity},
     persist::save_table,
     record::ProcessRecord,
     start::{StartKind, StartOutcome, start_one},
@@ -99,7 +99,7 @@ async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<Str
 async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
     if record.runtime.status.is_shutting_down() {
         return Verdict::Settle {
-            stale: record.runtime.pid,
+            stale: surviving_pid(record, ports).await,
         };
     }
     let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
@@ -131,6 +131,24 @@ async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
 
 const fn respawn(change: Change, stale: Option<u32>) -> Verdict {
     Verdict::Respawn { change, stale }
+}
+
+async fn surviving_pid(record: &ProcessRecord, ports: &impl Ports) -> Option<u32> {
+    let pid = record.runtime.pid?;
+    let expected = record
+        .runtime
+        .identity
+        .as_ref()
+        .map(|identity| identity.token.as_str());
+    let observed = ports.identity(pid).await;
+    if matches!(observed, Liveness::Gone) {
+        return None;
+    }
+    if pid_was_recycled(&observed, expected) {
+        log_spared_evict(&record.runtime.name, pid);
+        return None;
+    }
+    Some(pid)
 }
 
 async fn evict(name: &str, stale: Option<u32>, kill_timeout_ms: u64, ports: &impl Ports) {
@@ -204,27 +222,55 @@ fn log_adopt(app: &str, pid: u32) {
     );
 }
 
+fn log_spared_evict(app: &str, pid: u32) {
+    tracing::warn!(
+        feature = "resurrect",
+        action = "evict",
+        service = app,
+        pid,
+        "pm3 spared a pid the kernel handed to another process",
+    );
+}
+
 fn log_evict(app: &str, pid: u32, refused: Option<&str>) {
-    let reason = refused.unwrap_or_default();
-    tracing::debug!(
+    let Some(reason) = refused else {
+        tracing::debug!(
+            feature = "resurrect",
+            action = "evict",
+            service = app,
+            pid,
+            "pm3 stopped the stale survivor before starting its replacement",
+        );
+        return;
+    };
+    tracing::warn!(
         feature = "resurrect",
         action = "evict",
         service = app,
         pid,
         reason,
-        "pm3 stopped the stale survivor before starting its replacement",
+        "pm3 cannot stop a stale survivor, so it may outlive its replacement",
     );
 }
 
 fn log_force_evict(app: &str, pid: u32, refused: Option<&str>) {
-    let reason = refused.unwrap_or_default();
-    tracing::debug!(
+    let Some(reason) = refused else {
+        tracing::debug!(
+            feature = "resurrect",
+            action = "force_evict",
+            service = app,
+            pid,
+            "pm3 force killed the stale survivor that ignored the stop signal",
+        );
+        return;
+    };
+    tracing::warn!(
         feature = "resurrect",
         action = "force_evict",
         service = app,
         pid,
         reason,
-        "pm3 force killed the stale survivor that ignored the stop signal",
+        "pm3 cannot force kill a stale survivor, so it outlives its replacement",
     );
 }
 

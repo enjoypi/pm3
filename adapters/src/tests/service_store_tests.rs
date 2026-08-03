@@ -64,3 +64,81 @@ async fn an_inline_request_refuses_an_unsafe_app_name() {
     assert!(err.contains("cannot accept app name"), "got: {err}");
     assert!(!home.dir.path().join("escape.yaml").exists());
 }
+
+#[tokio::test]
+async fn a_config_file_that_is_not_there_yet_reads_as_stale() {
+    let home = home();
+    let path = home.dir.path().join("config.yaml");
+    let reconciled = reconcile(&path, "pm3:\n", false)
+        .await
+        .expect("a missing file is stale, not a conflict");
+    assert_eq!(reconciled, Reconciled::Stale);
+}
+
+#[tokio::test]
+async fn a_config_file_that_already_says_the_same_thing_is_unchanged() {
+    let home = home();
+    let path = home.dir.path().join("config.yaml");
+    std::fs::write(&path, "pm3:\n").expect("seed the config file");
+    let reconciled = reconcile(&path, "pm3:\n", false)
+        .await
+        .expect("identical content is unchanged");
+    assert_eq!(reconciled, Reconciled::Unchanged);
+}
+
+#[tokio::test]
+async fn a_config_file_pm3_cannot_read_is_refused_instead_of_overwritten() {
+    let home = home();
+    let path = home.dir.path().join("config.yaml");
+    std::fs::create_dir_all(&path).expect("block the config path with a directory");
+    let err = reconcile(&path, "pm3:\n", false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot read the service file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn an_empty_config_file_still_needs_force_to_be_overwritten() {
+    let home = home();
+    let path = home.dir.path().join("config.yaml");
+    std::fs::write(&path, "").expect("seed an empty config file");
+    let err = reconcile(&path, "pm3:\n", false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("without --force"), "got: {err}");
+}
+
+#[tokio::test]
+async fn forgetting_a_service_file_pm3_cannot_delete_is_reported() {
+    let home = home();
+    let blocked = home.cfg_dir.join("sleeper.yaml");
+    std::fs::create_dir_all(&blocked).expect("block the service file path");
+    std::fs::write(blocked.join("occupied"), "state").expect("fill the blocked path");
+    forget(&home.cfg_dir, NAME).await;
+    assert!(
+        blocked.is_dir(),
+        "the blocked path must survive the attempt"
+    );
+}
+
+#[tokio::test]
+async fn forgetting_a_service_file_that_is_already_gone_is_quiet() {
+    let home = home();
+    forget(&home.cfg_dir, NAME).await;
+    assert!(!home.cfg_dir.join("sleeper.yaml").exists());
+}
+
+#[tokio::test]
+async fn a_service_file_pm3_cannot_read_stops_the_write() {
+    let home = home();
+    let blocked = home.cfg_dir.join("sleeper.yaml");
+    std::fs::create_dir_all(&blocked).expect("block the service file path");
+    let args = shell_args();
+    let err = prepare_inline(&context(&home), &request(SHELL, &args, None, false))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot read the service file"), "got: {err}");
+}

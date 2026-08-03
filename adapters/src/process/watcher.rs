@@ -5,7 +5,7 @@ use usecases::{ExitOutcome, Liveness};
 
 use super::{ps_probe::PsProcessProbe, tokio_launcher::TokioProcessLauncher};
 
-const UNKNOWN_EXIT: ExitOutcome = ExitOutcome { exit_code: None };
+const UNKNOWN_EXIT: ExitOutcome = ExitOutcome::Unobserved;
 
 pub async fn wait_until_released(path: &Path, timeout_ms: u64, poll_interval_ms: u64) -> bool {
     let step_ms = poll_interval_ms.max(1);

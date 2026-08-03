@@ -59,7 +59,12 @@ pub async fn execute_plan(
 }
 
 async fn about_to_create(step: &UnitStep) -> Result<Option<PathBuf>, UnitCommandError> {
-    let UnitStep::Write { path, .. } = step else {
+    let UnitStep::Write {
+        dir: _,
+        path,
+        contents: _,
+    } = step
+    else {
         return Ok(None);
     };
     match tokio::fs::try_exists(path).await {

@@ -13,6 +13,7 @@ pub fn render_unit(spec: &UnitSpec) -> String {
     let home = escape_value(&spec.home);
     let restart_delay_secs = spec.restart_delay_secs;
     let restart = escape_value(&spec.restart_condition);
+    let pm3_env = render_environment(&spec.pm3_env);
     format!(
         "[Unit]
 Description={label}
@@ -27,13 +28,24 @@ RestartSec={restart_delay_secs}
 KillMode=process
 Environment=\"{HOME_VARIABLE}={home}\"
 Environment=\"{PATH_VARIABLE}={search_path}\"
-StandardOutput=append:{log_path}
+{pm3_env}StandardOutput=append:{log_path}
 StandardError=append:{log_path}
 
 [Install]
 WantedBy=default.target
 "
     )
+}
+
+fn render_environment(vars: &[(String, String)]) -> String {
+    vars.iter().map(render_variable).collect()
+}
+
+fn render_variable(entry: &(String, String)) -> String {
+    let (name, value) = entry;
+    let key = escape_value(name);
+    let text = escape_value(value);
+    format!("Environment=\"{key}={text}\"\n")
 }
 
 fn render_exec_start(spec: &UnitSpec) -> String {
@@ -46,18 +58,8 @@ fn render_exec_start(spec: &UnitSpec) -> String {
 }
 
 fn quote_token(raw: &str) -> String {
-    let mut quoted = String::with_capacity(raw.len() + 2);
-    quoted.push('"');
-    for character in raw.chars() {
-        match character {
-            '\\' => quoted.push_str("\\\\"),
-            '"' => quoted.push_str("\\\""),
-            '%' => quoted.push_str("%%"),
-            other => quoted.push(other),
-        }
-    }
-    quoted.push('"');
-    quoted
+    let escaped = escape_value(raw);
+    format!("\"{escaped}\"")
 }
 
 fn escape_value(raw: &str) -> String {

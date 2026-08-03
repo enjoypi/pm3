@@ -22,6 +22,15 @@ pub fn log_stale_restart(app: &str) {
     );
 }
 
+pub fn log_exit_after_delete(app: &str) {
+    tracing::debug!(
+        feature = "supervisor",
+        action = "exit",
+        app,
+        "pm3 daemon observed the exit of a service that was already deleted",
+    );
+}
+
 pub fn log_spared_force_kill(app: &str, pid: u32) {
     tracing::warn!(
         feature = "supervisor",

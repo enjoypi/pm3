@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use super::*;
-use crate::{UnitKind, unit_specs::spec_for};
+use crate::{
+    UnitKind,
+    unit_specs::{PM3_HOME_VALUE, PM3_HOME_VARIABLE, spec_for},
+};
 
 fn rendered() -> String {
     render_unit(&spec_for(UnitKind::Systemd, Path::new("/home/dev")))
@@ -138,5 +141,17 @@ fn the_unit_escapes_quotes_backslashes_and_percent_signs_inside_tokens() {
         render_unit(&spec).contains("ExecStart=\"/opt/a b\\\\c\\\"d%%e/pm3\""),
         "got: {}",
         render_unit(&spec)
+    );
+}
+
+#[test]
+fn the_unit_hands_the_daemon_the_pm3_environment_the_install_ran_under() {
+    let home = tempfile::tempdir().expect("temp dir");
+    let unit = render_unit(&spec_for(UnitKind::Systemd, home.path()));
+    assert!(
+        unit.contains(&format!(
+            "Environment=\"{PM3_HOME_VARIABLE}={PM3_HOME_VALUE}\""
+        )),
+        "got: {unit}"
     );
 }

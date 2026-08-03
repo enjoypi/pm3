@@ -22,20 +22,25 @@ pub async fn materialise_workspace(spec: &mut AppSpec) {
         *arg = expand_service_cwd(arg, &spec.cwd);
     }
     let mut resolved = BTreeMap::from([(declared_cwd, spec.cwd.clone())]);
-    for root in spec
-        .sandbox
-        .writable_roots
-        .iter_mut()
-        .chain(&mut spec.sandbox.derived_roots)
-    {
-        if let Some(known) = resolved.get(root.as_str()) {
-            root.clone_from(known);
-            continue;
-        }
-        let real = real_path(root).await;
-        resolved.insert(root.clone(), real.clone());
-        *root = real;
+    for root in &mut spec.sandbox.derived_roots {
+        *root = resolve_cached(root, &mut resolved).await;
     }
+    let declared = spec.sandbox.writable_roots.clone();
+    for root in &declared {
+        let real = resolve_cached(root, &mut resolved).await;
+        if &real != root && !spec.sandbox.derived_roots.contains(&real) {
+            spec.sandbox.derived_roots.push(real);
+        }
+    }
+}
+
+async fn resolve_cached(path: &str, resolved: &mut BTreeMap<String, String>) -> String {
+    if let Some(known) = resolved.get(path) {
+        return known.clone();
+    }
+    let real = real_path(path).await;
+    resolved.insert(path.to_string(), real.clone());
+    real
 }
 
 #[must_use]

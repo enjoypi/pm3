@@ -17,6 +17,7 @@ pub async fn start_one(harness: &mut Harness, name: &str, script: &str) -> Start
         mut outcomes,
         refused: _,
         reason: _,
+        unsaved: _,
     } = reply
     else {
         panic!("start should answer with a start summary")
@@ -85,6 +86,7 @@ pub async fn start_scheduled(harness: &mut Harness, name: &str, cron: &str) -> S
         mut outcomes,
         refused: _,
         reason: _,
+        unsaved: _,
     } = reply
     else {
         panic!("start should answer with a start summary")

@@ -16,6 +16,14 @@ function constantOf(source: string, name: string): string {
   return found[1] as string;
 }
 
+function defaultOf(source: string, key: string): string {
+  const found = source.match(new RegExp(`${key}: "\\$\\{[A-Z0-9_]+:-([^}]+)\\}"`));
+  if (found === null) {
+    throw new Error(`${key} is no longer declared the way this guard reads it`);
+  }
+  return found[1] as string;
+}
+
 function armOf(source: string, variant: string): string {
   const found = source.match(
     new RegExp(`Self::${variant} => "([^"]+)"`),
@@ -42,35 +50,35 @@ describe("install.ts mirrors the rust side", () => {
     expect(install).toContain(`const defaultRuntimeHome = "${home}";`);
   });
 
-  test("the launchd kind matches service/spec.rs", async () => {
-    const spec = await sourceOf("adapters/src/service/spec.rs");
+  test("the launchd kind matches unit/spec.rs", async () => {
+    const spec = await sourceOf("adapters/src/unit/spec.rs");
     const install = await sourceOf("dev_scripts/install.ts");
     expect(install).toContain(
       `const launchdKind = "${armOf(spec, "Launchd")}";`,
     );
   });
 
-  test("the running status matches service/spec.rs", async () => {
-    const spec = await sourceOf("adapters/src/service/spec.rs");
+  test("the running status matches unit/spec.rs", async () => {
+    const spec = await sourceOf("adapters/src/unit/spec.rs");
     const install = await sourceOf("dev_scripts/install.ts");
     expect(install).toContain(
       `const runningStatus = "${armOf(spec, "Running")}";`,
     );
   });
 
-  test("the systemd kind matches service/spec.rs", async () => {
-    const spec = await sourceOf("adapters/src/service/spec.rs");
+  test("the systemd kind matches unit/spec.rs", async () => {
+    const spec = await sourceOf("adapters/src/unit/spec.rs");
     const install = await sourceOf("dev_scripts/install.ts");
     expect(install).toContain(
       `const systemdKind = "${armOf(spec, "Systemd")}";`,
     );
   });
 
-  test("the systemctl program matches service/command.rs", async () => {
-    const command = await sourceOf("adapters/src/service/command.rs");
+  test("the systemctl program matches the config default", async () => {
+    const config = await sourceOf("config.yaml");
     const install = await sourceOf("dev_scripts/install.ts");
     expect(install).toContain(
-      `const systemctlProgram = "${constantOf(command, "SYSTEMCTL_PROGRAM")}";`,
+      `const systemctlProgram = "${defaultOf(config, "systemctl_path")}";`,
     );
   });
 });

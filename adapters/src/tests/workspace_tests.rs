@@ -79,12 +79,52 @@ async fn the_working_directory_is_resolved_to_its_real_path() {
 }
 
 #[tokio::test]
-async fn every_writable_root_is_resolved_to_its_real_path() {
+async fn a_declared_writable_root_keeps_the_text_the_operator_wrote() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (link, _real) = linked_dir(dir.path());
+    let mut spec = spec_at(&link, vec![link.clone()]);
+    materialise_workspace(&mut spec).await;
+    assert_eq!(spec.sandbox.writable_roots, vec![link]);
+}
+
+#[tokio::test]
+async fn the_real_path_of_a_declared_writable_root_is_granted_as_well() {
     let dir = tempfile::tempdir().expect("temp dir");
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_at(&link, vec![link.clone()]);
     materialise_workspace(&mut spec).await;
-    assert_eq!(spec.sandbox.writable_roots, vec![real]);
+    assert!(
+        spec.sandbox.granted_roots().contains(&real.as_str()),
+        "got: {:?}",
+        spec.sandbox.granted_roots()
+    );
+}
+
+#[tokio::test]
+async fn a_writable_root_pm3_already_derived_is_not_granted_twice() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (link, real) = linked_dir(dir.path());
+    let mut spec = spec_at(&link, vec![link.clone()]);
+    spec.sandbox.derived_roots = vec![link.clone()];
+    materialise_workspace(&mut spec).await;
+    let repeats = spec
+        .sandbox
+        .derived_roots
+        .iter()
+        .filter(|root| **root == real)
+        .count();
+    assert_eq!(repeats, 1, "got: {:?}", spec.sandbox.derived_roots);
+}
+
+#[tokio::test]
+async fn a_writable_root_that_already_reads_as_its_real_path_is_not_granted_twice() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_link, real) = linked_dir(dir.path());
+    let mut spec = spec_at(&real, vec![real.clone()]);
+    materialise_workspace(&mut spec).await;
+    let granted = spec.sandbox.granted_roots();
+    let repeats = granted.iter().filter(|root| **root == real).count();
+    assert_eq!(repeats, 1, "got: {granted:?}");
 }
 
 #[tokio::test]

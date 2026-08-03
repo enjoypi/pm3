@@ -107,7 +107,7 @@ async fn wait_reports_a_clean_exit() {
     let dir = temp_dir();
     let spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
     let outcome = run_to_completion(&spec).await.expect("should reap");
-    assert!(outcome.clean(), "got: {outcome:?}");
+    assert_eq!(outcome, ExitOutcome::Code(0));
 }
 
 #[tokio::test]
@@ -115,7 +115,7 @@ async fn wait_reports_a_failing_exit_code() {
     let dir = temp_dir();
     let spec = spec_in(dir.path(), SHELL_PROGRAM, &["-c", "exit 3"]);
     let outcome = run_to_completion(&spec).await.expect("should reap");
-    assert_eq!(outcome.exit_code, Some(3));
+    assert_eq!(outcome, ExitOutcome::Code(3));
 }
 
 #[tokio::test]
@@ -131,7 +131,7 @@ async fn wait_reports_no_code_for_a_signalled_child() {
         .expect("should signal");
     assert!(killed.success(), "kill should succeed");
     let outcome = launcher.wait(process.pid).await.expect("should reap");
-    assert_eq!(outcome.exit_code, None);
+    assert_eq!(outcome, ExitOutcome::Signalled);
 }
 
 #[tokio::test]

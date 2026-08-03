@@ -77,11 +77,14 @@ pub enum Error {
     #[error("cannot reach the pm3 daemon on '{path}' within {timeout_ms} ms")]
     DaemonUnready { path: String, timeout_ms: u64 },
 
-    #[error("pm3 daemon refused the request with status {status}: {body}")]
+    #[error("cannot complete the request: the pm3 daemon answered status {status}: {body}")]
     Refused { status: u16, body: String },
 
     #[error("cannot start {refused}:\n{report}")]
     PartialStart { refused: String, report: String },
+
+    #[error("cannot record what pm3 just started:\n{report}")]
+    UnsavedStart { report: String },
 
     #[error("cannot read the pm3 daemon pid from '{path}'")]
     DaemonPidUnknown { path: String },

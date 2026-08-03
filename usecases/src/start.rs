@@ -31,6 +31,7 @@ pub struct StartOutcome {
 pub struct StartReport {
     pub outcomes: Vec<StartOutcome>,
     pub failure: Option<UsecaseError>,
+    pub unsaved: Option<UsecaseError>,
 }
 
 impl StartReport {
@@ -38,6 +39,7 @@ impl StartReport {
         Self {
             outcomes: Vec::new(),
             failure: Some(error),
+            unsaved: None,
         }
     }
 }
@@ -66,60 +68,69 @@ pub async fn start_apps(
     };
 
     let now_ms = ports.now_ms();
-    let mut fresh = Vec::with_capacity(specs.len());
+    let mut previous = Vec::with_capacity(specs.len());
     for spec in specs {
-        if table.find_by_name(&spec.name).is_none() {
-            fresh.push(spec.name.clone());
-        }
+        let prior = table
+            .find_by_name(&spec.name)
+            .map(|record| record.spec.clone());
+        previous.push((spec.name.clone(), prior));
         table.upsert(spec.clone(), now_ms);
     }
 
     let mut report = StartReport {
         outcomes: Vec::with_capacity(order.len()),
         failure: None,
+        unsaved: None,
     };
-    let mut failed_app = String::new();
     for name in &order {
         match launch(table, name, logs_dir, ports, StartMode::Register).await {
             Ok(outcome) => report.outcomes.push(outcome),
             Err(error) => {
                 log_abandoned_start(name, &error);
-                failed_app.clone_from(name);
                 report.failure = Some(error);
                 break;
             }
         }
     }
     if report.failure.is_some() {
-        forget_unlaunched(table, &fresh, &report.outcomes);
+        forget_unlaunched(table, &previous, &report.outcomes, now_ms);
     }
     if let Err(error) = save_table(table, ports).await {
-        if report.failure.is_none() {
-            report.failure = Some(error);
-        } else {
-            log_unsaved_table(&failed_app, &error);
-        }
+        log_unsaved_table(report.outcomes.len(), &error);
+        report.unsaved = Some(error);
     }
     report
 }
 
-fn forget_unlaunched(table: &mut ProcessTable, fresh: &[String], outcomes: &[StartOutcome]) {
-    for name in fresh {
-        let launched = outcomes.iter().any(|outcome| outcome.name == *name);
-        if !launched {
-            table.remove(&AppSelector::Name(name.clone()));
+fn forget_unlaunched(
+    table: &mut ProcessTable,
+    previous: &[(String, Option<AppSpec>)],
+    outcomes: &[StartOutcome],
+    now_ms: u64,
+) {
+    for (name, prior) in previous {
+        if outcomes.iter().any(|outcome| &outcome.name == name) {
+            continue;
+        }
+        match prior {
+            Some(spec) => {
+                table.upsert(spec.clone(), now_ms);
+            }
+            None => {
+                table.remove(&AppSelector::Name(name.clone()));
+            }
         }
     }
 }
 
-fn log_unsaved_table(app: &str, error: &UsecaseError) {
+fn log_unsaved_table(started: usize, error: &UsecaseError) {
     let reason = error.to_string();
     tracing::warn!(
         feature = "lifecycle",
         action = "start",
-        app,
+        started,
         reason,
-        "pm3 cannot persist the process table after a failed start, so a daemon restart may lose the services it just started",
+        "pm3 cannot persist the process table after starting, so a daemon restart may lose these services",
     );
 }
 

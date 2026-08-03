@@ -13,13 +13,14 @@ use crate::{
     restart::{RestartOutcome, restart_app},
     resurrect::resurrect,
     selector::AppSelector,
-    start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
-    stop::{is_drained, persist_for_handover, stop_all_apps, stop_app},
+    start::{StartOutcome, StartReport, refused_services, start_apps},
+    stop::{persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
     supervision::{SupervisionOutcome, SupervisionReply, SupervisionRequest},
     supervisor_log::{
-        log_armed, log_failure, log_handover, log_partial_start, log_settled,
-        log_spared_force_kill, log_stale_restart, log_stuck_force_kill, log_unschedulable,
+        log_armed, log_exit_after_delete, log_failure, log_handover, log_partial_start,
+        log_settled, log_spared_force_kill, log_stale_restart, log_stuck_force_kill,
+        log_unschedulable,
     },
     table::ProcessTable,
     timer_state::TimerState,
@@ -86,17 +87,14 @@ impl Supervisor {
 
     #[must_use]
     pub fn drained(&self, tracked: &[u32]) -> bool {
-        is_drained(tracked, &running_pids(&self.table))
+        self.survivor_pids(tracked).is_empty()
     }
 
-    #[must_use]
-    pub fn survivor_pids(&self, tracked: &[u32]) -> Vec<u32> {
-        let preserved = running_pids(&self.table);
-        tracked
-            .iter()
-            .copied()
-            .filter(|pid| !preserved.contains(pid))
-            .collect()
+    pub async fn force_kill_survivors(&self, tracked: &[u32], ports: &impl Ports) {
+        for pid in self.survivor_pids(tracked) {
+            let (name, token) = owner_of_pid(&self.table, pid);
+            self.sweep_pid(&name, pid, token.as_deref(), ports).await;
+        }
     }
 
     pub async fn resurrect_saved(&mut self, ports: &impl Ports) -> Vec<SupervisionEffect> {
@@ -158,6 +156,10 @@ impl Supervisor {
         let mut effects = vec![SupervisionEffect::CancelForceKill {
             name: name.to_string(),
         }];
+        if self.table.find_by_name(name).is_none() {
+            log_exit_after_delete(name);
+            return effects;
+        }
         match handle_child_exit(&mut self.table, name, outcome, ports).await {
             Ok(ExitAction::RestartAfter { delay_ms }) => {
                 effects.push(self.queue_restart(name, delay_ms));
@@ -214,6 +216,10 @@ impl Supervisor {
         if !ports.tracked_pids().await.contains(&pid) {
             return;
         }
+        self.sweep_pid(name, pid, token, ports).await;
+    }
+
+    async fn sweep_pid(&self, name: &str, pid: u32, token: Option<&str>, ports: &impl Ports) {
         if pid_was_recycled(&ports.identity(pid).await, token) {
             log_spared_force_kill(name, pid);
             return;
@@ -243,34 +249,37 @@ impl Supervisor {
         for name in services {
             specs.push(resolver.prepare(name).await?);
         }
-        let StartReport { outcomes, failure } =
-            start_apps(&mut self.table, &specs, &self.logs_dir, ports).await;
+        let StartReport {
+            outcomes,
+            failure,
+            unsaved,
+        } = start_apps(&mut self.table, &specs, &self.logs_dir, ports).await;
         self.watch_all(&outcomes, effects);
         for outcome in &outcomes {
             self.cancel_restart(&outcome.name, effects);
-            match outcome.kind {
-                StartKind::AlreadyRunning => self.reconcile_timer(&outcome.name, ports, effects),
-                StartKind::Spawned | StartKind::Adopted | StartKind::Scheduled => {
-                    self.arm_timer(&outcome.name, ports, effects);
-                }
-            }
+            self.arm_timer(&outcome.name, ports, effects);
         }
-        let Some(error) = failure else {
+        if outcomes.is_empty() {
+            if let Some(error) = failure.or(unsaved) {
+                return Err(error.into());
+            }
             return Ok(SupervisionReply::Started {
                 outcomes,
                 refused: Vec::new(),
                 reason: None,
+                unsaved: None,
             });
-        };
-        if outcomes.is_empty() {
-            return Err(error.into());
         }
         let refused = refused_services(services, &outcomes);
-        log_partial_start(&refused, &error);
+        let reason = failure
+            .inspect(|error| log_partial_start(&refused, error))
+            .as_ref()
+            .map(ToString::to_string);
         Ok(SupervisionReply::Started {
             outcomes,
             refused,
-            reason: Some(error.to_string()),
+            reason,
+            unsaved: unsaved.as_ref().map(ToString::to_string),
         })
     }
 
@@ -311,7 +320,6 @@ impl Supervisor {
         let outcome = delete_app(&mut self.table, selector, ports).await?;
         self.disarm(&outcome.name, effects);
         self.cancel_restart(&outcome.name, effects);
-        self.timers.forget_generation(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
         Ok(SupervisionReply::Deleted { name: outcome.name })
     }
@@ -358,7 +366,10 @@ impl Supervisor {
                 let restarted = self.dispatch_restart(outcome, effects);
                 self.arm_timer(&restarted, ports, effects);
             }
-            Err(error) => log_failure("restart", name, &error),
+            Err(error) => {
+                log_failure("restart", name, &error);
+                self.arm_timer(name, ports, effects);
+            }
         }
     }
 
@@ -403,23 +414,10 @@ impl Supervisor {
     }
 
     fn cancel_restart(&mut self, name: &str, effects: &mut Vec<SupervisionEffect>) {
-        self.timers.cancel_restart(name);
+        self.timers.claim_restart(name);
         effects.push(SupervisionEffect::CancelRestart {
             name: name.to_string(),
         });
-    }
-
-    fn reconcile_timer(
-        &mut self,
-        name: &str,
-        ports: &impl Ports,
-        effects: &mut Vec<SupervisionEffect>,
-    ) {
-        if schedule_of(&self.table, name).is_some() {
-            self.arm_timer(name, ports, effects);
-        } else {
-            self.disarm(name, effects);
-        }
     }
 
     fn arm_timer(&mut self, name: &str, ports: &impl Ports, effects: &mut Vec<SupervisionEffect>) {
@@ -478,6 +476,10 @@ impl Supervisor {
             pid,
             token,
         });
+    }
+
+    fn survivor_pids(&self, tracked: &[u32]) -> Vec<u32> {
+        unswept_pids(tracked, &running_pids(&self.table))
     }
 
     fn identity_token(&self, name: &str) -> Option<String> {

@@ -10,6 +10,7 @@ const SYSTEMD_UNIT_SUFFIX: &str = "service";
 
 const LAUNCHD_PID_KEY: &str = "\"PID\"";
 const SYSTEMD_ACTIVE: &str = "active";
+const PM3_VARIABLE_PREFIX: &str = "PM3_";
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum UnitKind {
@@ -72,6 +73,7 @@ pub struct UnitSpec {
     pub log_path: PathBuf,
     pub search_path: String,
     pub home: String,
+    pub pm3_env: Vec<(String, String)>,
     pub restart_delay_secs: u64,
     pub restart_condition: String,
 }
@@ -100,6 +102,16 @@ impl UnitSpec {
 #[must_use]
 pub fn unit_dir_of(kind: UnitKind, home: &Path) -> PathBuf {
     home.join(kind.unit_dir())
+}
+
+#[must_use]
+pub fn pm3_variables(vars: Vec<(String, String)>) -> Vec<(String, String)> {
+    let mut kept: Vec<(String, String)> = vars
+        .into_iter()
+        .filter(|(name, _value)| name.starts_with(PM3_VARIABLE_PREFIX))
+        .collect();
+    kept.sort();
+    kept
 }
 
 #[must_use]

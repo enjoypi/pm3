@@ -60,6 +60,10 @@ impl TaskBoard {
         self.force_kills.contains_key(name)
     }
 
+    pub fn forget_force_kill(&mut self, name: &str) {
+        self.force_kills.remove(name);
+    }
+
     fn watch(&self, name: String, generation: u64, pid: u32, token: Option<String>) {
         let ports = Arc::clone(&self.ports);
         let events = self.events.clone();
@@ -67,7 +71,7 @@ impl TaskBoard {
             let outcome = ports
                 .wait(pid, token)
                 .await
-                .unwrap_or(ExitOutcome { exit_code: None });
+                .unwrap_or(ExitOutcome::Unobserved);
             events
                 .send(DaemonEvent::Exited {
                     name,

@@ -10,6 +10,8 @@ pub const PROGRAM: &str = "/usr/local/bin/pm3";
 pub const SEARCH_PATH: &str = "/usr/bin:/bin";
 pub const MISSING_PROGRAM: &str = "/nonexistent/pm3-service-manager";
 pub const RESTART_CONDITION: &str = "always";
+pub const PM3_HOME_VARIABLE: &str = "PM3_HOME";
+pub const PM3_HOME_VALUE: &str = "/srv/pm3";
 
 const ROOT_DIR: &str = ".pm3";
 const CONFIG_FILE: &str = "config.yaml";
@@ -27,6 +29,7 @@ pub fn spec_for(kind: UnitKind, home: &Path) -> UnitSpec {
         log_path: root.join(LOG_FILE),
         search_path: SEARCH_PATH.to_string(),
         home: home.to_string_lossy().into_owned(),
+        pm3_env: vec![(PM3_HOME_VARIABLE.to_string(), PM3_HOME_VALUE.to_string())],
         restart_delay_secs: 2,
         restart_condition: RESTART_CONDITION.to_string(),
     }

@@ -23,6 +23,7 @@ async fn a_half_started_batch_names_the_service_it_refused() {
         outcomes: _,
         refused,
         reason: _,
+        unsaved: _,
     } = reply
     else {
         panic!("start should answer with a start summary")
@@ -38,6 +39,7 @@ async fn a_half_started_batch_keeps_the_service_it_did_start() {
         outcomes,
         refused: _,
         reason,
+        unsaved: _,
     } = reply
     else {
         panic!("start should answer with a start summary")
@@ -138,4 +140,58 @@ async fn shutting_down_force_kills_only_the_services_that_were_stopping() {
         vec![kept.pid.expect("a pid")],
         "a service that was not stopping must survive the shutdown sweep"
     );
+}
+
+#[tokio::test]
+async fn a_start_the_daemon_cannot_record_reports_the_persistence_failure() {
+    let mut harness = harness();
+    apps_file(&harness, "web", SLEEPER);
+    std::fs::create_dir_all(&harness.paths.dump_file).expect("block the dump path");
+    std::fs::write(harness.paths.dump_file.join("occupied"), "state")
+        .expect("fill the blocked dump path");
+
+    let reply = harness
+        .daemon
+        .handle(SupervisionRequest::Start {
+            services: vec!["web".to_string()],
+        })
+        .await
+        .expect("a service that did start is not a refusal");
+    let SupervisionReply::Started {
+        outcomes,
+        refused,
+        reason: _,
+        unsaved,
+    } = reply
+    else {
+        panic!("start should answer with a start summary")
+    };
+
+    assert_eq!(outcomes.len(), 1);
+    assert!(refused.is_empty(), "the service did start");
+    assert!(
+        unsaved.is_some(),
+        "a dump pm3 cannot write must be reported to the caller"
+    );
+    std::fs::remove_dir_all(&harness.paths.dump_file).expect("unblock the dump path");
+}
+
+#[tokio::test]
+async fn an_exit_the_daemon_cannot_record_is_tolerated() {
+    let mut harness = harness();
+    let started = start_one(&mut harness, "web", SLEEPER).await;
+    std::fs::remove_file(&harness.paths.dump_file).expect("drop the dump file");
+    std::fs::create_dir_all(&harness.paths.dump_file).expect("block the dump path");
+    std::fs::write(harness.paths.dump_file.join("occupied"), "state")
+        .expect("fill the blocked dump path");
+
+    harness.daemon.on_exit("web", 1, ExitOutcome::Code(0)).await;
+
+    assert_eq!(
+        status_of(&mut harness, "web").await,
+        "stopped",
+        "pid {} settled even though pm3 could not record it",
+        started.pid.expect("a pid")
+    );
+    std::fs::remove_dir_all(&harness.paths.dump_file).expect("unblock the dump path");
 }

@@ -18,18 +18,13 @@ pub mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
-    AppSelector, AppSpec, Clock, CommandWrapper, DeleteOutcome, DumpError, DumpStore, ExitAction,
-    ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess,
-    Liveness, Ports, ProcessIdentity, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime,
-    ProcessStatus, ProcessTable, ProcessView, RestartOutcome, SandboxError, SandboxMode,
-    SandboxPolicy, Scheduler, SignalError, Signaler, SpecError, SpecResolveError, SpecResolver,
-    StartKind, StartOutcome, StartReport, StopOutcome, SupervisionEffect, SupervisionFailure,
-    SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor, TimerState, UsecaseError,
-    WrappedCommand, armed_schedule_names, delete_app, describe_app, handle_child_exit,
-    identity_token_of, is_drained, list_apps, log_paths, owner_of_pid, persist_for_handover,
-    pid_was_recycled, refused_services, render_identity, restart_app, resurrect, running_pids,
-    schedule_of, start_apps, stop_all_apps, stop_app, topo_sort, unsettled_count,
-    validate_app_name,
+    AppSelector, AppSpec, Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome,
+    FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, Ports,
+    ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView,
+    SandboxError, SandboxMode, SandboxPolicy, Scheduler, SignalError, Signaler, SpecError,
+    SpecResolveError, StartKind, StartOutcome, StartReport, SupervisionEffect, SupervisionOutcome,
+    SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand, delete_app, describe_app,
+    list_apps, log_paths, start_apps, validate_app_name,
 };
 
 pub use self::{
@@ -63,7 +58,7 @@ pub use self::{
     presenter::{
         DAEMON_NOT_RUNNING, EMPTY_NOTICE, NOTHING_STARTED, affected_service, already_running_names,
         render_daemon_gone, render_daemon_stopped, render_describe, render_reply, render_started,
-        render_table,
+        render_table, unsaved_reason,
     },
     process::{
         AdoptedWatch, KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
@@ -85,8 +80,8 @@ pub use self::{
     state::{DaemonCommand, DaemonError, DaemonHandle},
     unit::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, UnitCommandError, UnitKind,
-        UnitProgramSet, UnitSpec, UnitStatus, install_unit, status_report, uninstall_unit,
-        unit_dir_of,
+        UnitProgramSet, UnitSpec, UnitStatus, install_unit, pm3_variables, status_report,
+        uninstall_unit, unit_dir_of,
     },
     workspace::{expand_service_cwd, materialise_workspace},
 };

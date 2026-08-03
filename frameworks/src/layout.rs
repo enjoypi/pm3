@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use adapters::{Pm3Config, Pm3Paths, expand_home, resolve_paths};
+use adapters::{Pm3Config, Pm3Paths, expand_home, pm3_variables, resolve_paths};
 
 use crate::{Error, Result};
 
@@ -71,6 +71,11 @@ pub fn host_home() -> Option<String> {
 #[must_use]
 pub fn host_pm3_home() -> Option<String> {
     std::env::var("PM3_HOME").ok()
+}
+
+#[must_use]
+pub fn host_pm3_env() -> Vec<(String, String)> {
+    pm3_variables(std::env::vars().collect())
 }
 
 fn layout_error(path: &Path, source: &std::io::Error) -> Error {

@@ -15,7 +15,9 @@ use super::{
     routes::REQUEST_ID_HEADER,
 };
 use crate::{
-    presenter::{affected_service, already_running_names, refused_names, render_reply},
+    presenter::{
+        affected_service, already_running_names, refused_names, render_reply, unsaved_reason,
+    },
     state::{DaemonError, DaemonHandle},
 };
 
@@ -125,6 +127,7 @@ fn refusal(error: &DaemonError) -> ReplyDto {
         service: None,
         already_running: Vec::new(),
         refused: Vec::new(),
+        unsaved: None,
     }
 }
 
@@ -169,6 +172,7 @@ fn envelope(reply: &SupervisionReply) -> ReplyDto {
         service: affected_service(reply),
         already_running: already_running_names(reply),
         refused: refused_names(reply),
+        unsaved: unsaved_reason(reply),
     }
 }
 
