@@ -54,8 +54,8 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - unit MUST 导出安装时的 `PM3_*` 环境（`UnitSpec.pm3_env`，两个渲染器都写，值要排序否则 `reconcile` 的逐字节比对每次都判 Stale）：install 拷进 `pm3.home` 的 `config.yaml` 是**未做变量替换**的原文，而 unit 只导出 `HOME`/`PATH` 时，`${PM3_HOME:-~/.pm3}` 在服务管理器起的 daemon 里退回默认值 ⇒ daemon 在 `~/.pm3` 建 socket/pid/dump，而 CLI（shell 里有 `PM3_HOME`）去连 `/srv/pm3/pm3.sock` ⇒ 连不上就经 `ensure_daemon_running` 再拉起一个**非托管** daemon，正是本节开头那个坑。注意反过来把「替换后的文本」落盘会让 `reconcile` 每次 install 都判 Conflict
 - 换代前 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷；`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），排查残留只用 `pgrep`；但 `pgrep -f <pat>` 同样会匹配到发起它的 shell，按可执行名找用 `pgrep -x`
 - Linux 侧同一套顺序换 `systemctl --user`，但两件事只在 Linux 成立：
-  - `systemctl --user` 依赖 `XDG_RUNTIME_DIR`，非登录会话（agent/CI shell）里它为空 → 所有 `service` 子命令报 `Failed to connect to bus: No medium found`；先 `export XDG_RUNTIME_DIR=/run/user/$(id -u)`
-  - `loginctl enable-linger` 走 polkit 授权，polkit 被 mask 或无交互授权时必失败 → 它在 install plan 里是 `ServiceStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。看到 `skipped:` 就要由 root 补 `loginctl enable-linger <user>`，否则用户注销后 user manager 回收会连带停掉 daemon
+  - **只有 `systemctl --user` 依赖 `XDG_RUNTIME_DIR`**（`loginctl` 走 system bus，不受影响——排查时别把两者混为一谈）：非登录会话（agent/CI shell）里它为空 → 所有走 systemctl 的 `service` 子命令失败，报文视 systemd 版本而异（`Failed to connect to bus: No medium found`，或 `Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined`）；先 `export XDG_RUNTIME_DIR=/run/user/$(id -u)`
+  - `loginctl enable-linger` **不带用户名是合法的**（`enable-linger [USER...]`，省略即作用于调用者）：无授权时它只报 polkit `requires interactive authentication`、**不报缺参数** → 别以为是命令写错了去补用户名。它走 polkit 授权，polkit 被 mask 或无交互授权时必失败，故在 install plan 里是 `UnitStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。看到 `skipped:` 就由有 sudo 的账号补一次（已实测成功），否则用户注销后 user manager 回收会连带停掉 daemon
 
 ## 改动波及清单
 
