@@ -19,6 +19,7 @@ use crate::{
     layout::{
         canonicalize, ensure_layout, host_home, read_pid_file, resolve_cfg_dir, resolve_layout,
     },
+    telemetry::init_cli_telemetry,
 };
 
 pub const FOLLOW_FOREVER: u32 = u32::MAX;
@@ -59,6 +60,7 @@ pub async fn prepared_session(config_path: &str) -> Result<Session> {
 
 pub fn open_session(config_path: &str) -> Result<Session> {
     let config = load_and_parse_config(config_path)?;
+    init_cli_telemetry(&config.telemetry);
     let home = host_home();
     let paths = resolve_layout(&config.pm3, home.as_deref())?;
     let cfg_dir = resolve_cfg_dir(&config.pm3, home.as_deref())?;
@@ -117,6 +119,7 @@ async fn finish_start(
         service: _,
         already_running,
         refused,
+        unsaved,
     } = reply;
     if !refused.is_empty() {
         undo.run_for(&refused).await;
@@ -124,6 +127,9 @@ async fn finish_start(
             refused: refused.join(", "),
             report,
         });
+    }
+    if unsaved.is_some() {
+        return Err(Error::UnsavedStart { report });
     }
     Ok(StartReport {
         response: report,

@@ -7,8 +7,9 @@ use crate::{
     start::start_apps,
 };
 
-const CRASH: ExitOutcome = ExitOutcome { exit_code: Some(1) };
-const CLEAN: ExitOutcome = ExitOutcome { exit_code: Some(0) };
+const CRASH: ExitOutcome = ExitOutcome::Code(1);
+const CLEAN: ExitOutcome = ExitOutcome::Code(0);
+const UNOBSERVED: ExitOutcome = ExitOutcome::Unobserved;
 
 async fn running_table(ports: &FakePorts, candidate: AppSpec) -> ProcessTable {
     let mut table = ProcessTable::new();
@@ -90,6 +91,44 @@ async fn a_crash_without_autorestart_settles_as_errored() {
     };
     let mut table = running_table(&ports, candidate).await;
     let action = handle_child_exit(&mut table, "api", CRASH, &ports)
+        .await
+        .expect("exit handled");
+    assert_eq!(
+        action,
+        ExitAction::Settled {
+            status: ProcessStatus::Errored,
+        }
+    );
+}
+
+#[tokio::test]
+async fn an_exit_pm3_could_not_observe_settles_as_stopped_not_errored() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        autorestart: false,
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    let action = handle_child_exit(&mut table, "api", UNOBSERVED, &ports)
+        .await
+        .expect("exit handled");
+    assert_eq!(
+        action,
+        ExitAction::Settled {
+            status: ProcessStatus::Stopped,
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_signalled_child_without_autorestart_settles_as_errored() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        autorestart: false,
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    let action = handle_child_exit(&mut table, "api", ExitOutcome::Signalled, &ports)
         .await
         .expect("exit handled");
     assert_eq!(

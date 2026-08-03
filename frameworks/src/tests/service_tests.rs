@@ -36,6 +36,7 @@ fn context<'c>(fixture: &'c Fixture, kind: UnitKind, home: &'c str) -> ServiceCo
     ServiceContext {
         programs: Some(&fixture.programs),
         kind,
+        pm3_env: Vec::new(),
         home_env: Some(home),
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     }
@@ -142,6 +143,7 @@ fn a_missing_home_stops_the_session() {
     let context = ServiceContext {
         programs: Some(&fixture.programs),
         kind: UnitKind::Launchd,
+        pm3_env: Vec::new(),
         home_env: None,
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     };
@@ -158,6 +160,7 @@ fn a_binary_that_cannot_be_located_stops_the_session() {
     let context = ServiceContext {
         programs: Some(&fixture.programs),
         kind: UnitKind::Launchd,
+        pm3_env: Vec::new(),
         home_env: Some(&home),
         binary: Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -409,6 +412,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
     let context = ServiceContext {
         programs: Some(&programs),
         kind: UnitKind::Launchd,
+        pm3_env: Vec::new(),
         home_env: Some(&fake_home),
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     };

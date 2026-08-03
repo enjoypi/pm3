@@ -115,7 +115,7 @@ async fn a_real_child_is_reaped_through_its_own_handle() {
     )
     .await
     .expect("a real child reports an exit");
-    assert_eq!(outcome.exit_code, Some(0));
+    assert_eq!(outcome, ExitOutcome::Code(0));
 }
 
 #[tokio::test]
@@ -133,7 +133,7 @@ async fn an_adopted_process_that_already_left_is_reported_at_once() {
     )
     .await
     .expect("an adopted process reports an exit");
-    assert_eq!(outcome.exit_code, None);
+    assert_eq!(outcome, ExitOutcome::Unobserved);
 }
 
 #[tokio::test]
@@ -152,7 +152,7 @@ async fn a_pid_the_kernel_handed_to_someone_else_counts_as_an_exit() {
     )
     .await
     .expect("a recycled pid reports an exit");
-    assert_eq!(outcome.exit_code, None);
+    assert_eq!(outcome, ExitOutcome::Unobserved);
 }
 
 #[tokio::test]
@@ -175,7 +175,10 @@ async fn a_pid_still_holding_the_recorded_identity_keeps_being_watched() {
         fixture.mark_gone();
     };
     let (outcome, ()) = tokio::join!(observer, reaper);
-    assert_eq!(outcome.expect("the adopted process left").exit_code, None);
+    assert_eq!(
+        outcome.expect("the adopted process left"),
+        ExitOutcome::Unobserved
+    );
 }
 
 #[tokio::test]
@@ -200,7 +203,10 @@ async fn a_probe_that_cannot_answer_keeps_the_process_under_watch() {
         fixture.make_probe_readable();
     };
     let (outcome, ()) = tokio::join!(observer, repairer);
-    assert_eq!(outcome.expect("the adopted process left").exit_code, None);
+    assert_eq!(
+        outcome.expect("the adopted process left"),
+        ExitOutcome::Unobserved
+    );
 }
 
 #[tokio::test]
@@ -241,7 +247,10 @@ async fn an_adopted_process_is_polled_until_it_leaves() {
         fixture.mark_gone();
     };
     let (outcome, ()) = tokio::join!(observer, reaper);
-    assert_eq!(outcome.expect("the adopted process left").exit_code, None);
+    assert_eq!(
+        outcome.expect("the adopted process left"),
+        ExitOutcome::Unobserved
+    );
 }
 
 #[test]
@@ -361,15 +370,13 @@ async fn a_second_waiter_for_the_same_pid_does_not_release_the_first() {
     };
     let (outcome, ()) = tokio::join!(recycled, reaper);
     assert_eq!(
-        outcome.expect("a recycled pid reports an exit").exit_code,
-        None
+        outcome.expect("a recycled pid reports an exit"),
+        ExitOutcome::Unobserved
     );
     let first_outcome = first.await.expect("join the first waiter");
     assert_eq!(
-        first_outcome
-            .expect("the first waiter reports an exit")
-            .exit_code,
-        None
+        first_outcome.expect("the first waiter reports an exit"),
+        ExitOutcome::Unobserved
     );
 }
 

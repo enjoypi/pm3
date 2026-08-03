@@ -71,10 +71,10 @@ fn classify_exit(
 }
 
 const fn settled_status(outcome: ExitOutcome) -> ProcessStatus {
-    if outcome.clean() {
-        ProcessStatus::Stopped
-    } else {
+    if outcome.failed() {
         ProcessStatus::Errored
+    } else {
+        ProcessStatus::Stopped
     }
 }
 

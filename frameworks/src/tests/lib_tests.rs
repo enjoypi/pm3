@@ -155,7 +155,7 @@ fn a_refused_request_reports_the_status_and_the_body() {
     };
     assert_eq!(
         error.to_string(),
-        "pm3 daemon refused the request with status 404: cannot find app 'web'"
+        "cannot complete the request: the pm3 daemon answered status 404: cannot find app 'web'"
     );
 }
 

@@ -68,11 +68,7 @@ fn a_bounded_tilde_stays_within_its_bounds() {
 #[test]
 fn a_bounded_tilde_leaves_the_other_fields_untouched() {
     let expansion = expanded("25~35 9,18 * * *", 3);
-    let tail = expansion
-        .split_once(' ')
-        .expect("more than one field")
-        .1
-        .to_string();
+    let (_minutes, tail) = expansion.split_once(' ').expect("more than one field");
     assert_eq!(tail, "9,18 * * *");
 }
 

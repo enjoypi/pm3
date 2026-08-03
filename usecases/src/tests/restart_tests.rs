@@ -56,7 +56,11 @@ async fn restarting_a_running_record_without_a_pid_needs_no_force_kill() {
     let outcome = restart_app(&mut table, &selector, LOGS_DIR, &ports)
         .await
         .expect("restart should succeed");
-    let RestartOutcome::AwaitingExit { force_kill_pid, .. } = outcome else {
+    let RestartOutcome::AwaitingExit {
+        name: _,
+        force_kill_pid,
+    } = outcome
+    else {
         panic!("expected the restart to await the exit");
     };
     assert_eq!(force_kill_pid, None);

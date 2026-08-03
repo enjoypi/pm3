@@ -11,5 +11,7 @@ pub use self::{
     command::{UnitCommand, UnitProgramSet},
     plan::UnitStep,
     runner::UnitCommandError,
-    spec::{CONFIG_FLAG, DAEMON_SUBCOMMAND, UnitKind, UnitSpec, UnitStatus, unit_dir_of},
+    spec::{
+        CONFIG_FLAG, DAEMON_SUBCOMMAND, UnitKind, UnitSpec, UnitStatus, pm3_variables, unit_dir_of,
+    },
 };

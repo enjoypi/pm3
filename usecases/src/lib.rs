@@ -44,7 +44,7 @@ pub use self::{
     resurrect::resurrect,
     selector::AppSelector,
     start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
-    stop::{StopOutcome, is_drained, persist_for_handover, stop_all_apps, stop_app},
+    stop::{StopOutcome, persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
     supervision::{SupervisionFailure, SupervisionOutcome, SupervisionReply, SupervisionRequest},
     supervisor::{SupervisionEffect, Supervisor},

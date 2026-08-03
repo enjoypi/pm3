@@ -159,6 +159,7 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
         outcomes,
         refused: _,
         reason: _,
+        unsaved: _,
     } = reply
     else {
         panic!("start should answer with a start summary")
@@ -166,10 +167,7 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
     let started = outcomes.first().expect("one app should start");
     let pid = started.pid.expect("a pid");
 
-    harness
-        .daemon
-        .on_exit("web", 1, ExitOutcome { exit_code: Some(0) })
-        .await;
+    harness.daemon.on_exit("web", 1, ExitOutcome::Code(0)).await;
     harness
         .daemon
         .handle(SupervisionRequest::StopAll)
@@ -184,7 +182,11 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
         .await;
 
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
-    assert_eq!(outcome.exit_code, None, "pid {pid} should be force killed");
+    assert_eq!(
+        outcome,
+        ExitOutcome::Signalled,
+        "pid {pid} should be force killed"
+    );
 }
 
 #[tokio::test]
@@ -313,7 +315,7 @@ async fn the_supervisor_handles_internal_events() {
         .send(DaemonEvent::Exited {
             name: "ghost".to_string(),
             generation: 0,
-            outcome: ExitOutcome { exit_code: None },
+            outcome: ExitOutcome::Unobserved,
         })
         .await
         .expect("should queue");
@@ -380,6 +382,7 @@ async fn starting_an_already_running_app_leaves_it_alone() {
         outcomes,
         refused: _,
         reason: _,
+        unsaved: _,
     } = reply
     else {
         panic!("start should answer with a start summary")

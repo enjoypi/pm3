@@ -19,8 +19,10 @@ pub struct LaunchedProcess {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct ExitOutcome {
-    pub exit_code: Option<i32>,
+pub enum ExitOutcome {
+    Code(i32),
+    Signalled,
+    Unobserved,
 }
 
 #[derive(Debug, Eq, PartialEq, Error)]
@@ -38,8 +40,12 @@ pub enum LaunchError {
 
 impl ExitOutcome {
     #[must_use]
-    pub const fn clean(self) -> bool {
-        matches!(self.exit_code, Some(0))
+    pub const fn failed(self) -> bool {
+        match self {
+            Self::Code(code) => code != 0,
+            Self::Signalled => true,
+            Self::Unobserved => false,
+        }
     }
 }
 

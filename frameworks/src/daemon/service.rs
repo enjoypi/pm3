@@ -22,7 +22,7 @@ use crate::{
     sandbox_probe::detect_host_backend,
     server::serve_listener,
     signal::{ShutdownSignals, SignalRegisterError},
-    telemetry::init_telemetry,
+    telemetry::{LogSink, init_telemetry},
 };
 
 type ShutdownFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -43,7 +43,7 @@ async fn run_daemon_with_signals(
 
 pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFuture) -> Result<()> {
     let config = load_and_parse_config(config_path)?;
-    init_telemetry(&config.telemetry)
+    init_telemetry(&config.telemetry, LogSink::Stdout)
         .expect("internal error: load_and_parse_config validated log_level and log_format");
     let home = host_home();
     let paths = resolve_layout(&config.pm3, home.as_deref())?;

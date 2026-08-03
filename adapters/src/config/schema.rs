@@ -166,6 +166,14 @@ pub fn validate_config(cfg: &AppConfig) -> Result<(), ConfigError> {
 }
 
 pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
+    validate_paths(pm3)?;
+    validate_budgets(pm3)?;
+    validate_choices(pm3)?;
+    validate_service_label(&pm3.service.label)?;
+    validate_programs(pm3)
+}
+
+fn validate_paths(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.home.is_empty() {
         return Err(ConfigError::InvalidHome);
     }
@@ -175,6 +183,11 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.search_path.is_empty() {
         return Err(ConfigError::InvalidSearchPath);
     }
+    reject_line_break("pm3.home", &pm3.home)?;
+    reject_line_break("pm3.search_path", &pm3.search_path)
+}
+
+const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.kill_timeout_ms < 1 {
         return Err(ConfigError::InvalidKillTimeout(pm3.kill_timeout_ms));
     }
@@ -212,6 +225,10 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.daemon_channel_depth < 1 {
         return Err(ConfigError::InvalidChannelDepth(pm3.daemon_channel_depth));
     }
+    Ok(())
+}
+
+fn validate_choices(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if !VALID_STOP_SIGNALS.contains(&pm3.stop_signal.as_str()) {
         return Err(ConfigError::InvalidStopSignal(pm3.stop_signal.clone()));
     }
@@ -224,11 +241,6 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
             expected: sandbox_mode_names(),
         });
     }
-    validate_service_label(&pm3.service.label)?;
-    validate_programs(pm3)?;
-    reject_line_break("pm3.home", &pm3.home)?;
-    reject_line_break("pm3.search_path", &pm3.search_path)?;
-
     Ok(())
 }
 

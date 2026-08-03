@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use adapters::{
-    DaemonCommand, ExitOutcome, ProcessLauncher as _, Signaler as _, SpecSource, SupervisionEffect,
+    DaemonCommand, ExitOutcome, ProcessLauncher as _, SpecSource, SupervisionEffect,
     SupervisionOutcome, SupervisionRequest, Supervisor,
 };
 use tokio::sync::mpsc;
@@ -117,6 +117,7 @@ impl Daemon {
             } => {
                 self.on_force_kill(&name, generation, pid, token.as_deref())
                     .await;
+                self.board.forget_force_kill(&name);
             }
             DaemonEvent::Shutdown => self.shutdown().await,
         }
@@ -146,16 +147,9 @@ impl Daemon {
 
     async fn force_kill_survivors(&self) {
         let tracked = self.ports.tracked_pids().await;
-        let mut sweeps = Vec::new();
-        for pid in self.supervisor.survivor_pids(&tracked) {
-            let ports = Arc::clone(&self.ports);
-            sweeps.push(tokio::spawn(
-                async move { ports.force_kill(pid).await.ok() },
-            ));
-        }
-        for sweep in sweeps {
-            sweep.await.ok();
-        }
+        self.supervisor
+            .force_kill_survivors(&tracked, &*self.ports)
+            .await;
     }
 }
 

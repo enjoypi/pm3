@@ -1,18 +1,23 @@
 use super::*;
 
 #[test]
-fn exit_code_zero_is_clean() {
-    assert!(ExitOutcome { exit_code: Some(0) }.clean());
+fn exit_code_zero_did_not_fail() {
+    assert!(!ExitOutcome::Code(0).failed());
 }
 
 #[test]
-fn nonzero_exit_code_is_not_clean() {
-    assert!(!ExitOutcome { exit_code: Some(1) }.clean());
+fn a_nonzero_exit_code_failed() {
+    assert!(ExitOutcome::Code(1).failed());
 }
 
 #[test]
-fn missing_exit_code_is_not_clean() {
-    assert!(!ExitOutcome { exit_code: None }.clean());
+fn a_signalled_child_failed() {
+    assert!(ExitOutcome::Signalled.failed());
+}
+
+#[test]
+fn an_exit_pm3_could_not_observe_is_not_a_failure() {
+    assert!(!ExitOutcome::Unobserved.failed());
 }
 
 #[test]

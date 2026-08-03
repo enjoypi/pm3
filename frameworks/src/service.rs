@@ -8,7 +8,10 @@ use adapters::{
 use crate::{
     Error, Result,
     cli::ServiceCommands,
-    layout::{canonicalize, ensure_layout, host_home, resolve_cfg_dir, resolve_layout},
+    layout::{
+        canonicalize, ensure_layout, host_home, host_pm3_env, resolve_cfg_dir, resolve_layout,
+    },
+    telemetry::init_cli_telemetry,
 };
 
 #[cfg(target_os = "macos")]
@@ -21,6 +24,7 @@ pub struct ServiceContext<'c> {
     pub programs: Option<&'c UnitProgramSet>,
     pub kind: UnitKind,
     pub home_env: Option<&'c str>,
+    pub pm3_env: Vec<(String, String)>,
     pub binary: std::io::Result<PathBuf>,
 }
 
@@ -40,6 +44,7 @@ pub async fn run_service(config_path: &str, command: Option<&ServiceCommands>) -
         programs: None,
         kind: HOST_SERVICE_KIND,
         home_env: home.as_deref(),
+        pm3_env: host_pm3_env(),
         binary: std::env::current_exe(),
     };
     dispatch_service(config_path, command, &context).await
@@ -70,6 +75,7 @@ pub fn open_service_session(
 ) -> Result<ServiceSession> {
     let absolute = canonical_config_path(config_path)?;
     let loaded = load_config_file(&absolute.to_string_lossy())?;
+    init_cli_telemetry(&loaded.config.telemetry);
     let paths = resolve_layout(&loaded.config.pm3, context.home_env)?;
     let cfg_dir = resolve_cfg_dir(&loaded.config.pm3, context.home_env)?;
     let spec = build_spec(&loaded.config, &paths, context)?;
@@ -138,6 +144,7 @@ fn build_spec(
         log_path,
         search_path,
         home: home_dir,
+        pm3_env: context.pm3_env.clone(),
         restart_delay_secs,
         restart_condition,
     })

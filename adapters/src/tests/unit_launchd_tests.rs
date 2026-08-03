@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use super::*;
-use crate::{UnitKind, unit_specs::spec_for};
+use crate::{
+    UnitKind,
+    unit_specs::{PM3_HOME_VALUE, PM3_HOME_VARIABLE, spec_for},
+};
 
 fn rendered() -> String {
     render_plist(&spec_for(UnitKind::Launchd, Path::new("/home/dev")))
@@ -93,6 +96,18 @@ fn the_plist_escapes_every_xml_special_character() {
     let plist = render_plist(&spec);
     assert!(
         plist.contains("<string>a&amp;b&lt;c&gt;d&quot;e&apos;f</string>"),
+        "got: {plist}"
+    );
+}
+
+#[test]
+fn the_plist_hands_the_daemon_the_pm3_environment_the_install_ran_under() {
+    let home = tempfile::tempdir().expect("temp dir");
+    let plist = render_plist(&spec_for(UnitKind::Launchd, home.path()));
+    assert!(
+        plist.contains(&format!(
+            "<key>{PM3_HOME_VARIABLE}</key>\n        <string>{PM3_HOME_VALUE}</string>"
+        )),
         "got: {plist}"
     );
 }

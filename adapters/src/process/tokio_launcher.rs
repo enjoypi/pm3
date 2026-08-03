@@ -33,18 +33,23 @@ impl TokioProcessLauncher {
     pub async fn wait(&self, pid: u32) -> Option<ExitOutcome> {
         let owned = { self.tracked.lock().await.children.remove(&pid) };
         let mut child = owned?;
-        let exit_code = child.wait().await.ok().and_then(|status| status.code());
+        let outcome = child
+            .wait()
+            .await
+            .ok()
+            .and_then(|status| status.code())
+            .map_or(ExitOutcome::Signalled, ExitOutcome::Code);
         {
             self.tracked.lock().await.live.remove(&pid);
         }
         tracing::debug!(
             feature = "supervisor",
             pid,
-            ?exit_code,
+            ?outcome,
             action = "wait",
             "child process exited"
         );
-        Some(ExitOutcome { exit_code })
+        Some(outcome)
     }
 }
 

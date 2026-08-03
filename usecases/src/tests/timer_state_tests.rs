@@ -21,16 +21,18 @@ fn re_arming_replaces_the_instant() {
 }
 
 #[test]
-fn disarming_an_armed_app_reports_that_it_was_armed() {
+fn disarming_an_armed_app_clears_its_next_fire() {
     let mut state = TimerState::new();
     state.arm("nightly", 1000);
-    assert!(state.disarm("nightly"));
+    state.disarm("nightly");
     assert!(state.next_fire_of("nightly").is_none());
 }
 
 #[test]
-fn disarming_an_unarmed_app_reports_nothing_to_do() {
-    assert!(!TimerState::new().disarm("nightly"));
+fn disarming_an_unarmed_app_leaves_it_unarmed() {
+    let mut state = TimerState::new();
+    state.disarm("nightly");
+    assert!(state.next_fire_of("nightly").is_none());
 }
 
 #[test]
@@ -64,14 +66,6 @@ fn a_queued_restart_can_be_claimed_once() {
 #[test]
 fn a_restart_that_was_never_queued_cannot_be_claimed() {
     assert!(!TimerState::new().claim_restart("web"));
-}
-
-#[test]
-fn cancelling_a_queued_restart_reports_that_one_was_queued() {
-    let mut state = TimerState::new();
-    state.queue_restart("web");
-    assert!(state.cancel_restart("web"));
-    assert!(!state.cancel_restart("web"));
 }
 
 #[test]
@@ -112,10 +106,6 @@ fn generations_do_not_collide_across_apps() {
 }
 
 #[test]
-fn forgetting_a_generation_sends_the_app_back_to_the_first_one() {
-    let mut state = TimerState::new();
-    let bumped = state.bump("web");
-    state.forget_generation("web");
-    assert!(!state.is_current("web", bumped));
-    assert!(state.is_current("web", 0));
+fn the_current_generation_of_an_app_that_never_launched_is_the_first_one() {
+    assert_eq!(TimerState::new().current_generation("web"), 0);
 }

@@ -9,6 +9,10 @@ fn refused_marker(reason: &str) -> String {
     format!("cannot start the rest of the batch: {reason}")
 }
 
+fn unsaved_marker(reason: &str) -> String {
+    format!("cannot record what pm3 just started: {reason}")
+}
+
 fn already_running_marker(name: &str) -> String {
     format!("{name} is already running")
 }
@@ -23,6 +27,7 @@ pub fn affected_service(reply: &SupervisionReply) -> Option<String> {
             outcomes: _,
             refused: _,
             reason: _,
+            unsaved: _,
         }
         | Dr::Listed(_)
         | Dr::Described(_)
@@ -36,6 +41,7 @@ pub fn already_running_names(reply: &SupervisionReply) -> Vec<String> {
         outcomes,
         refused: _,
         reason: _,
+        unsaved: _,
     } = reply
     else {
         return Vec::new();
@@ -53,11 +59,26 @@ pub fn refused_names(reply: &SupervisionReply) -> Vec<String> {
         outcomes: _,
         refused,
         reason: _,
+        unsaved: _,
     } = reply
     else {
         return Vec::new();
     };
     refused.clone()
+}
+
+#[must_use]
+pub fn unsaved_reason(reply: &SupervisionReply) -> Option<String> {
+    let SupervisionReply::Started {
+        outcomes: _,
+        refused: _,
+        reason: _,
+        unsaved,
+    } = reply
+    else {
+        return None;
+    };
+    unsaved.clone()
 }
 
 #[must_use]
@@ -67,7 +88,8 @@ pub fn render_reply(reply: &SupervisionReply) -> String {
             outcomes,
             refused: _,
             reason,
-        } => render_started(outcomes, reason.as_deref()),
+            unsaved,
+        } => render_started(outcomes, reason.as_deref(), unsaved.as_deref()),
         SupervisionReply::Listed(views) => render_table(views),
         SupervisionReply::Described(view) => render_describe(view),
         SupervisionReply::Stopped { name } => format!("stopped {name}"),
@@ -86,13 +108,20 @@ pub fn render_stopped_all(names: &[String]) -> String {
 }
 
 #[must_use]
-pub fn render_started(outcomes: &[StartOutcome], reason: Option<&str>) -> String {
+pub fn render_started(
+    outcomes: &[StartOutcome],
+    reason: Option<&str>,
+    unsaved: Option<&str>,
+) -> String {
     let mut lines: Vec<String> = outcomes.iter().map(describe_start).collect();
     if lines.is_empty() {
         lines.push(NOTHING_STARTED.to_string());
     }
     if let Some(refused) = reason {
         lines.push(refused_marker(refused));
+    }
+    if let Some(unsaved) = unsaved {
+        lines.push(unsaved_marker(unsaved));
     }
     lines.join("\n")
 }

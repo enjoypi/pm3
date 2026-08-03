@@ -105,7 +105,7 @@ async fn a_spawned_child_is_tracked_and_reaped() {
     let process = ports.spawn(&spec).await.expect("spawn");
     assert_eq!(ports.tracked_pids().await, vec![process.pid]);
     let outcome = ports.wait(process.pid, None).await.expect("reap");
-    assert!(outcome.clean(), "got: {outcome:?}");
+    assert_eq!(outcome, ExitOutcome::Code(0));
     assert!(ports.tracked_pids().await.is_empty());
 }
 
@@ -117,7 +117,7 @@ async fn terminating_a_child_stops_it() {
     let process = ports.spawn(&spec).await.expect("spawn");
     ports.terminate(process.pid).await.expect("terminate");
     let outcome = ports.wait(process.pid, None).await.expect("reap");
-    assert_eq!(outcome.exit_code, None);
+    assert_eq!(outcome, ExitOutcome::Signalled);
 }
 
 #[tokio::test]
@@ -128,5 +128,5 @@ async fn force_killing_a_child_stops_it() {
     let process = ports.spawn(&spec).await.expect("spawn");
     ports.force_kill(process.pid).await.expect("force kill");
     let outcome = ports.wait(process.pid, None).await.expect("reap");
-    assert_eq!(outcome.exit_code, None);
+    assert_eq!(outcome, ExitOutcome::Signalled);
 }

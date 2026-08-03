@@ -33,6 +33,7 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     let search_path = escape_xml(&spec.search_path);
     let home = escape_xml(&spec.home);
     let keep_alive = keep_alive_of(&spec.restart_condition);
+    let pm3_env = render_environment(&spec.pm3_env);
     format!(
         "{PLIST_HEADER}<dict>
     <key>Label</key>
@@ -60,11 +61,22 @@ pub fn render_plist(spec: &UnitSpec) -> String {
         <string>{home}</string>
         <key>{PATH_VARIABLE}</key>
         <string>{search_path}</string>
-    </dict>
+{pm3_env}    </dict>
 </dict>
 </plist>
 "
     )
+}
+
+fn render_environment(vars: &[(String, String)]) -> String {
+    vars.iter().map(render_variable).collect()
+}
+
+fn render_variable(entry: &(String, String)) -> String {
+    let (name, value) = entry;
+    let key = escape_xml(name);
+    let text = escape_xml(value);
+    format!("        <key>{key}</key>\n        <string>{text}</string>\n")
 }
 
 fn render_argument(raw: &str) -> String {

@@ -19,6 +19,9 @@ pub struct ReplyDto {
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub refused: Vec<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsaved: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use thiserror::Error;
 use usecases::SpecError;
@@ -9,6 +12,9 @@ use crate::apps_file::{AppsFileError, diff_lines, service_file_of};
 pub enum ServiceError {
     #[error("cannot find '{program}' on PATH")]
     ProgramNotFound { program: String },
+
+    #[error("cannot read the service file '{path}': {reason}")]
+    Read { path: String, reason: String },
 
     #[error("cannot write the service file '{path}': {reason}")]
     Write { path: String, reason: String },
@@ -89,7 +95,11 @@ pub async fn forget(cfg_dir: &Path, name: &str) {
     let Ok(path) = service_file_of(cfg_dir, name) else {
         return;
     };
-    tokio::fs::remove_file(path).await.ok();
+    if let Err(error) = tokio::fs::remove_file(&path).await
+        && error.kind() != io::ErrorKind::NotFound
+    {
+        log_stuck_forget(&path, &error.to_string());
+    }
 }
 
 pub async fn reconcile(
@@ -97,20 +107,34 @@ pub async fn reconcile(
     contents: &str,
     force: bool,
 ) -> Result<Reconciled, ServiceError> {
-    let existing = tokio::fs::read_to_string(path).await.unwrap_or_default();
-    reconcile_contents(path, &existing, contents, force)
+    let existing = read_existing(path).await?;
+    reconcile_contents(path, existing.as_deref(), contents, force)
+}
+
+async fn read_existing(path: &Path) -> Result<Option<String>, ServiceError> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(existing) => Ok(Some(existing)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(ServiceError::Read {
+            path: path.to_string_lossy().into_owned(),
+            reason: error.to_string(),
+        }),
+    }
 }
 
 pub(super) fn reconcile_contents(
     path: &Path,
-    existing: &str,
+    existing: Option<&str>,
     contents: &str,
     force: bool,
 ) -> Result<Reconciled, ServiceError> {
+    let Some(existing) = existing else {
+        return Ok(Reconciled::Stale);
+    };
     if existing == contents {
         return Ok(Reconciled::Unchanged);
     }
-    if existing.is_empty() || force {
+    if force {
         return Ok(Reconciled::Stale);
     }
     Err(ServiceError::Conflict {
@@ -126,13 +150,8 @@ pub(super) async fn write_service_file(
     force: bool,
     undo: &mut ServiceUndo,
 ) -> Result<Reconciled, ServiceError> {
-    let existing = tokio::fs::read_to_string(path).await.ok();
-    let reconciled = reconcile_contents(
-        path,
-        existing.as_deref().unwrap_or_default(),
-        contents,
-        force,
-    )?;
+    let existing = read_existing(path).await?;
+    let reconciled = reconcile_contents(path, existing.as_deref(), contents, force)?;
     if reconciled == Reconciled::Unchanged {
         return Ok(Reconciled::Unchanged);
     }
@@ -153,6 +172,17 @@ fn log_undo(path: &Path) {
         action = "undo",
         path,
         "pm3 rolled a service file back because the start was refused",
+    );
+}
+
+fn log_stuck_forget(path: &Path, reason: &str) {
+    let path = path.to_string_lossy().into_owned();
+    tracing::warn!(
+        feature = "service",
+        action = "forget",
+        path,
+        reason,
+        "pm3 cannot delete a service file, so the deleted service will come back on the next start",
     );
 }
 

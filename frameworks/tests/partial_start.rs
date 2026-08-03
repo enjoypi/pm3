@@ -101,3 +101,39 @@ fn an_apps_file_that_names_the_same_service_twice_is_refused() {
     );
     shutdown_daemon(&home);
 }
+
+#[test]
+fn a_start_the_daemon_cannot_record_fails_but_keeps_the_service_file() {
+    let home = home();
+    let cwd = home.root.to_string_lossy();
+    let apps = write_apps(
+        &home,
+        &format!(
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
+        ),
+    );
+    pm3(&home, &["list"]);
+    let dump = home.root.join("dump.yaml");
+    std::fs::remove_file(&dump).ok();
+    std::fs::create_dir_all(&dump).expect("block the dump path");
+    std::fs::write(dump.join("occupied"), "state").expect("fill the blocked dump path");
+
+    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
+
+    assert!(
+        !started.status.success(),
+        "a start pm3 cannot record must fail the command: {}",
+        stdout_of(&started)
+    );
+    assert!(
+        stderr_of(&started).contains("cannot record what pm3 just started"),
+        "{}",
+        stderr_of(&started)
+    );
+    assert!(
+        service_file_at(&home, "web").exists(),
+        "a service that is running must keep its service file"
+    );
+    std::fs::remove_dir_all(&dump).expect("unblock the dump path");
+    shutdown_daemon(&home);
+}

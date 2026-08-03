@@ -10,6 +10,7 @@ fn started_reply(outcomes: Vec<StartOutcome>) -> SupervisionReply {
         outcomes,
         refused: Vec::new(),
         reason: None,
+        unsaved: None,
     }
 }
 

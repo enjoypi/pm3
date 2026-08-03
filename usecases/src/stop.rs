@@ -122,11 +122,6 @@ fn log_stopping(app: &str, pid: u32) {
     );
 }
 
-#[must_use]
-pub fn is_drained(tracked: &[u32], preserved: &[u32]) -> bool {
-    tracked.iter().all(|pid| preserved.contains(pid))
-}
-
 #[cfg(test)]
 #[path = "tests/stop_tests.rs"]
 mod tests;

@@ -22,6 +22,7 @@ pub enum SupervisionReply {
         outcomes: Vec<StartOutcome>,
         refused: Vec<String>,
         reason: Option<String>,
+        unsaved: Option<String>,
     },
     Listed(Vec<ProcessView>),
     Described(ProcessView),

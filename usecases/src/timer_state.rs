@@ -28,8 +28,8 @@ impl TimerState {
         self.fires.insert(name.to_string(), fire_at_ms);
     }
 
-    pub fn disarm(&mut self, name: &str) -> bool {
-        self.fires.remove(name).is_some()
+    pub fn disarm(&mut self, name: &str) {
+        self.fires.remove(name);
     }
 
     pub fn disarm_all(&mut self) -> Vec<String> {
@@ -44,10 +44,6 @@ impl TimerState {
         self.restarts.remove(name)
     }
 
-    pub fn cancel_restart(&mut self, name: &str) -> bool {
-        self.restarts.remove(name)
-    }
-
     pub fn cancel_all_restarts(&mut self) -> Vec<String> {
         self.restarts.drain().collect()
     }
@@ -57,10 +53,6 @@ impl TimerState {
         self.generations
             .insert(name.to_string(), self.next_generation);
         self.next_generation
-    }
-
-    pub fn forget_generation(&mut self, name: &str) {
-        self.generations.remove(name);
     }
 
     #[must_use]

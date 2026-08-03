@@ -15,18 +15,18 @@ fn started(name: &str, kind: StartKind) -> StartOutcome {
 
 #[test]
 fn starting_nothing_says_so() {
-    assert_eq!(render_started(&[], None), NOTHING_STARTED);
+    assert_eq!(render_started(&[], None, None), NOTHING_STARTED);
 }
 
 #[test]
 fn a_freshly_started_app_reports_its_id_and_pid() {
-    let rendered = render_started(&[started("web", StartKind::Spawned)], None);
+    let rendered = render_started(&[started("web", StartKind::Spawned)], None, None);
     assert_eq!(rendered, format!("started web (id 3, pid {RUNNING_PID})"));
 }
 
 #[test]
 fn an_already_running_app_is_left_alone() {
-    let rendered = render_started(&[started("web", StartKind::AlreadyRunning)], None);
+    let rendered = render_started(&[started("web", StartKind::AlreadyRunning)], None, None);
     assert_eq!(
         rendered,
         format!("web is already running (id 3, pid {RUNNING_PID})")
@@ -40,7 +40,7 @@ fn an_app_that_failed_to_report_a_pid_shows_a_dash() {
         ..started("web", StartKind::Spawned)
     };
     assert_eq!(
-        render_started(&[outcome], None),
+        render_started(&[outcome], None, None),
         "started web (id 3, pid -)"
     );
 }
@@ -51,7 +51,7 @@ fn every_started_app_gets_its_own_line() {
         started("web", StartKind::Spawned),
         started("db", StartKind::Spawned),
     ];
-    assert_eq!(render_started(&outcomes, None).lines().count(), 2);
+    assert_eq!(render_started(&outcomes, None, None).lines().count(), 2);
 }
 
 #[test]
@@ -60,6 +60,7 @@ fn a_start_reply_renders_the_start_summary() {
         outcomes: vec![started("web", StartKind::Spawned)],
         refused: Vec::new(),
         reason: None,
+        unsaved: None,
     };
     assert!(render_reply(&reply).starts_with("started web"));
 }
@@ -113,7 +114,7 @@ fn a_delete_reply_confirms_the_app() {
 
 #[test]
 fn a_reclaimed_app_says_it_was_reclaimed() {
-    let rendered = render_started(&[started("web", StartKind::Adopted)], None);
+    let rendered = render_started(&[started("web", StartKind::Adopted)], None, None);
     assert_eq!(rendered, format!("reclaimed web (id 3, pid {RUNNING_PID})"));
 }
 
@@ -140,7 +141,7 @@ fn a_scheduled_registration_reads_as_scheduled() {
         kind: StartKind::Scheduled,
     };
     assert!(
-        render_started(&[outcome], None).starts_with("scheduled sweep"),
+        render_started(&[outcome], None, None).starts_with("scheduled sweep"),
         "unexpected headline"
     );
 }
@@ -150,6 +151,7 @@ fn a_half_started_batch_names_what_it_could_not_start() {
     let rendered = render_started(
         &[started("web", StartKind::Spawned)],
         Some("cannot spawn 'api'"),
+        None,
     );
     assert!(
         rendered.ends_with("cannot start the rest of the batch: cannot spawn 'api'"),
@@ -162,6 +164,7 @@ fn a_half_started_batch_still_lists_what_it_started() {
     let rendered = render_started(
         &[started("web", StartKind::Spawned)],
         Some("cannot spawn 'api'"),
+        None,
     );
     assert!(rendered.starts_with("started web"), "got: {rendered}");
 }
@@ -172,8 +175,44 @@ fn a_reply_carries_the_services_the_daemon_refused() {
         outcomes: vec![started("web", StartKind::Spawned)],
         refused: vec!["api".to_string()],
         reason: Some("cannot spawn 'api'".to_string()),
+        unsaved: None,
     };
     assert_eq!(refused_names(&reply), vec!["api".to_string()]);
+}
+
+#[test]
+fn a_reply_carries_the_reason_the_daemon_could_not_record_the_start() {
+    let reply = SupervisionReply::Started {
+        outcomes: vec![started("web", StartKind::Spawned)],
+        refused: Vec::new(),
+        reason: None,
+        unsaved: Some("cannot write state file".to_string()),
+    };
+    assert_eq!(
+        unsaved_reason(&reply),
+        Some("cannot write state file".to_string())
+    );
+}
+
+#[test]
+fn a_reply_that_is_not_a_start_carries_no_unsaved_reason() {
+    let reply = SupervisionReply::Stopped {
+        name: "web".to_string(),
+    };
+    assert_eq!(unsaved_reason(&reply), None);
+}
+
+#[test]
+fn a_start_that_could_not_be_recorded_says_so() {
+    let rendered = render_started(
+        &[started("web", StartKind::Spawned)],
+        None,
+        Some("cannot write state file"),
+    );
+    assert!(
+        rendered.ends_with("cannot record what pm3 just started: cannot write state file"),
+        "got: {rendered}"
+    );
 }
 
 #[test]
