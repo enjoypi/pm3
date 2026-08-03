@@ -9,6 +9,7 @@ import {
   parsePidFile,
   parseServiceReport,
   parseWriteTargets,
+  runtimeDirectory,
 } from "../install_plan.ts";
 
 const installedReport = [
@@ -187,5 +188,19 @@ describe("backupStamp", () => {
     expect(backupStamp(new Date("2026-07-30T13:33:44.512Z"))).toBe(
       "20260730T133344Z",
     );
+  });
+});
+
+describe("runtimeDirectory", () => {
+  test("keeps the runtime directory a login session already declared", () => {
+    expect(runtimeDirectory("/run/user/1000", 4242)).toBe("/run/user/1000");
+  });
+
+  test("derives the runtime directory a non-login shell never got", () => {
+    expect(runtimeDirectory(undefined, 4242)).toBe("/run/user/4242");
+  });
+
+  test("treats an empty declaration as no declaration", () => {
+    expect(runtimeDirectory("", 4242)).toBe("/run/user/4242");
   });
 });

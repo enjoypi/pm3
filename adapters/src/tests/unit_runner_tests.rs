@@ -5,24 +5,28 @@ use super::*;
 const TIMEOUT_MS: u64 = 5000;
 use crate::{
     UnitKind,
-    unit_specs::{MISSING_PROGRAM, fake_program, program_set, spec_for},
+    unit_specs::{MISSING_PROGRAM, fake_program, program_set, program_set_for_user, spec_for},
 };
 
 const TRUE_PROGRAM: &str = "/usr/bin/true";
 const FALSE_PROGRAM: &str = "/usr/bin/false";
+const OWNER_UID: u32 = 4242;
+const OWNER_RUNTIME_DIR: &str = "/run/user/4242";
 
-fn run_step_of(program: &str) -> Vec<UnitStep> {
-    vec![UnitStep::Run(UnitCommand {
+fn bare_command(program: &str) -> UnitCommand {
+    UnitCommand {
         program: program.to_string(),
         args: Vec::new(),
-    })]
+        env: Vec::new(),
+    }
+}
+
+fn run_step_of(program: &str) -> Vec<UnitStep> {
+    vec![UnitStep::Run(bare_command(program))]
 }
 
 fn try_step_of(program: &str) -> Vec<UnitStep> {
-    vec![UnitStep::TryRun(UnitCommand {
-        program: program.to_string(),
-        args: Vec::new(),
-    })]
+    vec![UnitStep::TryRun(bare_command(program))]
 }
 
 fn write_step(dir: &Path, path: &Path) -> UnitStep {
@@ -232,10 +236,7 @@ async fn a_failing_plan_backs_out_the_files_it_created() {
     let unit = dir.path().join("units").join("pm3.service");
     let steps = vec![
         write_step(unit.parent().expect("a parent"), &unit),
-        UnitStep::Run(UnitCommand {
-            program: FALSE_PROGRAM.to_string(),
-            args: Vec::new(),
-        }),
+        UnitStep::Run(bare_command(FALSE_PROGRAM)),
     ];
 
     execute_plan(&steps, TIMEOUT_MS)
@@ -255,10 +256,7 @@ async fn a_failing_plan_leaves_a_file_it_only_overwrote() {
     std::fs::write(&unit, "the operator's own unit").expect("seed the unit");
     let steps = vec![
         write_step(dir.path(), &unit),
-        UnitStep::Run(UnitCommand {
-            program: FALSE_PROGRAM.to_string(),
-            args: Vec::new(),
-        }),
+        UnitStep::Run(bare_command(FALSE_PROGRAM)),
     ];
 
     execute_plan(&steps, TIMEOUT_MS)
@@ -334,6 +332,63 @@ async fn an_inactive_systemd_unit_is_installed_but_stopped() {
         .await
         .expect("a stopped unit is not an error");
     assert_eq!(status, UnitStatus::InstalledNotRunning);
+}
+
+#[tokio::test]
+async fn a_user_scoped_call_carries_the_runtime_directory() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = installed_spec(dir.path(), UnitKind::Systemd);
+    let program = fake_program(
+        dir.path(),
+        "systemctl",
+        &format!("test \"$XDG_RUNTIME_DIR\" = \"{OWNER_RUNTIME_DIR}\" && echo active"),
+    );
+    let programs = program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR);
+    let status = query_status(&spec, &programs, TIMEOUT_MS)
+        .await
+        .expect("the probe should be readable");
+    assert_eq!(
+        status,
+        UnitStatus::Running,
+        "a session without a bus cannot reach the user manager"
+    );
+}
+
+#[tokio::test]
+async fn a_lingering_user_needs_no_further_permission() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = fake_program(dir.path(), "loginctl", "echo yes");
+    let programs = program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR);
+    let state = linger_state(UnitKind::Systemd, &programs, TIMEOUT_MS).await;
+    assert_eq!(state, LingerState::Enabled);
+}
+
+#[tokio::test]
+async fn a_user_without_linger_leaves_the_state_unknown() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = fake_program(dir.path(), "loginctl", "echo no");
+    let programs = program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR);
+    let state = linger_state(UnitKind::Systemd, &programs, TIMEOUT_MS).await;
+    assert_eq!(state, LingerState::Unknown);
+}
+
+#[tokio::test]
+async fn a_manager_that_cannot_be_asked_leaves_the_state_unknown() {
+    let programs = program_set_for_user(MISSING_PROGRAM, OWNER_UID, OWNER_RUNTIME_DIR);
+    let state = linger_state(UnitKind::Systemd, &programs, TIMEOUT_MS).await;
+    assert_eq!(state, LingerState::Unknown);
+}
+
+#[tokio::test]
+async fn an_unknown_owner_leaves_the_state_unknown() {
+    let state = linger_state(UnitKind::Systemd, &program_set(TRUE_PROGRAM), TIMEOUT_MS).await;
+    assert_eq!(state, LingerState::Unknown);
+}
+
+#[tokio::test]
+async fn launchd_never_asks_about_linger() {
+    let state = linger_state(UnitKind::Launchd, &program_set(MISSING_PROGRAM), TIMEOUT_MS).await;
+    assert_eq!(state, LingerState::Unknown);
 }
 
 #[tokio::test]

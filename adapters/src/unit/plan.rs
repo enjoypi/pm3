@@ -7,7 +7,7 @@ use super::{
         systemctl_enable_now, systemctl_is_active,
     },
     launchd::render_plist,
-    spec::{UnitKind, UnitSpec},
+    spec::{LingerState, UnitKind, UnitSpec},
     systemd::render_unit,
 };
 
@@ -38,6 +38,7 @@ pub fn install_plan(
     spec: &UnitSpec,
     programs: &UnitProgramSet,
     config_contents: &str,
+    linger: LingerState,
 ) -> Vec<UnitStep> {
     let settle = UnitStep::Write {
         dir: spec.working_directory.clone(),
@@ -55,13 +56,7 @@ pub fn install_plan(
             write,
             UnitStep::Run(launchctl_load(programs, &spec.unit_path())),
         ],
-        UnitKind::Systemd => vec![
-            settle,
-            write,
-            UnitStep::Run(systemctl_daemon_reload(programs)),
-            UnitStep::Run(systemctl_enable_now(programs, &spec.unit_name())),
-            UnitStep::TryRun(loginctl_enable_linger(programs)),
-        ],
+        UnitKind::Systemd => systemd_install_steps(spec, programs, settle, write, linger),
     }
 }
 
@@ -80,6 +75,29 @@ pub fn uninstall_plan(spec: &UnitSpec, programs: &UnitProgramSet) -> Vec<UnitSte
             remove,
             UnitStep::TryRun(systemctl_daemon_reload(programs)),
         ],
+    }
+}
+
+fn systemd_install_steps(
+    spec: &UnitSpec,
+    programs: &UnitProgramSet,
+    settle: UnitStep,
+    write: UnitStep,
+    linger: LingerState,
+) -> Vec<UnitStep> {
+    let activate = vec![
+        settle,
+        write,
+        UnitStep::Run(systemctl_daemon_reload(programs)),
+        UnitStep::Run(systemctl_enable_now(programs, &spec.unit_name())),
+    ];
+    match linger {
+        LingerState::Enabled => activate,
+        LingerState::Unknown => [
+            activate,
+            vec![UnitStep::TryRun(loginctl_enable_linger(programs))],
+        ]
+        .concat(),
     }
 }
 

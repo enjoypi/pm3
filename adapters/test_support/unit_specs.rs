@@ -40,6 +40,16 @@ pub fn program_set(program: &str) -> UnitProgramSet {
         launchctl: program.to_string(),
         systemctl: program.to_string(),
         loginctl: program.to_string(),
+        runtime_dir: None,
+        uid: None,
+    }
+}
+
+pub fn program_set_for_user(program: &str, uid: u32, runtime_dir: &str) -> UnitProgramSet {
+    UnitProgramSet {
+        runtime_dir: Some(runtime_dir.to_string()),
+        uid: Some(uid),
+        ..program_set(program)
     }
 }
 

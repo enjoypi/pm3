@@ -18,6 +18,7 @@ export interface ServiceComparison {
   lost: string[];
 }
 
+const runtimeDirectoryRoot = "/run/user";
 const reportPattern = /^(.+) \((\w+) service\): (.+)$/;
 const launchdPidPattern = /"PID"\s*=\s*(\d+)/;
 const writePrefix = "write ";
@@ -30,6 +31,16 @@ export function parseLaunchdPid(listing: string): number | undefined {
     return undefined;
   }
   return Number.parseInt(captured, 10);
+}
+
+export function runtimeDirectory(
+  declared: string | undefined,
+  uid: number,
+): string {
+  if (declared !== undefined && declared.length > 0) {
+    return declared;
+  }
+  return `${runtimeDirectoryRoot}/${uid}`;
 }
 
 export function parsePidFile(contents: string): number | undefined {

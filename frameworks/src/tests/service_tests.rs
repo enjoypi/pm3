@@ -24,6 +24,8 @@ fn fixture(program: &str) -> Fixture {
         launchctl: program.to_string(),
         systemctl: program.to_string(),
         loginctl: program.to_string(),
+        runtime_dir: None,
+        uid: None,
     };
     Fixture {
         dir,
@@ -38,8 +40,34 @@ fn context<'c>(fixture: &'c Fixture, kind: UnitKind, home: &'c str) -> ServiceCo
         kind,
         pm3_env: Vec::new(),
         home_env: Some(home),
+        runtime_dir: None,
+        uid: None,
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     }
+}
+
+#[test]
+fn a_session_hands_the_host_session_to_the_service_manager() {
+    let fixture = fixture(TRUE_PROGRAM);
+    let home = home_of(&fixture);
+    let context = ServiceContext {
+        programs: None,
+        kind: UnitKind::Systemd,
+        pm3_env: Vec::new(),
+        home_env: Some(&home),
+        runtime_dir: Some("/run/user/4242".to_string()),
+        uid: Some(4242),
+        binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
+    };
+
+    let session =
+        open_service_session(&fixture.config_path, &context).expect("the session should open");
+
+    assert_eq!(
+        session.programs.runtime_dir.as_deref(),
+        Some("/run/user/4242")
+    );
+    assert_eq!(session.programs.uid, Some(4242));
 }
 
 fn home_of(fixture: &Fixture) -> String {
@@ -145,6 +173,8 @@ fn a_missing_home_stops_the_session() {
         kind: UnitKind::Launchd,
         pm3_env: Vec::new(),
         home_env: None,
+        runtime_dir: None,
+        uid: None,
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     };
     let err = open_service_session(&fixture.config_path, &context)
@@ -162,6 +192,8 @@ fn a_binary_that_cannot_be_located_stops_the_session() {
         kind: UnitKind::Launchd,
         pm3_env: Vec::new(),
         home_env: Some(&home),
+        runtime_dir: None,
+        uid: None,
         binary: Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "no such process image",
@@ -407,6 +439,8 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
         launchctl: TRUE_PROGRAM.to_string(),
         systemctl: TRUE_PROGRAM.to_string(),
         loginctl: TRUE_PROGRAM.to_string(),
+        runtime_dir: None,
+        uid: None,
     };
     let fake_home = dir.path().to_string_lossy().into_owned();
     let context = ServiceContext {
@@ -414,6 +448,8 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
         kind: UnitKind::Launchd,
         pm3_env: Vec::new(),
         home_env: Some(&fake_home),
+        runtime_dir: None,
+        uid: None,
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     };
     let command = ServiceCommands::Install {

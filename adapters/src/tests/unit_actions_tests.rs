@@ -88,6 +88,8 @@ async fn an_install_survives_a_refused_linger() {
         launchctl: TRUE_PROGRAM.to_string(),
         systemctl: TRUE_PROGRAM.to_string(),
         loginctl: FALSE_PROGRAM.to_string(),
+        runtime_dir: None,
+        uid: Some(4242),
     };
     let report = install_unit(&spec, &programs, CONFIG_BODY, false, TIMEOUT_MS)
         .await
@@ -95,6 +97,33 @@ async fn an_install_survives_a_refused_linger() {
     assert!(
         report.contains("skipped: cannot complete '/usr/bin/false'"),
         "got: {report}"
+    );
+}
+
+#[tokio::test]
+async fn an_install_never_asks_a_lingering_user_for_permission() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Systemd, dir.path());
+    let loginctl = fake_program(
+        dir.path(),
+        "loginctl",
+        "case \"$1\" in show-user) echo yes;; *) exit 1;; esac",
+    );
+    let programs = UnitProgramSet {
+        launchctl: TRUE_PROGRAM.to_string(),
+        systemctl: TRUE_PROGRAM.to_string(),
+        loginctl,
+        runtime_dir: None,
+        uid: Some(4242),
+    };
+
+    let report = install_unit(&spec, &programs, CONFIG_BODY, false, TIMEOUT_MS)
+        .await
+        .expect("the install should succeed");
+
+    assert!(
+        !report.contains("skipped"),
+        "an operator without sudo must see a clean install: {report}"
     );
 }
 

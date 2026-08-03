@@ -1,13 +1,15 @@
 use std::{
-    os::unix::fs::PermissionsExt as _,
+    os::unix::fs::{MetadataExt as _, PermissionsExt as _},
     path::{Path, PathBuf},
 };
 
-use adapters::{Pm3Config, Pm3Paths, expand_home, pm3_variables, resolve_paths};
+use adapters::{Pm3Config, Pm3Paths, expand_home, pm3_variables, resolve_paths, runtime_dir_of};
 
 use crate::{Error, Result};
 
 const OWNER_ONLY_DIR: u32 = 0o700;
+const RUNTIME_DIR_VARIABLE: &str = "XDG_RUNTIME_DIR";
+const OWN_PROCESS_DIR: &str = "/proc/self";
 
 pub fn resolve_layout(pm3: &Pm3Config, home_env: Option<&str>) -> Result<Pm3Paths> {
     let root = expand_home(&pm3.home, home_env)?;
@@ -76,6 +78,19 @@ pub fn host_pm3_home() -> Option<String> {
 #[must_use]
 pub fn host_pm3_env() -> Vec<(String, String)> {
     pm3_variables(std::env::vars().collect())
+}
+
+#[must_use]
+pub fn host_uid() -> Option<u32> {
+    std::fs::metadata(OWN_PROCESS_DIR)
+        .ok()
+        .map(|owner| owner.uid())
+}
+
+#[must_use]
+pub fn host_runtime_dir() -> Option<String> {
+    let declared = std::env::var(RUNTIME_DIR_VARIABLE).ok();
+    runtime_dir_of(declared.as_deref(), host_uid())
 }
 
 fn layout_error(path: &Path, source: &std::io::Error) -> Error {

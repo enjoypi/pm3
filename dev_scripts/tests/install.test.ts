@@ -10,6 +10,7 @@ import {
   systemdMainPid,
   waitForSupervision,
 } from "../install.ts";
+import { runtimeDirectory } from "../install_plan.ts";
 
 const repoRoot = new URL("../../", import.meta.url).pathname;
 const configSource = "config.yaml";
@@ -138,6 +139,20 @@ describe("systemdMainPid", () => {
         "\n",
       ),
     );
+  });
+
+  test("hands systemd the runtime directory a non-login shell lacks", async () => {
+    const dir = await sandbox();
+    const expected = runtimeDirectory(
+      Bun.env["XDG_RUNTIME_DIR"],
+      process.getuid?.() ?? 0,
+    );
+    const systemctl = await substitute(
+      dir,
+      "systemctl",
+      `test "$XDG_RUNTIME_DIR" = "${expected}" && echo 4242 || echo 0`,
+    );
+    expect(await systemdMainPid(systemctl, "dev.pm3.service")).toBe(4242);
   });
 
   test("treats a zero MainPID as unsupervised", async () => {

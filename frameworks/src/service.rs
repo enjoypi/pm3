@@ -9,7 +9,8 @@ use crate::{
     Error, Result,
     cli::ServiceCommands,
     layout::{
-        canonicalize, ensure_layout, host_home, host_pm3_env, resolve_cfg_dir, resolve_layout,
+        canonicalize, ensure_layout, host_home, host_pm3_env, host_runtime_dir, host_uid,
+        resolve_cfg_dir, resolve_layout,
     },
     telemetry::init_cli_telemetry,
 };
@@ -25,6 +26,8 @@ pub struct ServiceContext<'c> {
     pub kind: UnitKind,
     pub home_env: Option<&'c str>,
     pub pm3_env: Vec<(String, String)>,
+    pub runtime_dir: Option<String>,
+    pub uid: Option<u32>,
     pub binary: std::io::Result<PathBuf>,
 }
 
@@ -45,6 +48,8 @@ pub async fn run_service(config_path: &str, command: Option<&ServiceCommands>) -
         kind: HOST_SERVICE_KIND,
         home_env: home.as_deref(),
         pm3_env: host_pm3_env(),
+        runtime_dir: host_runtime_dir(),
+        uid: host_uid(),
         binary: std::env::current_exe(),
     };
     dispatch_service(config_path, command, &context).await
@@ -79,7 +84,11 @@ pub fn open_service_session(
     let paths = resolve_layout(&loaded.config.pm3, context.home_env)?;
     let cfg_dir = resolve_cfg_dir(&loaded.config.pm3, context.home_env)?;
     let spec = build_spec(&loaded.config, &paths, context)?;
-    let programs = UnitProgramSet::from_config(&loaded.config.pm3.service);
+    let programs = UnitProgramSet::from_config(
+        &loaded.config.pm3.service,
+        context.runtime_dir.as_deref(),
+        context.uid,
+    );
     let command_timeout_ms = loaded.config.pm3.command_timeout_ms;
     Ok(ServiceSession {
         paths,

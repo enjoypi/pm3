@@ -11,6 +11,8 @@ const SYSTEMD_UNIT_SUFFIX: &str = "service";
 const LAUNCHD_PID_KEY: &str = "\"PID\"";
 const SYSTEMD_ACTIVE: &str = "active";
 const PM3_VARIABLE_PREFIX: &str = "PM3_";
+const LINGER_ENABLED: &str = "yes";
+const RUNTIME_DIR_ROOT: &str = "/run/user";
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum UnitKind {
@@ -42,6 +44,12 @@ impl UnitKind {
             Self::Systemd => SYSTEMD_UNIT_SUFFIX,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum LingerState {
+    Enabled,
+    Unknown,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -112,6 +120,22 @@ pub fn pm3_variables(vars: Vec<(String, String)>) -> Vec<(String, String)> {
         .collect();
     kept.sort();
     kept
+}
+
+#[must_use]
+pub fn runtime_dir_of(declared: Option<&str>, uid: Option<u32>) -> Option<String> {
+    match declared {
+        Some(dir) if !dir.is_empty() => Some(dir.to_string()),
+        _ => uid.map(|owner| format!("{RUNTIME_DIR_ROOT}/{owner}")),
+    }
+}
+
+#[must_use]
+pub fn parse_linger_state(exit_success: bool, stdout: &str) -> LingerState {
+    if exit_success && stdout.trim() == LINGER_ENABLED {
+        return LingerState::Enabled;
+    }
+    LingerState::Unknown
 }
 
 #[must_use]
