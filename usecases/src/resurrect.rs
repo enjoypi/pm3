@@ -4,7 +4,7 @@ use entities::ProcessStatus;
 use futures_util::future::join_all;
 
 use crate::{
-    FingerprintError, Liveness, Ports, Result, UsecaseError,
+    FingerprintError, Liveness, Ports, Result, StrandedProcess, UsecaseError,
     fingerprint::{pid_was_recycled, render_identity},
     persist::save_table,
     record::ProcessRecord,
@@ -35,7 +35,9 @@ pub async fn resurrect(
     kill_timeout_ms: u64,
     ports: &impl Ports,
 ) -> Result<Vec<StartOutcome>> {
-    let stored = ports.load().await?;
+    let contents = ports.load().await?;
+    sweep_stranded(&contents.stranded, kill_timeout_ms, ports).await;
+    let stored = contents.records;
     let verdicts = judge_all(&stored, ports).await;
 
     *table = ProcessTable::from_records(
@@ -96,10 +98,32 @@ async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<Str
         .collect()
 }
 
+async fn sweep_stranded(stranded: &[StrandedProcess], kill_timeout_ms: u64, ports: &impl Ports) {
+    for orphan in stranded {
+        let Some(pid) =
+            surviving_pid(&orphan.name, orphan.pid, orphan.token.as_deref(), ports).await
+        else {
+            continue;
+        };
+        log_stranded(&orphan.name, pid);
+        evict_pid(&orphan.name, pid, kill_timeout_ms, ports).await;
+    }
+}
+
 async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
     if record.runtime.status.is_shutting_down() {
         return Verdict::Settle {
-            stale: surviving_pid(record, ports).await,
+            stale: surviving_pid(
+                &record.runtime.name,
+                record.runtime.pid,
+                record
+                    .runtime
+                    .identity
+                    .as_ref()
+                    .map(|identity| identity.token.as_str()),
+                ports,
+            )
+            .await,
         };
     }
     let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
@@ -133,19 +157,19 @@ const fn respawn(change: Change, stale: Option<u32>) -> Verdict {
     Verdict::Respawn { change, stale }
 }
 
-async fn surviving_pid(record: &ProcessRecord, ports: &impl Ports) -> Option<u32> {
-    let pid = record.runtime.pid?;
-    let expected = record
-        .runtime
-        .identity
-        .as_ref()
-        .map(|identity| identity.token.as_str());
+async fn surviving_pid(
+    app: &str,
+    pid: Option<u32>,
+    expected: Option<&str>,
+    ports: &impl Ports,
+) -> Option<u32> {
+    let pid = pid?;
     let observed = ports.identity(pid).await;
     if matches!(observed, Liveness::Gone) {
         return None;
     }
     if pid_was_recycled(&observed, expected) {
-        log_spared_evict(&record.runtime.name, pid);
+        log_spared_evict(app, pid);
         return None;
     }
     Some(pid)
@@ -155,6 +179,10 @@ async fn evict(name: &str, stale: Option<u32>, kill_timeout_ms: u64, ports: &imp
     let Some(pid) = stale else {
         return;
     };
+    evict_pid(name, pid, kill_timeout_ms, ports).await;
+}
+
+async fn evict_pid(name: &str, pid: u32, kill_timeout_ms: u64, ports: &impl Ports) {
     let refused = ports.terminate(pid).await.err().map(|e| e.to_string());
     log_evict(name, pid, refused.as_deref());
     let liveness = ports.wait_gone(pid, kill_timeout_ms).await;
@@ -219,6 +247,16 @@ fn log_adopt(app: &str, pid: u32) {
         service = app,
         pid,
         "pm3 reclaimed a service that outlived the previous daemon",
+    );
+}
+
+fn log_stranded(app: &str, pid: u32) {
+    tracing::warn!(
+        feature = "resurrect",
+        action = "strand",
+        service = app,
+        pid,
+        "pm3 can no longer read the declaration of a surviving service, so it stops the survivor instead of leaving it unmanaged",
     );
 }
 

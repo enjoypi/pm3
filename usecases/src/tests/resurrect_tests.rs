@@ -332,3 +332,6 @@ async fn a_service_whose_program_was_replaced_is_restarted() {
 
 #[path = "resurrect_evict_tests.rs"]
 mod evict;
+
+#[path = "resurrect_stranded_tests.rs"]
+mod stranded;

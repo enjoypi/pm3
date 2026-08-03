@@ -49,6 +49,7 @@ fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
         cfg_dir: cfg_dir.clone(),
         config,
         home_dir: paths.root.to_string_lossy().into_owned(),
+        host_home: None,
         logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: None,
     };

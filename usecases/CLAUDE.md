@@ -25,6 +25,8 @@ Interactor + Output Port（trait）。与外层交互只经 `ports/` 下的 trai
 - 「注册时是否 spawn」的判定 MUST 落在 `start_apps` 的 `StartMode::Register` 分支，**不能**落在执行路径——cron 到点走的是执行路径，判在那里会让定时任务永不运行
 - 批处理 Interactor MUST NOT 在循环里 `?`：`start_apps` 返回 `StartReport { outcomes, failure }`（不是 `Result`），`resurrect` 逐服务记 warn 后继续。半路 `?` 会把「已 spawn / 已 adopt」的 outcome 一起丢掉，调用方的 `watch_all` 与末尾的 `save_table` 都不执行 → 进程在跑却没有 watch task，autorestart 与熔断全失效，dump 里也没有它的 pid，daemon 一重启就成永久孤儿
 - `resurrect` 的 `topo_sort` 失败 MUST 降级为「按表序恢复」而非中止：`delete` 留下的悬空 `depends_on` 或缺失的服务文件都会让整图排不出序，一 `?` 就把全部幸存进程弃管。`stop_all_apps` 同理（原先的 `unwrap_or_default()` 更糟：一个都不停却报成功）
+- `Supervisor::restart` 先走 `reload_declaration`（`resolver.prepare` 后覆盖 `record.spec`）再 `restart_app`：显式 `pm3 restart` 要能拾取手改的 `<name>.yaml` 与 `<name>.env`。`on_restart` / `on_fire` / `restart_now` MUST NOT 重读盘——cron 与崩溃自动拉起不该因为文件临时不可读而失败。selector 找不到记录时 `reload_declaration` 返回 `Ok(())`，让 `restart_app` 去报 `NotFound`（错误来源保持唯一）
+- `resurrect` 开头 MUST 先 `sweep_stranded`：`DumpStore::load` 把「dump 里有、但服务文件/`.env` 读不出来」的记录放进 `DumpContents.stranded`，这些进程无人监管，先按 token 守卫 evict 掉再恢复其余的。`surviving_pid` / `evict_pid` 与正常换代路径共用，别复制一份裸 `terminate`
 - 强杀只有一条实现 `Supervisor::sweep_pid`（`on_force_kill` 与 `force_kill_survivors` 都走它）；`delete` MUST NOT `forget_generation`，否则 generation 守卫失效，详见根 `CLAUDE.md`「进程与信号」
 - `StartReport` 的 `failure`（某服务起不来，驱动 `refused`）与 `unsaved`（起来了但没落盘）MUST 分开：`Supervisor::start` 只在 `outcomes` 为空时返回 `Err`，其余一律 200 并把两个原因分别放进 `reason` / `unsaved`
 - 新增 Port trait 时不要写 blanket impl：只有 trait 声明的文件进不了 lcov，会触发覆盖率门禁的「生产文件缺失」→ 让实现方显式 `impl Trait for X {}`

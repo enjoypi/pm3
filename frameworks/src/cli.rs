@@ -95,9 +95,6 @@ pub struct StartArgs {
     #[arg(long, help = "Working directory; defaults to <pm3 home>/<name>")]
     pub cwd: Option<String>,
 
-    #[arg(long = "env", value_name = "KEY=VALUE", help = "Environment entry")]
-    pub env: Vec<String>,
-
     #[arg(
         long,
         value_name = "EXPR",
@@ -234,7 +231,6 @@ async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
                 program,
                 args: rest,
                 cwd: args.cwd.as_deref(),
-                env: &args.env,
                 cron: args.cron.as_deref(),
                 autorestart: args.no_autorestart.then_some(false),
                 network: args.network,

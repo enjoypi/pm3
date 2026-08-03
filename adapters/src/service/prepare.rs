@@ -11,7 +11,6 @@ pub struct InlineStart<'s> {
     pub program: &'s str,
     pub args: &'s [String],
     pub cwd: Option<&'s str>,
-    pub env: &'s [String],
     pub cron: Option<&'s str>,
     pub autorestart: Option<bool>,
     pub network: bool,
@@ -54,12 +53,11 @@ pub async fn prepare_inline(
         args: request.args,
         cwd: request.cwd,
         home: context.home,
-        env: request.env,
         cron: request.cron,
         autorestart: request.autorestart,
         network: request.network,
         writable_dirs: request.writable_dirs,
-    })?;
+    });
     let contents = encode_service_file(&entry);
     let path = crate::apps_file::service_file_of(context.cfg_dir, request.name)?;
     let mut undo = ServiceUndo::default();

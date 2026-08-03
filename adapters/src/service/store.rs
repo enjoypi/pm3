@@ -6,7 +6,7 @@ use std::{
 use thiserror::Error;
 use usecases::SpecError;
 
-use crate::apps_file::{AppsFileError, diff_lines, service_file_of};
+use crate::apps_file::{AppsFileError, diff_lines, env_file_of, service_file_of};
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
@@ -92,13 +92,20 @@ impl UndoStep {
 }
 
 pub async fn forget(cfg_dir: &Path, name: &str) {
-    let Ok(path) = service_file_of(cfg_dir, name) else {
+    let (Ok(declaration), Ok(secrets)) =
+        (service_file_of(cfg_dir, name), env_file_of(cfg_dir, name))
+    else {
         return;
     };
-    if let Err(error) = tokio::fs::remove_file(&path).await
+    remove_quietly(&declaration).await;
+    remove_quietly(&secrets).await;
+}
+
+async fn remove_quietly(path: &Path) {
+    if let Err(error) = tokio::fs::remove_file(path).await
         && error.kind() != io::ErrorKind::NotFound
     {
-        log_stuck_forget(&path, &error.to_string());
+        log_stuck_forget(path, &error.to_string());
     }
 }
 

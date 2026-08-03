@@ -454,6 +454,24 @@ async fn restarting_an_unknown_app_through_a_command_is_refused() {
 }
 
 #[tokio::test]
+async fn restarting_an_app_reads_its_declaration_again() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    std::fs::write(
+        adapters::service_file_of(&harness.cfg_dir, "web").expect("a safe service name"),
+        "name: web\nscript: /bin/sh\nenv:\n  TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
+    )
+    .expect("rewrite the service file");
+    let refused = harness
+        .daemon
+        .handle(SupervisionRequest::Restart(selector("web")))
+        .await
+        .expect_err("a restart must read the declaration from disk again")
+        .to_string();
+    assert!(refused.contains("'web.env'"), "{refused}");
+}
+
+#[tokio::test]
 async fn restarting_a_stopped_app_through_a_command_starts_it_again() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;

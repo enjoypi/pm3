@@ -24,7 +24,15 @@ fn start_inline(home: &self::common::Home, extra: &[&str]) -> std::process::Outp
 
 fn start_changed_with_answer(home: &self::common::Home, answer: &str) -> std::process::Output {
     let args = [
-        "start", "--name", NAME, "--force", "--env", "FRESH=1", PM3, "__sleep", "30000",
+        "start",
+        "--name",
+        NAME,
+        "--force",
+        "--writable-dir",
+        "/srv/fresh",
+        PM3,
+        "__sleep",
+        "30000",
     ];
     pm3_with_stdin(home, &args, answer)
 }
@@ -151,7 +159,7 @@ fn a_closed_stdin_keeps_the_running_service_on_the_old_config() {
     let home = home();
     assert!(start_inline(&home, &[]).status.success(), "first start");
 
-    let forced = start_inline(&home, &["--force", "--env", "FRESH=1"]);
+    let forced = start_inline(&home, &["--force", "--writable-dir", "/srv/fresh"]);
     assert!(forced.status.success(), "{}", stderr_of(&forced));
     let shown = stdout_of(&forced);
     assert!(
@@ -181,7 +189,7 @@ fn a_changed_config_for_a_stopped_service_starts_it_without_a_prompt() {
     assert!(start_inline(&home, &[]).status.success(), "first start");
     assert!(pm3(&home, &["stop", NAME]).status.success(), "stop");
 
-    let forced = start_inline(&home, &["--force", "--env", "FRESH=1"]);
+    let forced = start_inline(&home, &["--force", "--writable-dir", "/srv/fresh"]);
     assert!(forced.status.success(), "{}", stderr_of(&forced));
     let shown = stdout_of(&forced);
     assert!(shown.contains("started sleeper"), "{shown}");

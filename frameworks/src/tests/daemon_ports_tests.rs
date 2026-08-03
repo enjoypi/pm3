@@ -27,6 +27,7 @@ fn spec_source_in(dir: &Path) -> SpecSource {
         cfg_dir,
         config: pm3_config_with_home(&dir.to_string_lossy()),
         home_dir: dir.to_string_lossy().into_owned(),
+        host_home: None,
         logs_dir: dir.join("logs").to_string_lossy().into_owned(),
         tmp_dir: None,
     }
@@ -94,7 +95,7 @@ async fn the_dump_store_rejoins_the_saved_state_with_its_service_file() {
     register_service(dir.path(), "web");
     ports.save(&[stored_record()]).await.expect("save");
     let loaded = ports.load().await.expect("load");
-    assert_eq!(loaded[0].runtime, stored_record().runtime);
+    assert_eq!(loaded.records[0].runtime, stored_record().runtime);
 }
 
 #[tokio::test]

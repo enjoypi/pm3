@@ -10,7 +10,7 @@ pub mod wrapper;
 
 pub use self::{
     clock::Clock,
-    dump_store::{DumpError, DumpStore},
+    dump_store::{DumpContents, DumpError, DumpStore, StrandedProcess},
     fingerprint::{FingerprintError, Fingerprinter},
     launcher::{ExitOutcome, LaunchError, LaunchSpec, LaunchedProcess, ProcessLauncher},
     probe::{Liveness, ProcessProbe},

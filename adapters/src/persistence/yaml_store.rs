@@ -4,7 +4,9 @@ use std::{
 };
 
 use tokio::fs;
-use usecases::{DumpError, DumpStore, ProcessRecord};
+use usecases::{
+    DumpContents, DumpError, DumpStore, ProcessRecord, ProcessRuntime, StrandedProcess,
+};
 
 use super::dto::{DecodeError, DumpDocument, StateDto, decode_state, encode_states};
 use crate::{
@@ -31,41 +33,50 @@ impl YamlDumpStore {
         self.path.as_path()
     }
 
-    async fn rejoin(&self, state: StateDto) -> Option<ProcessRecord> {
+    async fn rejoin(&self, state: StateDto, contents: &mut DumpContents) {
         let runtime = match decode_state(state) {
             Ok(runtime) => runtime,
             Err(error) => {
                 warn_undecodable(&error);
-                return None;
+                return;
             }
         };
         match self.specs.resolve_service(&runtime.name).await {
             Ok(mut spec) => {
                 materialise_workspace(&mut spec).await;
-                Some(ProcessRecord { spec, runtime })
+                contents.records.push(ProcessRecord { spec, runtime });
             }
             Err(error) => {
                 warn_unusable(&runtime.name, &error);
-                None
+                contents.stranded.push(stranded_from(runtime));
             }
         }
     }
 }
 
+fn stranded_from(runtime: ProcessRuntime) -> StrandedProcess {
+    StrandedProcess {
+        name: runtime.name,
+        pid: runtime.pid,
+        token: runtime.identity.map(|identity| identity.token),
+    }
+}
+
 impl DumpStore for YamlDumpStore {
-    async fn load(&self) -> Result<Vec<ProcessRecord>, DumpError> {
+    async fn load(&self) -> Result<DumpContents, DumpError> {
         let Some(raw) = read_optional(&self.path).await? else {
-            return Ok(Vec::new());
+            return Ok(DumpContents::default());
         };
         let doc: DumpDocument =
             serde_yaml2::from_str(&raw).map_err(|e| read_error(&self.path, &e.to_string()))?;
-        let mut records = Vec::with_capacity(doc.services.len());
+        let mut contents = DumpContents {
+            records: Vec::with_capacity(doc.services.len()),
+            stranded: Vec::new(),
+        };
         for state in doc.services {
-            if let Some(record) = self.rejoin(state).await {
-                records.push(record);
-            }
+            self.rejoin(state, &mut contents).await;
         }
-        Ok(records)
+        Ok(contents)
     }
 
     async fn save(&self, records: &[ProcessRecord]) -> Result<(), DumpError> {

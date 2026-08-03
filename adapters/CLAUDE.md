@@ -7,7 +7,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 | 目录 | 内容 |
 |---|---|
 | `config/` | `Pm3Config` schema、loader、`substitute_env_vars`；`app.rs` 是 `pm3 config check/show` |
-| `apps_file/` | 用户 apps 文件与单体服务文件的解析、`SpecSource`、`roots` |
+| `apps_file/` | 用户 apps 文件与单体服务文件的解析、`SpecSource`、`roots`；`env_file.rs` 是 `<name>.env`（环境变量 sidecar）的解析与加载 |
 | `http/` | daemon 侧 controller / routes / DTO（`ReplyDto`） |
 | `logs/` | `pm3 logs` 的 `tail_lines` / `read_tail` / `LogFollower`（`-f` 跟随） |
 | `persistence/` | `dump.yaml` 的 `yaml_store` 与 DTO |
@@ -24,7 +24,8 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 意图与运行态的缝合
 
 - `load_apps_file` / `load_service_file` / `SpecSource::resolve_service` 都是 **async**：它们跑在 daemon 单任务 actor 循环里（`Daemon::start` 每服务一次、`YamlDumpStore::load` 每记录一次），用同步 `std::fs` 会在慢盘/NFS 上冻住整个事件循环。同理 `materialise_workspace` 用 `tokio::fs::canonicalize` 并对已解析过的路径去重（cwd 会同时出现在 `spec.cwd` 与 `derived_roots[0]`）
-- `cfg_dir/<name>.yaml` 存**意图**（零绝对路径，`${HOME}` 占位、`script` 存裸名、`cwd` 由 daemon 推导），`dump.yaml` 只存 `services[].runtime`；`SpecSource` 在 daemon 启动时把两者缝起来，服务文件缺失/损坏只跳过并 `warn`，MUST NOT 让整个 daemon 起不来
+- `cfg_dir/<name>.yaml` 存**意图**（零绝对路径，`${HOME}` 占位、`script` 存裸名、`cwd` 由 daemon 推导），`dump.yaml` 只存 `services[].runtime`；`SpecSource` 在 daemon 启动时把两者缝起来，服务文件缺失/损坏 MUST NOT 让整个 daemon 起不来——`rejoin` 记 `warn` 后把那条转成 `DumpContents.stranded`（`StrandedProcess { name, pid, token }`）交给 `resurrect` 清扫，MUST NOT 直接 `return None`（详见根 `CLAUDE.md`「环境变量与凭据」）
+- `<name>.env` 只被 `load_env_file` 读，永远不被 pm3 写：解析是纯函数 `parse_env_file(path, home, text)`（首个 `=` 切分、`#` 注释、成对引号剥一层、重复 key 报错、双引号与裸值里展开 `$HOME`），加载侧读完 `chmod 0600`（软链跳过、失败只 warn，见根 `CLAUDE.md`「环境变量与凭据」）。错误文案只带路径/行号/key，MUST NOT 带值。`HOME` 由 `with_host_home` 从注入的 `SpecSource.host_home` 补进去，声明值优先
 - `SpecSource::resolve_service` 用专属 `parse_service_file` 解析**单体格式**（顶层直接 `name:`/`script:`/…，不包 `apps:` 数组）并按文件名核对 `name`；`apps:` 数组只出现在用户手写的 apps 文件（`pm3 start apps.yaml`）
 
 ### 子进程不随父死

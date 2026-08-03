@@ -29,8 +29,8 @@ pub struct AppEntry {
     pub cwd: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
-    #[serde(default)]
-    pub env: BTreeMap<String, String>,
+    #[serde(default, rename = "env")]
+    pub rejected_env: Option<BTreeMap<String, String>>,
     #[serde(default)]
     pub depends_on: Vec<String>,
     #[serde(default)]
@@ -85,8 +85,10 @@ pub enum AppsFileError {
     #[error("cannot accept duplicate app name '{0}'")]
     DuplicateName(String),
 
-    #[error("cannot accept environment entry '{0}': expected KEY=VALUE")]
-    InvalidEnvPair(String),
+    #[error(
+        "cannot accept 'env' in the declaration for app '{app}': move the environment values to '{app}.env' beside the service file, so secrets never land in a yaml file"
+    )]
+    EnvInYaml { app: String },
 
     #[error("cannot find app '{0}' in its own service file")]
     MissingApp(String),
@@ -98,6 +100,9 @@ pub enum AppsFileError {
         "cannot accept sandbox mode '{mode}' for {scope}: must be one of read-only, workspace-write, danger-full-access"
     )]
     InvalidSandboxMode { scope: String, mode: String },
+
+    #[error(transparent)]
+    EnvFile(#[from] super::env_file::EnvFileError),
 
     #[error(transparent)]
     Substitute(#[from] ConfigLoadError),
@@ -142,6 +147,16 @@ fn check_declared_names(apps: &AppsFile) -> Result<(), AppsFileError> {
         if !seen.insert(entry.name.as_str()) {
             return Err(AppsFileError::DuplicateName(entry.name.clone()));
         }
+        reject_env(entry)?;
+    }
+    Ok(())
+}
+
+fn reject_env(entry: &AppEntry) -> Result<(), AppsFileError> {
+    if entry.rejected_env.is_some() {
+        return Err(AppsFileError::EnvInYaml {
+            app: entry.name.clone(),
+        });
     }
     Ok(())
 }
@@ -184,6 +199,7 @@ pub fn resolve_checked(
 }
 
 fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpec, AppsFileError> {
+    reject_env(entry)?;
     let cwd = working_directory(defaults, entry);
     let script = resolve_program(&entry.script, Some(defaults.search_path)).ok_or_else(|| {
         AppsFileError::ProgramNotFound {
@@ -192,17 +208,12 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         }
     })?;
     let sandbox = resolve_sandbox(defaults, entry, &cwd)?;
-    let env = entry
-        .env
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
     Ok(AppSpec {
         name: entry.name.clone(),
         script: script.to_string_lossy().into_owned(),
         args: entry.args.clone(),
         cwd,
-        env,
+        env: Vec::new(),
         autorestart: entry.autorestart.unwrap_or(defaults.restart.autorestart),
         min_uptime_ms: entry
             .min_uptime_ms

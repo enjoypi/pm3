@@ -33,8 +33,12 @@ fn start_sleeper(home: &Home) -> u32 {
     described_pid(home, SERVICE)
 }
 
-fn service(home: &Home) -> PathBuf {
-    home.root.join("service").join(format!("{SERVICE}.yaml"))
+fn secrets(home: &Home) -> PathBuf {
+    home.root.join("service").join(format!("{SERVICE}.env"))
+}
+
+fn retune(home: &Home) {
+    std::fs::write(secrets(home), "TUNED=1\n").expect("write the service environment");
 }
 
 fn revive_daemon(home: &Home) {
@@ -120,9 +124,7 @@ fn a_service_whose_config_changed_is_restarted_by_the_new_daemon() {
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
-    let path = service(&home);
-    let config = std::fs::read_to_string(&path).expect("the service file");
-    std::fs::write(&path, format!("{config}env:\n  TUNED: \"1\"\n")).expect("retune the service");
+    retune(&home);
     revive_daemon(&home);
 
     assert_ne!(
@@ -141,15 +143,30 @@ fn restarting_a_changed_service_takes_the_old_process_down_first() {
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
-    let path = service(&home);
-    let config = std::fs::read_to_string(&path).expect("the service file");
-    std::fs::write(&path, format!("{config}env:\n  TUNED: \"1\"\n")).expect("retune the service");
+    retune(&home);
     revive_daemon(&home);
     wait_for_log(&daemon_log(&home), "\"action\":\"evict\"");
 
     assert!(
         !process_is_alive(pid),
         "the stale survivor must not outlive its replacement"
+    );
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn a_survivor_the_new_daemon_cannot_read_is_stopped_instead_of_orphaned() {
+    let home = verbose_home();
+    let pid = start_sleeper(&home);
+
+    detach_daemon(&home);
+    std::fs::write(secrets(&home), "TUNED\n").expect("break the service environment");
+    revive_daemon(&home);
+    wait_for_log(&daemon_log(&home), "\"action\":\"strand\"");
+
+    assert!(
+        !process_is_alive(pid),
+        "an unmanageable survivor must not be left running behind pm3's back"
     );
     shutdown_daemon(&home);
 }

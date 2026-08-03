@@ -1,6 +1,7 @@
 use super::*;
 use crate::spec_sources::{
-    SERVICE_SCRIPT, register_service, service_yaml, spec_source_in, write_service_file,
+    HOST_HOME, SERVICE_SCRIPT, register_service, service_yaml, spec_source_in, write_env_file,
+    write_service_file,
 };
 
 struct Fixture {
@@ -167,6 +168,104 @@ async fn resolving_a_service_from_a_legacy_apps_file_is_reported() {
         .unwrap_err()
         .to_string();
     assert!(err.starts_with("cannot parse apps file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn resolving_a_service_without_an_environment_file_still_hands_out_the_home() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("a missing environment file is fine");
+    assert_eq!(
+        spec.env,
+        [("HOME".to_string(), HOST_HOME.to_string())],
+        "a service must not have to spell out an absolute home"
+    );
+}
+
+#[tokio::test]
+async fn a_declared_home_wins_over_the_one_pm3_hands_out() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "HOME=/srv/web\n");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(spec.env, [("HOME".to_string(), "/srv/web".to_string())]);
+}
+
+#[tokio::test]
+async fn a_host_without_a_home_hands_out_nothing() {
+    let mut fixture = fixture();
+    fixture.source.host_home = None;
+    register_service(&fixture.source, "web");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(spec.env.is_empty());
+}
+
+#[tokio::test]
+async fn resolving_a_service_loads_the_environment_beside_its_file() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(
+        &fixture.source,
+        "web",
+        "# the tunnel credential\nTUNNEL_TOKEN=eyJhIjoiZjQ2\nPORT=8080\n",
+    );
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(
+        spec.env,
+        [
+            ("HOME".to_string(), HOST_HOME.to_string()),
+            ("PORT".to_string(), "8080".to_string()),
+            ("TUNNEL_TOKEN".to_string(), "eyJhIjoiZjQ2".to_string()),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn resolving_a_service_with_an_unparsable_environment_file_is_reported() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "TUNNEL_TOKEN\n");
+    let err = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("expected KEY=VALUE"), "got: {err}");
+}
+
+#[tokio::test]
+async fn resolving_a_service_whose_file_declares_an_environment_is_refused() {
+    let fixture = fixture();
+    write_service_file(
+        &fixture.source,
+        "web",
+        "name: \"web\"\nscript: \"/bin/sh\"\nenv:\n  TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
+    );
+    let err = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("'web.env'"), "got: {err}");
+    assert!(!err.contains("eyJhIjoiZjQ2"), "got: {err}");
 }
 
 #[test]

@@ -62,6 +62,7 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
         cfg_dir,
         config: config.pm3.clone(),
         home_dir: paths.root.to_string_lossy().into_owned(),
+        host_home: home,
         logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: std::env::var(TMPDIR_VARIABLE).ok(),
     };

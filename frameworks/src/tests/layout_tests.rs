@@ -68,6 +68,22 @@ async fn preparing_the_layout_creates_the_service_directory() {
 }
 
 #[tokio::test]
+async fn preparing_the_layout_keeps_the_service_directory_to_its_owner() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(&dir.path().join("home"));
+    let cfg_dir = dir.path().join("config/pm3");
+    ensure_layout(&paths, &cfg_dir)
+        .await
+        .expect("should prepare");
+    let mode = std::fs::metadata(&cfg_dir)
+        .expect("read the metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o700, "the service directory holds the env files");
+}
+
+#[tokio::test]
 async fn preparing_the_layout_reports_a_blocked_service_directory() {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(&dir.path().join("home"));
@@ -121,13 +137,14 @@ async fn preparing_the_layout_restricts_the_home_to_its_owner() {
 }
 
 #[tokio::test]
-async fn an_unrestrictable_home_is_reported() {
+async fn a_directory_that_cannot_be_restricted_only_warns() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let err = restrict_to_owner(&dir.path().join("absent"))
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
+    let absent = dir.path().join("absent");
+    restrict_to_owner(&absent).await;
+    assert!(
+        !absent.exists(),
+        "a directory pm3 does not own must not stop it from running"
+    );
 }
 
 #[tokio::test]

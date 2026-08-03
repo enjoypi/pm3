@@ -1,10 +1,10 @@
 use std::{path::PathBuf, sync::Arc};
 
 use adapters::{
-    AdoptedWatch, Clock, CommandWrapper, CronScheduler, DumpError, DumpStore, ExitOutcome,
-    FingerprintError, Fingerprinter, HostSandbox, KillSignaler, LaunchError, LaunchSpec,
-    LaunchedProcess, Liveness, PollCadence, Ports, ProcessLauncher, ProcessProbe, ProcessRecord,
-    PsProcessProbe, SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler,
+    AdoptedWatch, Clock, CommandWrapper, CronScheduler, DumpContents, DumpError, DumpStore,
+    ExitOutcome, FingerprintError, Fingerprinter, HostSandbox, KillSignaler, LaunchError,
+    LaunchSpec, LaunchedProcess, Liveness, PollCadence, Ports, ProcessLauncher, ProcessProbe,
+    ProcessRecord, PsProcessProbe, SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler,
     Sha256Fingerprinter, SignalError, Signaler, SpecSource, SystemClock, TokioProcessLauncher,
     WrappedCommand, YamlDumpStore, wait_for_exit,
 };
@@ -88,7 +88,7 @@ impl CommandWrapper for DaemonPorts {
 }
 
 impl DumpStore for DaemonPorts {
-    async fn load(&self) -> Result<Vec<ProcessRecord>, DumpError> {
+    async fn load(&self) -> Result<DumpContents, DumpError> {
         self.store.load().await
     }
 

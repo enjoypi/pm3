@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub const SERVICE_SCRIPT: &str = "/bin/sh";
+pub const HOST_HOME: &str = "/home/dev";
 pub const SANDBOX_MODE: &str = SandboxMode::WorkspaceWrite.as_str();
 
 const KILL_TIMEOUT_MS: u64 = 1600;
@@ -30,6 +31,7 @@ pub fn spec_source_in(root: &Path) -> SpecSource {
         cfg_dir,
         config,
         home_dir,
+        host_home: Some(HOST_HOME.to_string()),
         logs_dir,
         tmp_dir: None,
     }
@@ -42,6 +44,11 @@ pub fn register_service(source: &SpecSource, name: &str) {
 pub fn write_service_file(source: &SpecSource, name: &str, body: &str) {
     let path = source.service(name).expect("a safe service name");
     std::fs::write(path, body).expect("write the service file");
+}
+
+pub fn write_env_file(source: &SpecSource, name: &str, body: &str) {
+    let path = crate::env_file_of(&source.cfg_dir, name).expect("a safe service name");
+    std::fs::write(path, body).expect("write the environment file");
 }
 
 pub fn service_yaml(name: &str) -> String {

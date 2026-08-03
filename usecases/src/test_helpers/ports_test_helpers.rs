@@ -8,9 +8,9 @@ use entities::{AppSpec, SandboxMode, SandboxPolicy};
 use crate::{
     Ports,
     ports::{
-        Clock, CommandWrapper, DumpError, DumpStore, FingerprintError, Fingerprinter, LaunchError,
-        LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe, SandboxError,
-        Scheduler, SignalError, Signaler, WrappedCommand,
+        Clock, CommandWrapper, DumpContents, DumpError, DumpStore, FingerprintError, Fingerprinter,
+        LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe,
+        SandboxError, Scheduler, SignalError, Signaler, StrandedProcess, WrappedCommand,
     },
     record::ProcessRecord,
 };
@@ -41,6 +41,7 @@ struct FakeState {
     force_killed: Vec<u32>,
     force_failures: Vec<u32>,
     stored: Vec<ProcessRecord>,
+    stranded: Vec<StrandedProcess>,
     saves: usize,
     load_fails: bool,
     save_fails: bool,
@@ -104,6 +105,10 @@ impl FakePorts {
 
     pub fn seed_stored(&self, records: Vec<ProcessRecord>) {
         self.with_state(|state| state.stored = records);
+    }
+
+    pub fn seed_stranded(&self, stranded: Vec<StrandedProcess>) {
+        self.with_state(|state| state.stranded = stranded);
     }
 
     pub fn seed_live(&self, pid: u32, token: &str) {
@@ -261,8 +266,8 @@ impl FakePorts {
         Ok(())
     }
 
-    fn read_stored(&self) -> Result<Vec<ProcessRecord>, DumpError> {
-        let stored = {
+    fn read_stored(&self) -> Result<DumpContents, DumpError> {
+        let contents = {
             let guard = self.locked();
             if guard.load_fails {
                 return Err(DumpError::Read {
@@ -270,9 +275,12 @@ impl FakePorts {
                     reason: "injected read failure".to_string(),
                 });
             }
-            guard.stored.clone()
+            DumpContents {
+                records: guard.stored.clone(),
+                stranded: guard.stranded.clone(),
+            }
         };
-        Ok(stored)
+        Ok(contents)
     }
 }
 
@@ -332,7 +340,7 @@ impl CommandWrapper for FakePorts {
 }
 
 impl DumpStore for FakePorts {
-    async fn load(&self) -> Result<Vec<ProcessRecord>, DumpError> {
+    async fn load(&self) -> Result<DumpContents, DumpError> {
         self.read_stored()
     }
 

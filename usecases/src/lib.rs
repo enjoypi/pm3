@@ -30,10 +30,10 @@ pub use self::{
     fingerprint::{pid_was_recycled, render_identity},
     log_paths::{LogPaths, log_paths},
     ports::{
-        Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter,
-        LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe,
-        SandboxError, Scheduler, SignalError, Signaler, SpecResolveError, SpecResolver,
-        WrappedCommand,
+        Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome, FingerprintError,
+        Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher,
+        ProcessProbe, SandboxError, Scheduler, SignalError, Signaler, SpecResolveError,
+        SpecResolver, StrandedProcess, WrappedCommand,
     },
     query::{
         armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,

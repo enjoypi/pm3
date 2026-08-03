@@ -135,12 +135,10 @@ fn start_collects_repeated_pm3_options() {
         "start",
         "--name",
         "app",
-        "--env",
-        "A=1",
-        "--env",
-        "B=2",
         "--writable-dir",
         "/srv",
+        "--writable-dir",
+        "/opt/data",
         "--cwd",
         "/work",
         "--force",
@@ -152,8 +150,7 @@ fn start_collects_repeated_pm3_options() {
             cli.command
         )
     };
-    assert_eq!(args.env, ["A=1", "B=2"]);
-    assert_eq!(args.writable_dirs, ["/srv"]);
+    assert_eq!(args.writable_dirs, ["/srv", "/opt/data"]);
     assert_eq!(args.cwd.as_deref(), Some("/work"));
     assert!(args.force, "--force belongs to pm3");
 }
