@@ -104,6 +104,11 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - 运行镜像 MUST 装 `procps`（`/bin/ps`）：缺了它每次 daemon 重启所有服务都被判「探测失败」而驱逐重启
 - `resurrect` 判定 respawn 且旧进程仍存活（token 已匹配）时 MUST 先 `terminate` 掉它，否则孤儿与新实例重复运行（症状：`just cov` 跑完残留 `pm3 __sleep`）
 
+### 沙箱模式
+
+- **自带沙箱的程序 MUST 用 `mode: danger-full-access`**：seatbelt 不允许嵌套，sshd 的特权分离子进程调 `sandbox_init` 建自己的沙箱时被拒 → 日志 `sandbox initialization failed: Operation not permitted` / `ssh_sandbox_child: sandbox_init: Operation not permitted [preauth]`，症状是端口监听正常但握手就断（客户端看到 `kex_exchange_identification: read: Connection reset by peer`）。换 `read-only` 之类无用（任何 profile 都拒），OpenSSH 7.5+ 也已移除 `UsePrivilegeSeparation no`。`adapters/src/sandbox/wrapper.rs` 对 `is_unconfined()` 直接返回未包装命令，等于恢复 launchd 时代的约束强度——不是降级。同理 macOS app bundle 也套不进去（Google Drive 靠 setuid root 的 `mount_helper` 挂载盘符）
+- `pm3 start` **没有设置 mode 的命令行开关**（只有 `--network` / `--writable-dir` / `--no-autorestart` / `--cron` / `--cwd` / `--force`）：非默认 mode 只能改 `cfg_dir/<name>.yaml` 再 `pm3 restart`（restart 会重新读盘）
+
 ### cron 调度
 
 - 到点只调 `restart_app`、**不新增状态**（架构照抄 pm2 `lib/Worker.js`）
@@ -117,6 +122,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - `start` 是**部分提交**的批处理，所以回滚粒度 MUST 与提交粒度一致：daemon 在「起了一部分」时回 200 + `refused`（未起来的服务名），CLI 只 `undo.run_for(&refused)` 并以 `Error::PartialStart` 结束（非零退出）；一个都没起来才回非 200、CLI 全量回滚。把部分成功当成「什么都没发生」而全量删服务文件，会让已在跑的服务下次 daemon 启动时 `rejoin` 失败被丢弃 → 永久孤儿
 - `start` 的「某个服务起不来」与「起来了但落不了盘」MUST 是两个独立字段（`refused` / `unsaved`）：`refused` 由「requested 减 outcomes」反推，天然表达不了「全都起来了但 `dump.yaml` 写失败」⇒ 回 200 + 空 `refused` ⇒ CLI 退出码 0，而 dump 里没有这些服务，下次 daemon 重启 `resurrect` 读不到记录、既不 evict 也不监控 ⇒ 永久孤儿，CI 按退出码判定完全无感。`unsaved` 非空时 CLI MUST 非零退出（`Error::UnsavedStart`）且 MUST NOT 回滚服务文件（服务在跑）。`Supervisor::start` 只在 `outcomes` 为空时才返回 `Err`
 - `start` 请求只传服务名列表（`services: Vec<String>`）——服务文件是唯一事实来源，MUST NOT 把 spec 塞进请求体
+- 但**手写 `cfg_dir/<name>.yaml` 不足以让服务被认出**：`pm3 start <name>` 对不在 daemon 服务表里的名字会退回按 apps 文件解析，报 `cannot resolve the apps file '<name>'`。新服务 MUST 先用 inline 形式注册一次（`pm3 start --name <name> [--network] <prog> [args]`），此后 `<name>` 才能直接用；pm3 写出的 yaml 可与手写的逐字节相同，差别只在注册路径
 - CLI MUST 在请求头带 `x-request-id`（`adapters::REQUEST_ID_HEADER`，值取 `<CLI pid>-<序号>`），daemon 的 `request_id_of` 优先读它、缺失或空才回退内部 `AtomicU64`。回退分支 MUST 保留：换代期间旧版 CLI 不发这个头。少了这层，一次 `pm3 start` 的客户端日志与 daemon 日志无法串起来（daemon 侧计数器每次重启从 1 开始，跨进程毫无意义）
 
 ### 环境变量与凭据
@@ -238,6 +244,8 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - axum 0.8 原生 `impl Listener for tokio::net::UnixListener`（无需 hyper-util）；`tokio::net::unix::SocketAddr` 只 impl Debug 不 impl Display → 日志用 `?addr`
 - clap `trailing_var_arg` + `allow_hyphen_values`：pm3 自身选项必须出现在程序名**之前**，否则被当子进程参数
 - **Rust 生态没有任何 cron 库支持 OpenBSD 风格的随机 `~`**（croner/cron/cronexpr/jiff-cron/cron_tab 全无，只有 cronexpr 支持 Jenkins 的固定哈希 `H`）→ 自己展开成具体数字再交 croner
+- `sshd_config` **不做任何环境变量展开**：`${HOME}` 与 `$HOME` 都被当字面目录名；相对路径按 sshd 的 cwd 解析，而 pm3 把 cwd 设成 `<pm3 home>/<name>` 故必失败；`~` 可用（走 `getpwuid`，`env -i` 下也成立）。`HostKey` 不在 sshd_config 的 TOKENS 白名单里（只有 `AuthorizedKeysFile`/`AuthorizedKeysCommand`/`AuthorizedPrincipals*`/`ChrootDirectory`/`RoutingDomain` 认 `%h` 之类）
+- 验收 pm3 托管的 sshd：本机 `ssh -p <port> 127.0.0.1` 报 `Permission denied (publickey)` 是**正常的**（`authorized_keys` 里只有其他设备的公钥）→ 改为比对 `ssh-keygen -lf <host key>.pub` 与 `ssh -v` 报的 `Server host key` 指纹，并确认走到 `Authentications that can continue: publickey`。另外 `pgrep -x sshd` 匹配不到它（proctitle 被改写成 `sshd: ... [listener]`），要用 `lsof -nP -iTCP:<port> -sTCP:LISTEN` 或 `ps -Ao args=`
 - 判「是不是 OOM」用 `/proc/vmstat` 的 `oom_kill`（开机以来内核 + cgroup OOM 累计杀进程数）：为 0 即可彻底排除，比翻 dmesg/journal 可靠
 - 抓「谁杀了进程」MUST 用 `sudo systemd-run --unit=X --collect perf record -a -e syscalls:sys_enter_kill -e signal:signal_generate`：直接从用户会话起的 perf 属 `user-1000.slice`，slice 一崩它就陪葬、数据废掉（`data size field is 0`）；输出里行首是发送者、`comm=`/`pid=` 是目标、`grp=1` 表示进程组广播
 - 安全验证 kill 语义用 `strace -e trace=kill /bin/kill -0 -- <target>`：sig 0 只探测不投递，能看到内核实际收到的 pid
