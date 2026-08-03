@@ -104,3 +104,48 @@ fn systemd_reports_stopped_for_an_inactive_unit() {
 fn systemd_reports_stopped_for_empty_output() {
     assert!(!parse_run_state(UnitKind::Systemd, true, ""));
 }
+
+#[test]
+fn a_lingering_user_is_read_from_the_property_value() {
+    assert_eq!(parse_linger_state(true, "yes\n"), LingerState::Enabled);
+}
+
+#[test]
+fn a_user_that_does_not_linger_is_read_as_unknown() {
+    assert_eq!(parse_linger_state(true, "no\n"), LingerState::Unknown);
+}
+
+#[test]
+fn a_refused_linger_query_is_read_as_unknown() {
+    assert_eq!(parse_linger_state(false, "yes\n"), LingerState::Unknown);
+}
+
+#[test]
+fn a_declared_runtime_directory_wins() {
+    assert_eq!(
+        runtime_dir_of(Some("/run/user/1000"), Some(4242)),
+        Some("/run/user/1000".to_string())
+    );
+}
+
+#[test]
+fn an_undeclared_runtime_directory_follows_the_uid() {
+    assert_eq!(
+        runtime_dir_of(None, Some(4242)),
+        Some("/run/user/4242".to_string()),
+        "a non-login shell has no XDG_RUNTIME_DIR, yet systemctl --user needs one"
+    );
+}
+
+#[test]
+fn an_empty_runtime_directory_follows_the_uid() {
+    assert_eq!(
+        runtime_dir_of(Some(""), Some(4242)),
+        Some("/run/user/4242".to_string())
+    );
+}
+
+#[test]
+fn an_unknown_owner_has_no_runtime_directory() {
+    assert_eq!(runtime_dir_of(None, None), None);
+}

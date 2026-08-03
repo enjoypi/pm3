@@ -1,7 +1,7 @@
 use super::{
     command::UnitProgramSet,
     plan::{UnitStep, install_plan, uninstall_plan},
-    runner::{UnitCommandError, execute_plan, query_status},
+    runner::{UnitCommandError, execute_plan, linger_state, query_status},
     spec::UnitSpec,
 };
 
@@ -14,7 +14,8 @@ pub async fn install_unit(
     dry_run: bool,
     timeout_ms: u64,
 ) -> Result<String, UnitCommandError> {
-    let steps = install_plan(spec, programs, config_contents);
+    let linger = linger_state(spec.kind, programs, timeout_ms).await;
+    let steps = install_plan(spec, programs, config_contents, linger);
     if dry_run {
         return Ok(render_plan(&steps));
     }

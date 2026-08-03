@@ -80,8 +80,8 @@ pub use self::{
     state::{DaemonCommand, DaemonError, DaemonHandle},
     unit::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, UnitCommandError, UnitKind,
-        UnitProgramSet, UnitSpec, UnitStatus, install_unit, pm3_variables, status_report,
-        uninstall_unit, unit_dir_of,
+        UnitProgramSet, UnitSpec, UnitStatus, install_unit, pm3_variables, runtime_dir_of,
+        status_report, uninstall_unit, unit_dir_of,
     },
     workspace::{expand_service_cwd, materialise_workspace},
 };

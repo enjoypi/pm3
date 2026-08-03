@@ -12,6 +12,7 @@ import {
   parseMainPid,
   parsePidFile,
   parseWriteTargets,
+  runtimeDirectory,
   type ServiceReport,
   type ServiceRow,
 } from "./install_plan.ts";
@@ -32,6 +33,7 @@ const systemdKind = "systemd";
 const systemctlProgram = "/usr/bin/systemctl";
 const mainPidProperty = "MainPID";
 const homeVariable = "PM3_HOME";
+const runtimeDirVariable = "XDG_RUNTIME_DIR";
 const defaultRuntimeHome = ".pm3";
 const pidFileName = "pm3.pid";
 
@@ -67,8 +69,19 @@ function installation(): Installation {
   };
 }
 
-async function capture(command: readonly string[]): Promise<Captured> {
-  const spawned = Bun.spawn([...command], { stderr: "pipe", stdout: "pipe" });
+function userScopeEnvironment(): Record<string, string | undefined> {
+  const uid = process.getuid?.() ?? 0;
+  return {
+    ...Bun.env,
+    [runtimeDirVariable]: runtimeDirectory(Bun.env[runtimeDirVariable], uid),
+  };
+}
+
+async function capture(
+  command: readonly string[],
+  env: Record<string, string | undefined> = Bun.env,
+): Promise<Captured> {
+  const spawned = Bun.spawn([...command], { stderr: "pipe", stdout: "pipe", env });
   const [stdout, stderr, code] = await Promise.all([
     new Response(spawned.stdout).text(),
     new Response(spawned.stderr).text(),
@@ -216,15 +229,10 @@ export async function systemdMainPid(
   systemctl: string,
   unit: string,
 ): Promise<number | undefined> {
-  const shown = await capture([
-    systemctl,
-    "--user",
-    "show",
-    "-p",
-    mainPidProperty,
-    "--value",
-    unit,
-  ]);
+  const shown = await capture(
+    [systemctl, "--user", "show", "-p", mainPidProperty, "--value", unit],
+    userScopeEnvironment(),
+  );
   if (shown.code !== 0) {
     return undefined;
   }

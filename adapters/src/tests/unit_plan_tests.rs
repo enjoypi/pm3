@@ -10,7 +10,7 @@ fn plan_for(kind: UnitKind, install: bool) -> Vec<UnitStep> {
     let spec = spec_for(kind, Path::new("/home/dev"));
     let programs = program_set(FAKE);
     if install {
-        return install_plan(&spec, &programs, CONFIG_BODY);
+        return install_plan(&spec, &programs, CONFIG_BODY, LingerState::Unknown);
     }
     uninstall_plan(&spec, &programs)
 }
@@ -56,6 +56,22 @@ fn a_systemd_install_reloads_enables_and_tries_to_linger() {
             "run --user enable --now pm3-test.service",
             "try enable-linger",
         ]
+    );
+}
+
+#[test]
+fn a_systemd_install_asks_for_no_permission_once_the_user_lingers() {
+    let spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
+    let steps = install_plan(&spec, &program_set(FAKE), CONFIG_BODY, LingerState::Enabled);
+    assert_eq!(
+        described(&steps),
+        [
+            "write /home/dev/.pm3/config.yaml",
+            "write /home/dev/.config/systemd/user/pm3-test.service",
+            "run --user daemon-reload",
+            "run --user enable --now pm3-test.service",
+        ],
+        "enable-linger goes through polkit, so an already lingering user must not be asked"
     );
 }
 

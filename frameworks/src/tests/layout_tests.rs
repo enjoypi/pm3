@@ -27,6 +27,24 @@ fn the_host_home_comes_from_the_environment() {
     assert_eq!(host_home(), std::env::var("HOME").ok());
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn the_host_uid_owns_this_very_process() {
+    let uid = host_uid().expect("a unix process always has an owner");
+    let own = std::fs::metadata(OWN_PROCESS_DIR).expect("a unix process can read about itself");
+    assert_eq!(uid, own.uid());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_host_runtime_directory_is_known_even_without_a_login_session() {
+    let dir = host_runtime_dir().expect("a unix process always has an owner");
+    assert!(
+        !dir.is_empty(),
+        "systemctl --user needs a runtime directory"
+    );
+}
+
 #[tokio::test]
 async fn preparing_the_layout_creates_the_log_directory() {
     let dir = tempfile::tempdir().expect("temp dir");

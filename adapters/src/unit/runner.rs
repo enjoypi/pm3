@@ -11,9 +11,9 @@ use tokio::{
 };
 
 use super::{
-    command::{UnitCommand, UnitProgramSet},
+    command::{UnitCommand, UnitProgramSet, loginctl_show_linger},
     plan::{UnitStep, status_command},
-    spec::{UnitSpec, UnitStatus, parse_run_state},
+    spec::{LingerState, UnitKind, UnitSpec, UnitStatus, parse_linger_state, parse_run_state},
 };
 use crate::exit_status::{describe_refusal, exit_code_of};
 
@@ -92,6 +92,27 @@ fn log_roll_back(path: &Path, removed: bool) {
     );
 }
 
+pub async fn linger_state(
+    kind: UnitKind,
+    programs: &UnitProgramSet,
+    timeout_ms: u64,
+) -> LingerState {
+    match kind {
+        UnitKind::Launchd => LingerState::Unknown,
+        UnitKind::Systemd => query_linger(programs, timeout_ms).await,
+    }
+}
+
+async fn query_linger(programs: &UnitProgramSet, timeout_ms: u64) -> LingerState {
+    let Some(query) = loginctl_show_linger(programs) else {
+        return LingerState::Unknown;
+    };
+    let Ok(captured) = capture(&query, timeout_ms).await else {
+        return LingerState::Unknown;
+    };
+    parse_linger_state(captured.success, &captured.stdout)
+}
+
 pub async fn query_status(
     spec: &UnitSpec,
     programs: &UnitProgramSet,
@@ -164,7 +185,10 @@ async fn run_command(command: &UnitCommand, timeout_ms: u64) -> Result<(), UnitC
 
 async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, UnitCommandError> {
     let started = Instant::now();
-    let call = Command::new(&command.program).args(&command.args).output();
+    let call = Command::new(&command.program)
+        .args(&command.args)
+        .envs(command.env.iter().map(|(name, value)| (name, value)))
+        .output();
     let output = timeout(Duration::from_millis(timeout_ms), call)
         .await
         .map_err(|_elapsed| UnitCommandError::Stalled {
