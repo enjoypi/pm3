@@ -28,7 +28,6 @@ fn inline_request<'s>(program: &'s str, args: &'s [String]) -> InlineStart<'s> {
         program,
         args,
         cwd: None,
-        env: &[],
         cron: None,
         autorestart: None,
         network: false,

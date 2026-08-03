@@ -38,7 +38,6 @@ pub fn request<'s>(
         program,
         args,
         cwd,
-        env: &[],
         cron: None,
         autorestart: None,
         network: false,

@@ -31,21 +31,35 @@ pub async fn ensure_layout(paths: &Pm3Paths, cfg_dir: &Path) -> Result<()> {
         .map_err(|e| layout_error(&paths.logs_dir, &e))?;
     tokio::fs::create_dir_all(cfg_dir)
         .await
-        .map_err(|e| layout_error(cfg_dir, &e))
+        .map_err(|e| layout_error(cfg_dir, &e))?;
+    restrict_to_owner(cfg_dir).await;
+    Ok(())
 }
 
 async fn prepare_home(root: &Path) -> Result<()> {
     tokio::fs::create_dir_all(root)
         .await
         .map_err(|e| layout_error(root, &e))?;
-    restrict_to_owner(root).await
+    restrict_to_owner(root).await;
+    Ok(())
 }
 
-async fn restrict_to_owner(path: &Path) -> Result<()> {
+async fn restrict_to_owner(path: &Path) {
     let permissions = std::fs::Permissions::from_mode(OWNER_ONLY_DIR);
-    tokio::fs::set_permissions(path, permissions)
-        .await
-        .map_err(|e| layout_error(path, &e))
+    if let Err(error) = tokio::fs::set_permissions(path, permissions).await {
+        log_stuck_permissions(path, &error.to_string());
+    }
+}
+
+fn log_stuck_permissions(path: &Path, reason: &str) {
+    let path = path.to_string_lossy().into_owned();
+    tracing::warn!(
+        feature = "service",
+        action = "restrict_directory",
+        path,
+        reason,
+        "pm3 cannot keep a directory to its owner, so its contents stay readable by other users",
+    );
 }
 
 pub async fn write_pid_file(paths: &Pm3Paths) -> Result<()> {

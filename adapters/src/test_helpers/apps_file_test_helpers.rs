@@ -39,7 +39,7 @@ pub fn minimal_entry() -> AppEntry {
         script: SCRIPT.to_string(),
         cwd: Some(CWD.to_string()),
         args: Vec::new(),
-        env: BTreeMap::new(),
+        rejected_env: None,
         depends_on: Vec::new(),
         autorestart: None,
         min_uptime_ms: None,

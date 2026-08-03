@@ -1,10 +1,10 @@
 use tempfile::TempDir;
-use usecases::DumpStore;
+use usecases::{DumpContents, DumpStore, StrandedProcess};
 
 use super::*;
 use crate::{
-    process_records::{sample_record, sample_runtime, stopped_record},
-    spec_sources::{register_service, spec_source_in, write_service_file},
+    process_records::{SAMPLE_PID, SAMPLE_TOKEN, sample_record, sample_runtime, stopped_record},
+    spec_sources::{register_service, spec_source_in, write_env_file, write_service_file},
 };
 
 struct Fixture {
@@ -47,8 +47,8 @@ async fn saved_yaml(store: &YamlDumpStore, records: &[ProcessRecord]) -> String 
 #[tokio::test]
 async fn load_reports_no_records_when_the_dump_is_absent() {
     let fixture = fixture();
-    let records = fixture.store.load().await.expect("should load");
-    assert!(records.is_empty(), "got: {records:?}");
+    let loaded = fixture.store.load().await.expect("should load");
+    assert_eq!(loaded, DumpContents::default(), "got: {loaded:?}");
 }
 
 #[tokio::test]
@@ -93,7 +93,7 @@ async fn save_then_load_rejoins_a_running_app_with_its_service_file() {
         .save(&[sample_record("web")])
         .await
         .expect("save");
-    let records = fixture.store.load().await.expect("load");
+    let records = fixture.store.load().await.expect("load").records;
     assert_eq!(records, vec![rejoined(&fixture, "web").await]);
 }
 
@@ -106,7 +106,7 @@ async fn save_then_load_round_trips_an_idle_app() {
         .save(&[stopped_record("web")])
         .await
         .expect("save");
-    let records = fixture.store.load().await.expect("load");
+    let records = fixture.store.load().await.expect("load").records;
     assert_eq!(records[0].runtime, stopped_record("web").runtime);
 }
 
@@ -123,7 +123,7 @@ async fn load_expands_the_service_cwd_placeholder() {
         .save(&[sample_record("web")])
         .await
         .expect("save");
-    let records = fixture.store.load().await.expect("load");
+    let records = fixture.store.load().await.expect("load").records;
     assert_eq!(records[0].spec.args, vec![records[0].spec.cwd.clone()]);
 }
 
@@ -155,6 +155,7 @@ async fn save_then_load_keeps_the_declared_order() {
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
     let names: Vec<&str> = loaded
+        .records
         .iter()
         .map(|record| record.runtime.name.as_str())
         .collect();
@@ -175,7 +176,7 @@ async fn save_replaces_a_previous_dump() {
         .save(&[sample_record("db")])
         .await
         .expect("second save");
-    let records = fixture.store.load().await.expect("load");
+    let records = fixture.store.load().await.expect("load").records;
     assert_eq!(records, vec![rejoined(&fixture, "db").await]);
 }
 
@@ -184,22 +185,35 @@ async fn save_writes_an_empty_document_for_no_records() {
     let fixture = fixture();
     let yaml = saved_yaml(&fixture.store, &[]).await;
     assert!(yaml.contains("services"), "got: {yaml}");
-    assert!(fixture.store.load().await.expect("load").is_empty());
+    assert_eq!(
+        fixture.store.load().await.expect("load"),
+        DumpContents::default()
+    );
 }
 
 #[tokio::test]
-async fn load_skips_an_app_without_a_service_file() {
+async fn load_strands_an_app_without_a_service_file() {
     let fixture = fixture();
     fixture
         .store
         .save(&[sample_record("web")])
         .await
         .expect("save");
-    assert!(fixture.store.load().await.expect("load").is_empty());
+    let loaded = fixture.store.load().await.expect("load");
+    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(
+        loaded.stranded,
+        vec![StrandedProcess {
+            name: "web".to_string(),
+            pid: Some(SAMPLE_PID),
+            token: Some(SAMPLE_TOKEN.to_string()),
+        }],
+        "the survivor must be named, or nobody can stop it"
+    );
 }
 
 #[tokio::test]
-async fn load_skips_an_app_whose_service_file_is_broken() {
+async fn load_strands_an_app_whose_service_file_is_broken() {
     let fixture = fixture();
     write_service_file(&fixture.source, "web", "{{not yaml");
     fixture
@@ -207,7 +221,43 @@ async fn load_skips_an_app_whose_service_file_is_broken() {
         .save(&[sample_record("web")])
         .await
         .expect("save");
-    assert!(fixture.store.load().await.expect("load").is_empty());
+    let loaded = fixture.store.load().await.expect("load");
+    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.stranded.len(), 1);
+}
+
+#[tokio::test]
+async fn load_strands_an_app_whose_environment_file_is_broken() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "TUNNEL_TOKEN\n");
+    fixture
+        .store
+        .save(&[sample_record("web")])
+        .await
+        .expect("save");
+    let loaded = fixture.store.load().await.expect("load");
+    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.stranded[0].pid, Some(SAMPLE_PID));
+}
+
+#[tokio::test]
+async fn load_strands_an_idle_app_with_no_pid_to_sweep() {
+    let fixture = fixture();
+    fixture
+        .store
+        .save(&[stopped_record("web")])
+        .await
+        .expect("save");
+    let loaded = fixture.store.load().await.expect("load");
+    assert_eq!(
+        loaded.stranded,
+        vec![StrandedProcess {
+            name: "web".to_string(),
+            pid: None,
+            token: None,
+        }]
+    );
 }
 
 #[tokio::test]
@@ -228,7 +278,10 @@ async fn load_skips_a_record_with_an_unknown_status() {
     tokio::fs::write(fixture.store.path(), yaml.replace("online", "zombie"))
         .await
         .expect("write");
-    assert!(fixture.store.load().await.expect("load").is_empty());
+    assert_eq!(
+        fixture.store.load().await.expect("load"),
+        DumpContents::default()
+    );
 }
 
 #[tokio::test]
@@ -242,7 +295,10 @@ async fn load_skips_a_running_record_without_a_pid() {
     tokio::fs::write(fixture.store.path(), broken)
         .await
         .expect("write");
-    assert!(fixture.store.load().await.expect("load").is_empty());
+    assert_eq!(
+        fixture.store.load().await.expect("load"),
+        DumpContents::default()
+    );
 }
 
 #[tokio::test]
@@ -256,6 +312,7 @@ async fn load_keeps_the_records_around_a_corrupt_one() {
         .expect("write");
     let loaded = fixture.store.load().await.expect("load");
     let names: Vec<&str> = loaded
+        .records
         .iter()
         .map(|record| record.runtime.name.as_str())
         .collect();

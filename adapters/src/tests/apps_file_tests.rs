@@ -18,7 +18,7 @@ fn parse_apps_file_defaults_every_optional_field_of_a_minimal_entry() {
     let apps = parse_apps_file(&minimal_yaml()).expect("should parse");
     let entry = apps.apps.first().expect("one entry");
     assert!(entry.args.is_empty(), "got: {:?}", entry.args);
-    assert!(entry.env.is_empty(), "got: {:?}", entry.env);
+    assert!(entry.rejected_env.is_none());
     assert!(entry.depends_on.is_empty(), "got: {:?}", entry.depends_on);
     assert_eq!(entry.autorestart, None);
     assert_eq!(entry.min_uptime_ms, None);
@@ -32,7 +32,6 @@ fn parse_apps_file_reads_every_declared_field() {
     let apps = parse_apps_file(&full_yaml()).expect("should parse");
     let entry = apps.apps.first().expect("one entry");
     assert_eq!(entry.args, vec!["server.js", "--port=8080"]);
-    assert_eq!(entry.env.get("PORT").map(String::as_str), Some("8080"));
     assert_eq!(entry.depends_on, vec!["db"]);
     assert_eq!(entry.autorestart, Some(false));
     assert_eq!(entry.min_uptime_ms, Some(250));
@@ -145,22 +144,41 @@ fn resolve_specs_copies_the_script_and_command_line() {
 }
 
 #[test]
-fn resolve_specs_flattens_the_environment_in_key_order() {
+fn a_resolved_spec_starts_with_no_environment() {
+    let spec = resolve_one(&defaults(), &minimal_entry());
+    assert!(
+        spec.env.is_empty(),
+        "the environment arrives from the sidecar file, not from yaml"
+    );
+}
+
+#[test]
+fn an_environment_section_in_a_service_file_is_refused() {
     let entry = AppEntry {
-        env: BTreeMap::from([
-            ("PORT".to_string(), "8080".to_string()),
-            ("HOST".to_string(), "0.0.0.0".to_string()),
-        ]),
+        rejected_env: Some(BTreeMap::from([(
+            "TUNNEL_TOKEN".to_string(),
+            "eyJhIjoiZjQ2".to_string(),
+        )])),
         ..minimal_entry()
     };
-    let spec = resolve_one(&defaults(), &entry);
+    let refused = resolve_one_err(&defaults(), &entry);
     assert_eq!(
-        spec.env,
-        vec![
-            ("HOST".to_string(), "0.0.0.0".to_string()),
-            ("PORT".to_string(), "8080".to_string()),
-        ]
+        refused,
+        "cannot accept 'env' in the declaration for app 'web': move the environment values to 'web.env' beside the service file, so secrets never land in a yaml file"
     );
+}
+
+#[test]
+fn an_environment_section_in_an_apps_file_is_refused() {
+    let yaml = format!(
+        "{}    env:\n      TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
+        minimal_yaml()
+    );
+    let refused = parse_apps_file(&yaml)
+        .expect_err("an apps file may not declare an environment")
+        .to_string();
+    assert!(refused.contains("'web.env'"), "{refused}");
+    assert!(!refused.contains("eyJhIjoiZjQ2"), "{refused}");
 }
 
 #[test]

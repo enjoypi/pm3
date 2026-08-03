@@ -16,7 +16,7 @@ use crate::{
     start::{StartOutcome, StartReport, refused_services, start_apps},
     stop::{persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
-    supervision::{SupervisionOutcome, SupervisionReply, SupervisionRequest},
+    supervision::{SupervisionFailure, SupervisionOutcome, SupervisionReply, SupervisionRequest},
     supervisor_log::{
         log_armed, log_exit_after_delete, log_failure, log_handover, log_partial_start,
         log_settled, log_spared_force_kill, log_stale_restart, log_stuck_force_kill,
@@ -133,7 +133,7 @@ impl Supervisor {
             }
             SupervisionRequest::Stop(selector) => self.stop(&selector, ports, &mut effects).await,
             SupervisionRequest::Restart(selector) => {
-                self.restart(&selector, ports, &mut effects).await
+                self.restart(&selector, resolver, ports, &mut effects).await
             }
             SupervisionRequest::Delete(selector) => {
                 self.delete(&selector, ports, &mut effects).await
@@ -300,14 +300,29 @@ impl Supervisor {
     async fn restart(
         &mut self,
         selector: &AppSelector,
+        resolver: &impl SpecResolver,
         ports: &impl Ports,
         effects: &mut Vec<SupervisionEffect>,
     ) -> SupervisionOutcome {
+        self.reload_declaration(selector, resolver).await?;
         let outcome = restart_app(&mut self.table, selector, &self.logs_dir, ports).await?;
         let name = self.dispatch_restart(outcome, effects);
         self.cancel_restart(&name, effects);
         self.arm_timer(&name, ports, effects);
         Ok(SupervisionReply::Restarted { name })
+    }
+
+    async fn reload_declaration(
+        &mut self,
+        selector: &AppSelector,
+        resolver: &impl SpecResolver,
+    ) -> Result<(), SupervisionFailure> {
+        let Some(record) = self.table.find_mut(selector) else {
+            return Ok(());
+        };
+        let name = record.runtime.name.clone();
+        record.spec = resolver.prepare(&name).await?;
+        Ok(())
     }
 
     async fn delete(

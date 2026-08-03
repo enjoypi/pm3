@@ -12,9 +12,6 @@ pub fn every_optional_field_section() -> String {
     r#"    args:
       - server.js
       - --port=8080
-    env:
-      PORT: "8080"
-      RUST_LOG: debug
     depends_on:
       - db
     autorestart: false

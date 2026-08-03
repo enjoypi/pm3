@@ -14,14 +14,13 @@ const CWD: &str = "/home/dev/.pm3/mihomo-rule";
 
 const HOME: &str = "/home/dev";
 
-fn request<'r>(env: &'r [String], writable_dirs: &'r [String]) -> InlineRequest<'r> {
+fn request(writable_dirs: &[String]) -> InlineRequest<'_> {
     InlineRequest {
         name: NAME,
         program: PROGRAM,
         args: &[],
         cwd: Some(CWD),
         home: Some(HOME),
-        env,
         cron: None,
         autorestart: None,
         network: true,
@@ -31,7 +30,7 @@ fn request<'r>(env: &'r [String], writable_dirs: &'r [String]) -> InlineRequest<
 
 #[test]
 fn an_inline_request_becomes_a_single_app() {
-    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let entry = inline_entry(&request(&[]));
     assert_eq!(entry.name, NAME);
     assert_eq!(entry.script, PROGRAM);
     assert_eq!(entry.cwd.as_deref(), Some("${HOME}/.pm3/mihomo-rule"));
@@ -39,33 +38,33 @@ fn an_inline_request_becomes_a_single_app() {
 
 #[test]
 fn a_program_under_the_home_folds_into_a_placeholder() {
-    let mut asked = request(&[], &[]);
+    let mut asked = request(&[]);
     asked.program = "/home/dev/bin/mihomo";
-    let entry = inline_entry(&asked).expect("the request should resolve");
+    let entry = inline_entry(&asked);
     assert_eq!(entry.script, "${HOME}/bin/mihomo");
 }
 
 #[test]
 fn the_program_arguments_are_carried_verbatim() {
     let args = ["-d".to_string(), CWD.to_string(), "-f".to_string()];
-    let mut asked = request(&[], &[]);
+    let mut asked = request(&[]);
     asked.args = &args;
-    let entry = inline_entry(&asked).expect("the request should resolve");
+    let entry = inline_entry(&asked);
     assert_eq!(entry.args, ["-d", "${HOME}/.pm3/mihomo-rule", "-f"]);
 }
 
 #[test]
 fn a_bare_service_cwd_token_is_stored_braced() {
     let args = ["-d".to_string(), "PM3_SERVICE_CWD".to_string()];
-    let mut asked = request(&[], &[]);
+    let mut asked = request(&[]);
     asked.args = &args;
-    let entry = inline_entry(&asked).expect("the request should resolve");
+    let entry = inline_entry(&asked);
     assert_eq!(entry.args, ["-d", "${PM3_SERVICE_CWD}"]);
 }
 
 #[test]
 fn the_network_switch_reaches_the_sandbox_section() {
-    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let entry = inline_entry(&request(&[]));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -75,9 +74,9 @@ fn the_network_switch_reaches_the_sandbox_section() {
 
 #[test]
 fn no_network_switch_leaves_the_configured_default_alone() {
-    let mut asked = request(&[], &[]);
+    let mut asked = request(&[]);
     asked.network = false;
-    let entry = inline_entry(&asked).expect("the request should resolve");
+    let entry = inline_entry(&asked);
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -87,7 +86,7 @@ fn no_network_switch_leaves_the_configured_default_alone() {
 
 #[test]
 fn an_inline_app_never_asks_for_a_sandbox_mode() {
-    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let entry = inline_entry(&request(&[]));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -97,7 +96,7 @@ fn an_inline_app_never_asks_for_a_sandbox_mode() {
 
 #[test]
 fn no_writable_dirs_leaves_the_defaults_alone() {
-    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let entry = inline_entry(&request(&[]));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -108,7 +107,7 @@ fn no_writable_dirs_leaves_the_defaults_alone() {
 #[test]
 fn writable_dirs_are_declared_on_their_own() {
     let dirs = ["/srv/data".to_string()];
-    let entry = inline_entry(&request(&[], &dirs)).expect("the request should resolve");
+    let entry = inline_entry(&request(&dirs));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -123,7 +122,7 @@ fn writable_dirs_are_declared_on_their_own() {
 #[test]
 fn a_writable_dir_equal_to_the_working_directory_is_not_repeated() {
     let dirs = [CWD.to_string()];
-    let entry = inline_entry(&request(&[], &dirs)).expect("the request should resolve");
+    let entry = inline_entry(&request(&dirs));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -135,55 +134,28 @@ fn a_writable_dir_equal_to_the_working_directory_is_not_repeated() {
 }
 
 #[test]
-fn environment_pairs_are_split_on_the_first_equals_sign() {
-    let env = ["PATH=/usr/bin".to_string(), "GREETING=a=b".to_string()];
-    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
-    assert_eq!(entry.env.get("PATH").map(String::as_str), Some("/usr/bin"));
-    assert_eq!(entry.env.get("GREETING").map(String::as_str), Some("a=b"));
-}
-
-#[test]
-fn an_environment_value_under_the_home_folds_back_to_the_placeholder() {
-    let env = [format!("DATA={HOME}/data")];
-    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
-    assert_eq!(
-        entry.env.get("DATA").map(String::as_str),
-        Some("${HOME}/data"),
-        "both encoders must agree, or reconcile rejects the very next apps file"
+fn an_inline_app_never_declares_an_environment() {
+    let entry = inline_entry(&request(&[]));
+    assert!(entry.rejected_env.is_none());
+    assert!(
+        !encode_service_file(&entry).contains("env:"),
+        "environment values belong in the sidecar file"
     );
-}
-
-#[test]
-fn an_environment_entry_without_an_equals_sign_is_rejected() {
-    let env = ["JUST_A_KEY".to_string()];
-    let err = inline_entry(&request(&env, &[])).unwrap_err().to_string();
-    assert_eq!(
-        err,
-        "cannot accept environment entry 'JUST_A_KEY': expected KEY=VALUE"
-    );
-}
-
-#[test]
-fn an_environment_entry_without_a_key_is_rejected() {
-    let env = ["=orphan".to_string()];
-    let err = inline_entry(&request(&env, &[])).unwrap_err().to_string();
-    assert!(err.contains("expected KEY=VALUE"), "got: {err}");
 }
 
 #[test]
 fn an_encoded_inline_app_reads_back_unchanged() {
-    let env = ["PATH=/usr/bin:/bin".to_string()];
     let dirs = ["/srv/data".to_string()];
-    let entry = inline_entry(&request(&env, &dirs)).expect("the request should resolve");
+    let entry = inline_entry(&request(&dirs));
     let yaml = encode_service_file(&entry);
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
     assert_eq!(reparsed.name, NAME);
-    assert_eq!(reparsed.env, entry.env);
+    assert_eq!(reparsed.cwd, entry.cwd);
 }
 
 #[test]
 fn an_encoded_app_with_no_collections_still_reads_back() {
-    let entry = inline_entry(&request(&[], &[])).expect("the request should resolve");
+    let entry = inline_entry(&request(&[]));
     let yaml = encode_service_file(&entry);
     assert!(
         !yaml.contains('~'),
@@ -191,7 +163,7 @@ fn an_encoded_app_with_no_collections_still_reads_back() {
     );
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
     assert!(reparsed.args.is_empty());
-    assert!(reparsed.env.is_empty());
+    assert!(reparsed.rejected_env.is_none());
 }
 
 #[test]
@@ -213,10 +185,10 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
         None,
     )
     .expect("the fixture defaults should build");
-    let mut asked = request(&[], &[]);
+    let mut asked = request(&[]);
     asked.cwd = None;
     asked.program = INSTALLED_PROGRAM;
-    let entry = inline_entry(&asked).expect("the request should resolve");
+    let entry = inline_entry(&asked);
     let specs = [resolve_checked(&defaults, &entry).expect("the inline app should resolve")];
     assert_eq!(specs.len(), 1);
     assert_eq!(specs[0].cwd, "/tmp/pm3-fixture/mihomo-rule");
@@ -227,9 +199,9 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
 async fn a_home_placeholder_expands_when_the_config_file_is_loaded() {
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("mihomo-rule.yaml");
-    let mut asked = request(&[], &[]);
+    let mut asked = request(&[]);
     asked.cwd = Some("/home/dev/work");
-    let entry = inline_entry(&asked).expect("the request should resolve");
+    let entry = inline_entry(&asked);
     std::fs::write(&path, encode_service_file(&entry)).expect("write the config file");
     let loaded = load_service_file(&path.to_string_lossy())
         .await
@@ -270,7 +242,7 @@ fn fully_declared_entry() -> AppEntry {
         script: PROGRAM.to_string(),
         cwd: Some(CWD.to_string()),
         args: vec!["-d".to_string()],
-        env: std::collections::BTreeMap::new(),
+        rejected_env: None,
         depends_on: vec!["db".to_string()],
         autorestart: Some(false),
         min_uptime_ms: Some(2000),
@@ -332,39 +304,39 @@ fn an_app_without_a_sandbox_section_is_encoded_plainly() {
 }
 
 #[test]
-fn control_characters_in_environment_values_survive_a_round_trip() {
-    let env = [
-        "MULTILINE=line one\nline two".to_string(),
-        "TABBED=a\tb".to_string(),
-        "CARRIAGE=a\rb".to_string(),
-        "BELL=a\u{7}b".to_string(),
-        "MIXED=quote\"back\\slash\nnewline".to_string(),
+fn control_characters_in_arguments_survive_a_round_trip() {
+    let args = [
+        "line one\nline two".to_string(),
+        "a\tb".to_string(),
+        "a\rb".to_string(),
+        "a\u{7}b".to_string(),
+        "quote\"back\\slash\nnewline".to_string(),
     ];
-    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
+    let mut asked = request(&[]);
+    asked.args = &args;
+    let entry = inline_entry(&asked);
     let yaml = encode_service_file(&entry);
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
-    assert_eq!(reparsed.env, entry.env);
+    assert_eq!(reparsed.args, entry.args);
 }
 
 #[test]
-fn a_value_with_a_newline_is_encoded_on_a_single_line() {
-    let env = ["MULTILINE=line one\nline two".to_string()];
-    let entry = inline_entry(&request(&env, &[])).expect("the request should resolve");
+fn an_argument_with_a_newline_is_encoded_on_a_single_line() {
+    let args = ["line one\nline two".to_string()];
+    let mut asked = request(&[]);
+    asked.args = &args;
+    let entry = inline_entry(&asked);
     let yaml = encode_service_file(&entry);
-    assert!(
-        yaml.contains(r#""MULTILINE": "line one\nline two""#),
-        "got: {yaml}"
-    );
+    assert!(yaml.contains(r#"- "line one\nline two""#), "got: {yaml}");
 }
 
 #[test]
 fn an_inline_cron_reaches_the_encoded_file() {
-    let env: Vec<String> = Vec::new();
     let dirs: Vec<String> = Vec::new();
-    let mut ask = request(&env, &dirs);
+    let mut ask = request(&dirs);
     ask.cron = Some("~ * * * *");
     ask.autorestart = Some(false);
-    let entry = inline_entry(&ask).expect("inline request should build");
+    let entry = inline_entry(&ask);
     let yaml = encode_service_file(&entry);
     assert!(yaml.contains(r#"schedule: "~ * * * *""#), "got: {yaml}");
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
@@ -374,8 +346,7 @@ fn an_inline_cron_reaches_the_encoded_file() {
 
 #[test]
 fn an_app_without_a_cron_omits_the_schedule_key() {
-    let env: Vec<String> = Vec::new();
     let dirs: Vec<String> = Vec::new();
-    let entry = inline_entry(&request(&env, &dirs)).expect("inline request should build");
+    let entry = inline_entry(&request(&dirs));
     assert!(!encode_service_file(&entry).contains("schedule:"));
 }

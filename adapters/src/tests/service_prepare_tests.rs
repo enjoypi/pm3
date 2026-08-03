@@ -108,19 +108,14 @@ async fn a_program_missing_from_the_search_path_is_reported() {
 }
 
 #[tokio::test]
-async fn an_unparsable_environment_entry_is_reported() {
+async fn an_inline_start_never_writes_an_environment() {
     let home = home();
-    let args = shell_args();
-    let env = ["OOPS".to_string()];
-    let asked = InlineStart {
-        env: &env,
-        ..request(SHELL, &args, None, false)
-    };
-    let err = prepare_inline(&context(&home), &asked)
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("expected KEY=VALUE"), "got: {err}");
+    let prepared = prepared(&home, false).await;
+    let written = std::fs::read_to_string(&prepared.path).expect("read the config file");
+    assert!(
+        !written.contains("env:"),
+        "environment values belong in the sidecar file: {written}"
+    );
 }
 
 #[tokio::test]
@@ -376,6 +371,16 @@ async fn forgetting_a_service_removes_its_config() {
 }
 
 #[tokio::test]
+async fn forgetting_a_service_removes_its_environment_too() {
+    let home = home();
+    prepared(&home, false).await;
+    let secrets = crate::env_file_of(&home.cfg_dir, NAME).expect("a safe service name");
+    std::fs::write(&secrets, "TUNNEL_TOKEN=eyJhIjoiZjQ2\n").expect("write the environment file");
+    forget(&home.cfg_dir, NAME).await;
+    assert!(!secrets.exists(), "a deleted service keeps no secrets");
+}
+
+#[tokio::test]
 async fn forgetting_an_unknown_service_is_quiet() {
     let home = home();
     forget(&home.cfg_dir, "ghost").await;
@@ -400,20 +405,24 @@ async fn splitting_an_apps_file_folds_home_out_of_the_writable_roots() {
 }
 
 #[tokio::test]
-async fn splitting_an_apps_file_folds_home_out_of_the_environment() {
+async fn splitting_an_apps_file_that_declares_an_environment_is_refused() {
     let home = home();
     let apps_file = home.dir.path().join("apps.yaml");
     std::fs::write(
         &apps_file,
-        "apps:\n  - name: web\n    script: /bin/sh\n    env:\n      CACHE: \"/home/dev/.cache\"\n",
+        "apps:\n  - name: web\n    script: /bin/sh\n    env:\n      TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
     )
     .expect("write the apps file");
-    split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
+    let refused = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
-        .expect("the apps file should split");
-    let written =
-        std::fs::read_to_string(home.cfg_dir.join("web.yaml")).expect("read the config file");
-    assert!(written.contains("\"${HOME}/.cache\""), "got: {written}");
+        .expect_err("an apps file may not declare an environment")
+        .to_string();
+    assert!(refused.contains("'web.env'"), "{refused}");
+    assert!(!refused.contains("eyJhIjoiZjQ2"), "{refused}");
+    assert!(
+        !home.cfg_dir.join("web.yaml").exists(),
+        "nothing may be written when the declaration is refused"
+    );
 }
 
 #[tokio::test]

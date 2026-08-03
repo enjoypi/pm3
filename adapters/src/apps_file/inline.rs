@@ -1,12 +1,11 @@
-use std::{collections::BTreeMap, fmt::Write as _};
+use std::fmt::Write as _;
 
 use super::{
-    file::{AppEntry, AppsFileError, SandboxEntry},
+    file::{AppEntry, SandboxEntry},
     roots::dedup_roots,
 };
 use crate::program::{fold_home, fold_service_cwd};
 
-const ENV_SEPARATOR: char = '=';
 const REMOVED_PREFIX: char = '-';
 const ADDED_PREFIX: char = '+';
 
@@ -18,14 +17,14 @@ pub struct InlineRequest<'r> {
     pub args: &'r [String],
     pub cwd: Option<&'r str>,
     pub home: Option<&'r str>,
-    pub env: &'r [String],
     pub cron: Option<&'r str>,
     pub autorestart: Option<bool>,
     pub network: bool,
     pub writable_dirs: &'r [String],
 }
 
-pub fn inline_entry(request: &InlineRequest<'_>) -> Result<AppEntry, AppsFileError> {
+#[must_use]
+pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
     let sandbox = SandboxEntry {
         mode: None,
         network: request.network.then_some(true),
@@ -36,7 +35,7 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> Result<AppEntry, AppsFileErr
         script: request.program.to_string(),
         cwd: request.cwd.map(ToString::to_string),
         args: request.args.to_vec(),
-        env: parse_env_pairs(request.env)?,
+        rejected_env: None,
         depends_on: Vec::new(),
         autorestart: request.autorestart,
         min_uptime_ms: None,
@@ -45,7 +44,7 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> Result<AppEntry, AppsFileErr
         schedule: request.cron.map(ToString::to_string),
         sandbox: Some(sandbox),
     };
-    Ok(fold_entry(&entry, request.home))
+    fold_entry(&entry, request.home)
 }
 
 #[must_use]
@@ -57,11 +56,6 @@ pub fn fold_entry(entry: &AppEntry, home: Option<&str>) -> AppEntry {
         .args
         .iter()
         .map(|value| fold_service_cwd(&fold_home(value, home)))
-        .collect();
-    folded.env = folded
-        .env
-        .iter()
-        .map(|(key, value)| (key.clone(), fold_home(value, home)))
         .collect();
     if let Some(sandbox) = folded.sandbox.as_mut() {
         sandbox.writable_roots = sandbox
@@ -103,7 +97,6 @@ fn encode_entry(entry: &AppEntry) -> String {
     text.push_str(&scalar("script", &quote(&entry.script)));
     text.push_str(&optional_text("cwd", entry.cwd.as_deref()));
     text.push_str(&sequence("", "args", &entry.args));
-    text.push_str(&mapping(&entry.env));
     text.push_str(&sequence("", "depends_on", &entry.depends_on));
     text.push_str(&optional("autorestart", entry.autorestart));
     text.push_str(&optional("min_uptime_ms", entry.min_uptime_ms));
@@ -162,17 +155,6 @@ fn sequence(indent: &str, key: &str, values: &[String]) -> String {
         })
 }
 
-fn mapping(env: &BTreeMap<String, String>) -> String {
-    if env.is_empty() {
-        return String::new();
-    }
-    env.iter()
-        .fold(String::from("env:\n"), |mut text, (key, value)| {
-            let _ = writeln!(text, "{NESTED_INDENT}{}: {}", quote(key), quote(value));
-            text
-        })
-}
-
 fn quote(raw: &str) -> String {
     let mut escaped = String::with_capacity(raw.len() + 2);
     for ch in raw.chars() {
@@ -191,20 +173,6 @@ fn quote(raw: &str) -> String {
 
 fn push_hex_escape(escaped: &mut String, ch: char) {
     let _ = write!(escaped, "\\x{:02x}", ch as u32);
-}
-
-fn parse_env_pairs(pairs: &[String]) -> Result<BTreeMap<String, String>, AppsFileError> {
-    let mut parsed = BTreeMap::new();
-    for pair in pairs {
-        let Some((key, value)) = pair.split_once(ENV_SEPARATOR) else {
-            return Err(AppsFileError::InvalidEnvPair(pair.clone()));
-        };
-        if key.is_empty() {
-            return Err(AppsFileError::InvalidEnvPair(pair.clone()));
-        }
-        parsed.insert(key.to_string(), value.to_string());
-    }
-    Ok(parsed)
 }
 
 #[cfg(test)]

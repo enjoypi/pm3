@@ -18,20 +18,21 @@ pub mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
-    AppSelector, AppSpec, Clock, CommandWrapper, DumpError, DumpStore, ExitOutcome,
+    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome,
     FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, Ports,
     ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView,
     SandboxError, SandboxMode, SandboxPolicy, Scheduler, SignalError, Signaler, SpecError,
-    SpecResolveError, StartKind, StartOutcome, StartReport, SupervisionEffect, SupervisionOutcome,
-    SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand, delete_app, describe_app,
-    list_apps, log_paths, start_apps, validate_app_name,
+    SpecResolveError, StartKind, StartOutcome, StartReport, StrandedProcess, SupervisionEffect,
+    SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand,
+    delete_app, describe_app, list_apps, log_paths, start_apps, validate_app_name,
 };
 
 pub use self::{
     apps_file::{
-        AppEntry, AppsFile, AppsFileError, InlineRequest, SERVICE_FILE_SUFFIX, SandboxEntry,
-        SpecDefaults, SpecSource, diff_lines, encode_service_file, fold_entry, inline_entry,
-        load_apps_file, load_service_file, parse_apps_file, parse_service_file, resolve_checked,
+        AppEntry, AppsFile, AppsFileError, ENV_FILE_SUFFIX, EnvFileError, InlineRequest,
+        SERVICE_FILE_SUFFIX, SandboxEntry, SpecDefaults, SpecSource, diff_lines,
+        encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file, load_env_file,
+        load_service_file, parse_apps_file, parse_env_file, parse_service_file, resolve_checked,
         service_file_of,
     },
     config::{
