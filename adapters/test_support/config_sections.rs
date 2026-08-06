@@ -16,6 +16,7 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   log_follow_interval_ms: 200
   log_tail_lines: 20
   daemon_channel_depth: 32
+  request_body_limit_bytes: 131072
   restart:
     autorestart: true
     min_uptime_ms: 1000
@@ -37,6 +38,8 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
     label: "pm3-fixture"
     restart_delay_secs: 2
     restart_condition: "always"
+    max_tasks: 4096
+    cpu_quota_percent: 0
     launchctl_path: "/bin/launchctl"
     systemctl_path: "/usr/bin/systemctl"
     loginctl_path: "/usr/bin/loginctl"

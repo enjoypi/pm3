@@ -3,7 +3,7 @@ use std::path::Path;
 use super::*;
 use crate::{
     UnitKind,
-    unit_specs::{PM3_HOME_VALUE, PM3_HOME_VARIABLE, spec_for},
+    unit_specs::{MAX_TASKS, PM3_HOME_VALUE, PM3_HOME_VARIABLE, spec_for},
 };
 
 fn rendered() -> String {
@@ -118,5 +118,28 @@ fn the_plist_hands_the_daemon_the_pm3_environment_the_install_ran_under() {
             "<key>{PM3_HOME_VARIABLE}</key>\n        <string>{PM3_HOME_VALUE}</string>"
         )),
         "got: {plist}"
+    );
+}
+
+#[test]
+fn the_plist_caps_how_many_processes_pm3_and_its_services_may_hold() {
+    let home = tempfile::tempdir().expect("temp dir");
+    let plist = render_plist(&spec_for(UnitKind::Launchd, home.path()));
+    assert!(
+        plist.contains(&format!(
+            "<key>NumberOfProcesses</key>\n        <integer>{MAX_TASKS}</integer>"
+        )),
+        "a fork bomb inside a service must not exhaust the host: {plist}"
+    );
+}
+
+#[test]
+fn the_plist_carries_no_cpu_quota_because_launchd_offers_none() {
+    let home = tempfile::tempdir().expect("temp dir");
+    let mut spec = spec_for(UnitKind::Launchd, home.path());
+    spec.cpu_quota_percent = 250;
+    assert!(
+        !render_plist(&spec).contains("CPU"),
+        "launchd only caps total cpu seconds, which would kill a healthy long-running daemon"
     );
 }

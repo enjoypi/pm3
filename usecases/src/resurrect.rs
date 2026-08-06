@@ -27,7 +27,16 @@ enum Change {
     Reused,
     Launch,
     Binary,
+    Rebooted,
 }
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum PidTrust {
+    Kept,
+    Lost,
+}
+
+const INIT_PID: u32 = 1;
 
 pub async fn resurrect(
     table: &mut ProcessTable,
@@ -36,9 +45,11 @@ pub async fn resurrect(
     ports: &impl Ports,
 ) -> Result<Vec<StartOutcome>> {
     let contents = ports.load().await?;
-    sweep_stranded(&contents.stranded, kill_timeout_ms, ports).await;
+    let boot = ports.identity(INIT_PID).await.into_token();
+    let trust = PidTrust::of(contents.boot.as_deref(), boot.as_deref());
+    sweep_stranded(&contents.stranded, trust, kill_timeout_ms, ports).await;
     let stored = contents.records;
-    let verdicts = judge_all(&stored, ports).await;
+    let verdicts = judge_all(&stored, trust, ports).await;
 
     *table = ProcessTable::from_records(
         stored
@@ -46,6 +57,7 @@ pub async fn resurrect(
             .map(|record| forget_unless_adopted(record, &verdicts))
             .collect(),
     );
+    table.remember_boot(boot);
 
     let order = dependency_order(table, log_unordered_recovery);
     let mut outcomes = Vec::with_capacity(verdicts.len());
@@ -93,7 +105,11 @@ fn log_unordered_recovery(error: &UsecaseError) {
     log_recovery_failure("order", "-", error);
 }
 
-async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<String, Verdict> {
+async fn judge_all(
+    stored: &[ProcessRecord],
+    trust: PidTrust,
+    ports: &impl Ports,
+) -> BTreeMap<String, Verdict> {
     let pending: Vec<&ProcessRecord> = stored
         .iter()
         .filter(|record| was_supposed_to_run(record))
@@ -101,7 +117,7 @@ async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<Str
     let verdicts = join_all(
         pending
             .iter()
-            .map(|record| judge(record, ports))
+            .map(|record| judge(record, trust, ports))
             .collect::<Vec<_>>(),
     )
     .await;
@@ -112,10 +128,21 @@ async fn judge_all(stored: &[ProcessRecord], ports: &impl Ports) -> BTreeMap<Str
         .collect()
 }
 
-async fn sweep_stranded(stranded: &[StrandedProcess], kill_timeout_ms: u64, ports: &impl Ports) {
+async fn sweep_stranded(
+    stranded: &[StrandedProcess],
+    trust: PidTrust,
+    kill_timeout_ms: u64,
+    ports: &impl Ports,
+) {
     for orphan in stranded {
-        let Some(pid) =
-            surviving_pid(&orphan.name, orphan.pid, orphan.token.as_deref(), ports).await
+        let Some(pid) = surviving_pid(
+            &orphan.name,
+            orphan.pid,
+            orphan.token.as_deref(),
+            trust,
+            ports,
+        )
+        .await
         else {
             continue;
         };
@@ -131,7 +158,7 @@ async fn sweep_stranded(stranded: &[StrandedProcess], kill_timeout_ms: u64, port
     }
 }
 
-async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
+async fn judge(record: &ProcessRecord, trust: PidTrust, ports: &impl Ports) -> Verdict {
     if record.runtime.status.is_shutting_down() {
         return Verdict::Settle {
             stale: surviving_pid(
@@ -142,13 +169,18 @@ async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
                     .identity
                     .as_ref()
                     .map(|identity| identity.token.as_str()),
+                trust,
                 ports,
             )
             .await,
         };
     }
+    if trust == PidTrust::Lost {
+        return respawn(Change::Rebooted, None);
+    }
     let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
-        let unverified = surviving_pid(&record.runtime.name, record.runtime.pid, None, ports).await;
+        let unverified =
+            surviving_pid(&record.runtime.name, record.runtime.pid, None, trust, ports).await;
         return respawn(Change::Unknown, unverified);
     };
     let token = match ports.identity(pid).await {
@@ -183,9 +215,14 @@ async fn surviving_pid(
     app: &str,
     pid: Option<u32>,
     expected: Option<&str>,
+    trust: PidTrust,
     ports: &impl Ports,
 ) -> Option<u32> {
     let pid = pid?;
+    if trust == PidTrust::Lost {
+        log_rebooted_pid(app, pid);
+        return None;
+    }
     let observed = ports.identity(pid).await;
     if matches!(observed, Liveness::Gone) {
         return None;
@@ -315,6 +352,26 @@ fn log_unverified_evict(app: &str, pid: u32) {
     );
 }
 
+fn log_reboot(stored: &str, current: &str) {
+    tracing::warn!(
+        feature = "resurrect",
+        action = "compare_boot",
+        stored,
+        current,
+        "the host booted since pm3 last saved its state, so every recorded pid belongs to someone else now",
+    );
+}
+
+fn log_rebooted_pid(app: &str, pid: u32) {
+    tracing::debug!(
+        feature = "resurrect",
+        action = "spare_rebooted_pid",
+        service = app,
+        pid,
+        "pm3 leaves a pid from before the reboot alone instead of signalling whatever holds it now",
+    );
+}
+
 fn log_spared_evict(app: &str, pid: u32) {
     tracing::warn!(
         feature = "resurrect",
@@ -404,7 +461,9 @@ impl Change {
     const fn eviction_scope(self) -> SignalScope {
         match self {
             Self::Unknown | Self::Unreadable => SignalScope::SinglePid,
-            Self::Gone | Self::Reused | Self::Launch | Self::Binary => SignalScope::ProcessGroup,
+            Self::Gone | Self::Reused | Self::Launch | Self::Binary | Self::Rebooted => {
+                SignalScope::ProcessGroup
+            }
         }
     }
 
@@ -416,7 +475,21 @@ impl Change {
             Self::Reused => "reused",
             Self::Launch => "launch",
             Self::Binary => "binary",
+            Self::Rebooted => "rebooted",
         }
+    }
+}
+
+impl PidTrust {
+    fn of(stored: Option<&str>, current: Option<&str>) -> Self {
+        let (Some(stored), Some(current)) = (stored, current) else {
+            return Self::Kept;
+        };
+        if stored == current {
+            return Self::Kept;
+        }
+        log_reboot(stored, current);
+        Self::Lost
     }
 }
 

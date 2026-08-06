@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{get, post},
 };
 
@@ -15,7 +16,7 @@ const APP_PATH: &str = "/apps/{selector}";
 const APP_STOP_PATH: &str = "/apps/{selector}/stop";
 const APP_RESTART_PATH: &str = "/apps/{selector}/restart";
 
-pub fn router(handle: DaemonHandle) -> Router {
+pub fn router(handle: DaemonHandle, body_limit_bytes: usize) -> Router {
     Router::new()
         .route(HEALTH_PATH, get(health))
         .route(APPS_PATH, get(list).post(start))
@@ -23,5 +24,6 @@ pub fn router(handle: DaemonHandle) -> Router {
         .route(APP_STOP_PATH, post(stop))
         .route(APP_RESTART_PATH, post(restart))
         .route(SERVICES_STOP_ALL_PATH, post(stop_all))
+        .layer(DefaultBodyLimit::max(body_limit_bytes))
         .with_state(handle)
 }

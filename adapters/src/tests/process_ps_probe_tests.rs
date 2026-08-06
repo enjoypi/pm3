@@ -82,6 +82,16 @@ async fn wait_gone_returns_as_soon_as_the_process_leaves() {
 }
 
 #[tokio::test]
+async fn wait_gone_probes_again_while_the_budget_still_has_room() {
+    let (_dir, probe) = probe_with(concat!(
+        "if [ -f \"$0.asked\" ]; then exit 1; fi\n",
+        "touch \"$0.asked\"\n",
+        "echo '7 Tue Jul 28 14:06:28 2026'",
+    ));
+    assert_eq!(probe.wait_gone(7, 60_000).await, Liveness::Gone);
+}
+
+#[tokio::test]
 async fn wait_gone_reports_the_last_known_state_once_the_budget_runs_out() {
     let (_dir, probe) = probe_with("echo '  7 Tue Jul 28 14:06:28 2026'");
     assert_eq!(

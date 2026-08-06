@@ -3,7 +3,7 @@ use std::path::Path;
 use super::*;
 use crate::{
     UnitKind,
-    unit_specs::{PM3_HOME_VALUE, PM3_HOME_VARIABLE, spec_for},
+    unit_specs::{MAX_TASKS, PM3_HOME_VALUE, PM3_HOME_VARIABLE, spec_for},
 };
 
 fn rendered() -> String {
@@ -163,5 +163,30 @@ fn the_unit_hands_the_daemon_the_pm3_environment_the_install_ran_under() {
             "Environment=\"{PM3_HOME_VARIABLE}={PM3_HOME_VALUE}\""
         )),
         "got: {unit}"
+    );
+}
+
+#[test]
+fn the_unit_caps_how_many_tasks_pm3_and_its_services_may_hold() {
+    let unit = rendered();
+    assert!(
+        unit.contains(&format!("TasksMax={MAX_TASKS}")),
+        "a fork bomb inside a service must not exhaust the host: {unit}"
+    );
+}
+
+#[test]
+fn the_unit_leaves_the_cpu_unlimited_until_an_operator_asks_for_a_quota() {
+    assert!(!rendered().contains("CPUQuota"), "got: {}", rendered());
+}
+
+#[test]
+fn a_declared_cpu_quota_reaches_the_unit() {
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
+    spec.cpu_quota_percent = 250;
+    assert!(
+        render_unit(&spec).contains("CPUQuota=250%"),
+        "got: {}",
+        render_unit(&spec)
     );
 }

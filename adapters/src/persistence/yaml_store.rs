@@ -72,6 +72,7 @@ impl DumpStore for YamlDumpStore {
         let mut contents = DumpContents {
             records: Vec::with_capacity(doc.services.len()),
             stranded: Vec::new(),
+            boot: doc.boot,
         };
         for state in doc.services {
             self.rejoin(state, &mut contents).await;
@@ -79,8 +80,8 @@ impl DumpStore for YamlDumpStore {
         Ok(contents)
     }
 
-    async fn save(&self, records: &[ProcessRecord]) -> Result<(), DumpError> {
-        let yaml = serde_yaml2::to_string(encode_states(records))
+    async fn save(&self, records: &[ProcessRecord], boot: Option<&str>) -> Result<(), DumpError> {
+        let yaml = serde_yaml2::to_string(encode_states(records, boot))
             .expect("internal error: DumpDocument serialization is infallible");
         write_atomically(&self.path, &yaml).await
     }

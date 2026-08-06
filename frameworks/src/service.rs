@@ -159,6 +159,8 @@ fn build_spec(
         restart_delay_secs,
         restart_condition,
         umask: OWNER_ONLY_UMASK,
+        max_tasks: config.pm3.service.max_tasks,
+        cpu_quota_percent: config.pm3.service.cpu_quota_percent,
     })
 }
 

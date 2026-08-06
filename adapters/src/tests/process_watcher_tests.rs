@@ -31,24 +31,16 @@ struct Fixture {
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().expect("temp dir");
     let alive = dir.path().join("alive");
-    let broken = dir.path().join("broken");
     let script = dir.path().join("ps");
     fs::write(
         &script,
         format!(
             concat!(
                 "#!/bin/sh\n",
-                "if [ -f {} ]; then exit 2; fi\n",
                 "if [ ! -f {} ]; then exit 1; fi\n",
-                "if [ \"$3\" = \"pid=,lstart=\" ]; then\n",
-                "  for pid in $(echo \"$5\" | tr ',' ' '); do echo \"$pid {}\"; done\n",
-                "else\n",
-                "  echo '{}'\n",
-                "fi\n",
+                "for pid in $(echo \"$5\" | tr ',' ' '); do echo \"$pid {}\"; done\n",
             ),
-            broken.display(),
             alive.display(),
-            FIXTURE_TOKEN,
             FIXTURE_TOKEN,
         ),
     )
@@ -67,6 +59,35 @@ fn fixture() -> Fixture {
     }
 }
 
+fn fixture_that_answers_once(first_answer: &str) -> Fixture {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let script = dir.path().join("ps");
+    fs::write(
+        &script,
+        format!(
+            concat!(
+                "#!/bin/sh\n",
+                "if [ -f \"$0.asked\" ]; then exit 1; fi\n",
+                "touch \"$0.asked\"\n",
+                "{}\n",
+            ),
+            first_answer,
+        ),
+    )
+    .expect("should write a fake ps");
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+        .expect("should make the fake ps executable");
+    Fixture {
+        dir,
+        probe: Arc::new(PsProcessProbe::new(
+            script.to_string_lossy().into_owned(),
+            PROBE_TIMEOUT_MS,
+            POLL_STEP_MS,
+        )),
+        watch: Arc::new(AdoptedWatch::default()),
+    }
+}
+
 impl Fixture {
     fn mark_alive(&self) {
         fs::write(self.dir.path().join("alive"), b"").expect("should mark the process alive");
@@ -74,14 +95,6 @@ impl Fixture {
 
     fn mark_gone(&self) {
         fs::remove_file(self.dir.path().join("alive")).expect("should mark the process gone");
-    }
-
-    fn make_probe_unreadable(&self) {
-        fs::write(self.dir.path().join("broken"), b"").expect("should break the fake ps");
-    }
-
-    fn make_probe_readable(&self) {
-        fs::remove_file(self.dir.path().join("broken")).expect("should repair the fake ps");
     }
 }
 
@@ -157,54 +170,40 @@ async fn a_pid_the_kernel_handed_to_someone_else_counts_as_an_exit() {
 
 #[tokio::test]
 async fn a_pid_still_holding_the_recorded_identity_keeps_being_watched() {
-    let fixture = fixture();
-    fixture.mark_alive();
+    let fixture = fixture_that_answers_once(&format!("echo \"{ADOPTED_PID} {FIXTURE_TOKEN}\""));
     let launcher = TokioProcessLauncher::default();
     launcher.adopt(ADOPTED_PID).await;
-
-    let observer = wait_for_exit(
+    let outcome = wait_for_exit(
         &launcher,
         &fixture.watch,
         Arc::clone(&fixture.probe),
         ADOPTED_PID,
         Some(FIXTURE_TOKEN.to_string()),
         CADENCE,
-    );
-    let reaper = async {
-        tokio::time::sleep(std::time::Duration::from_millis(POLL_MS * 3)).await;
-        fixture.mark_gone();
-    };
-    let (outcome, ()) = tokio::join!(observer, reaper);
+    )
+    .await;
     assert_eq!(
-        outcome.expect("the adopted process left"),
+        outcome.expect("the adopted process left on the second poll"),
         ExitOutcome::Unobserved
     );
 }
 
 #[tokio::test]
 async fn a_probe_that_cannot_answer_keeps_the_process_under_watch() {
-    let fixture = fixture();
-    fixture.mark_alive();
-    fixture.make_probe_unreadable();
+    let fixture = fixture_that_answers_once("exit 2");
     let launcher = TokioProcessLauncher::default();
     launcher.adopt(ADOPTED_PID).await;
-
-    let observer = wait_for_exit(
+    let outcome = wait_for_exit(
         &launcher,
         &fixture.watch,
         Arc::clone(&fixture.probe),
         ADOPTED_PID,
         None,
         CADENCE,
-    );
-    let repairer = async {
-        tokio::time::sleep(std::time::Duration::from_millis(POLL_MS * 3)).await;
-        fixture.mark_gone();
-        fixture.make_probe_readable();
-    };
-    let (outcome, ()) = tokio::join!(observer, repairer);
+    )
+    .await;
     assert_eq!(
-        outcome.expect("the adopted process left"),
+        outcome.expect("the adopted process left on the second poll"),
         ExitOutcome::Unobserved
     );
 }

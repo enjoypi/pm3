@@ -3,7 +3,9 @@ use usecases::{DumpContents, DumpStore, StrandedProcess};
 
 use super::*;
 use crate::{
-    process_records::{SAMPLE_PID, SAMPLE_TOKEN, sample_record, sample_runtime, stopped_record},
+    process_records::{
+        SAMPLE_BOOT, SAMPLE_PID, SAMPLE_TOKEN, sample_record, sample_runtime, stopped_record,
+    },
     spec_sources::{register_service, spec_source_in, write_env_file, write_service_file},
 };
 
@@ -38,7 +40,7 @@ async fn rejoined(fixture: &Fixture, name: &str) -> ProcessRecord {
 }
 
 async fn saved_yaml(store: &YamlDumpStore, records: &[ProcessRecord]) -> String {
-    store.save(records).await.expect("should save");
+    store.save(records, None).await.expect("should save");
     tokio::fs::read_to_string(store.path())
         .await
         .expect("should read back")
@@ -56,7 +58,7 @@ async fn save_creates_the_dump_file() {
     let fixture = fixture();
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     assert!(fixture.store.path().is_file(), "dump file should exist");
@@ -67,7 +69,7 @@ async fn save_leaves_no_temporary_file_behind() {
     let fixture = fixture();
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     assert!(
@@ -90,7 +92,7 @@ async fn save_then_load_rejoins_a_running_app_with_its_service_file() {
     register_service(&fixture.source, "web");
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     let records = fixture.store.load().await.expect("load").records;
@@ -103,7 +105,7 @@ async fn save_then_load_round_trips_an_idle_app() {
     register_service(&fixture.source, "web");
     fixture
         .store
-        .save(&[stopped_record("web")])
+        .save(&[stopped_record("web")], None)
         .await
         .expect("save");
     let records = fixture.store.load().await.expect("load").records;
@@ -120,7 +122,7 @@ async fn load_expands_the_service_cwd_placeholder() {
     );
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     let records = fixture.store.load().await.expect("load").records;
@@ -133,7 +135,7 @@ async fn load_prepares_the_working_directory() {
     register_service(&fixture.source, "web");
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     fixture.store.load().await.expect("load");
@@ -150,7 +152,7 @@ async fn save_then_load_keeps_the_declared_order() {
     register_service(&fixture.source, "db");
     fixture
         .store
-        .save(&[sample_record("web"), sample_record("db")])
+        .save(&[sample_record("web"), sample_record("db")], None)
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
@@ -168,12 +170,12 @@ async fn save_replaces_a_previous_dump() {
     register_service(&fixture.source, "db");
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("first save");
     fixture
         .store
-        .save(&[sample_record("db")])
+        .save(&[sample_record("db")], None)
         .await
         .expect("second save");
     let records = fixture.store.load().await.expect("load").records;
@@ -196,7 +198,7 @@ async fn load_strands_an_app_without_a_service_file() {
     let fixture = fixture();
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
@@ -218,7 +220,7 @@ async fn load_strands_an_app_whose_service_file_is_broken() {
     write_service_file(&fixture.source, "web", "{{not yaml");
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
@@ -233,7 +235,7 @@ async fn load_strands_an_app_whose_environment_file_is_broken() {
     write_env_file(&fixture.source, "web", "TUNNEL_TOKEN\n");
     fixture
         .store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
@@ -246,7 +248,7 @@ async fn load_strands_an_idle_app_with_no_pid_to_sweep() {
     let fixture = fixture();
     fixture
         .store
-        .save(&[stopped_record("web")])
+        .save(&[stopped_record("web")], None)
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
@@ -333,7 +335,7 @@ async fn save_reports_a_missing_parent_directory() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let store = store_at(&dir, dir.path().join("absent").join("dump.yaml"));
     let err = store
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .unwrap_err()
         .to_string();
@@ -347,9 +349,34 @@ async fn save_reports_a_dump_path_blocked_by_a_directory() {
     std::fs::create_dir(&path).expect("create dir in place of the dump");
     std::fs::write(path.join("occupant"), "blocked").expect("fill the directory");
     let err = store_at(&dir, path)
-        .save(&[sample_record("web")])
+        .save(&[sample_record("web")], None)
         .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("cannot write state file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_saved_dump_carries_the_boot_it_was_written_under() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    fixture
+        .store
+        .save(&[sample_record("web")], Some(SAMPLE_BOOT))
+        .await
+        .expect("save");
+    let loaded = fixture.store.load().await.expect("should load");
+    assert_eq!(loaded.boot.as_deref(), Some(SAMPLE_BOOT));
+}
+
+#[tokio::test]
+async fn a_dump_written_before_pm3_recorded_boots_still_loads() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    let without_boot = saved_yaml(&fixture.store, &[sample_record("web")]).await;
+    tokio::fs::write(fixture.store.path(), &without_boot)
+        .await
+        .expect("seed a dump from an older pm3");
+    let loaded = fixture.store.load().await.expect("should load");
+    assert_eq!(loaded.boot, None);
 }

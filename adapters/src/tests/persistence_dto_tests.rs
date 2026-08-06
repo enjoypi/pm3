@@ -7,7 +7,7 @@ use crate::process_records::{
 };
 
 fn encoded(name: &str) -> StateDto {
-    let mut doc = encode_states(&[sample_record(name)]);
+    let mut doc = encode_states(&[sample_record(name)], None);
     doc.services.pop().expect("one encoded service")
 }
 
@@ -45,7 +45,7 @@ fn encode_carries_the_timestamps() {
 
 #[test]
 fn encode_leaves_an_idle_service_without_a_pid() {
-    let mut doc = encode_states(&[stopped_record("web")]);
+    let mut doc = encode_states(&[stopped_record("web")], None);
     let dto = doc.services.pop().expect("one encoded service");
     assert_eq!(dto.runtime.pid, None);
     assert_eq!(dto.runtime.started_at_ms, None);
@@ -65,14 +65,14 @@ fn encode_carries_the_identity_of_the_running_process() {
 
 #[test]
 fn encode_leaves_an_idle_service_without_an_identity() {
-    let mut doc = encode_states(&[stopped_record("web")]);
+    let mut doc = encode_states(&[stopped_record("web")], None);
     let dto = doc.services.pop().expect("one encoded service");
     assert!(dto.runtime.identity.is_none());
 }
 
 #[test]
 fn an_idle_service_writes_no_identity_key_at_all() {
-    let doc = encode_states(&[stopped_record("web")]);
+    let doc = encode_states(&[stopped_record("web")], None);
     let yaml = serde_yaml2::to_string(&doc).expect("the dump document serializes");
     assert!(!yaml.contains("identity"), "got: {yaml}");
 }
@@ -93,7 +93,7 @@ fn decode_accepts_a_dump_written_before_identities_existed() {
 
 #[test]
 fn encode_keeps_the_declared_order() {
-    let doc = encode_states(&[sample_record("web"), sample_record("db")]);
+    let doc = encode_states(&[sample_record("web"), sample_record("db")], None);
     let names: Vec<&str> = doc.services.iter().map(|dto| dto.name.as_str()).collect();
     assert_eq!(names, vec!["web", "db"]);
 }
@@ -114,7 +114,7 @@ fn decode_names_the_runtime_after_the_service() {
 fn decode_clears_a_pending_restart_request() {
     let mut record = sample_record("web");
     record.runtime.request_restart();
-    let mut doc = encode_states(&[record]);
+    let mut doc = encode_states(&[record], None);
     let restored = decoded(doc.services.pop().expect("one encoded service"));
     assert!(!restored.pending_restart);
 }
@@ -136,4 +136,16 @@ fn decode_rejects_a_running_status_without_a_pid() {
         err,
         "cannot decode app 'web': cannot accept process 'web' marked 'online' without a pid"
     );
+}
+
+#[test]
+fn an_encoded_document_carries_the_boot_it_was_written_under() {
+    let doc = encode_states(&[sample_record("web")], Some("Tue Jul 28 14:06:28 2026"));
+    assert_eq!(doc.boot.as_deref(), Some("Tue Jul 28 14:06:28 2026"));
+}
+
+#[test]
+fn a_document_saved_without_a_known_boot_carries_none() {
+    let doc = encode_states(&[sample_record("web")], None);
+    assert_eq!(doc.boot, None);
 }

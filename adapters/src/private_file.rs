@@ -8,12 +8,16 @@ use tokio::{
 pub const OWNER_ONLY_FILE: u32 = 0o600;
 
 pub async fn write_private(path: &Path, contents: &str) -> Result<()> {
-    let mut file = private_options()
+    let file = private_options()
         .write(true)
         .truncate(true)
         .open(path)
         .await?;
-    let written = file.write_all(contents.as_bytes()).await;
+    fill(file, contents.as_bytes()).await
+}
+
+async fn fill(mut file: File, contents: &[u8]) -> Result<()> {
+    let written = file.write_all(contents).await;
     written.and(file.flush().await)
 }
 

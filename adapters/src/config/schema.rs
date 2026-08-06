@@ -45,6 +45,12 @@ pub enum ConfigError {
     #[error("cannot accept pm3.daemon_channel_depth {0}: must be >= 1")]
     InvalidChannelDepth(usize),
 
+    #[error("cannot accept pm3.request_body_limit_bytes {0}: must be >= 1")]
+    InvalidBodyLimit(usize),
+
+    #[error("cannot accept pm3.service.max_tasks {0}: must be >= 1")]
+    InvalidMaxTasks(u64),
+
     #[error("cannot accept empty {field}")]
     EmptyProgram { field: &'static str },
 
@@ -124,6 +130,7 @@ pub struct Pm3Config {
     pub log_follow_interval_ms: u64,
     pub log_tail_lines: u64,
     pub daemon_channel_depth: usize,
+    pub request_body_limit_bytes: usize,
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
     pub service: ServiceConfig,
@@ -153,6 +160,8 @@ pub struct ServiceConfig {
     pub label: String,
     pub restart_delay_secs: u64,
     pub restart_condition: String,
+    pub max_tasks: u64,
+    pub cpu_quota_percent: u64,
     pub launchctl_path: String,
     pub systemctl_path: String,
     pub loginctl_path: String,
@@ -248,6 +257,9 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.daemon_channel_depth < 1 {
         return Err(ConfigError::InvalidChannelDepth(pm3.daemon_channel_depth));
     }
+    if pm3.request_body_limit_bytes < 1 {
+        return Err(ConfigError::InvalidBodyLimit(pm3.request_body_limit_bytes));
+    }
     Ok(())
 }
 
@@ -312,6 +324,9 @@ fn validate_programs(pm3: &Pm3Config) -> Result<(), ConfigError> {
         return Err(ConfigError::InvalidRestartCondition(
             pm3.service.restart_condition.clone(),
         ));
+    }
+    if pm3.service.max_tasks < 1 {
+        return Err(ConfigError::InvalidMaxTasks(pm3.service.max_tasks));
     }
     Ok(())
 }

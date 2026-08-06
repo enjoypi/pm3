@@ -27,6 +27,32 @@ fn the_host_home_comes_from_the_environment() {
     assert_eq!(host_home(), std::env::var("HOME").ok());
 }
 
+#[test]
+fn a_readable_path_reports_the_uid_that_owns_it() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let owner = std::fs::metadata(dir.path()).expect("stat the temp dir");
+    assert_eq!(owner_uid_of(dir.path()), Some(owner.uid()));
+}
+
+#[test]
+fn a_path_this_platform_does_not_offer_reports_no_owner() {
+    assert_eq!(owner_uid_of(Path::new("/nonexistent/pm3-owner")), None);
+}
+
+#[test]
+fn the_host_uid_is_known_wherever_this_process_can_read_about_itself() {
+    assert_eq!(host_uid().is_some(), Path::new(OWN_PROCESS_DIR).exists());
+}
+
+#[test]
+fn the_host_runtime_directory_follows_the_environment_and_the_owner() {
+    let declared = std::env::var(RUNTIME_DIR_VARIABLE).ok();
+    assert_eq!(
+        host_runtime_dir(),
+        runtime_dir_of(declared.as_deref(), host_uid())
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn the_host_uid_owns_this_very_process() {

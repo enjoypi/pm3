@@ -44,6 +44,8 @@ struct FakeState {
     force_failures: Vec<u32>,
     stored: Vec<ProcessRecord>,
     stranded: Vec<StrandedProcess>,
+    stored_boot: Option<String>,
+    saved_boot: Option<String>,
     saves: usize,
     load_fails: bool,
     save_fails: bool,
@@ -111,6 +113,15 @@ impl FakePorts {
 
     pub fn seed_stranded(&self, stranded: Vec<StrandedProcess>) {
         self.with_state(|state| state.stranded = stranded);
+    }
+
+    pub fn seed_boot(&self, boot: &str) {
+        self.with_state(|state| state.stored_boot = Some(boot.to_string()));
+    }
+
+    #[must_use]
+    pub fn saved_boot(&self) -> Option<String> {
+        self.read(|state| state.saved_boot.clone())
     }
 
     pub fn seed_live(&self, pid: u32, token: &str) {
@@ -260,7 +271,7 @@ impl FakePorts {
         Ok(())
     }
 
-    fn record_save(&self, records: &[ProcessRecord]) -> Result<(), DumpError> {
+    fn record_save(&self, records: &[ProcessRecord], boot: Option<&str>) -> Result<(), DumpError> {
         {
             let mut guard = self.locked();
             if guard.save_fails {
@@ -270,6 +281,7 @@ impl FakePorts {
                 });
             }
             guard.stored = records.to_vec();
+            guard.saved_boot = boot.map(ToString::to_string);
             guard.saves = guard.saves.saturating_add(1);
         }
         Ok(())
@@ -287,6 +299,7 @@ impl FakePorts {
             DumpContents {
                 records: guard.stored.clone(),
                 stranded: guard.stranded.clone(),
+                boot: guard.stored_boot.clone(),
             }
         };
         Ok(contents)
@@ -353,8 +366,8 @@ impl DumpStore for FakePorts {
         self.read_stored()
     }
 
-    async fn save(&self, records: &[ProcessRecord]) -> Result<(), DumpError> {
-        self.record_save(records)
+    async fn save(&self, records: &[ProcessRecord], boot: Option<&str>) -> Result<(), DumpError> {
+        self.record_save(records, boot)
     }
 }
 

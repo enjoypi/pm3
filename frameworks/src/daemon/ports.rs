@@ -93,8 +93,8 @@ impl DumpStore for DaemonPorts {
         self.store.load().await
     }
 
-    async fn save(&self, records: &[ProcessRecord]) -> Result<(), DumpError> {
-        self.store.save(records).await
+    async fn save(&self, records: &[ProcessRecord], boot: Option<&str>) -> Result<(), DumpError> {
+        self.store.save(records, boot).await
     }
 }
 

@@ -7,6 +7,7 @@ pub const CREATED_AT_MS: u64 = 1_700_000_000_000;
 pub const STARTED_AT_MS: u64 = 1_700_000_001_000;
 pub const SAMPLE_PID: u32 = 4242;
 pub const SAMPLE_TOKEN: &str = "Tue Jul 28 14:06:28 2026";
+pub const SAMPLE_BOOT: &str = "Mon Jul 27 08:00:00 2026";
 pub const SAMPLE_LAUNCH_DIGEST: &str = "1111111111111111";
 pub const SAMPLE_BINARY_DIGEST: &str = "2222222222222222";
 
