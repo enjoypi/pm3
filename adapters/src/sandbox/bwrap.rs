@@ -2,6 +2,9 @@ use usecases::{SandboxPolicy, WrappedCommand, covers_path, normalize_root};
 
 const UNSHARE_USER: &str = "--unshare-user";
 const UNSHARE_PID: &str = "--unshare-pid";
+const UNSHARE_IPC: &str = "--unshare-ipc";
+const UNSHARE_UTS: &str = "--unshare-uts";
+const UNSHARE_CGROUP_TRY: &str = "--unshare-cgroup-try";
 const UNSHARE_NET: &str = "--unshare-net";
 const READ_ONLY_BIND: &str = "--ro-bind";
 const READ_ONLY_BIND_TRY: &str = "--ro-bind-try";
@@ -23,7 +26,13 @@ pub fn bwrap_argv(
     program: &str,
     args: &[String],
 ) -> WrappedCommand {
-    let mut sandbox_args = vec![UNSHARE_USER.to_string(), UNSHARE_PID.to_string()];
+    let mut sandbox_args = vec![
+        UNSHARE_USER.to_string(),
+        UNSHARE_PID.to_string(),
+        UNSHARE_IPC.to_string(),
+        UNSHARE_UTS.to_string(),
+        UNSHARE_CGROUP_TRY.to_string(),
+    ];
     if !policy.network {
         sandbox_args.push(UNSHARE_NET.to_string());
     }

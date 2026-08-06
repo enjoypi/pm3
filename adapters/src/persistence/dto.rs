@@ -5,6 +5,9 @@ use usecases::{ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus, Ru
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DumpDocument {
     pub services: Vec<StateDto>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boot: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -47,9 +50,10 @@ pub enum DecodeError {
 }
 
 #[must_use]
-pub fn encode_states(records: &[ProcessRecord]) -> DumpDocument {
+pub fn encode_states(records: &[ProcessRecord], boot: Option<&str>) -> DumpDocument {
     DumpDocument {
         services: records.iter().map(encode_state).collect(),
+        boot: boot.map(ToString::to_string),
     }
 }
 

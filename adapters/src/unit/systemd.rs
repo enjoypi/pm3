@@ -15,6 +15,8 @@ pub fn render_unit(spec: &UnitSpec) -> String {
     let restart = escape_value(&spec.restart_condition);
     let pm3_env = render_environment(&spec.pm3_env);
     let umask = format!("{:04o}", spec.umask);
+    let max_tasks = spec.max_tasks;
+    let cpu_quota = render_cpu_quota(spec.cpu_quota_percent);
     format!(
         "[Unit]
 Description={label}
@@ -29,7 +31,8 @@ RestartSec={restart_delay_secs}
 KillMode=process
 UMask={umask}
 LimitCORE=0
-Environment=\"{HOME_VARIABLE}={home}\"
+TasksMax={max_tasks}
+{cpu_quota}Environment=\"{HOME_VARIABLE}={home}\"
 Environment=\"{PATH_VARIABLE}={search_path}\"
 {pm3_env}StandardOutput=append:{log_path}
 StandardError=append:{log_path}
@@ -38,6 +41,13 @@ StandardError=append:{log_path}
 WantedBy=default.target
 "
     )
+}
+
+fn render_cpu_quota(percent: u64) -> String {
+    if percent == 0 {
+        return String::new();
+    }
+    format!("CPUQuota={percent}%\n")
 }
 
 fn render_environment(vars: &[(String, String)]) -> String {

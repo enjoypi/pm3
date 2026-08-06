@@ -330,6 +330,9 @@ async fn a_service_whose_program_was_replaced_is_restarted() {
     assert_eq!(ports.spawned_names(), vec!["api"]);
 }
 
+#[path = "resurrect_boot_tests.rs"]
+mod boot;
+
 #[path = "resurrect_evict_tests.rs"]
 mod evict;
 

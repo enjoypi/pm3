@@ -6,6 +6,7 @@ use crate::{UsecaseError, record::ProcessRecord, selector::AppSelector};
 pub struct ProcessTable {
     records: Vec<ProcessRecord>,
     next_pm_id: u32,
+    boot: Option<String>,
 }
 
 impl ProcessTable {
@@ -14,6 +15,7 @@ impl ProcessTable {
         Self {
             records: Vec::new(),
             next_pm_id: 0,
+            boot: None,
         }
     }
 
@@ -27,12 +29,22 @@ impl ProcessTable {
         Self {
             records,
             next_pm_id,
+            boot: None,
         }
     }
 
     #[must_use]
     pub const fn records(&self) -> &[ProcessRecord] {
         self.records.as_slice()
+    }
+
+    #[must_use]
+    pub fn boot(&self) -> Option<&str> {
+        self.boot.as_deref()
+    }
+
+    pub fn remember_boot(&mut self, boot: Option<String>) {
+        self.boot = boot;
     }
 
     #[must_use]

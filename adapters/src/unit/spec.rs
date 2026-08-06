@@ -85,6 +85,8 @@ pub struct UnitSpec {
     pub restart_delay_secs: u64,
     pub restart_condition: String,
     pub umask: u32,
+    pub max_tasks: u64,
+    pub cpu_quota_percent: u64,
 }
 
 impl UnitSpec {

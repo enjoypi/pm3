@@ -74,6 +74,21 @@ fn the_user_and_pid_namespaces_are_always_unshared() {
 }
 
 #[test]
+fn the_ipc_and_uts_namespaces_are_always_unshared() {
+    let args = argv(false, &[]);
+    assert!(args.contains(&"--unshare-ipc".to_string()));
+    assert!(args.contains(&"--unshare-uts".to_string()));
+}
+
+#[test]
+fn the_cgroup_namespace_is_unshared_where_the_kernel_offers_it() {
+    assert!(
+        argv(false, &[]).contains(&"--unshare-cgroup-try".to_string()),
+        "an older kernel without cgroup namespaces must still start the service"
+    );
+}
+
+#[test]
 fn a_full_read_scope_mounts_the_whole_filesystem_read_only() {
     let args = argv(false, &[]);
     assert_eq!(

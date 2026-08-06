@@ -99,7 +99,7 @@ async fn the_dump_store_rejoins_the_saved_state_with_its_service_file() {
     let dir = tempfile::tempdir().expect("temp dir");
     let ports = ports_in(dir.path());
     register_service(dir.path(), "web");
-    ports.save(&[stored_record()]).await.expect("save");
+    ports.save(&[stored_record()], None).await.expect("save");
     let loaded = ports.load().await.expect("load");
     assert_eq!(loaded.records[0].runtime, stored_record().runtime);
 }

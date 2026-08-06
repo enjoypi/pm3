@@ -20,6 +20,8 @@ fn service_config() -> crate::config::ServiceConfig {
         label: "pm3-test".to_string(),
         restart_delay_secs: 2,
         restart_condition: "always".to_string(),
+        max_tasks: 4096,
+        cpu_quota_percent: 0,
         launchctl_path: "/opt/launchctl".to_string(),
         systemctl_path: "/opt/systemctl".to_string(),
         loginctl_path: "/opt/loginctl".to_string(),

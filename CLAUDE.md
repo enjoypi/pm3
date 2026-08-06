@@ -60,17 +60,26 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
   - `loginctl enable-linger` **不带用户名是合法的**（`enable-linger [USER...]`，省略即作用于调用者）：无授权时它只报 polkit `requires interactive authentication`、**不报缺参数** → 别以为是命令写错了去补用户名。它走 polkit 授权，polkit 被 mask 或无交互授权时必失败，故在 install plan 里是 `UnitStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。**linger 已启用时这一步整个不进 plan**（`linger_state` 先查，`LingerState::Enabled` 即跳过）→ 常见情形下 `just install` 不碰 polkit、无需任何特殊权限。仍看到 `skipped:` 说明 linger 真没开，由有 sudo 的账号补一次（已实测成功），否则用户注销后 user manager 回收会连带停掉 daemon
   - 查 linger MUST 传 uid（`loginctl show-user <uid> -p Linger --value`）：**不带用户名时它输出空串且 rv=0**（`show-user` 省略参数指“当前会话的用户”，非登录会话没有会话）→ 按「非零退出才是查不到」判会把「已开 linger」误读成未开，白跑一次必失败的 `enable-linger`。故 `loginctl_show_linger` 在 uid 未知时返回 `None`，判定退回 `Unknown`
 
+### 资源上限（fork bomb 防线）
+
+`RLIMIT_NPROC` / seccomp 要 `libc` + `unsafe`，与 workspace 的 `unsafe_code = "deny"` 冲突 → 防线改由**服务管理器**声明，零 unsafe、零新外部程序，且是内核级的硬限制。
+
+- `pm3.service.max_tasks` → systemd `TasksMax=`（cgroup pids controller）/ launchd `HardResourceLimits.NumberOfProcesses`。**它是 pm3 整体的总量**（daemon + 全部被托管服务共处一个 cgroup / 同一 uid），不是每服务限额 → 调低到「够正常用」的值会在服务数量涨上来时集体 spawn 失败，默认 4096 是按此留的余量。**systemd 数的是 task 不是进程**，JVM/Node 这类多线程服务吃得比看起来多
+- `pm3.service.cpu_quota_percent` 只渲染进 systemd（`CPUQuota=`，可超 100% 表示多核），**launchd 侧刻意不渲染**：它只有 `RLIMIT_CPU`（累计 CPU 秒数），到点直接杀进程 ⇒ 一个健康的长跑 daemon 必被杀。默认 `0` = 不限制，因为盲目限 CPU 会拖慢正常的计算密集服务；fork bomb 的爆炸半径已由 `max_tasks` 兜住
+- 两项都只在 unit 文件里，**改配置后 MUST `pm3 service install --force` 重装 unit 才生效**（`reconcile` 会因内容不同而要求 `--force`），光 `pm3 kill` + 重启 daemon 没用
+
 ## 改动波及清单
 
 改这里就必须同步那里，漏一处即编译失败或运行期对不上。
 
 - 给 `Pm3Config` 加字段要同步 6 处：根 `config.yaml`、`adapters/test_support/config_sections.rs`、`adapters/src/test_helpers/config_schema_test_helpers.rs`、`frameworks/test_support/config_fixtures.rs`、`frameworks/tests/common/mod.rs`、校验函数与 `every_error_variant` 表
-- 给 `UnitSpec` 加字段要同步 4 处：`adapters/src/unit/spec.rs` 的结构体、`launchd.rs` 与 `systemd.rs` 两个渲染器、`adapters/test_support/unit_specs.rs` 的 `spec_for`；两个渲染器漏一个不会编译失败，症状是只有那个平台的 unit 少字段而另一平台测试全绿 → 新字段 MUST 在两份渲染器测试里各断言一次
+- 给 `UnitSpec` 加字段要同步 5 处：`adapters/src/unit/spec.rs` 的结构体、`launchd.rs` 与 `systemd.rs` 两个渲染器、`adapters/test_support/unit_specs.rs` 的 `spec_for`、`frameworks/src/service.rs` 的 `build_spec`（唯一生产构造点）；两个渲染器漏一个不会编译失败，症状是只有那个平台的 unit 少字段而另一平台测试全绿 → 新字段 MUST 在两份渲染器测试里各断言一次（一个平台没有对应能力时，就断言「它不出现」，别只写一边）
 - 给 `UnitProgramSet` 加字段要同步 4 处：`adapters/src/unit/command.rs` 的结构体与 `from_config`、`adapters/test_support/unit_specs.rs` 的 `program_set`、`frameworks/src/service.rs` 的 `ServiceContext` 与 `open_service_session`、`frameworks/src/tests/service_tests.rs` 的两处字面量；宿主派生值（uid、`XDG_RUNTIME_DIR`）MUST 由 `frameworks/src/layout.rs` 读一次 env 后经 `ServiceContext` 注入，MUST NOT 在 `adapters` 里读 env
 - 给 `SpecSource` 加字段要同步 4 处：`adapters/src/apps_file/source.rs` 的结构体、`frameworks/src/daemon/service.rs`（唯一生产构造点）、`adapters/test_support/spec_sources.rs`、`frameworks/src/test_helpers/daemon_actor_test_helpers.rs` 与 `frameworks/src/tests/daemon_ports_tests.rs`；宿主派生值（`host_home`）MUST 由 `frameworks/src/layout.rs` 读一次 env 后注入
 - 改 `usecases/src/ports/*` 里 trait 方法的签名要同步 3 个实现：`adapters` 侧的真实现（如 `YamlDumpStore`）、`frameworks/src/daemon/ports.rs` 的 `DaemonPorts` 转发、`usecases/src/test_helpers/ports_test_helpers.rs` 的 `FakePorts`；`FakePorts` 新增的 `seed_*` 若没人调用会触发 `dead_code`，且它计入覆盖率门禁
 - 给 `ExitOutcome` 加变体要同步 4 处：`usecases/src/ports/launcher.rs` 的 enum 与 `failed()`、`adapters/src/process/tokio_launcher.rs`（子进程）、`adapters/src/process/watcher.rs`（adopt 来的进程）、`frameworks/src/daemon/timers.rs` 的 `unwrap_or`
 - 给 `ProcessRuntime` 加字段要同步 4 处：`adapters/src/persistence/dto.rs` 的 `RuntimeDto` + `decode_state` + `encode_state`（两处都穷举解构）、`adapters/test_support/process_records.rs`；跨版本可读的字段一律 `#[serde(default)]`
+- 给 `ProcessTable` 加「非记录」字段（如 `boot`）要想清**谁负责填**：`from_records` 一律重建，所以 `resurrect` 里 `*table = ProcessTable::from_records(..)` **之后**才能 `remember_boot`；`save_table` 从表里取值，这样各 usecase 的 `save_table(table, ports)` 调用点一处不用改
 - 给 `SandboxPolicy` 加字段会波及 ~13 处字面量、给 `AppSpec` 加字段会波及 ~9 处（四层的 test_helpers/test_support）→ 加完先 `cargo build --workspace --all-targets` 靠 E0063 逐个补齐，字段插在字面量开头即可（顺序无关）
 - 落盘 MUST 走 `adapters::write_private` / `append_private`（`0o600`，`private_file.rs`）：`tokio::fs::write` 与裸 `OpenOptions` 把权限交给 umask，而 pm3 从不设 umask。`.mode()` 只在**创建**时生效，已存在的旧文件权限不变——真机升级后的旧 `dump.yaml` 仍是 0644，靠 `pm3.home` 的 0700 兜底
 - 写 `cfg_dir/<name>.yaml` 的两条路径（apps 文件与 `pm3 start --name`）MUST 共用**同一个** `adapters::fold_entry`：它把 `script`/`cwd`/`args`/`sandbox.writable_roots` 四处折回 `${HOME}`/`${PM3_SERVICE_CWD}` 并对 roots 去重。曾经 frameworks 与 adapters 各有一份副本，已分歧到「inline 去重、apps 不去重」，同一份声明编码出两种 yaml → `pm3 start <apps-file>` 被 `reconcile` 拒绝（症状：diff 只差一行重复的 root，或全是 `-"${HOME}/x"` / `+"/Users/me/x"`）。新增含路径的字段只改 `fold_entry` 一处
@@ -104,6 +113,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - 运行期监控 MUST 把 dump 里的身份令牌传给 `wait_for_exit`：只判「pid 还在不在」会在 pid 复用后永远等下去，随后的 `stop` 会对复用 pid 发进程组信号误杀整组
 - 运行镜像 MUST 装 `procps`（`/bin/ps`）：缺了它每次 daemon 重启所有服务都被判「探测失败」而驱逐重启
 - `resurrect` 判定 respawn 且旧进程仍存活（token 已匹配）时 MUST 先 `terminate` 掉它，否则孤儿与新实例重复运行（症状：`just cov` 跑完残留 `pm3 __sleep`）
+- **跨过一次主机重启，dump 里所有 pid 一律作废**（`PidTrust`）：boot 标识取 **pid 1 的 `lstart`**（`ports.identity(1)`，systemd/launchd 都在 boot 时启动），存 `dump.yaml` 顶层 `boot:`。这样不必引入新 Port、新外部程序或 `libc`——`ps` 本就是硬依赖。`PidTrust::Lost` 时 `judge` 直接 `Change::Rebooted` 且 `stale: None`，`surviving_pid` 提前返回 `None` ⇒ 全程不对陌生 pid 发信号。**两个 fail-safe 方向 MUST 保住**：dump 无 `boot`（旧版升级上来）或本机读不出 pid 1 都判 `Kept`，退回原有的 token 校验，MUST NOT 反过来「未知就作废」（那会让每次升级都 evict 全部服务）
 
 ### 沙箱模式
 
@@ -127,6 +137,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - seatbelt 的路径一律走 `-D KEY=值` 参数 + `(param "KEY")`，profile 文本里不出现任何用户路径：这消掉了 SBPL 注入面，也是「含换行的 root 直接拒绝」那个 hack 被删掉的原因
 - `network: true` 只放行 IP（`(allow network-outbound (remote ip))`）：裸 `(allow network-outbound)` 连 unix socket 一起放行，macOS 上等于把 `pm3.sock` 交给服务。Linux 侧不靠这条——实测 `--ro-bind / /` 下 connect 直接 EACCES（只读挂载没有写权限），`--tmpfs` 遮盖后是 ENOENT
 - **bwrap MUST NOT 加 `--new-session`**（codex 加了，pm3 不能）：setsid 会让服务脱离 bwrap 的进程组，`kill -TERM -<pgid>` 打不到它，优雅停止退化成「杀 bwrap → pid namespace 塌掉 → 内核 SIGKILL」。TIOCSTI 面靠内核 `dev.tty.legacy_tiocsti=0`（Linux 6.2+ 默认）与「stdin 是 `Stdio::null()`」兜底
+- bwrap 的 namespace 里 cgroup 那条 MUST 写 `--unshare-cgroup-try` 而非 `--unshare-cgroup`：cgroup namespace 要内核 4.6+，硬形式在更老的内核上让 bwrap 直接退出 ⇒ 服务起不来。`user`/`pid`/`ipc`/`uts` 用硬形式（这四个到处都有）
 
 ### cron 调度
 
@@ -151,6 +162,8 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - `start` 请求只传服务名列表（`services: Vec<String>`）——服务文件是唯一事实来源，MUST NOT 把 spec 塞进请求体
 - 但**手写 `cfg_dir/<name>.yaml` 不足以让服务被认出**：`pm3 start <name>` 对不在 daemon 服务表里的名字会退回按 apps 文件解析，报 `cannot resolve the apps file '<name>'`。新服务 MUST 先用 inline 形式注册一次（`pm3 start --name <name> [--network] <prog> [args]`），此后 `<name>` 才能直接用；pm3 写出的 yaml 可与手写的逐字节相同，差别只在注册路径
 - CLI MUST 在请求头带 `x-request-id`（`adapters::REQUEST_ID_HEADER`，值取 `<CLI pid>-<序号>`），daemon 的 `request_id_of` 优先读它、缺失或空才回退内部 `AtomicU64`。回退分支 MUST 保留：换代期间旧版 CLI 不发这个头。少了这层，一次 `pm3 start` 的客户端日志与 daemon 日志无法串起来（daemon 侧计数器每次重启从 1 开始，跨进程毫无意义）
+- **连进来的 peer 要过 uid 校验**（`OwnerOnlyListener`，`SO_PEERCRED` 经 `UnixStream::peer_cred`）：owner 取**socket 文件自己的属主**（本进程刚创建它，故两平台都拿得到，无需 `/proc` 也无需 `libc`），不匹配就 drop 连接并 warn、循环等下一个。**校验是 fail-open**：`admits` 在 peer 或 owner 任一未知时放行，退回 socket 0600 + 目录 0700 那道防线——一个探测不到属主的环境不该让整台机器的 pm3 停摆。拦截 MUST 发生在 `Listener::accept` 里（协议之前），MUST NOT 做成 axum 中间件：那样非法 peer 已经能塞进一个请求体
+- 请求体上限走 `pm3.request_body_limit_bytes` + `DefaultBodyLimit`（超限回 413）：单 actor 循环下一个巨大 body 就是一条队头阻塞路径，而 axum 默认的 2 MB 对「一串服务名」来说过宽
 
 ### 环境变量与凭据
 
@@ -197,7 +210,9 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 ### 门禁运行（`just cov`，四指标 100%）
 
 - 顺序 MUST 是 `just lint` → `just cov`：`cov` 只跑 nextest 不跑 clippy，`#[expect]` 失效这类问题它看不见；反过来 `cov` 又能暴露 `lint` 漏报的 test target `unused_imports`（clippy 增量缓存可能不重编测试目标）→ 两个都要跑
-- **macOS 上 `just cov` 必定非零退出**：`TODO.md` 记着三处平台性基线缺口（`layout.rs` 的 `host_uid`、`ps_probe.rs`、`watcher.rs`）→ 判断自己的改动有没有引入缺口要**逐文件对比那三条**，不是看退出码；出现第四个文件名才是回归
+- 门禁在两个平台都应 100%（曾经 macOS 差三处，已消除）→ 新出现的平台差异一律是本次改动引入的，两类根因：
+  - **读系统路径的薄包装**（`/proc/self` 之于 `host_uid`）：MUST 抽出接 `&Path` 参数的 inner fn（`owner_uid_of`），生产包装传常量、测试传 tempdir 与不存在的路径，两条臂在哪个平台都可达
+  - **靠 sleep 竞争切换外部状态的测试**（fake `ps` 先报 alive、测试 sleep 后再 mark_gone）：慢机器上第一轮探测就已落在切换之后，于是「轮询后仍有等待者」这类分支只在快机器上被走到 → MUST 让 **fake 程序自持调用计数**（`if [ -f "$0.asked" ]; then exit 1; fi` + `touch`），第一次答 alive、第二次答 gone，与机器速度无关
 - `cargo-llvm-cov` 忽略路径含 `tests/` 的文件；`test_helpers/` 与 `test_support/` **计入**门禁，helper 里的 `panic!` 会变成未覆盖行
 - 改动令行号位移后必须 `just cov --fresh`，否则残留旧实例化产生幽灵 `FNDA:0`
 - **全零自救** — 症状：所有文件 0%、`FNDA:0` 上千条；原因：二进制与 profraw 哈希错位（非 fresh 与手动 `cargo llvm-cov report` 交叉跑会触发）；修法：重跑 `just cov --fresh` 且中途不插任何其他 cargo 命令

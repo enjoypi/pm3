@@ -35,6 +35,7 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     let keep_alive = keep_alive_of(&spec.restart_condition);
     let pm3_env = render_environment(&spec.pm3_env);
     let umask = spec.umask;
+    let max_tasks = spec.max_tasks;
     format!(
         "{PLIST_HEADER}<dict>
     <key>Label</key>
@@ -54,6 +55,11 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     <string>Background</string>
     <key>Umask</key>
     <integer>{umask}</integer>
+    <key>HardResourceLimits</key>
+    <dict>
+        <key>NumberOfProcesses</key>
+        <integer>{max_tasks}</integer>
+    </dict>
     <key>StandardOutPath</key>
     <string>{log_path}</string>
     <key>StandardErrorPath</key>

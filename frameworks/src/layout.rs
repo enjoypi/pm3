@@ -99,9 +99,12 @@ pub fn host_pm3_env() -> Vec<(String, String)> {
 
 #[must_use]
 pub fn host_uid() -> Option<u32> {
-    std::fs::metadata(OWN_PROCESS_DIR)
-        .ok()
-        .map(|owner| owner.uid())
+    owner_uid_of(Path::new(OWN_PROCESS_DIR))
+}
+
+#[must_use]
+pub fn owner_uid_of(path: &Path) -> Option<u32> {
+    std::fs::metadata(path).ok().map(|owner| owner.uid())
 }
 
 #[must_use]

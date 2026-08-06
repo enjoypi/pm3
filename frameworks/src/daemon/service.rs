@@ -4,14 +4,14 @@ use adapters::{
     DaemonHandle, Pm3Paths, SandboxProgramSet, SpecSource, load_and_parse_config,
     log_startup_banner, router,
 };
-use tokio::{net::UnixListener, sync::mpsc};
+use tokio::sync::mpsc;
 
 use super::{
     actor::Daemon,
     events::DaemonEvent,
     ports::DaemonPorts,
     runner::run,
-    socket::{BindOutcome, bind_uds},
+    socket::{BindOutcome, OwnerOnlyListener, bind_uds},
 };
 use crate::{
     Error, Result,
@@ -74,7 +74,7 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
 async fn serve_supervised(
     specs: SpecSource,
     paths: &Pm3Paths,
-    listener: UnixListener,
+    listener: OwnerOnlyListener,
     shutdown: ShutdownFuture,
 ) -> Result<()> {
     let sandbox_programs = SandboxProgramSet::from_config(&specs.config.sandbox);
@@ -88,13 +88,14 @@ async fn serve_supervised(
     let (commands, command_queue) = mpsc::channel(channel_depth);
     let (events, event_queue) = mpsc::channel(channel_depth);
     let drain_timeout = Duration::from_secs(specs.config.drain_timeout_secs);
+    let body_limit_bytes = specs.config.request_body_limit_bytes;
     let mut daemon = Daemon::new(specs, ports, events.clone());
     daemon.resurrect_saved_apps().await;
 
     let supervisor = tokio::spawn(run(daemon, command_queue, event_queue));
     let served = serve_listener(
         listener,
-        router(DaemonHandle::new(commands.clone())),
+        router(DaemonHandle::new(commands.clone()), body_limit_bytes),
         shutdown,
         drain_timeout,
     )

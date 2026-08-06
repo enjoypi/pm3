@@ -22,7 +22,10 @@ pub const SERVICE_LABEL: &str = "pm3-fixture";
 pub const SERVICE_SEARCH_PATH: &str = "/usr/bin:/bin";
 pub const SERVICE_RESTART_DELAY_SECS: u64 = 2;
 pub const SERVICE_RESTART_CONDITION: &str = "always";
+pub const SERVICE_MAX_TASKS: u64 = 4096;
+pub const SERVICE_CPU_QUOTA_PERCENT: u64 = 0;
 pub const CHANNEL_DEPTH: usize = 32;
+pub const BODY_LIMIT_BYTES: usize = 131_072;
 pub const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
 pub const BWRAP_PROGRAM: &str = "bwrap";
 pub const LAUNCHCTL_PATH: &str = "/bin/launchctl";
@@ -46,6 +49,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         log_tail_lines: LOG_TAIL_LINES,
         daemon_channel_depth: CHANNEL_DEPTH,
+        request_body_limit_bytes: BODY_LIMIT_BYTES,
         restart: RestartConfig {
             autorestart: true,
             min_uptime_ms: MIN_UPTIME_MS,
@@ -65,6 +69,8 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
             label: SERVICE_LABEL.to_string(),
             restart_delay_secs: SERVICE_RESTART_DELAY_SECS,
             restart_condition: SERVICE_RESTART_CONDITION.to_string(),
+            max_tasks: SERVICE_MAX_TASKS,
+            cpu_quota_percent: SERVICE_CPU_QUOTA_PERCENT,
             launchctl_path: LAUNCHCTL_PATH.to_string(),
             systemctl_path: SYSTEMCTL_PATH.to_string(),
             loginctl_path: LOGINCTL_PATH.to_string(),
@@ -90,6 +96,7 @@ pub fn config_yaml(home: &str) -> String {
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   log_tail_lines: {LOG_TAIL_LINES}
   daemon_channel_depth: {CHANNEL_DEPTH}
+  request_body_limit_bytes: {BODY_LIMIT_BYTES}
   restart:
     autorestart: true
     min_uptime_ms: {MIN_UPTIME_MS}
@@ -109,6 +116,8 @@ pub fn config_yaml(home: &str) -> String {
     label: "{SERVICE_LABEL}"
     restart_delay_secs: {SERVICE_RESTART_DELAY_SECS}
     restart_condition: "{SERVICE_RESTART_CONDITION}"
+    max_tasks: {SERVICE_MAX_TASKS}
+    cpu_quota_percent: {SERVICE_CPU_QUOTA_PERCENT}
     launchctl_path: "{LAUNCHCTL_PATH}"
     systemctl_path: "{SYSTEMCTL_PATH}"
     loginctl_path: "{LOGINCTL_PATH}"

@@ -16,6 +16,8 @@ use crate::{
 
 const CHANNEL_DEPTH: usize = 1;
 
+pub const BODY_LIMIT_BYTES: usize = 4096;
+
 pub fn reply_of(body: &str) -> ReplyDto {
     serde_json::from_str(body).expect("an accepted request answers with a reply envelope")
 }
@@ -104,7 +106,7 @@ async fn answered(
     sender: mpsc::Sender<DaemonCommand>,
     request: Request<Body>,
 ) -> axum::response::Response {
-    router(DaemonHandle::new(sender))
+    router(DaemonHandle::new(sender), BODY_LIMIT_BYTES)
         .oneshot(request)
         .await
         .expect("router should answer")

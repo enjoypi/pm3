@@ -264,3 +264,10 @@ async fn stopping_everything_returns_the_list_of_stopped_services() {
     let exchange = exchange(outcome, post_to("/services/stop-all", "")).await;
     assert_eq!(reply_of(&exchange.body).report, "stopped web");
 }
+
+#[tokio::test]
+async fn a_body_beyond_the_limit_is_refused_before_it_reaches_the_daemon() {
+    let oversized = "x".repeat(BODY_LIMIT_BYTES + 1);
+    let exchange = exchange_without_a_daemon(post_to("/apps", &oversized)).await;
+    assert_eq!(exchange.status, StatusCode::PAYLOAD_TOO_LARGE);
+}

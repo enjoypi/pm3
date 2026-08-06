@@ -24,13 +24,17 @@ pub struct StrandedProcess {
 pub struct DumpContents {
     pub records: Vec<ProcessRecord>,
     pub stranded: Vec<StrandedProcess>,
+    pub boot: Option<String>,
 }
 
 pub trait DumpStore: Send + Sync {
     fn load(&self) -> impl Future<Output = Result<DumpContents, DumpError>> + Send;
 
-    fn save(&self, records: &[ProcessRecord])
-    -> impl Future<Output = Result<(), DumpError>> + Send;
+    fn save(
+        &self,
+        records: &[ProcessRecord],
+        boot: Option<&str>,
+    ) -> impl Future<Output = Result<(), DumpError>> + Send;
 }
 
 #[cfg(test)]

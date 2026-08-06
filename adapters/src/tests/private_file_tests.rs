@@ -80,11 +80,14 @@ fn a_blocking_append_refuses_a_missing_directory() {
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
 
-#[cfg(target_os = "linux")]
 #[tokio::test]
-async fn a_device_that_cannot_take_the_bytes_surfaces_as_an_error() {
-    let err = write_private(Path::new("/dev/full"), "spill")
-        .await
-        .unwrap_err();
-    assert_eq!(err.kind(), std::io::ErrorKind::StorageFull);
+async fn a_handle_that_refuses_the_bytes_surfaces_as_an_error() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("dump.yaml");
+    std::fs::write(&path, "seed").expect("seed the file");
+    let readable = std::fs::File::open(&path).expect("open the file for reading only");
+    assert!(
+        fill(File::from_std(readable), b"spill").await.is_err(),
+        "a refused write must reach the caller instead of passing for a saved file"
+    );
 }
