@@ -19,6 +19,7 @@ export interface ServiceComparison {
 }
 
 const runtimeDirectoryRoot = "/run/user";
+const backupDirectory = "install-backups";
 const reportPattern = /^(.+) \((\w+) service\): (.+)$/;
 const launchdPidPattern = /"PID"\s*=\s*(\d+)/;
 const writePrefix = "write ";
@@ -41,6 +42,16 @@ export function runtimeDirectory(
     return declared;
   }
   return `${runtimeDirectoryRoot}/${uid}`;
+}
+
+export function backupRoot(
+  declared: string | undefined,
+  runtimeHome: string,
+): string {
+  if (declared !== undefined && declared.length > 0) {
+    return declared;
+  }
+  return `${runtimeHome}/${backupDirectory}`;
 }
 
 export function parsePidFile(contents: string): number | undefined {

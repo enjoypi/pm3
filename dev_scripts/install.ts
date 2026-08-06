@@ -3,6 +3,7 @@ import { basename, dirname, join } from "node:path";
 
 import { runCargo } from "./cargo_invocation.ts";
 import {
+  backupRoot,
   backupStamp,
   compareServices,
   describeComparison,
@@ -64,7 +65,7 @@ function installation(): Installation {
   const home = homeDirectory();
   return {
     destination: Bun.env[destinationVariable] ?? join(home, "bin", "pm3"),
-    backups: Bun.env[backupVariable] ?? join(home, ".pm3-install-backups"),
+    backups: backupRoot(Bun.env[backupVariable], runtimeHome()),
     source: configSource,
   };
 }
@@ -116,7 +117,7 @@ export async function listedServices(
 }
 
 async function backUp(paths: readonly string[], into: string): Promise<void> {
-  await mkdir(into, { recursive: true });
+  await mkdir(into, { recursive: true, mode: 0o700 });
   for (const path of paths) {
     if (await Bun.file(path).exists()) {
       await copyFile(path, join(into, basename(path)));

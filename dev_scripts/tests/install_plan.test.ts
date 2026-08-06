@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  backupRoot,
   backupStamp,
   compareServices,
   describeComparison,
@@ -202,5 +203,27 @@ describe("runtimeDirectory", () => {
 
   test("treats an empty declaration as no declaration", () => {
     expect(runtimeDirectory("", 4242)).toBe("/run/user/4242");
+  });
+});
+
+describe("backupRoot", () => {
+  test("keeps the backup root an operator declared", () => {
+    expect(backupRoot("/srv/pm3-backups", "/home/dev/.pm3")).toBe(
+      "/srv/pm3-backups",
+    );
+  });
+
+  test("keeps the backups inside the pm3 home so its 0700 covers them", () => {
+    expect(backupRoot(undefined, "/home/dev/.pm3")).toBe(
+      "/home/dev/.pm3/install-backups",
+    );
+  });
+
+  test("follows a relocated pm3 home", () => {
+    expect(backupRoot(undefined, "/srv/pm3")).toBe("/srv/pm3/install-backups");
+  });
+
+  test("treats an empty declaration as no declaration", () => {
+    expect(backupRoot("", "/srv/pm3")).toBe("/srv/pm3/install-backups");
   });
 });
