@@ -14,7 +14,7 @@ pm3 在**安全边界、状态正确性、工程质量**三个维度显著优于
 |---|---|---|
 | **进程隔离** | seatbelt/bwrap 沙箱，默认只写自己工作目录、**默认只读系统白名单**、默认拒网，可读/可写根逐条声明；pm3 自己的 `cfg_dir` 与 `pm3.home` 从每个沙箱里挖掉 | 无沙箱/cgroup/rlimit/seccomp，唯一隔离是 `uid`/`gid` 且要 root |
 | **凭据处理** | 只走 `<name>.env`，读后 `chmod 0600`；yaml 写 `env` 直接报错；不进 describe / dump / 任何日志；`AppSpec` 无 `Serialize`；沙箱内读不到别的服务的 `.env` | secret 明文进 `pm2_env` → 写入 `dump.pm2`、`pm2 describe`/`jlist`/`env`、RPC 响应、HTTP `GET /`；`pm2 report`（给 issue 用）直接打印 daemon 完整 `process.env` |
-| **控制面鉴权** | UDS `chmod 0600`，不占任何网络端口 | RPC socket `chmod 775`（同组用户可调 `prepare` 启动任意二进制，无认证）；`pm2-runtime --web` 的 HTTP 无鉴权 + CORS 全开 + 默认吐全部 env |
+| **控制面鉴权** | UDS `chmod 0600` + 目录 `0700`，另在 `accept` 层校验 peer uid（`SO_PEERCRED`，不是自己就断开），请求体有大小上限；不占任何网络端口 | RPC socket `chmod 775`（同组用户可调 `prepare` 启动任意二进制，无认证）；`pm2-runtime --web` 的 HTTP 无鉴权 + CORS 全开 + 默认吐全部 env |
 | **pid 复用防护** | 三元组指纹（`ps lstart` token + 启动参数 SHA256 + 二进制 SHA256），三态 `Liveness{Alive,Gone,Unreadable}`；kill 前复验 token（`sweep_pid`）；`is_signalable` 挡住 procps 对超 i32 值的静默截断；无 token 可比时降级为单 pid 信号（`SignalScope::SinglePid`），不打进程组 | 只有 `process.kill(pid,0)` 存在性检查；TreeKill 的 `ps` 快照与实际 kill 之间存在竞态，`kill_timeout` 窗口内可误杀复用 pid |
 | **daemon 换代** | 逐服务核对指纹 → `Adopt`/`Settle`/`Respawn`；读不出声明的存活进程走 `sweep_stranded` 停掉并记日志 | `resurrect` 完全不读 pid 文件、不接管旧进程，只按 name 去重 → daemon 崩溃后旧进程变孤儿，恢复时再拉一份可能双跑 |
 | **依赖编排** | `DepGraph` 拓扑排序 + 环检测（`Cycle{involved}`），start 与 resurrect 都按序；被依赖时 `delete` 返回 409 | 无 `depends_on` 概念，`_startJson` 并发度 2 乱序启动，`resurrect` 同样并发 |
@@ -32,7 +32,7 @@ pm3 在**安全边界、状态正确性、工程质量**三个维度显著优于
 1. **无 cluster / `instances` / `scale` / 负载均衡** —— Node web 服务吃不满多核。pm2 靠 Node 内置 cluster 的 SO_REUSEPORT。
 2. **无零停机 reload** —— pm3 的 `restart` 是 stop→start，必有中断窗口；`reload_declaration` 只是重读配置。pm2 有 hard/soft reload（但仅 cluster 模式生效，fork 模式同样退化成 restart）。
 3. **无就绪探针** —— 没有 `wait_ready`/`listen_timeout` 等价物。**这是 `DepGraph` 的配套缺口**：依赖顺序只保证 spawn 先后，不保证被依赖者真的可服务。
-4. ~~**无内存熔断**~~ —— 已补：`max_memory: "300M"` + `--max-memory`，`pm3.memory_poll_interval_ms` 默认 30s，超限走 `restart_app`。与 pm2 同样兜不住突发 OOM，也仍然挡不住 fork bomb（那需要 seccomp / `RLIMIT_NPROC`，与 `unsafe_code = "deny"` 冲突）。
+4. ~~**无内存熔断**~~ —— 已补：`max_memory: "300M"` + `--max-memory`，`pm3.memory_poll_interval_ms` 默认 30s，超限走 `restart_app`。与 pm2 同样兜不住突发 OOM。~~挡不住 fork bomb~~ 也已补，但走的不是 seccomp / `RLIMIT_NPROC`（那要 `unsafe`）：改由服务管理器声明 `pm3.service.max_tasks` → systemd `TasksMax=` / launchd `NumberOfProcesses`，是内核级硬限制但**作用于 pm3 整体**而非每服务；CPU 配额（`cpu_quota_percent` → `CPUQuota=`）只有 systemd 有，默认关闭。
 5. **无任何资源指标** —— RSS 只在内存熔断的判定里用，`list` 仍看不到资源占用，无 CPU 采集，无 `monit` 面板。
 6. **无 watch 热重载** —— 开发态不可用（pm2 有 `--watch` 与 `pm2-dev`）。
 7. **无 programmatic API / 事件总线** —— 集成面只有 UDS 上 6 条 HTTP 路由；pm2 有 `pm2.connect()`、27 个 RPC 方法、pub/sub bus。
@@ -53,7 +53,7 @@ pm3 在**安全边界、状态正确性、工程质量**三个维度显著优于
 16. **沙箱在关键场景失效** —— seatbelt 不允许嵌套，自带沙箱的程序（sshd、macOS app bundle）必须配 `danger-full-access`，安全卖点在这些服务上归零。
 16.1. **同 uid 下没有强隔离** —— 服务与 daemon 同用户，读隔离靠沙箱视野而非文件权限；`danger-full-access` 的服务能读走全部凭据，`ptrace` 也只被内核 `yama.ptrace_scope` 挡着（pm3 自己没做 `PR_SET_DUMPABLE`）。
 17. **单机单用户** —— 不占端口的设计同时排除了远程管理与多机（这是明确的设计取舍，非缺陷）。
-18. **macOS 覆盖率门禁本就挂 3 处**（`TODO.md`）—— `host_uid`、`ps_probe.rs`、`watcher.rs` 三处平台性基线缺口，判断回归要逐文件对比而非看退出码。
+18. ~~**macOS 覆盖率门禁本就挂 3 处**~~ —— 已消除（抽出接 `&Path` 的 `owner_uid_of`、把靠 sleep 竞争的 fake `ps` 改成自持调用计数），两平台应同为 100%；macOS 上的复核仍挂在 `TODO.md`。
 
 ## 不算优劣的设计取舍
 
@@ -74,7 +74,7 @@ pm3 在**安全边界、状态正确性、工程质量**三个维度显著优于
 - 就绪探针（`ready_probe`: exec/tcp + `listen_timeout`），补 `DepGraph` 的语义缺口 —— 判定逻辑放 `usecases`，探测实现放 `adapters`
 - 指数退避（扩 `entities/src/process/restart.rs::decide_restart`，纯函数，测试成本低）
 - 日志写侧 rotate（size 触发，读侧 `LogFollower::reopen_if_rotated` 已兼容）
-- dump 记 boot 标识（`/proc/stat` 的 `btime` / `sysctl kern.boottime`）：跨机器重启后一律视 pid 失效，根治「无 token 时仍要对陌生 pid 发信号」
+- ~~dump 记 boot 标识~~ —— 已补，但取的不是 `/proc/stat` 的 `btime` / `sysctl kern.boottime`（那要新外部程序或 `libc`），而是 **pid 1 的 `ps lstart`**：复用既有 `ProcessProbe`，两平台通吃。跨过一次重启即 `PidTrust::Lost`，全程不对陌生 pid 发信号；dump 无该字段或读不出 pid 1 都退回原有 token 校验
 
 ### P2（与「极简 + 单机 + 强隔离」定位冲突，建议明确不做）
 
