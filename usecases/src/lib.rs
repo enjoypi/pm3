@@ -19,9 +19,11 @@ mod persist;
 mod supervisor_log;
 
 pub use entities::{
-    AppSpec, DependencyError, DependencyNode, PolicyError, ProcessIdentity, ProcessRuntime,
-    ProcessStatus, RestartDecision, RestartPolicy, RuntimeError, SandboxMode, SandboxPolicy,
-    SpecError, decide_restart, topo_sort, validate_app_name, validate_spec,
+    AppSpec, DependencyError, DependencyNode, MemoryVerdict, PolicyError, ProcessIdentity,
+    ProcessRuntime, ProcessStatus, ReadScope, RestartDecision, RestartPolicy, RuntimeError,
+    SandboxMode, SandboxPolicy, SpecError, covers_path, decide_memory_verdict, decide_restart,
+    normalize_root, parse_memory_limit, topo_sort, validate_app_name, validate_forbidden_roots,
+    validate_spec,
 };
 use thiserror::Error;
 
@@ -32,8 +34,8 @@ pub use self::{
     ports::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome, FingerprintError,
         Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher,
-        ProcessProbe, SandboxError, Scheduler, SignalError, Signaler, SpecResolveError,
-        SpecResolver, StrandedProcess, WrappedCommand,
+        ProcessProbe, SandboxError, Scheduler, SignalError, SignalScope, Signaler,
+        SpecResolveError, SpecResolver, StrandedProcess, WrappedCommand,
     },
     query::{
         armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,
@@ -46,8 +48,11 @@ pub use self::{
     start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
     stop::{StopOutcome, persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
-    supervision::{SupervisionFailure, SupervisionOutcome, SupervisionReply, SupervisionRequest},
-    supervisor::{SupervisionEffect, Supervisor},
+    supervision::{
+        SupervisionEffect, SupervisionFailure, SupervisionOutcome, SupervisionReply,
+        SupervisionRequest,
+    },
+    supervisor::Supervisor,
     table::ProcessTable,
     timer_state::TimerState,
 };

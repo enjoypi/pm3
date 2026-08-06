@@ -1,0 +1,57 @@
+(allow file-read* file-test-existence
+  (subpath "/usr/lib")
+  (subpath "/usr/share")
+  (subpath "/System/Library/Frameworks")
+  (subpath "/System/Library/PrivateFrameworks")
+  (subpath "/System/Library/SubFrameworks")
+  (subpath "/Library/Apple/System/Library/Frameworks")
+  (subpath "/Library/Apple/System/Library/PrivateFrameworks")
+  (subpath "/Library/Apple/usr/lib")
+  (subpath "/private/var/db/timezone")
+  (subpath "/etc")
+  (subpath "/private/etc"))
+
+(allow file-map-executable
+  (subpath "/usr/lib")
+  (subpath "/System/Library/Frameworks")
+  (subpath "/System/Library/PrivateFrameworks")
+  (subpath "/System/Library/SubFrameworks")
+  (subpath "/Library/Apple/System/Library/Frameworks")
+  (subpath "/Library/Apple/System/Library/PrivateFrameworks")
+  (subpath "/Library/Apple/usr/lib")
+  (subpath "/opt/homebrew/lib")
+  (subpath "/usr/local/lib"))
+
+(allow file-read* file-test-existence
+  (subpath "/opt/homebrew/lib")
+  (subpath "/usr/local/lib"))
+
+(allow file-read-data file-read-metadata file-test-existence
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/libexec")
+  (subpath "/opt/homebrew/bin")
+  (subpath "/usr/local/bin"))
+
+(allow file-read* file-test-existence
+  (literal "/")
+  (literal "/dev/null")
+  (literal "/dev/zero")
+  (literal "/dev/random")
+  (literal "/dev/urandom")
+  (literal "/private/etc/passwd")
+  (literal "/private/etc/group")
+  (literal "/private/etc/hosts")
+  (literal "/private/etc/services")
+  (literal "/private/etc/protocols")
+  (literal "/private/etc/localtime")
+  (literal "/System/Library/CoreServices/SystemVersion.plist"))
+
+(allow file-read-metadata
+  (literal "/etc")
+  (literal "/tmp")
+  (literal "/var")
+  (literal "/private")
+  (path-ancestors "/System/Volumes/Data/private"))

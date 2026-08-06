@@ -4,7 +4,7 @@ use std::{
 };
 
 use tokio::{
-    fs::{File, OpenOptions},
+    fs::File,
     process::{Child, Command},
     sync::Mutex,
 };
@@ -115,10 +115,7 @@ async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command
 }
 
 async fn open_for_append(app: &str, path: &str) -> Result<File, LaunchError> {
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
+    crate::private_file::append_private(std::path::Path::new(path))
         .await
         .map_err(|e| LaunchError::LogFile {
             app: app.to_string(),

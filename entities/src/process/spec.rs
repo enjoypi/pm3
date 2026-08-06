@@ -16,6 +16,7 @@ pub struct AppSpec {
     pub restart_delay_ms: u64,
     pub schedule: Option<String>,
     pub depends_on: Vec<String>,
+    pub max_memory_kib: Option<u64>,
     pub sandbox: SandboxPolicy,
 }
 

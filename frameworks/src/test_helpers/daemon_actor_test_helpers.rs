@@ -80,7 +80,7 @@ pub fn apps_file_without_restart(harness: &Harness, name: &str, script: &str) ->
 }
 
 pub fn scheduled_apps_file(harness: &Harness, name: &str, script: &str, cron: &str) -> PathBuf {
-    let cwd = harness.paths.root.to_string_lossy();
+    let cwd = workspace_of(harness);
     let fields = format!(
         "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: false\nschedule: \"{cron}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
     );
@@ -93,7 +93,7 @@ pub fn scheduled_online_apps_file(
     script: &str,
     cron: &str,
 ) -> PathBuf {
-    let cwd = harness.paths.root.to_string_lossy();
+    let cwd = workspace_of(harness);
     let fields = format!(
         "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nschedule: \"{cron}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
     );
@@ -101,7 +101,7 @@ pub fn scheduled_online_apps_file(
 }
 
 fn written_apps_file(harness: &Harness, name: &str, script: &str, autorestart: bool) -> PathBuf {
-    let cwd = harness.paths.root.to_string_lossy();
+    let cwd = workspace_of(harness);
     let fields = format!(
         "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: {autorestart}\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
     );
@@ -146,4 +146,18 @@ pub fn queue_restart(harness: &mut Harness, name: &str, delay_ms: u64) {
 
 pub fn selector(name: &str) -> AppSelector {
     AppSelector::Name(name.to_string())
+}
+
+pub fn capped_apps_file(harness: &Harness, name: &str, script: &str, max_memory: &str) -> PathBuf {
+    let cwd = workspace_of(harness);
+    let fields = format!(
+        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nmax_memory: \"{max_memory}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
+    );
+    write_both(harness, name, &fields)
+}
+
+pub fn workspace_of(harness: &Harness) -> String {
+    let workspace = harness.paths.root.join("work");
+    std::fs::create_dir_all(&workspace).expect("prepare the workspace");
+    workspace.to_string_lossy().into_owned()
 }

@@ -1,3 +1,7 @@
+use std::collections::BTreeMap;
+
+use entities::decide_memory_verdict;
+
 use crate::{
     Result, UsecaseError, record::ProcessView, selector::AppSelector, table::ProcessTable,
 };
@@ -32,6 +36,53 @@ pub fn running_pids(table: &ProcessTable) -> Vec<u32> {
         .filter(|record| record.runtime.status.is_running())
         .filter_map(|record| record.runtime.pid)
         .collect()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MemoryWatch {
+    pub name: String,
+    pub pid: u32,
+    pub limit_kib: u64,
+}
+
+#[must_use]
+pub fn memory_watch_list(table: &ProcessTable) -> Vec<MemoryWatch> {
+    table
+        .records()
+        .iter()
+        .filter(|record| record.runtime.status.is_running())
+        .filter_map(|record| {
+            Some(MemoryWatch {
+                name: record.runtime.name.clone(),
+                pid: record.runtime.pid?,
+                limit_kib: record.spec.max_memory_kib?,
+            })
+        })
+        .collect()
+}
+
+#[must_use]
+pub fn breached_memory(watched: &[MemoryWatch], sampled: &BTreeMap<u32, u64>) -> Vec<MemoryBreach> {
+    watched
+        .iter()
+        .filter_map(|watch| {
+            let rss_kib = *sampled.get(&watch.pid)?;
+            decide_memory_verdict(Some(watch.limit_kib), rss_kib)
+                .is_breached()
+                .then(|| MemoryBreach {
+                    name: watch.name.clone(),
+                    rss_kib,
+                    limit_kib: watch.limit_kib,
+                })
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MemoryBreach {
+    pub name: String,
+    pub rss_kib: u64,
+    pub limit_kib: u64,
 }
 
 #[must_use]

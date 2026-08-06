@@ -411,3 +411,17 @@ async fn resurrecting_a_broken_dump_is_tolerated() {
     harness.daemon.resurrect_saved_apps().await;
     assert_eq!(listed(&mut harness).await, 0);
 }
+
+#[tokio::test]
+async fn shutting_down_counts_only_the_services_still_running() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    start_one(&mut harness, "db", SLEEPER).await;
+    harness
+        .daemon
+        .handle(SupervisionRequest::Stop(selector("db")))
+        .await
+        .expect("should stop db");
+    harness.daemon.shutdown().await;
+    assert_eq!(status_of(&mut harness, "web").await, "online");
+}

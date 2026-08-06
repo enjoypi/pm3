@@ -3,7 +3,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use adapters::{Pm3Config, Pm3Paths, expand_home, pm3_variables, resolve_paths, runtime_dir_of};
+use adapters::{
+    Pm3Config, Pm3Paths, expand_home, pm3_variables, resolve_paths, runtime_dir_of, write_private,
+};
 
 use crate::{Error, Result};
 
@@ -29,6 +31,7 @@ pub async fn ensure_layout(paths: &Pm3Paths, cfg_dir: &Path) -> Result<()> {
     tokio::fs::create_dir_all(&paths.logs_dir)
         .await
         .map_err(|e| layout_error(&paths.logs_dir, &e))?;
+    restrict_to_owner(&paths.logs_dir).await;
     tokio::fs::create_dir_all(cfg_dir)
         .await
         .map_err(|e| layout_error(cfg_dir, &e))?;
@@ -64,7 +67,7 @@ fn log_stuck_permissions(path: &Path, reason: &str) {
 
 pub async fn write_pid_file(paths: &Pm3Paths) -> Result<()> {
     let pid = std::process::id().to_string();
-    tokio::fs::write(&paths.pid_file, pid)
+    write_private(&paths.pid_file, &pid)
         .await
         .map_err(|e| layout_error(&paths.pid_file, &e))
 }

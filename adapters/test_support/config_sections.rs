@@ -12,6 +12,7 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   command_timeout_ms: 5000
   daemon_poll_interval_ms: 50
   daemon_poll_max_interval_ms: 1000
+  memory_poll_interval_ms: 30000
   log_follow_interval_ms: 200
   log_tail_lines: 20
   daemon_channel_depth: 32
@@ -22,9 +23,16 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
     restart_delay_ms: 0
   sandbox:
     mode: "{sandbox_mode}"
+    read: "minimal"
     network: false
     seatbelt_program: "/usr/bin/sandbox-exec"
     bwrap_program: "bwrap"
+    minimal_read_roots:
+      - "/usr"
+      - "/bin"
+    forbidden_writable_roots:
+      - "/"
+      - "/etc"
   service:
     label: "pm3-fixture"
     restart_delay_secs: 2

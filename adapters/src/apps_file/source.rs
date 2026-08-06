@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use usecases::{AppSpec, SpecError, SpecResolveError, SpecResolver, validate_app_name};
 
 use super::{
-    env_file::{env_file_of, load_env_file},
+    env_file::{ENV_FILE_SUFFIX, load_env_file},
     file::{AppsFileError, SpecDefaults, load_service_file, resolve_checked},
 };
 use crate::config::Pm3Config;
@@ -27,6 +27,7 @@ impl SpecSource {
         SpecDefaults::from_config(
             &self.config,
             &self.home_dir,
+            self.cfg_dir.to_str().unwrap_or_default(),
             &self.logs_dir,
             self.tmp_dir.as_deref(),
         )
@@ -43,16 +44,18 @@ impl SpecSource {
             return Err(AppsFileError::MissingApp(name.to_string()));
         }
         let mut spec = resolve_checked(&self.defaults()?, &entry)?;
-        spec.env = self.resolve_environment(name).await?;
+        spec.env = self
+            .resolve_environment(&path.with_extension(ENV_FILE_SUFFIX), name)
+            .await?;
         Ok(spec)
     }
 
     async fn resolve_environment(
         &self,
+        path: &Path,
         name: &str,
     ) -> Result<Vec<(String, String)>, AppsFileError> {
-        let path = env_file_of(&self.cfg_dir, name)?;
-        let declared = load_env_file(&path, self.host_home.as_deref()).await?;
+        let declared = load_env_file(path, self.host_home.as_deref()).await?;
         log_environment(name, declared.len());
         Ok(with_host_home(self.host_home.as_deref(), declared))
     }

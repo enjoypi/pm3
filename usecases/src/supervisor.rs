@@ -1,13 +1,13 @@
 use entities::AppSpec;
 
 use crate::{
-    Ports,
+    Ports, SignalScope,
     delete::delete_app,
     fingerprint::pid_was_recycled,
     ports::{ExitOutcome, SpecResolver},
     query::{
-        armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,
-        running_pids, schedule_of, unswept_pids,
+        armed_schedule_names, breached_memory, describe_app, identity_token_of, list_apps,
+        memory_watch_list, owner_of_pid, running_pids, schedule_of, unswept_pids,
     },
     record::ProcessView,
     restart::{RestartOutcome, restart_app},
@@ -16,50 +16,18 @@ use crate::{
     start::{StartOutcome, StartReport, refused_services, start_apps},
     stop::{persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
-    supervision::{SupervisionFailure, SupervisionOutcome, SupervisionReply, SupervisionRequest},
+    supervision::{
+        SupervisionEffect, SupervisionFailure, SupervisionOutcome, SupervisionReply,
+        SupervisionRequest,
+    },
     supervisor_log::{
-        log_armed, log_exit_after_delete, log_failure, log_handover, log_partial_start,
-        log_settled, log_spared_force_kill, log_stale_restart, log_stuck_force_kill,
-        log_unschedulable,
+        log_armed, log_exit_after_delete, log_failure, log_handover, log_memory_breach,
+        log_partial_start, log_settled, log_spared_force_kill, log_stale_restart,
+        log_stuck_force_kill, log_unschedulable,
     },
     table::ProcessTable,
     timer_state::TimerState,
 };
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum SupervisionEffect {
-    ArmTimer {
-        name: String,
-        fire_at_ms: u64,
-        delay_ms: u64,
-    },
-    DisarmTimer {
-        name: String,
-    },
-    ScheduleRestart {
-        name: String,
-        delay_ms: u64,
-    },
-    CancelRestart {
-        name: String,
-    },
-    ScheduleForceKill {
-        name: String,
-        generation: u64,
-        pid: u32,
-        token: Option<String>,
-        delay_ms: u64,
-    },
-    CancelForceKill {
-        name: String,
-    },
-    WatchExit {
-        name: String,
-        generation: u64,
-        pid: u32,
-        token: Option<String>,
-    },
-}
 
 #[derive(Debug)]
 pub struct Supervisor {
@@ -202,6 +170,27 @@ impl Supervisor {
         effects
     }
 
+    pub async fn on_memory_sample(
+        &mut self,
+        interval_ms: u64,
+        ports: &impl Ports,
+    ) -> Vec<SupervisionEffect> {
+        let mut effects = vec![SupervisionEffect::ScheduleMemorySample {
+            delay_ms: interval_ms,
+        }];
+        let watched = memory_watch_list(&self.table);
+        if watched.is_empty() {
+            return effects;
+        }
+        let pids: Vec<u32> = watched.iter().map(|watch| watch.pid).collect();
+        let sampled = ports.resident_memory(&pids).await;
+        for breach in breached_memory(&watched, &sampled) {
+            log_memory_breach(&breach);
+            self.restart_now(&breach.name, ports, &mut effects).await;
+        }
+        effects
+    }
+
     pub async fn on_force_kill(
         &self,
         name: &str,
@@ -224,7 +213,7 @@ impl Supervisor {
             log_spared_force_kill(name, pid);
             return;
         }
-        if let Err(error) = ports.force_kill(pid).await {
+        if let Err(error) = ports.force_kill(pid, SignalScope::ProcessGroup).await {
             log_stuck_force_kill(name, pid, &error.to_string());
         }
     }

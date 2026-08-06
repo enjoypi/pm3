@@ -1,4 +1,4 @@
-use entities::{AppSpec, ProcessStatus, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, ProcessStatus, ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
 use crate::{
@@ -345,9 +345,12 @@ async fn an_unconfined_app_runs_without_a_sandbox_wrapper() {
     let unconfined = AppSpec {
         sandbox: SandboxPolicy {
             mode: SandboxMode::DangerFullAccess,
+            read: ReadScope::Minimal,
             network: true,
             writable_roots: Vec::new(),
+            readable_roots: Vec::new(),
             derived_roots: Vec::new(),
+            unreadable_roots: Vec::new(),
         },
         ..spec("api")
     };

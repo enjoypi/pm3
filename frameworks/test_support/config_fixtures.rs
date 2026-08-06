@@ -8,12 +8,16 @@ pub const START_TIMEOUT_MS: u64 = 4000;
 pub const REQUEST_TIMEOUT_MS: u64 = 30000;
 pub const COMMAND_TIMEOUT_MS: u64 = 5000;
 pub const POLL_INTERVAL_MS: u64 = 20;
+pub const MEMORY_POLL_INTERVAL_MS: u64 = 40;
 pub const FOLLOW_INTERVAL_MS: u64 = 200;
 pub const LOG_TAIL_LINES: u64 = 20;
 pub const DRAIN_TIMEOUT_SECS: u64 = 5;
 pub const MIN_UPTIME_MS: u64 = 1000;
 pub const MAX_RESTARTS: u32 = 15;
 pub const SANDBOX_MODE: &str = "danger-full-access";
+pub const SANDBOX_READ: &str = "minimal";
+pub const MINIMAL_READ_ROOT: &str = "/usr";
+pub const FORBIDDEN_WRITABLE_ROOT: &str = "/";
 pub const SERVICE_LABEL: &str = "pm3-fixture";
 pub const SERVICE_SEARCH_PATH: &str = "/usr/bin:/bin";
 pub const SERVICE_RESTART_DELAY_SECS: u64 = 2;
@@ -38,6 +42,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         command_timeout_ms: COMMAND_TIMEOUT_MS,
         daemon_poll_interval_ms: POLL_INTERVAL_MS,
         daemon_poll_max_interval_ms: POLL_INTERVAL_MS,
+        memory_poll_interval_ms: MEMORY_POLL_INTERVAL_MS,
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         log_tail_lines: LOG_TAIL_LINES,
         daemon_channel_depth: CHANNEL_DEPTH,
@@ -49,9 +54,12 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         },
         sandbox: SandboxConfig {
             mode: SANDBOX_MODE.to_string(),
+            read: SANDBOX_READ.to_string(),
             network: false,
             seatbelt_program: SEATBELT_PROGRAM.to_string(),
             bwrap_program: BWRAP_PROGRAM.to_string(),
+            minimal_read_roots: vec![MINIMAL_READ_ROOT.to_string()],
+            forbidden_writable_roots: vec![FORBIDDEN_WRITABLE_ROOT.to_string()],
         },
         service: ServiceConfig {
             label: SERVICE_LABEL.to_string(),
@@ -78,6 +86,7 @@ pub fn config_yaml(home: &str) -> String {
   command_timeout_ms: {COMMAND_TIMEOUT_MS}
   daemon_poll_interval_ms: {POLL_INTERVAL_MS}
   daemon_poll_max_interval_ms: {POLL_INTERVAL_MS}
+  memory_poll_interval_ms: {MEMORY_POLL_INTERVAL_MS}
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   log_tail_lines: {LOG_TAIL_LINES}
   daemon_channel_depth: {CHANNEL_DEPTH}
@@ -88,9 +97,14 @@ pub fn config_yaml(home: &str) -> String {
     restart_delay_ms: 0
   sandbox:
     mode: "{SANDBOX_MODE}"
+    read: "{SANDBOX_READ}"
     network: false
     seatbelt_program: "{SEATBELT_PROGRAM}"
     bwrap_program: "{BWRAP_PROGRAM}"
+    minimal_read_roots:
+      - "{MINIMAL_READ_ROOT}"
+    forbidden_writable_roots:
+      - "{FORBIDDEN_WRITABLE_ROOT}"
   service:
     label: "{SERVICE_LABEL}"
     restart_delay_secs: {SERVICE_RESTART_DELAY_SECS}

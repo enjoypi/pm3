@@ -15,6 +15,8 @@ pub struct InlineStart<'s> {
     pub autorestart: Option<bool>,
     pub network: bool,
     pub writable_dirs: &'s [String],
+    pub readable_dirs: &'s [String],
+    pub max_memory: Option<&'s str>,
     pub force: bool,
 }
 
@@ -57,6 +59,8 @@ pub async fn prepare_inline(
         autorestart: request.autorestart,
         network: request.network,
         writable_dirs: request.writable_dirs,
+        readable_dirs: request.readable_dirs,
+        max_memory: request.max_memory,
     });
     let contents = encode_service_file(&entry);
     let path = crate::apps_file::service_file_of(context.cfg_dir, request.name)?;

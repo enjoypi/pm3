@@ -71,7 +71,8 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - 改 `usecases/src/ports/*` 里 trait 方法的签名要同步 3 个实现：`adapters` 侧的真实现（如 `YamlDumpStore`）、`frameworks/src/daemon/ports.rs` 的 `DaemonPorts` 转发、`usecases/src/test_helpers/ports_test_helpers.rs` 的 `FakePorts`；`FakePorts` 新增的 `seed_*` 若没人调用会触发 `dead_code`，且它计入覆盖率门禁
 - 给 `ExitOutcome` 加变体要同步 4 处：`usecases/src/ports/launcher.rs` 的 enum 与 `failed()`、`adapters/src/process/tokio_launcher.rs`（子进程）、`adapters/src/process/watcher.rs`（adopt 来的进程）、`frameworks/src/daemon/timers.rs` 的 `unwrap_or`
 - 给 `ProcessRuntime` 加字段要同步 4 处：`adapters/src/persistence/dto.rs` 的 `RuntimeDto` + `decode_state` + `encode_state`（两处都穷举解构）、`adapters/test_support/process_records.rs`；跨版本可读的字段一律 `#[serde(default)]`
-- 给 `SandboxPolicy` 加字段会波及 ~13 处字面量（四层的 test_helpers/test_support）→ 加完先 `cargo build --workspace` 靠 E0063 逐个补齐
+- 给 `SandboxPolicy` 加字段会波及 ~13 处字面量、给 `AppSpec` 加字段会波及 ~9 处（四层的 test_helpers/test_support）→ 加完先 `cargo build --workspace --all-targets` 靠 E0063 逐个补齐，字段插在字面量开头即可（顺序无关）
+- 落盘 MUST 走 `adapters::write_private` / `append_private`（`0o600`，`private_file.rs`）：`tokio::fs::write` 与裸 `OpenOptions` 把权限交给 umask，而 pm3 从不设 umask。`.mode()` 只在**创建**时生效，已存在的旧文件权限不变——真机升级后的旧 `dump.yaml` 仍是 0644，靠 `pm3.home` 的 0700 兜底
 - 写 `cfg_dir/<name>.yaml` 的两条路径（apps 文件与 `pm3 start --name`）MUST 共用**同一个** `adapters::fold_entry`：它把 `script`/`cwd`/`args`/`sandbox.writable_roots` 四处折回 `${HOME}`/`${PM3_SERVICE_CWD}` 并对 roots 去重。曾经 frameworks 与 adapters 各有一份副本，已分歧到「inline 去重、apps 不去重」，同一份声明编码出两种 yaml → `pm3 start <apps-file>` 被 `reconcile` 拒绝（症状：diff 只差一行重复的 root，或全是 `-"${HOME}/x"` / `+"/Users/me/x"`）。新增含路径的字段只改 `fold_entry` 一处
 - 新增 `${...}` 占位符 MUST 在 `substitute_env_vars` 里登记为保留名（`SERVICE_CWD_NAME` 那个分支），否则加载 cfg 文件时因「变量未设置且无默认值」直接报 `EnvVarNotSet`；保留名不支持 `:-` 默认值
 
@@ -107,7 +108,25 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 ### 沙箱模式
 
 - **自带沙箱的程序 MUST 用 `mode: danger-full-access`**：seatbelt 不允许嵌套，sshd 的特权分离子进程调 `sandbox_init` 建自己的沙箱时被拒 → 日志 `sandbox initialization failed: Operation not permitted` / `ssh_sandbox_child: sandbox_init: Operation not permitted [preauth]`，症状是端口监听正常但握手就断（客户端看到 `kex_exchange_identification: read: Connection reset by peer`）。换 `read-only` 之类无用（任何 profile 都拒），OpenSSH 7.5+ 也已移除 `UsePrivilegeSeparation no`。`adapters/src/sandbox/wrapper.rs` 对 `is_unconfined()` 直接返回未包装命令，等于恢复 launchd 时代的约束强度——不是降级。同理 macOS app bundle 也套不进去（Google Drive 靠 setuid root 的 `mount_helper` 挂载盘符）
-- `pm3 start` **没有设置 mode 的命令行开关**（只有 `--network` / `--writable-dir` / `--no-autorestart` / `--cron` / `--cwd` / `--force`）：非默认 mode 只能改 `cfg_dir/<name>.yaml` 再 `pm3 restart`（restart 会重新读盘）
+- `pm3 start` **没有设置 mode 的命令行开关**（只有 `--network` / `--writable-dir` / `--readable-dir` / `--max-memory` / `--no-autorestart` / `--cron` / `--cwd` / `--force`）：非默认 mode 只能改 `cfg_dir/<name>.yaml` 再 `pm3 restart`（restart 会重新读盘）
+
+### 沙箱读面
+
+`SandboxPolicy` 的路径分四类，语义参考 `~/codex` 的 `readable_roots`/`writable_roots`/`unreadable_roots` 三元组（`codex-rs/protocol/src/permissions.rs`），但只保留 `read: full|minimal` 两档，不引入它那套最长前缀裁决表。
+
+| 字段 | 来源 | 进指纹 |
+|---|---|---|
+| `read` / `readable_roots` | 运维声明 | 是 |
+| `writable_roots` | 运维声明 | 是 |
+| `derived_roots` | pm3 推导 cwd/logs/tmp | 否 |
+| `unreadable_roots` | pm3 注入 `pm3.home` 与 `cfg_dir` | 否 |
+
+- **默认 `read: minimal`**：`--tmpfs /` 打底后只铺 `pm3.sandbox.minimal_read_roots` + 声明的 `readable_roots` + **程序自身的路径**（漏了最后一条 exec 直接 ENOENT）。服务报 EACCES 时先补 `readable_roots`，退路是该服务写 `read: full`
+- **`unreadable_roots` 与「可写根」的先后顺序是安全语义，不是风格**：bwrap 是 `--tmpfs <hidden>` → `--bind <granted>`（最浅的先）→ **再** `--tmpfs` 那些落在 granted 之下的 hidden（`nested_in`）；seatbelt 不能靠顺序，deny 会连带遮住嵌套其中的 cwd，所以每条 allow 都带 `(require-not (subpath (param "HIDDEN_i")))` 的 carveout（照抄 codex `seatbelt.rs:369-406`）
+- **任何可写根都 MUST NOT 覆盖 hidden root**（`validate_policy` 拒绝，含 `derived_roots`）：`cwd: <pm3.home>` 会把 socket 与全部 `.env` 一起交回给服务，两种后端都救不回来——测试 fixture 因此一律用 `<home>/work` 而非 `<home>` 当 cwd
+- seatbelt 的路径一律走 `-D KEY=值` 参数 + `(param "KEY")`，profile 文本里不出现任何用户路径：这消掉了 SBPL 注入面，也是「含换行的 root 直接拒绝」那个 hack 被删掉的原因
+- `network: true` 只放行 IP（`(allow network-outbound (remote ip))`）：裸 `(allow network-outbound)` 连 unix socket 一起放行，macOS 上等于把 `pm3.sock` 交给服务。Linux 侧不靠这条——实测 `--ro-bind / /` 下 connect 直接 EACCES（只读挂载没有写权限），`--tmpfs` 遮盖后是 ENOENT
+- **bwrap MUST NOT 加 `--new-session`**（codex 加了，pm3 不能）：setsid 会让服务脱离 bwrap 的进程组，`kill -TERM -<pgid>` 打不到它，优雅停止退化成「杀 bwrap → pid namespace 塌掉 → 内核 SIGKILL」。TIOCSTI 面靠内核 `dev.tty.legacy_tiocsti=0`（Linux 6.2+ 默认）与「stdin 是 `Stdio::null()`」兜底
 
 ### cron 调度
 
@@ -115,6 +134,14 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - `Fire` 事件 MUST 先比对 `timers.get(name).fire_at_ms == Some(fire_at_ms)` 再执行，否则已过期的定时器会误触发；`stop`/`delete`/`stop_all` 三条路径 MUST 走 `disarm`（remove + `JoinHandle::abort`）——`Daemon.timers: HashMap<name, Timer>` 同时是 `next` 列数据源、调度激活标记与过期判别依据，这样 `next` 有值即「等触发」、空即「真停了」，避开 pm2 那句 `stopped but CRON RESTART is still UP` 的语义混淆
 - `Timer` MUST 持 `JoinHandle` 并在重新 `arm_timer` 时 abort 旧 task：只存 `fire_at_ms` 会让每次 restart 多留一个睡到旧 deadline 的孤儿 task（日更 cron + 每分钟 restart ⇒ 24h 累积上千个）
 - 「这个服务的调度是否激活」MUST 落盘（`ProcessRuntime::schedule_armed`）：只存在内存 `timers` 里的话，daemon 换代后 `arm_known_timers` 会把用户 `stop` 掉的 cron 服务重新武装、到点自行复活
+
+### 内存熔断
+
+- 采样 MUST 走**独立一条** `ps -ww -o pid=,rss=`（`resident_memory_kib`），MUST NOT 往 `BATCH_FORMAT`（`pid=,lstart=`）加列：`parse_report` 按第一个空格切、余下整段当身份令牌，加一列 rss 会让每次内存波动都被判成 pid 复用，全部服务在换代时被驱逐
+- `AdoptedWatch` 不能复用：`wait_for_exit` 先判 `is_child`，自己 spawn 的进程走 `Child::wait`，所以那条轮询常态下是空的；它的 cadence 还会退避到 `daemon_poll_max_interval_ms`
+- tick 是自持循环（`SupervisionEffect::ScheduleMemorySample` → `DaemonEvent::SampleMemory` → 处理完再排下一次），**无条件续排**、只在「没有服务声明限额」时跳过 `ps`：这样不必跟踪「tick 是否在途」，start/delete 也不用管重新武装
+- `max_memory_kib` **不进指纹**（`fingerprint.rs` 里标 `_`）：限额是运维策略不是进程身份，改限额不该 evict+respawn
+- 超限只调 `restart_app`（与 cron 同一条路径），所以 `restart` 是异步的——测试断言要看 `stopping` 状态或事件，不能直接比对新旧 pid
 
 ### CLI ↔ daemon 协议
 
@@ -136,7 +163,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - 收紧 `.env` 权限（`chmod 0600`）MUST 先用 `symlink_metadata` 排除软链：`set_permissions` 跟随软链，把 `<name>.env` 链到 `/etc/creds/x.env` 这类共享凭据时会改到**别人的**文件上（症状：另一个消费者突然 EACCES，而 pm3 这边只有一条 debug 日志）
 - 凭据 MUST NOT 出现在任何错误文案里：`EnvFileError` 只带路径、行号、key 名。曾经 `--env` 的 `InvalidEnvPair` 回显整个实参、yaml 冲突的 `diff_lines` 把新旧凭据一起打进 stderr —— 后者随「yaml 不再有 env」自动消失
 - pm3 **只读不写** `.env`（CLI 的 `--env` 已移除），所以 `ServiceUndo` / `reconcile` 都不必管它；只有 `forget` 要连带删除
-- `render_identity` / `encode_state` / `ProcessView` 三处都是**全字段解构**，给 `AppSpec` 加字段会编译失败而不是静默泄漏 —— 保持这个形态。`AppSpec` derive 了 `Debug` 但没有 `Serialize`，MUST NOT 用 `?spec` / `{:?}` 打印它
+- 给 `AppSpec` 加字段时，**只有 `usecases/src/fingerprint.rs` 的 `render_identity` 会编译失败**（真·全字段 `let AppSpec { .. }` 解构）：`encode_state` 是 `let ProcessRecord { spec: _, runtime }`、`ProcessView` 是字段访问式构造，两者都会静默吞掉新字段。新字段若含凭据性质的内容，MUST 自己确认这两处。`AppSpec` derive 了 `Debug` 但没有 `Serialize`，MUST NOT 用 `?spec` / `{:?}` 打印它
 - `pm3 restart` 会**重新读盘**（`Supervisor::reload_declaration` 先 `resolver.prepare` 再覆盖 `record.spec`），所以改完 `.env` 用 restart 就生效；`on_restart`（延迟重启）与 `on_fire`（cron）MUST NOT 重读，避免定时任务因文件临时问题失败
 
 ### 日志字段

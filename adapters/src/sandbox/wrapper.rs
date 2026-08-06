@@ -6,17 +6,19 @@ use super::{
     seatbelt::seatbelt_argv,
 };
 
-const UNRENDERABLE_PATH_CHARACTERS: [char; 1] = ['\n'];
-
 #[derive(Clone, Debug)]
 pub struct SandboxCommandWrapper {
     host: Option<HostSandbox>,
+    minimal_read_roots: Vec<String>,
 }
 
 impl SandboxCommandWrapper {
     #[must_use]
-    pub const fn new(host: Option<HostSandbox>) -> Self {
-        Self { host }
+    pub const fn new(host: Option<HostSandbox>, minimal_read_roots: Vec<String>) -> Self {
+        Self {
+            host,
+            minimal_read_roots,
+        }
     }
 
     #[must_use]
@@ -45,29 +47,16 @@ impl CommandWrapper for SandboxCommandWrapper {
             });
         };
         Ok(match host.backend {
-            SandboxBackend::Seatbelt => {
-                reject_unrenderable_roots(app, policy)?;
-                seatbelt_argv(&host.program, policy, program, args)
-            }
-            SandboxBackend::Bwrap => bwrap_argv(&host.program, policy, program, args),
+            SandboxBackend::Seatbelt => seatbelt_argv(&host.program, policy, program, args),
+            SandboxBackend::Bwrap => bwrap_argv(
+                &host.program,
+                &self.minimal_read_roots,
+                policy,
+                program,
+                args,
+            ),
         })
     }
-}
-
-fn reject_unrenderable_roots(app: &str, policy: &SandboxPolicy) -> Result<(), SandboxError> {
-    let granted = policy.granted_roots();
-    let offending = granted
-        .iter()
-        .find(|root| root.contains(UNRENDERABLE_PATH_CHARACTERS));
-    let Some(root) = offending else {
-        return Ok(());
-    };
-    Err(SandboxError::Unsupported {
-        app: app.to_string(),
-        reason: format!(
-            "writable root '{root}' contains a newline that cannot be expressed in a seatbelt profile"
-        ),
-    })
 }
 
 #[cfg(test)]

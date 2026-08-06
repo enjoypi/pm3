@@ -21,14 +21,18 @@ pub struct InlineRequest<'r> {
     pub autorestart: Option<bool>,
     pub network: bool,
     pub writable_dirs: &'r [String],
+    pub readable_dirs: &'r [String],
+    pub max_memory: Option<&'r str>,
 }
 
 #[must_use]
 pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
     let sandbox = SandboxEntry {
         mode: None,
+        read: None,
         network: request.network.then_some(true),
         writable_roots: (!request.writable_dirs.is_empty()).then(|| request.writable_dirs.to_vec()),
+        readable_roots: (!request.readable_dirs.is_empty()).then(|| request.readable_dirs.to_vec()),
     };
     let entry = AppEntry {
         name: request.name.to_string(),
@@ -42,6 +46,7 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
         max_restarts: None,
         restart_delay_ms: None,
         schedule: request.cron.map(ToString::to_string),
+        max_memory: request.max_memory.map(ToString::to_string),
         sandbox: Some(sandbox),
     };
     fold_entry(&entry, request.home)
@@ -61,9 +66,17 @@ pub fn fold_entry(entry: &AppEntry, home: Option<&str>) -> AppEntry {
         sandbox.writable_roots = sandbox
             .writable_roots
             .as_ref()
-            .map(|roots| dedup_roots(roots.iter().map(|root| fold_home(root, home))));
+            .map(|roots| fold_roots(roots, home));
+        sandbox.readable_roots = sandbox
+            .readable_roots
+            .as_ref()
+            .map(|roots| fold_roots(roots, home));
     }
     folded
+}
+
+fn fold_roots(roots: &[String], home: Option<&str>) -> Vec<String> {
+    dedup_roots(roots.iter().map(|root| fold_home(root, home)))
 }
 
 #[must_use]
@@ -103,6 +116,7 @@ fn encode_entry(entry: &AppEntry) -> String {
     text.push_str(&optional("max_restarts", entry.max_restarts));
     text.push_str(&optional("restart_delay_ms", entry.restart_delay_ms));
     text.push_str(&optional_text("schedule", entry.schedule.as_deref()));
+    text.push_str(&optional_text("max_memory", entry.max_memory.as_deref()));
     text.push_str(&encode_sandbox(entry.sandbox.as_ref()));
     text
 }
@@ -112,15 +126,21 @@ fn encode_sandbox(sandbox: Option<&SandboxEntry>) -> String {
         return String::new();
     };
     let mode = section.mode.as_deref().map(quote);
-    let roots = section.writable_roots.as_deref().unwrap_or_default();
+    let read = section.read.as_deref().map(quote);
+    let writable = section.writable_roots.as_deref().unwrap_or_default();
+    let readable = section.readable_roots.as_deref().unwrap_or_default();
     let mut text = String::new();
     if let Some(quoted) = mode {
         text.push_str(&nested("mode", &quoted));
     }
+    if let Some(quoted) = read {
+        text.push_str(&nested("read", &quoted));
+    }
     if let Some(network) = section.network {
         text.push_str(&nested("network", &network.to_string()));
     }
-    text.push_str(&sequence(NESTED_INDENT, "writable_roots", roots));
+    text.push_str(&sequence(NESTED_INDENT, "writable_roots", writable));
+    text.push_str(&sequence(NESTED_INDENT, "readable_roots", readable));
     if text.is_empty() {
         return text;
     }

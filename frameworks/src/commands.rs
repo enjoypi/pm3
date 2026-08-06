@@ -7,9 +7,10 @@ use std::{
 use adapters::{
     APPS_PATH, AppConfig, DAEMON_NOT_RUNNING, InlineStart, KillSignaler, LogFollower, Pm3Config,
     Pm3Paths, Reconciled, ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext,
-    ServiceUndo, Signaler as _, app_action_path, app_path, decode_reply, encode_start_request,
-    forget, load_and_parse_config, log_paths, prepare_inline, read_tail, render_daemon_gone,
-    render_daemon_stopped, split_apps_file, validate_app_name, wait_until_released,
+    ServiceUndo, SignalScope, Signaler as _, app_action_path, app_path, decode_reply,
+    encode_start_request, forget, load_and_parse_config, log_paths, prepare_inline, read_tail,
+    render_daemon_gone, render_daemon_stopped, split_apps_file, validate_app_name,
+    wait_until_released,
 };
 
 use crate::{
@@ -183,7 +184,7 @@ pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<Strin
         return report_gone_daemon(&client, &session.paths, stopped.as_deref()).await;
     };
     KillSignaler::with_stop_signal(STOP_SIGNAL_TERM.to_string(), pm3.command_timeout_ms)
-        .terminate(pid)
+        .terminate(pid, SignalScope::ProcessGroup)
         .await?;
     let budget_ms = pm3.start_timeout_ms;
     if !wait_until_released(

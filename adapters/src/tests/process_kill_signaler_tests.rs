@@ -5,7 +5,7 @@ use tokio::{
     io::{AsyncBufReadExt as _, BufReader},
     process::{Child, Command},
 };
-use usecases::{Liveness, ProcessProbe as _};
+use usecases::{Liveness, ProcessProbe as _, SignalScope};
 
 use super::*;
 
@@ -82,7 +82,10 @@ fn stalling_kill(dir: &TempDir) -> String {
 async fn terminate_signals_a_running_child() {
     let mut child = spawn_sleeper();
     let pid = pid_of(&child);
-    signaler().terminate(pid).await.expect("should signal");
+    signaler()
+        .terminate(pid, SignalScope::ProcessGroup)
+        .await
+        .expect("should signal");
     let status = child.wait().await.expect("should reap");
     assert!(
         !status.success(),
@@ -94,7 +97,10 @@ async fn terminate_signals_a_running_child() {
 async fn force_kill_signals_a_running_child() {
     let mut child = spawn_sleeper();
     let pid = pid_of(&child);
-    signaler().force_kill(pid).await.expect("should signal");
+    signaler()
+        .force_kill(pid, SignalScope::ProcessGroup)
+        .await
+        .expect("should signal");
     let status = child.wait().await.expect("should reap");
     assert_eq!(status.code(), None);
 }
@@ -104,7 +110,7 @@ async fn terminate_reaches_a_grandchild_through_the_process_group() {
     let mut child = spawn_group_leader_with_grandchild();
     let grandchild = announced_pid(&mut child).await;
     signaler()
-        .terminate(pid_of(&child))
+        .terminate(pid_of(&child), SignalScope::ProcessGroup)
         .await
         .expect("should signal");
     child.wait().await.expect("should reap");
@@ -119,7 +125,7 @@ async fn terminate_honours_the_configured_stop_signal() {
     let mut child = spawn_sleeper();
     let pid = pid_of(&child);
     KillSignaler::with_stop_signal("INT".to_string(), SIGNAL_TIMEOUT_MS)
-        .terminate(pid)
+        .terminate(pid, SignalScope::ProcessGroup)
         .await
         .expect("should signal");
     let status = child.wait().await.expect("should reap");
@@ -133,7 +139,11 @@ async fn terminate_honours_the_configured_stop_signal() {
 async fn terminate_gives_up_on_a_kill_program_that_never_answers() {
     let dir = TempDir::new().expect("temp dir");
     let signaler = KillSignaler::new(stalling_kill(&dir), "TERM".to_string(), STALL_TIMEOUT_MS);
-    let err = signaler.terminate(2).await.unwrap_err().to_string();
+    let err = signaler
+        .terminate(2, SignalScope::ProcessGroup)
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(
         err.contains(&format!("did not answer within {STALL_TIMEOUT_MS}ms")),
         "got: {err}"
@@ -143,7 +153,7 @@ async fn terminate_gives_up_on_a_kill_program_that_never_answers() {
 #[tokio::test]
 async fn terminate_reports_a_pid_the_system_rejects() {
     let err = signaler()
-        .terminate(MISSING_PID)
+        .terminate(MISSING_PID, SignalScope::ProcessGroup)
         .await
         .unwrap_err()
         .to_string();
@@ -156,7 +166,7 @@ async fn terminate_reports_a_pid_the_system_rejects() {
 #[tokio::test]
 async fn terminate_explains_why_the_system_refused() {
     let err = signaler()
-        .terminate(MISSING_PID)
+        .terminate(MISSING_PID, SignalScope::ProcessGroup)
         .await
         .unwrap_err()
         .to_string();
@@ -166,7 +176,7 @@ async fn terminate_explains_why_the_system_refused() {
 #[tokio::test]
 async fn force_kill_reports_a_pid_the_system_rejects() {
     let err = signaler()
-        .force_kill(MISSING_PID)
+        .force_kill(MISSING_PID, SignalScope::ProcessGroup)
         .await
         .unwrap_err()
         .to_string();
@@ -180,7 +190,11 @@ async fn terminate_reports_a_missing_kill_program() {
         STOP_SIGNAL_TERM.to_string(),
         SIGNAL_TIMEOUT_MS,
     );
-    let err = signaler.terminate(2).await.unwrap_err().to_string();
+    let err = signaler
+        .terminate(2, SignalScope::ProcessGroup)
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("cannot signal pid 2"), "got: {err}");
 }
 
@@ -191,14 +205,18 @@ async fn terminate_falls_back_to_the_exit_status_when_kill_stays_silent() {
         STOP_SIGNAL_TERM.to_string(),
         SIGNAL_TIMEOUT_MS,
     );
-    let err = signaler.terminate(2).await.unwrap_err().to_string();
+    let err = signaler
+        .terminate(2, SignalScope::ProcessGroup)
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("exited with status"), "got: {err}");
 }
 
 #[tokio::test]
 async fn terminate_refuses_a_pid_that_would_widen_into_a_broadcast() {
     let err = signaler()
-        .terminate(BROADCAST_PID)
+        .terminate(BROADCAST_PID, SignalScope::ProcessGroup)
         .await
         .unwrap_err()
         .to_string();
@@ -208,7 +226,7 @@ async fn terminate_refuses_a_pid_that_would_widen_into_a_broadcast() {
 #[tokio::test]
 async fn force_kill_refuses_a_pid_that_would_widen_into_a_broadcast() {
     let err = signaler()
-        .force_kill(BROADCAST_PID)
+        .force_kill(BROADCAST_PID, SignalScope::ProcessGroup)
         .await
         .unwrap_err()
         .to_string();
@@ -218,7 +236,7 @@ async fn force_kill_refuses_a_pid_that_would_widen_into_a_broadcast() {
 #[tokio::test]
 async fn terminate_refuses_the_pid_that_means_the_calling_group() {
     let err = signaler()
-        .terminate(SELF_GROUP_PID)
+        .terminate(SELF_GROUP_PID, SignalScope::ProcessGroup)
         .await
         .unwrap_err()
         .to_string();
@@ -228,9 +246,29 @@ async fn terminate_refuses_the_pid_that_means_the_calling_group() {
 #[tokio::test]
 async fn terminate_refuses_the_init_pid() {
     let err = signaler()
-        .terminate(INIT_PID)
+        .terminate(INIT_PID, SignalScope::ProcessGroup)
         .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("outside the safe range"), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_single_pid_scope_never_signals_the_process_group() {
+    let mut child = spawn_group_leader_with_grandchild();
+    let grandchild = announced_pid(&mut child).await;
+    signaler()
+        .terminate(pid_of(&child), SignalScope::SinglePid)
+        .await
+        .expect("should signal");
+    child.wait().await.expect("should reap");
+    let survived = outlives_its_group(grandchild).await;
+    signaler()
+        .force_kill(grandchild, SignalScope::SinglePid)
+        .await
+        .ok();
+    assert!(
+        survived,
+        "an unverified pid must not take its neighbours down"
+    );
 }

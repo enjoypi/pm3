@@ -1,4 +1,4 @@
-use usecases::SandboxMode;
+use usecases::{ReadScope, SandboxMode};
 
 use super::{super::backend::HostSandbox, *};
 
@@ -19,18 +19,25 @@ fn host(backend: SandboxBackend) -> HostSandbox {
     }
 }
 
+fn wrapper(host: Option<HostSandbox>) -> SandboxCommandWrapper {
+    SandboxCommandWrapper::new(host, vec!["/usr".to_string()])
+}
+
 fn policy(mode: SandboxMode, writable_roots: &[&str]) -> SandboxPolicy {
     SandboxPolicy {
         mode,
+        read: ReadScope::Full,
         network: false,
         writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
+        readable_roots: Vec::new(),
         derived_roots: Vec::new(),
+        unreadable_roots: Vec::new(),
     }
 }
 
 #[test]
 fn a_seatbelt_backend_wraps_with_sandbox_exec() {
-    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Seatbelt)));
+    let sandbox = wrapper(Some(host(SandboxBackend::Seatbelt)));
     let wrapped = sandbox
         .wrap(
             "api",
@@ -44,7 +51,7 @@ fn a_seatbelt_backend_wraps_with_sandbox_exec() {
 
 #[test]
 fn a_bwrap_backend_wraps_with_bubblewrap() {
-    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Bwrap)));
+    let sandbox = wrapper(Some(host(SandboxBackend::Bwrap)));
     let wrapped = sandbox
         .wrap(
             "api",
@@ -57,8 +64,25 @@ fn a_bwrap_backend_wraps_with_bubblewrap() {
 }
 
 #[test]
+fn a_bwrap_backend_lays_the_configured_read_allowlist_in() {
+    let sandbox = wrapper(Some(host(SandboxBackend::Bwrap)));
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        ..policy(SandboxMode::WorkspaceWrite, &[])
+    };
+    let wrapped = sandbox
+        .wrap("api", &confined, "/usr/bin/node", &[])
+        .expect("bwrap should wrap");
+    assert!(
+        wrapped.args.contains(&"/usr".to_string()),
+        "got: {:?}",
+        wrapped.args
+    );
+}
+
+#[test]
 fn a_missing_backend_refuses_to_start_a_confined_app() {
-    let sandbox = SandboxCommandWrapper::new(None);
+    let sandbox = wrapper(None);
     let err = sandbox
         .wrap(
             "api",
@@ -75,7 +99,7 @@ fn a_missing_backend_refuses_to_start_a_confined_app() {
 
 #[test]
 fn a_missing_backend_also_refuses_a_read_only_app() {
-    let sandbox = SandboxCommandWrapper::new(None);
+    let sandbox = wrapper(None);
     let err = sandbox
         .wrap("api", &policy(SandboxMode::ReadOnly, &[]), "/bin/ls", &[])
         .unwrap_err();
@@ -84,7 +108,7 @@ fn a_missing_backend_also_refuses_a_read_only_app() {
 
 #[test]
 fn an_unconfined_app_runs_unwrapped_even_without_a_backend() {
-    let sandbox = SandboxCommandWrapper::new(None);
+    let sandbox = wrapper(None);
     let wrapped = sandbox
         .wrap(
             "api",
@@ -98,43 +122,28 @@ fn an_unconfined_app_runs_unwrapped_even_without_a_backend() {
 }
 
 #[test]
-fn seatbelt_escapes_a_writable_root_that_holds_a_quote() {
-    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Seatbelt)));
+fn seatbelt_carries_an_awkward_writable_root_as_a_parameter_instead_of_escaping_it() {
+    let sandbox = wrapper(Some(host(SandboxBackend::Seatbelt)));
     let wrapped = sandbox
         .wrap(
             "api",
-            &policy(SandboxMode::WorkspaceWrite, &["/srv/\"evil"]),
+            &policy(SandboxMode::WorkspaceWrite, &["/srv/a\"b\nc"]),
             "/usr/bin/node",
             &[],
         )
-        .expect("a quote should be escaped, not refused");
-    let profile = wrapped.args.get(1).expect("the profile is the second arg");
+        .expect("a parameter needs no escaping");
     assert!(
-        profile.contains(r#"(subpath "/srv/\"evil")"#),
-        "got: {profile}"
-    );
-}
-
-#[test]
-fn seatbelt_refuses_a_writable_root_that_holds_a_newline() {
-    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Seatbelt)));
-    let err = sandbox
-        .wrap(
-            "api",
-            &policy(SandboxMode::WorkspaceWrite, &["/srv/a\nb"]),
-            "/usr/bin/node",
-            &[],
-        )
-        .unwrap_err();
-    assert!(
-        matches!(err, SandboxError::Unsupported { .. }),
-        "got: {err}"
+        wrapped
+            .args
+            .contains(&"WRITABLE_0=/srv/a\"b\nc".to_string()),
+        "got: {:?}",
+        wrapped.args
     );
 }
 
 #[test]
 fn bwrap_accepts_a_writable_root_that_a_seatbelt_profile_cannot_render() {
-    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Bwrap)));
+    let sandbox = wrapper(Some(host(SandboxBackend::Bwrap)));
     let wrapped = sandbox
         .wrap(
             "api",
@@ -152,6 +161,6 @@ fn bwrap_accepts_a_writable_root_that_a_seatbelt_profile_cannot_render() {
 
 #[test]
 fn the_configured_backend_is_reported_for_logging() {
-    let sandbox = SandboxCommandWrapper::new(Some(host(SandboxBackend::Bwrap)));
+    let sandbox = wrapper(Some(host(SandboxBackend::Bwrap)));
     assert_eq!(sandbox.backend(), Some(SandboxBackend::Bwrap));
 }

@@ -1,4 +1,4 @@
-use std::future::Future;
+use std::{collections::BTreeMap, future::Future};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Liveness {
@@ -10,6 +10,7 @@ pub enum Liveness {
 pub trait ProcessProbe: Send + Sync {
     fn identity(&self, pid: u32) -> impl Future<Output = Liveness> + Send;
     fn wait_gone(&self, pid: u32, timeout_ms: u64) -> impl Future<Output = Liveness> + Send;
+    fn resident_memory(&self, pids: &[u32]) -> impl Future<Output = BTreeMap<u32, u64>> + Send;
 }
 
 impl Liveness {

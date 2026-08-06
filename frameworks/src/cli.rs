@@ -118,6 +118,20 @@ pub struct StartArgs {
     )]
     pub writable_dirs: Vec<String>,
 
+    #[arg(
+        long = "readable-dir",
+        value_name = "DIR",
+        help = "Extra readable directory; only a confined read scope needs it"
+    )]
+    pub readable_dirs: Vec<String>,
+
+    #[arg(
+        long = "max-memory",
+        value_name = "SIZE",
+        help = "Restart the program when its resident memory grows past this size, e.g. 300M"
+    )]
+    pub max_memory: Option<String>,
+
     #[arg(long, help = "Overwrite an existing service file")]
     pub force: bool,
 
@@ -235,6 +249,8 @@ async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
                 autorestart: args.no_autorestart.then_some(false),
                 network: args.network,
                 writable_dirs: &args.writable_dirs,
+                readable_dirs: &args.readable_dirs,
+                max_memory: args.max_memory.as_deref(),
                 force: args.force,
             };
             commands::start_inline(config, &request).await?

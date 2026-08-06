@@ -3,14 +3,15 @@ use std::{
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
-use entities::{AppSpec, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, ReadScope, SandboxMode, SandboxPolicy};
 
 use crate::{
     Ports,
     ports::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, FingerprintError, Fingerprinter,
         LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe,
-        SandboxError, Scheduler, SignalError, Signaler, StrandedProcess, WrappedCommand,
+        SandboxError, Scheduler, SignalError, SignalScope, Signaler, StrandedProcess,
+        WrappedCommand,
     },
     record::ProcessRecord,
 };
@@ -39,6 +40,7 @@ struct FakeState {
     stubborn: Vec<u32>,
     waited: Vec<u32>,
     force_killed: Vec<u32>,
+    signal_scopes: Vec<(u32, SignalScope)>,
     force_failures: Vec<u32>,
     stored: Vec<ProcessRecord>,
     stranded: Vec<StrandedProcess>,
@@ -177,6 +179,11 @@ impl FakePorts {
     }
 
     #[must_use]
+    pub fn signal_scopes(&self) -> Vec<(u32, SignalScope)> {
+        self.read(|state| state.signal_scopes.clone())
+    }
+
+    #[must_use]
     pub fn save_count(&self) -> usize {
         self.read(|state| state.saves)
     }
@@ -219,9 +226,10 @@ impl FakePorts {
         Ok(LaunchedProcess { pid })
     }
 
-    fn record_signal(&self, pid: u32) -> Result<(), SignalError> {
+    fn record_signal(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         {
             let mut guard = self.locked();
+            guard.signal_scopes.push((pid, scope));
             if guard.signal_failures.contains(&pid) {
                 return Err(SignalError::Delivery {
                     pid,
@@ -236,9 +244,10 @@ impl FakePorts {
         Ok(())
     }
 
-    fn record_force_kill(&self, pid: u32) -> Result<(), SignalError> {
+    fn record_force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         {
             let mut guard = self.locked();
+            guard.signal_scopes.push((pid, scope));
             if guard.force_failures.contains(&pid) {
                 return Err(SignalError::Delivery {
                     pid,
@@ -302,12 +311,12 @@ impl ProcessLauncher for FakePorts {
 }
 
 impl Signaler for FakePorts {
-    async fn terminate(&self, pid: u32) -> Result<(), SignalError> {
-        self.record_signal(pid)
+    async fn terminate(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        self.record_signal(pid, scope)
     }
 
-    async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
-        self.record_force_kill(pid)
+    async fn force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        self.record_force_kill(pid, scope)
     }
 }
 
@@ -350,6 +359,10 @@ impl DumpStore for FakePorts {
 }
 
 impl ProcessProbe for FakePorts {
+    async fn resident_memory(&self, _pids: &[u32]) -> BTreeMap<u32, u64> {
+        BTreeMap::new()
+    }
+
     async fn identity(&self, pid: u32) -> Liveness {
         self.read(|state| {
             if state.probe_broken.contains(&pid) {
@@ -414,6 +427,7 @@ impl Scheduler for FakePorts {
 #[must_use]
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
+        max_memory_kib: None,
         name: name.to_string(),
         script: "/usr/bin/true".to_string(),
         args: Vec::new(),
@@ -427,9 +441,12 @@ pub fn spec(name: &str) -> AppSpec {
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,
+            read: ReadScope::Minimal,
             network: false,
             writable_roots: Vec::new(),
+            readable_roots: Vec::new(),
             derived_roots: Vec::new(),
+            unreadable_roots: Vec::new(),
         },
     }
 }

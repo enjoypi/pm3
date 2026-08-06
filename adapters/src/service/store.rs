@@ -162,7 +162,7 @@ pub(super) async fn write_service_file(
     if reconciled == Reconciled::Unchanged {
         return Ok(Reconciled::Unchanged);
     }
-    tokio::fs::write(path, contents)
+    crate::private_file::write_private(path, contents)
         .await
         .map_err(|error| ServiceError::Write {
             path: path.to_string_lossy().into_owned(),

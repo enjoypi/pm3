@@ -81,3 +81,40 @@ impl SupervisionRequest {
 #[cfg(test)]
 #[path = "tests/supervision_tests.rs"]
 mod tests;
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SupervisionEffect {
+    ScheduleMemorySample {
+        delay_ms: u64,
+    },
+    ArmTimer {
+        name: String,
+        fire_at_ms: u64,
+        delay_ms: u64,
+    },
+    DisarmTimer {
+        name: String,
+    },
+    ScheduleRestart {
+        name: String,
+        delay_ms: u64,
+    },
+    CancelRestart {
+        name: String,
+    },
+    ScheduleForceKill {
+        name: String,
+        generation: u64,
+        pid: u32,
+        token: Option<String>,
+        delay_ms: u64,
+    },
+    CancelForceKill {
+        name: String,
+    },
+    WatchExit {
+        name: String,
+        generation: u64,
+        pid: u32,
+        token: Option<String>,
+    },
+}

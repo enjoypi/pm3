@@ -2,6 +2,12 @@ use std::future::Future;
 
 use thiserror::Error;
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum SignalScope {
+    ProcessGroup,
+    SinglePid,
+}
+
 #[derive(Debug, Eq, PartialEq, Error)]
 pub enum SignalError {
     #[error("cannot signal pid {pid}: {reason}")]
@@ -9,8 +15,23 @@ pub enum SignalError {
 }
 
 pub trait Signaler: Send + Sync {
-    fn terminate(&self, pid: u32) -> impl Future<Output = Result<(), SignalError>> + Send;
-    fn force_kill(&self, pid: u32) -> impl Future<Output = Result<(), SignalError>> + Send;
+    fn terminate(
+        &self,
+        pid: u32,
+        scope: SignalScope,
+    ) -> impl Future<Output = Result<(), SignalError>> + Send;
+    fn force_kill(
+        &self,
+        pid: u32,
+        scope: SignalScope,
+    ) -> impl Future<Output = Result<(), SignalError>> + Send;
+}
+
+impl SignalScope {
+    #[must_use]
+    pub const fn reaches_the_group(self) -> bool {
+        matches!(self, Self::ProcessGroup)
+    }
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use usecases::{
-    AppSpec, ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus, SandboxMode,
+    AppSpec, ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus, ReadScope, SandboxMode,
     SandboxPolicy,
 };
 
@@ -20,6 +20,7 @@ pub fn sample_identity() -> ProcessIdentity {
 
 pub fn sample_spec(name: &str) -> AppSpec {
     AppSpec {
+        max_memory_kib: None,
         name: name.to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
@@ -33,9 +34,12 @@ pub fn sample_spec(name: &str) -> AppSpec {
         depends_on: vec!["db".to_string()],
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,
+            read: ReadScope::Minimal,
             network: false,
             writable_roots: vec!["/srv/web".to_string()],
+            readable_roots: Vec::new(),
             derived_roots: Vec::new(),
+            unreadable_roots: Vec::new(),
         },
     }
 }

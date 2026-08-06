@@ -10,6 +10,7 @@ pm3:
   command_timeout_ms: 5000
   daemon_poll_interval_ms: 50
   daemon_poll_max_interval_ms: 1000
+  memory_poll_interval_ms: 30000
   log_follow_interval_ms: 200
   log_tail_lines: 20
   daemon_channel_depth: 32
@@ -20,9 +21,32 @@ pm3:
     restart_delay_ms: 0
   sandbox:
     mode: "workspace-write"
+    read: "minimal"
     network: false
     seatbelt_program: "${PM3_SEATBELT_PROGRAM:-/usr/bin/sandbox-exec}"
     bwrap_program: "${PM3_BWRAP_PROGRAM:-bwrap}"
+    minimal_read_roots:
+      - "/bin"
+      - "/sbin"
+      - "/usr"
+      - "/etc"
+      - "/lib"
+      - "/lib64"
+      - "/opt/homebrew"
+      - "/nix/store"
+      - "/run/current-system/sw"
+    forbidden_writable_roots:
+      - "/"
+      - "/bin"
+      - "/boot"
+      - "/dev"
+      - "/etc"
+      - "/lib"
+      - "/proc"
+      - "/sbin"
+      - "/sys"
+      - "/usr"
+      - "/var"
   service:
     label: "com.enjoypi.pm3"
     restart_delay_secs: 2
