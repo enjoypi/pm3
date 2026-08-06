@@ -11,6 +11,25 @@
   - **难点是「二进制自己换掉自己」**：脚本能先 `kill` 再 `cp`（`Text file busy` 因此绕开），而 `pm3 install` 是运行中的那个二进制去覆写自己。`.incoming` + `rename` 已是原子的，但发起者仍在运行 ⇒ 需要设计谁在最后一步落地（候选：新二进制自己 `service install`；或换完只做 rename、由服务管理器拉起新代）
   - 备份策略沿用 `backupRoot`（`<pm3.home>/install-backups/<时间戳>/`，目录 0700）
 
+## 发布与用户安装方案
+
+现状：仓库没有 `.github/`（无 CI）、没有 README、没有 LICENSE，装 pm3 的唯一路子是 clone 仓库跑 `just install`。
+
+- [ ] **`cargo install`**：要求**包名**就是用户敲的名字，而现在带 `[[bin]] pm3` 的包叫 `frameworks` ⇒ `cargo install pm3` 装不了。四个 crate 得改名（`pm3` + `pm3-entities` / `pm3-usecases` / `pm3-adapters`）并**全部发到 crates.io**——path 依赖不能发布，少一个都装不上。`entities`/`adapters` 这类通用名在 crates.io 上本就占不到，改名是必经之路
+  - MUST NOT 用「合并成单 crate」绕开：`arch_tests` 的依赖方向强制是**靠 crate 边界**成立的，合并等于把它拆了
+  - 还缺 crates.io 必需元数据：`license`（或 `license-file`）、`description`、`repository`、`readme`，四个 `Cargo.toml` 现在一个都没有 ⇒ 与下面的 README/LICENSE 两条绑在一起做
+  - `dev_scripts/rename.ts` 是改**项目名**的模板脚本，不负责这次的 crate 改名
+- [ ] **`cargo install --git <url> --bin pm3`**：不需要发布、不要求包名匹配，成本最低 ⇒ 可以先把这条写进 README 顶住，再慢慢推 crates.io
+- [ ] **`curl … | sh` 一行装**：前提是先有 CI 构建矩阵（macOS arm64/x86_64 + Linux arm64/x86_64）与 GitHub Releases 产物，而 `.github/` 现在还不存在。装完是裸二进制，紧接着就该能 `pm3 install` 自己注册开机自启 ⇒ **与上面「安装能力搬进二进制」一起做收益最大**，否则用户装完还得去 clone 仓库
+- [ ] 安装文档 MUST 写明运行时依赖：`/bin/ps` 与 `/bin/kill`（procps，缺了每次 daemon 重启全部服务被判探测失败而驱逐）、Linux 侧的 `bwrap`（缺了沙箱起不来）
+- [ ] 可选分发面：Homebrew tap、`cargo-binstall`（后者跟着 Releases 产物白拿）
+
+## README（中文）
+
+- [ ] 仓库根还没有 README，也没有 LICENSE。README 写定位（极简 pm2 + 严格沙箱）、安装、快速上手（`start` / `list` / `logs` / `restart` / `service install`）、默认沙箱行为（只写自己 cwd、拒网、`read: minimal`）、`<name>.env` 的凭据约定、两个目录各放什么
+  - 与 `docs/requirements.md` **分工要清楚**：那份是需求描述（为什么这样设计），README 是上手指南（怎么用）⇒ MUST NOT 复制粘贴，否则两份必然漂移
+  - crates.io 发布要求 `readme` 与 `license` 字段 ⇒ 与上一节联动
+
 ## 对照 pm2 还可以补的功能
 
 来源 `docs/pm2-comparison.md`，按那里的优先级；P2 那批（cluster/scale/零停机 reload/watch/deploy/模块/programmatic API/APM）已判定与「极简+单机+强隔离」定位冲突，**不进本清单**。
