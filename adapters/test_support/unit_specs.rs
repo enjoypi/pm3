@@ -16,6 +16,7 @@ pub const PM3_HOME_VALUE: &str = "/srv/pm3";
 const ROOT_DIR: &str = ".pm3";
 const CONFIG_FILE: &str = "config.yaml";
 const LOG_FILE: &str = "pm3.log";
+pub const UMASK: u32 = 0o077;
 
 pub fn spec_for(kind: UnitKind, home: &Path) -> UnitSpec {
     let root = home.join(ROOT_DIR);
@@ -32,6 +33,7 @@ pub fn spec_for(kind: UnitKind, home: &Path) -> UnitSpec {
         pm3_env: vec![(PM3_HOME_VARIABLE.to_string(), PM3_HOME_VALUE.to_string())],
         restart_delay_secs: 2,
         restart_condition: RESTART_CONDITION.to_string(),
+        umask: UMASK,
     }
 }
 

@@ -1,4 +1,4 @@
-use usecases::SandboxMode;
+use usecases::{ReadScope, SandboxMode};
 
 use super::*;
 
@@ -14,9 +14,12 @@ pub fn valid_restart_config() -> RestartConfig {
 pub fn valid_sandbox_config() -> SandboxConfig {
     SandboxConfig {
         mode: SandboxMode::WorkspaceWrite.as_str().to_string(),
+        read: ReadScope::Minimal.as_str().to_string(),
         network: false,
         seatbelt_program: "/usr/bin/sandbox-exec".to_string(),
         bwrap_program: "bwrap".to_string(),
+        minimal_read_roots: vec!["/usr".to_string(), "/bin".to_string()],
+        forbidden_writable_roots: vec!["/".to_string()],
     }
 }
 
@@ -44,6 +47,7 @@ pub fn valid_pm3_config() -> Pm3Config {
         command_timeout_ms: 5000,
         daemon_poll_interval_ms: 50,
         daemon_poll_max_interval_ms: 1000,
+        memory_poll_interval_ms: 30000,
         log_follow_interval_ms: 200,
         log_tail_lines: 20,
         daemon_channel_depth: 32,

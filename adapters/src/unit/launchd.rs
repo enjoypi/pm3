@@ -34,6 +34,7 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     let home = escape_xml(&spec.home);
     let keep_alive = keep_alive_of(&spec.restart_condition);
     let pm3_env = render_environment(&spec.pm3_env);
+    let umask = spec.umask;
     format!(
         "{PLIST_HEADER}<dict>
     <key>Label</key>
@@ -51,6 +52,8 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     <true/>
     <key>ProcessType</key>
     <string>Background</string>
+    <key>Umask</key>
+    <integer>{umask}</integer>
     <key>StandardOutPath</key>
     <string>{log_path}</string>
     <key>StandardErrorPath</key>

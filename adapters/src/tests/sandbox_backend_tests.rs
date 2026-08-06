@@ -24,9 +24,12 @@ fn bwrap_runs_the_program_the_config_names() {
 fn the_program_set_reads_both_backends_from_the_config() {
     let sandbox = crate::config::SandboxConfig {
         mode: "workspace-write".to_string(),
+        read: "minimal".to_string(),
         network: false,
         seatbelt_program: "/opt/sandbox-exec".to_string(),
         bwrap_program: "/opt/bwrap".to_string(),
+        minimal_read_roots: vec!["/usr".to_string()],
+        forbidden_writable_roots: Vec::new(),
     };
     let set = SandboxProgramSet::from_config(&sandbox);
     assert_eq!(set.seatbelt, "/opt/sandbox-exec");

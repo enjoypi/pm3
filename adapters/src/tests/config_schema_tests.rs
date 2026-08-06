@@ -418,6 +418,16 @@ fn every_error_variant_renders_a_message() {
             mode: "yolo".to_string(),
             expected: "read-only, workspace-write, danger-full-access".to_string(),
         },
+        ConfigError::InvalidMemoryPollInterval(0),
+        ConfigError::InvalidSandboxRead {
+            read: "everything".to_string(),
+            expected: "full, minimal".to_string(),
+        },
+        ConfigError::RelativeSandboxRoot {
+            field: "pm3.sandbox.minimal_read_roots",
+            root: "usr".to_string(),
+        },
+        ConfigError::EmptyMinimalReadRoots,
         ConfigError::InvalidServiceLabel,
         ConfigError::UnsafeServiceLabel {
             label: "a/b".to_string(),
@@ -444,4 +454,74 @@ fn validate_rejects_an_empty_cfg_dir() {
     cfg.pm3.cfg_dir = String::new();
     let err = validate_config(&cfg).unwrap_err();
     assert!(matches!(err, ConfigError::InvalidCfgDir), "got: {err}");
+}
+
+#[test]
+fn validate_rejects_a_zero_memory_poll_interval() {
+    let mut cfg = valid_config();
+    cfg.pm3.memory_poll_interval_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidMemoryPollInterval(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_an_unknown_sandbox_read_scope() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.read = "everything".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidSandboxRead { ref read, .. } if read == "everything"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_minimal_read_allowlist() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.minimal_read_roots = Vec::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::EmptyMinimalReadRoots),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_relative_minimal_read_root() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.minimal_read_roots = vec!["usr".to_string()];
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ConfigError::RelativeSandboxRoot { field, ref root }
+                if field == "pm3.sandbox.minimal_read_roots" && root == "usr"
+        ),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_relative_forbidden_writable_root() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.forbidden_writable_roots = vec!["etc".to_string()];
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ConfigError::RelativeSandboxRoot { field, .. }
+                if field == "pm3.sandbox.forbidden_writable_roots"
+        ),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_accepts_an_empty_forbidden_writable_root_list() {
+    let mut cfg = valid_config();
+    cfg.pm3.sandbox.forbidden_writable_roots = Vec::new();
+    validate_config(&cfg).expect("an operator may take the guard rails off");
 }

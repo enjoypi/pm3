@@ -70,6 +70,16 @@ fn the_unit_kills_only_the_daemon_and_not_its_whole_control_group() {
 }
 
 #[test]
+fn the_unit_keeps_every_file_the_daemon_writes_to_its_owner() {
+    assert!(rendered().contains("UMask=0077"), "got: {}", rendered());
+}
+
+#[test]
+fn the_unit_refuses_to_leave_a_core_dump_of_the_daemon() {
+    assert!(rendered().contains("LimitCORE=0"), "got: {}", rendered());
+}
+
+#[test]
 fn the_unit_appends_both_streams_to_the_daemon_log() {
     let unit = rendered();
     assert!(

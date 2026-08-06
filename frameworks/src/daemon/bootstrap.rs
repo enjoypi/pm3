@@ -1,11 +1,11 @@
 use std::{
-    fs::{File, OpenOptions},
+    fs::File,
     path::{Path, PathBuf},
     process::Stdio,
     time::{Duration, SystemTime},
 };
 
-use adapters::{CONFIG_FLAG, DAEMON_SUBCOMMAND, Pm3Config, Pm3Paths};
+use adapters::{CONFIG_FLAG, DAEMON_SUBCOMMAND, Pm3Config, Pm3Paths, append_private_blocking};
 use tokio::process::Command;
 
 use crate::{Error, Result, client::UdsClient};
@@ -151,14 +151,10 @@ async fn wait_until_ready(client: &UdsClient, launch: &DaemonLaunch<'_>) -> Resu
 }
 
 fn open_for_append(path: &Path) -> Result<File> {
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(|e| Error::Layout {
-            path: path.to_string_lossy().into_owned(),
-            reason: e.to_string(),
-        })
+    append_private_blocking(path).map_err(|e| Error::Layout {
+        path: path.to_string_lossy().into_owned(),
+        reason: e.to_string(),
+    })
 }
 
 #[cfg(test)]

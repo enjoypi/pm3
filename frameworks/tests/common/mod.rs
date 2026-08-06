@@ -22,8 +22,15 @@ pub struct Home {
     pub config: PathBuf,
 }
 
+pub const FULL_READ: &str = "full";
+pub const MINIMAL_READ: &str = "minimal";
+
 pub fn home_with_sandbox(mode: &str, network: bool) -> Home {
     home_with(mode, network, "info")
+}
+
+pub fn home_with_read_scope(mode: &str, network: bool, read: &str) -> Home {
+    build_home(mode, read, network, "info", START_TIMEOUT_MS)
 }
 
 pub fn home() -> Home {
@@ -48,6 +55,16 @@ pub fn home_with_timeout(
     log_level: &str,
     start_timeout_ms: u64,
 ) -> Home {
+    build_home(mode, FULL_READ, network, log_level, start_timeout_ms)
+}
+
+fn build_home(
+    mode: &str,
+    read: &str,
+    network: bool,
+    log_level: &str,
+    start_timeout_ms: u64,
+) -> Home {
     let dir = tempfile::tempdir().expect("temp dir");
     let root = dir.path().join("home");
     std::fs::create_dir_all(root.join("logs")).expect("prepare the pm3 home");
@@ -57,6 +74,7 @@ pub fn home_with_timeout(
         config_yaml(
             &root.to_string_lossy(),
             mode,
+            read,
             network,
             log_level,
             start_timeout_ms,
@@ -69,6 +87,7 @@ pub fn home_with_timeout(
 pub fn config_yaml(
     home: &str,
     sandbox_mode: &str,
+    sandbox_read: &str,
     network: bool,
     log_level: &str,
     start_timeout_ms: u64,
@@ -86,6 +105,7 @@ pub fn config_yaml(
   command_timeout_ms: 5000
   daemon_poll_interval_ms: 40
   daemon_poll_max_interval_ms: 200
+  memory_poll_interval_ms: 30000
   log_follow_interval_ms: 200
   log_tail_lines: 20
   daemon_channel_depth: 32
@@ -96,9 +116,22 @@ pub fn config_yaml(
     restart_delay_ms: 0
   sandbox:
     mode: "{sandbox_mode}"
+    read: "{sandbox_read}"
     network: {network}
     seatbelt_program: "/usr/bin/sandbox-exec"
     bwrap_program: "bwrap"
+    minimal_read_roots:
+      - "/bin"
+      - "/sbin"
+      - "/usr"
+      - "/etc"
+      - "/lib"
+      - "/lib64"
+      - "/opt/homebrew"
+    forbidden_writable_roots:
+      - "/"
+      - "/etc"
+      - "/usr"
   service:
     label: "{SERVICE_LABEL}"
     restart_delay_secs: 2
@@ -279,4 +312,10 @@ pub fn app_error_log(home: &Home, name: &str) -> PathBuf {
 
 pub fn daemon_log(home: &Home) -> PathBuf {
     home.root.join("pm3.log")
+}
+
+pub fn workspace_of(home: &Home) -> String {
+    let workspace = home.root.join("work");
+    std::fs::create_dir_all(&workspace).expect("prepare the workspace");
+    workspace.to_string_lossy().into_owned()
 }

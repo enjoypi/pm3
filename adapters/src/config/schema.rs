@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use usecases::SandboxMode;
+use usecases::{ReadScope, SandboxMode};
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -57,8 +57,22 @@ pub enum ConfigError {
     #[error("cannot accept pm3.restart.min_uptime_ms {0}: must be >= 1")]
     InvalidMinUptime(u64),
 
+    #[error("cannot accept pm3.memory_poll_interval_ms {0}: must be >= 1")]
+    InvalidMemoryPollInterval(u64),
+
     #[error("cannot accept pm3.sandbox.mode {mode}: must be one of {expected}")]
     InvalidSandboxMode { mode: String, expected: String },
+
+    #[error("cannot accept pm3.sandbox.read {read}: must be one of {expected}")]
+    InvalidSandboxRead { read: String, expected: String },
+
+    #[error("cannot accept {field} entry '{root}': must be an absolute path")]
+    RelativeSandboxRoot { field: &'static str, root: String },
+
+    #[error(
+        "cannot accept empty pm3.sandbox.minimal_read_roots: a confined read scope needs at least the system directories"
+    )]
+    EmptyMinimalReadRoots,
 
     #[error("cannot accept empty pm3.service.label")]
     InvalidServiceLabel,
@@ -106,6 +120,7 @@ pub struct Pm3Config {
     pub command_timeout_ms: u64,
     pub daemon_poll_interval_ms: u64,
     pub daemon_poll_max_interval_ms: u64,
+    pub memory_poll_interval_ms: u64,
     pub log_follow_interval_ms: u64,
     pub log_tail_lines: u64,
     pub daemon_channel_depth: usize,
@@ -125,9 +140,12 @@ pub struct RestartConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SandboxConfig {
     pub mode: String,
+    pub read: String,
     pub network: bool,
     pub seatbelt_program: String,
     pub bwrap_program: String,
+    pub minimal_read_roots: Vec<String>,
+    pub forbidden_writable_roots: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -214,6 +232,11 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
             floor: pm3.daemon_poll_interval_ms,
         });
     }
+    if pm3.memory_poll_interval_ms < 1 {
+        return Err(ConfigError::InvalidMemoryPollInterval(
+            pm3.memory_poll_interval_ms,
+        ));
+    }
     if pm3.log_follow_interval_ms < 1 {
         return Err(ConfigError::InvalidFollowInterval(
             pm3.log_follow_interval_ms,
@@ -241,7 +264,39 @@ fn validate_choices(pm3: &Pm3Config) -> Result<(), ConfigError> {
             expected: sandbox_mode_names(),
         });
     }
-    Ok(())
+    if ReadScope::parse(&pm3.sandbox.read).is_none() {
+        return Err(ConfigError::InvalidSandboxRead {
+            read: pm3.sandbox.read.clone(),
+            expected: read_scope_names(),
+        });
+    }
+    validate_sandbox_roots(&pm3.sandbox)
+}
+
+fn validate_sandbox_roots(sandbox: &SandboxConfig) -> Result<(), ConfigError> {
+    if sandbox.minimal_read_roots.is_empty() {
+        return Err(ConfigError::EmptyMinimalReadRoots);
+    }
+    reject_relative_roots(
+        "pm3.sandbox.minimal_read_roots",
+        &sandbox.minimal_read_roots,
+    )?;
+    reject_relative_roots(
+        "pm3.sandbox.forbidden_writable_roots",
+        &sandbox.forbidden_writable_roots,
+    )
+}
+
+fn reject_relative_roots(field: &'static str, roots: &[String]) -> Result<(), ConfigError> {
+    roots
+        .iter()
+        .find(|root| !root.starts_with('/'))
+        .map_or(Ok(()), |root| {
+            Err(ConfigError::RelativeSandboxRoot {
+                field,
+                root: root.clone(),
+            })
+        })
 }
 
 fn validate_programs(pm3: &Pm3Config) -> Result<(), ConfigError> {
@@ -301,6 +356,14 @@ fn sandbox_mode_names() -> String {
     SandboxMode::ALL
         .iter()
         .map(|mode| mode.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn read_scope_names() -> String {
+    ReadScope::ALL
+        .iter()
+        .map(|scope| scope.as_str())
         .collect::<Vec<_>>()
         .join(", ")
 }

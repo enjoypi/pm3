@@ -68,6 +68,15 @@ fn the_plist_tells_launchd_to_leave_the_service_process_group_alone() {
 }
 
 #[test]
+fn the_plist_keeps_every_file_the_daemon_writes_to_its_owner() {
+    assert!(
+        rendered().contains("<key>Umask</key>\n    <integer>63</integer>"),
+        "got: {}",
+        rendered()
+    );
+}
+
+#[test]
 fn the_plist_points_both_streams_at_the_daemon_log() {
     let plist = rendered();
     assert!(

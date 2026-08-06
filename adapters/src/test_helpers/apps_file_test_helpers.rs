@@ -11,6 +11,7 @@ pub const APP_NAME: &str = "web";
 pub const SCRIPT: &str = "/bin/sh";
 pub const CWD: &str = "/srv/web";
 pub const HOME_DIR: &str = "/tmp/pm3-fixture";
+pub const CFG_DIR: &str = "/tmp/pm3-fixture-cfg";
 pub const LOGS_DIR: &str = "/tmp/pm3-fixture/logs";
 pub const TMP_DIR: &str = "/tmp/pm3-fixture-tmp";
 
@@ -29,7 +30,7 @@ static FIXTURE_CONFIG: std::sync::LazyLock<Pm3Config> =
     std::sync::LazyLock::new(|| pm3_config(SandboxMode::WorkspaceWrite.as_str()));
 
 pub fn defaults() -> SpecDefaults<'static> {
-    SpecDefaults::from_config(&FIXTURE_CONFIG, HOME_DIR, LOGS_DIR, Some(TMP_DIR))
+    SpecDefaults::from_config(&FIXTURE_CONFIG, HOME_DIR, CFG_DIR, LOGS_DIR, Some(TMP_DIR))
         .expect("fixture defaults should build")
 }
 
@@ -46,6 +47,7 @@ pub fn minimal_entry() -> AppEntry {
         max_restarts: None,
         restart_delay_ms: None,
         schedule: None,
+        max_memory: None,
         sandbox: None,
     }
 }
@@ -53,8 +55,10 @@ pub fn minimal_entry() -> AppEntry {
 pub fn sandbox_entry() -> SandboxEntry {
     SandboxEntry {
         mode: None,
+        read: None,
         network: None,
         writable_roots: None,
+        readable_roots: None,
     }
 }
 

@@ -15,7 +15,7 @@ pub use self::{
     launcher::{ExitOutcome, LaunchError, LaunchSpec, LaunchedProcess, ProcessLauncher},
     probe::{Liveness, ProcessProbe},
     scheduler::Scheduler,
-    signaler::{SignalError, Signaler},
+    signaler::{SignalError, SignalScope, Signaler},
     specs::{SpecResolveError, SpecResolver},
     wrapper::{CommandWrapper, SandboxError, WrappedCommand},
 };

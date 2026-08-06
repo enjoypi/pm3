@@ -154,3 +154,77 @@ fn a_tracked_pid_already_scheduled_for_a_kill_is_not_swept_again() {
 fn a_tracked_pid_no_kill_covers_is_swept() {
     assert_eq!(unswept_pids(&[100, 200], &[100]), vec![200]);
 }
+
+fn limited(name: &str, pm_id: u32, pid: u32, limit_kib: u64) -> ProcessRecord {
+    let mut record = launched(name, pm_id, pid, "token");
+    record.spec.max_memory_kib = Some(limit_kib);
+    record
+}
+
+#[test]
+fn a_service_without_a_limit_is_not_watched() {
+    let table = ProcessTable::from_records(vec![launched("api", 0, 4242, "token")]);
+    assert!(memory_watch_list(&table).is_empty());
+}
+
+#[test]
+fn a_stopped_service_with_a_limit_is_not_watched() {
+    let mut record = limited("api", 0, 4242, 1000);
+    record.runtime.status = ProcessStatus::Stopped;
+    let table = ProcessTable::from_records(vec![record]);
+    assert!(memory_watch_list(&table).is_empty());
+}
+
+#[test]
+fn a_running_service_with_a_limit_is_watched() {
+    let table = ProcessTable::from_records(vec![limited("api", 0, 4242, 1000)]);
+    assert_eq!(
+        memory_watch_list(&table),
+        vec![MemoryWatch {
+            name: "api".to_string(),
+            pid: 4242,
+            limit_kib: 1000,
+        }]
+    );
+}
+
+#[test]
+fn a_sample_below_the_limit_reports_no_breach() {
+    let watched = memory_watch_list(&ProcessTable::from_records(vec![limited(
+        "api", 0, 4242, 1000,
+    )]));
+    let sampled = std::collections::BTreeMap::from([(4242, 999)]);
+    assert!(breached_memory(&watched, &sampled).is_empty());
+}
+
+#[test]
+fn a_sample_above_the_limit_reports_the_breach() {
+    let watched = memory_watch_list(&ProcessTable::from_records(vec![limited(
+        "api", 0, 4242, 1000,
+    )]));
+    let sampled = std::collections::BTreeMap::from([(4242, 4096)]);
+    assert_eq!(
+        breached_memory(&watched, &sampled),
+        vec![MemoryBreach {
+            name: "api".to_string(),
+            rss_kib: 4096,
+            limit_kib: 1000,
+        }]
+    );
+}
+
+#[test]
+fn a_pid_the_probe_never_answered_for_reports_no_breach() {
+    let watched = memory_watch_list(&ProcessTable::from_records(vec![limited(
+        "api", 0, 4242, 1000,
+    )]));
+    assert!(breached_memory(&watched, &std::collections::BTreeMap::new()).is_empty());
+}
+
+#[test]
+fn a_running_service_without_a_pid_is_not_watched() {
+    let mut record = limited("api", 0, 4242, 1000);
+    record.runtime.pid = None;
+    let table = ProcessTable::from_records(vec![record]);
+    assert!(memory_watch_list(&table).is_empty());
+}

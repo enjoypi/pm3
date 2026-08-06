@@ -1,7 +1,7 @@
 use entities::ProcessStatus;
 
 use crate::{
-    Ports, Result, UsecaseError,
+    Ports, Result, SignalScope, UsecaseError,
     persist::save_table,
     record::ProcessRecord,
     selector::AppSelector,
@@ -104,7 +104,7 @@ pub(crate) async fn request_stop(
     };
 
     record.runtime.mark_stopping();
-    ports.terminate(pid).await?;
+    ports.terminate(pid, SignalScope::ProcessGroup).await?;
     log_stopping(&name, pid);
     Ok(StopOutcome {
         name,

@@ -84,6 +84,7 @@ pub struct UnitSpec {
     pub pm3_env: Vec<(String, String)>,
     pub restart_delay_secs: u64,
     pub restart_condition: String,
+    pub umask: u32,
 }
 
 impl UnitSpec {

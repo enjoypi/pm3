@@ -13,9 +13,6 @@ pub enum SandboxError {
         "cannot confine app '{app}': no usable sandbox backend on this platform, install bubblewrap or set sandbox mode to danger-full-access"
     )]
     NoBackend { app: String },
-
-    #[error("cannot confine app '{app}': {reason}")]
-    Unsupported { app: String, reason: String },
 }
 
 pub trait CommandWrapper: Send + Sync {

@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use adapters::{AppSpec, ProcessRuntime, SandboxMode, SpecSource, service_file_of};
+use adapters::{
+    AppSpec, ProcessRuntime, ReadScope, SandboxMode, SignalScope, SpecSource, service_file_of,
+};
 
 use super::*;
 use crate::test_support::pm3_config_with_home;
@@ -10,9 +12,12 @@ const EPOCH_2023_MS: u64 = 1_700_000_000_000;
 fn unconfined_policy() -> SandboxPolicy {
     SandboxPolicy {
         mode: SandboxMode::DangerFullAccess,
+        read: ReadScope::Full,
         network: true,
         writable_roots: Vec::new(),
+        readable_roots: Vec::new(),
         derived_roots: Vec::new(),
+        unreadable_roots: Vec::new(),
     }
 }
 
@@ -56,6 +61,7 @@ fn launch_spec(dir: &Path, program: &str, args: &[&str]) -> LaunchSpec {
 fn stored_record() -> ProcessRecord {
     ProcessRecord {
         spec: AppSpec {
+            max_memory_kib: None,
             name: "web".to_string(),
             script: "/bin/echo".to_string(),
             args: Vec::new(),
@@ -116,7 +122,10 @@ async fn terminating_a_child_stops_it() {
     let ports = ports_in(dir.path());
     let spec = launch_spec(dir.path(), "/bin/sh", &["-c", "sleep 30"]);
     let process = ports.spawn(&spec).await.expect("spawn");
-    ports.terminate(process.pid).await.expect("terminate");
+    ports
+        .terminate(process.pid, SignalScope::ProcessGroup)
+        .await
+        .expect("terminate");
     let outcome = ports.wait(process.pid, None).await.expect("reap");
     assert_eq!(outcome, ExitOutcome::Signalled);
 }
@@ -127,7 +136,10 @@ async fn force_killing_a_child_stops_it() {
     let ports = ports_in(dir.path());
     let spec = launch_spec(dir.path(), "/bin/sh", &["-c", "sleep 30"]);
     let process = ports.spawn(&spec).await.expect("spawn");
-    ports.force_kill(process.pid).await.expect("force kill");
+    ports
+        .force_kill(process.pid, SignalScope::ProcessGroup)
+        .await
+        .expect("force kill");
     let outcome = ports.wait(process.pid, None).await.expect("reap");
     assert_eq!(outcome, ExitOutcome::Signalled);
 }

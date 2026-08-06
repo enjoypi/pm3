@@ -103,3 +103,11 @@ fn the_fake_scheduler_refuses_an_unschedulable_expression() {
         None
     );
 }
+
+#[tokio::test]
+async fn the_fake_probe_samples_no_resident_memory() {
+    use crate::ports::ProcessProbe as _;
+
+    let ports = crate::ports_test_helpers::FakePorts::new(1000);
+    assert!(ports.resident_memory(&[7]).await.is_empty());
+}

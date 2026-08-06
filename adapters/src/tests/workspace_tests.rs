@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use usecases::{SandboxMode, SandboxPolicy};
+use usecases::{ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
 
@@ -13,6 +13,7 @@ fn spec_with_args(cwd: &str, args: &[&str]) -> AppSpec {
 
 fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
     AppSpec {
+        max_memory_kib: None,
         name: "web".to_string(),
         script: "/bin/sh".to_string(),
         args: Vec::new(),
@@ -26,9 +27,12 @@ fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,
+            read: ReadScope::Minimal,
             network: false,
             writable_roots,
+            readable_roots: Vec::new(),
             derived_roots: Vec::new(),
+            unreadable_roots: Vec::new(),
         },
     }
 }

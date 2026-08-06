@@ -1,12 +1,12 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use adapters::{
     AdoptedWatch, Clock, CommandWrapper, CronScheduler, DumpContents, DumpError, DumpStore,
     ExitOutcome, FingerprintError, Fingerprinter, HostSandbox, KillSignaler, LaunchError,
     LaunchSpec, LaunchedProcess, Liveness, PollCadence, Ports, ProcessLauncher, ProcessProbe,
     ProcessRecord, PsProcessProbe, SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler,
-    Sha256Fingerprinter, SignalError, Signaler, SpecSource, SystemClock, TokioProcessLauncher,
-    WrappedCommand, YamlDumpStore, wait_for_exit,
+    Sha256Fingerprinter, SignalError, SignalScope, Signaler, SpecSource, SystemClock,
+    TokioProcessLauncher, WrappedCommand, YamlDumpStore, wait_for_exit,
 };
 
 #[derive(Debug)]
@@ -29,6 +29,7 @@ impl DaemonPorts {
         let stop_signal = specs.config.stop_signal.clone();
         let command_timeout_ms = specs.config.command_timeout_ms;
         let poll_interval_ms = specs.config.daemon_poll_interval_ms;
+        let minimal_read_roots = specs.config.sandbox.minimal_read_roots.clone();
         let cadence = PollCadence {
             interval_ms: specs.config.daemon_poll_interval_ms,
             max_interval_ms: specs.config.daemon_poll_max_interval_ms,
@@ -36,7 +37,7 @@ impl DaemonPorts {
         Self {
             launcher: TokioProcessLauncher::default(),
             signaler: KillSignaler::with_stop_signal(stop_signal, command_timeout_ms),
-            wrapper: SandboxCommandWrapper::new(backend),
+            wrapper: SandboxCommandWrapper::new(backend, minimal_read_roots),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
             probe: Arc::new(PsProcessProbe::with_timeout(
@@ -129,17 +130,21 @@ impl ProcessProbe for DaemonPorts {
     async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
         self.probe.wait_gone(pid, timeout_ms).await
     }
+
+    async fn resident_memory(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
+        self.probe.resident_memory(pids).await
+    }
 }
 
 impl Ports for DaemonPorts {}
 
 impl Signaler for DaemonPorts {
-    async fn terminate(&self, pid: u32) -> Result<(), SignalError> {
-        self.signaler.terminate(pid).await
+    async fn terminate(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        self.signaler.terminate(pid, scope).await
     }
 
-    async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
-        self.signaler.force_kill(pid).await
+    async fn force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        self.signaler.force_kill(pid, scope).await
     }
 }
 

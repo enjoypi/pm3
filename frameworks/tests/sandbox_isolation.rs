@@ -7,13 +7,13 @@ mod common;
 
 use self::common::{
     Home, app_error_log, app_log, home_with_sandbox, netcat, pm3, shutdown_daemon, stdout_of,
-    wait_for_file, wait_for_log, write_apps,
+    wait_for_file, wait_for_log, workspace_of, write_apps,
 };
 
 const OUTSIDE_TARGET: &str = "/pm3-sandbox-escape-probe";
 
 fn shell_app(home: &Home, name: &str, script: &str) -> std::path::PathBuf {
-    let cwd = home.root.to_string_lossy();
+    let cwd = workspace_of(home);
     write_apps(
         home,
         &format!(
@@ -31,7 +31,7 @@ fn a_confined_app_can_write_inside_its_working_directory() {
 
     wait_for_log(&app_log(&home, "writer"), "done");
     assert!(
-        home.root.join("inside.txt").is_file(),
+        home.root.join("work").join("inside.txt").is_file(),
         "the app should write inside its own cwd"
     );
     shutdown_daemon(&home);
@@ -108,7 +108,7 @@ fn an_unconfined_app_keeps_full_access() {
 
     wait_for_log(&app_log(&home, "trusted"), "done");
     assert!(
-        home.root.join("trusted.txt").is_file(),
+        home.root.join("work").join("trusted.txt").is_file(),
         "an unconfined app should write freely"
     );
     assert!(

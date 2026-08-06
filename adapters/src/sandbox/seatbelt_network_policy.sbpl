@@ -1,5 +1,5 @@
-(allow network-outbound)
-(allow network-inbound)
+(allow network-outbound (remote ip))
+(allow network-inbound (local ip))
 (allow system-socket)
 
 (allow mach-lookup

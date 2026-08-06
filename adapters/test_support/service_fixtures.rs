@@ -42,6 +42,8 @@ pub fn request<'s>(
         autorestart: None,
         network: false,
         writable_dirs: &[],
+        readable_dirs: &[],
+        max_memory: None,
         force,
     }
 }

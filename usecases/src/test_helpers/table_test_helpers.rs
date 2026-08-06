@@ -1,4 +1,4 @@
-use entities::{AppSpec, ProcessRuntime, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, ProcessRuntime, ReadScope, SandboxMode, SandboxPolicy};
 
 use crate::record::ProcessRecord;
 
@@ -11,6 +11,7 @@ pub fn record_with_id(name: &str, pm_id: u32) -> ProcessRecord {
 
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
+        max_memory_kib: None,
         name: name.to_string(),
         script: "/usr/bin/true".to_string(),
         args: Vec::new(),
@@ -24,9 +25,12 @@ pub fn spec(name: &str) -> AppSpec {
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,
+            read: ReadScope::Minimal,
             network: false,
             writable_roots: Vec::new(),
+            readable_roots: Vec::new(),
             derived_roots: Vec::new(),
+            unreadable_roots: Vec::new(),
         },
     }
 }

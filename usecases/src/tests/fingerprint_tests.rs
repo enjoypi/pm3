@@ -1,9 +1,10 @@
-use entities::{SandboxMode, SandboxPolicy};
+use entities::{ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
 
 fn spec() -> AppSpec {
     AppSpec {
+        max_memory_kib: None,
         name: "api".to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
@@ -20,9 +21,12 @@ fn spec() -> AppSpec {
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
             mode: SandboxMode::WorkspaceWrite,
+            read: ReadScope::Minimal,
             network: false,
             writable_roots: vec!["/srv/api/state".to_string()],
+            readable_roots: Vec::new(),
             derived_roots: vec!["/srv/pm3/logs".to_string()],
+            unreadable_roots: Vec::new(),
         },
     }
 }

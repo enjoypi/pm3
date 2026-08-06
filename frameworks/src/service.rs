@@ -15,6 +15,8 @@ use crate::{
     telemetry::init_cli_telemetry,
 };
 
+const OWNER_ONLY_UMASK: u32 = 0o077;
+
 #[cfg(target_os = "macos")]
 const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
 #[cfg(not(target_os = "macos"))]
@@ -156,6 +158,7 @@ fn build_spec(
         pm3_env: context.pm3_env.clone(),
         restart_delay_secs,
         restart_condition,
+        umask: OWNER_ONLY_UMASK,
     })
 }
 

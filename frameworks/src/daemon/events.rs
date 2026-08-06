@@ -21,5 +21,6 @@ pub enum DaemonEvent {
         pid: u32,
         token: Option<String>,
     },
+    SampleMemory,
     Shutdown,
 }

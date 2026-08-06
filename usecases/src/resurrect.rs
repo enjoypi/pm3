@@ -4,7 +4,7 @@ use entities::ProcessStatus;
 use futures_util::future::join_all;
 
 use crate::{
-    FingerprintError, Liveness, Ports, Result, StrandedProcess, UsecaseError,
+    FingerprintError, Liveness, Ports, Result, SignalScope, StrandedProcess, UsecaseError,
     fingerprint::{pid_was_recycled, render_identity},
     persist::save_table,
     record::ProcessRecord,
@@ -57,11 +57,25 @@ pub async fn resurrect(
             Verdict::Adopt => outcomes.push(adopt(table, &name, ports).await),
             Verdict::Settle { stale } => {
                 log_settle(&name);
-                evict(&name, stale, kill_timeout_ms, ports).await;
+                evict(
+                    &name,
+                    stale,
+                    SignalScope::ProcessGroup,
+                    kill_timeout_ms,
+                    ports,
+                )
+                .await;
             }
             Verdict::Respawn { change, stale } => {
                 log_respawn(&name, change);
-                evict(&name, stale, kill_timeout_ms, ports).await;
+                evict(
+                    &name,
+                    stale,
+                    change.eviction_scope(),
+                    kill_timeout_ms,
+                    ports,
+                )
+                .await;
                 match start_one(table, &name, logs_dir, ports).await {
                     Ok(outcome) => outcomes.push(outcome),
                     Err(error) => log_recovery_failure("respawn", &name, &error),
@@ -106,7 +120,14 @@ async fn sweep_stranded(stranded: &[StrandedProcess], kill_timeout_ms: u64, port
             continue;
         };
         log_stranded(&orphan.name, pid);
-        evict_pid(&orphan.name, pid, kill_timeout_ms, ports).await;
+        evict_pid(
+            &orphan.name,
+            pid,
+            SignalScope::ProcessGroup,
+            kill_timeout_ms,
+            ports,
+        )
+        .await;
     }
 }
 
@@ -127,7 +148,8 @@ async fn judge(record: &ProcessRecord, ports: &impl Ports) -> Verdict {
         };
     }
     let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
-        return respawn(Change::Unknown, record.runtime.pid);
+        let unverified = surviving_pid(&record.runtime.name, record.runtime.pid, None, ports).await;
+        return respawn(Change::Unknown, unverified);
     };
     let token = match ports.identity(pid).await {
         Liveness::Alive(token) => token,
@@ -175,21 +197,44 @@ async fn surviving_pid(
     Some(pid)
 }
 
-async fn evict(name: &str, stale: Option<u32>, kill_timeout_ms: u64, ports: &impl Ports) {
+async fn evict(
+    name: &str,
+    stale: Option<u32>,
+    scope: SignalScope,
+    kill_timeout_ms: u64,
+    ports: &impl Ports,
+) {
     let Some(pid) = stale else {
         return;
     };
-    evict_pid(name, pid, kill_timeout_ms, ports).await;
+    evict_pid(name, pid, scope, kill_timeout_ms, ports).await;
 }
 
-async fn evict_pid(name: &str, pid: u32, kill_timeout_ms: u64, ports: &impl Ports) {
-    let refused = ports.terminate(pid).await.err().map(|e| e.to_string());
+async fn evict_pid(
+    name: &str,
+    pid: u32,
+    scope: SignalScope,
+    kill_timeout_ms: u64,
+    ports: &impl Ports,
+) {
+    if !scope.reaches_the_group() {
+        log_unverified_evict(name, pid);
+    }
+    let refused = ports
+        .terminate(pid, scope)
+        .await
+        .err()
+        .map(|e| e.to_string());
     log_evict(name, pid, refused.as_deref());
     let liveness = ports.wait_gone(pid, kill_timeout_ms).await;
     if matches!(liveness, Liveness::Gone) {
         return;
     }
-    let forced = ports.force_kill(pid).await.err().map(|e| e.to_string());
+    let forced = ports
+        .force_kill(pid, scope)
+        .await
+        .err()
+        .map(|e| e.to_string());
     log_force_evict(name, pid, forced.as_deref());
 }
 
@@ -257,6 +302,16 @@ fn log_stranded(app: &str, pid: u32) {
         service = app,
         pid,
         "pm3 can no longer read the declaration of a surviving service, so it stops the survivor instead of leaving it unmanaged",
+    );
+}
+
+fn log_unverified_evict(app: &str, pid: u32) {
+    tracing::warn!(
+        feature = "resurrect",
+        action = "evict_unverified",
+        service = app,
+        pid,
+        "pm3 has no identity token for this survivor, so it signals the single pid instead of the whole process group",
     );
 }
 
@@ -346,6 +401,13 @@ fn log_respawn(app: &str, change: Change) {
 }
 
 impl Change {
+    const fn eviction_scope(self) -> SignalScope {
+        match self {
+            Self::Unknown | Self::Unreadable => SignalScope::SinglePid,
+            Self::Gone | Self::Reused | Self::Launch | Self::Binary => SignalScope::ProcessGroup,
+        }
+    }
+
     const fn as_str(self) -> &'static str {
         match self {
             Self::Unknown => "unknown",

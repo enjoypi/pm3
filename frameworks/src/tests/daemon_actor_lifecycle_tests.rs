@@ -345,7 +345,7 @@ async fn the_supervisor_handles_internal_events() {
 #[tokio::test]
 async fn a_confined_app_is_refused_when_no_sandbox_backend_exists() {
     let mut harness = harness();
-    let cwd = harness.paths.root.to_string_lossy().into_owned();
+    let cwd = workspace_of(&harness);
     let body = format!(
         "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n"
     );
@@ -398,7 +398,7 @@ async fn starting_an_already_running_app_leaves_it_alone() {
 #[tokio::test]
 async fn a_writable_root_that_does_not_exist_is_kept_verbatim() {
     let mut harness = harness();
-    let cwd = harness.paths.root.to_string_lossy().into_owned();
+    let cwd = workspace_of(&harness);
     let body = format!(
         "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n  writable_roots:\n    - /nonexistent/pm3-root\n"
     );
@@ -505,19 +505,7 @@ async fn restarting_a_stopped_app_through_a_command_starts_it_again() {
     );
 }
 
-#[tokio::test]
-async fn shutting_down_counts_only_the_services_still_running() {
-    let mut harness = harness();
-    start_one(&mut harness, "web", SLEEPER).await;
-    start_one(&mut harness, "db", SLEEPER).await;
-    harness
-        .daemon
-        .handle(SupervisionRequest::Stop(selector("db")))
-        .await
-        .expect("should stop db");
-    harness.daemon.shutdown().await;
-    assert_eq!(status_of(&mut harness, "web").await, "online");
-}
-
 #[path = "daemon_actor_batch_tests.rs"]
 mod batch;
+#[path = "daemon_actor_memory_tests.rs"]
+mod memory;

@@ -5,7 +5,10 @@ use std::{
 
 use serde::Deserialize;
 use thiserror::Error;
-use usecases::{AppSpec, SandboxMode, SandboxPolicy, SpecError, validate_spec};
+use usecases::{
+    AppSpec, ReadScope, SandboxMode, SandboxPolicy, SpecError, parse_memory_limit,
+    validate_forbidden_roots, validate_spec,
+};
 
 use super::roots::dedup_roots;
 use crate::{
@@ -44,6 +47,8 @@ pub struct AppEntry {
     #[serde(default)]
     pub schedule: Option<String>,
     #[serde(default)]
+    pub max_memory: Option<String>,
+    #[serde(default)]
     pub sandbox: Option<SandboxEntry>,
 }
 
@@ -52,17 +57,24 @@ pub struct SandboxEntry {
     #[serde(default)]
     pub mode: Option<String>,
     #[serde(default)]
+    pub read: Option<String>,
+    #[serde(default)]
     pub network: Option<bool>,
     #[serde(default)]
     pub writable_roots: Option<Vec<String>>,
+    #[serde(default)]
+    pub readable_roots: Option<Vec<String>>,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct SpecDefaults<'d> {
     pub restart: RestartConfig,
     pub sandbox_mode: SandboxMode,
+    pub sandbox_read: ReadScope,
     pub sandbox_network: bool,
+    pub forbidden_writable_roots: &'d [String],
     pub home_dir: &'d str,
+    pub cfg_dir: &'d str,
     pub search_path: &'d str,
     pub logs_dir: &'d str,
     pub tmp_dir: Option<&'d str>,
@@ -101,6 +113,14 @@ pub enum AppsFileError {
     )]
     InvalidSandboxMode { scope: String, mode: String },
 
+    #[error("cannot accept sandbox read '{read}' for {scope}: must be one of full, minimal")]
+    InvalidSandboxRead { scope: String, read: String },
+
+    #[error(
+        "cannot accept max_memory '{limit}' for app '{app}': use a byte count or a size like 300M"
+    )]
+    InvalidMemoryLimit { app: String, limit: String },
+
     #[error(transparent)]
     EnvFile(#[from] super::env_file::EnvFileError),
 
@@ -118,15 +138,20 @@ impl<'d> SpecDefaults<'d> {
     pub fn from_config(
         pm3: &'d Pm3Config,
         home_dir: &'d str,
+        cfg_dir: &'d str,
         logs_dir: &'d str,
         tmp_dir: Option<&'d str>,
     ) -> Result<Self, AppsFileError> {
         let sandbox_mode = parse_mode(DEFAULTS_SCOPE, &pm3.sandbox.mode)?;
+        let sandbox_read = parse_read(DEFAULTS_SCOPE, &pm3.sandbox.read)?;
         Ok(Self {
             restart: pm3.restart,
             sandbox_mode,
+            sandbox_read,
             sandbox_network: pm3.sandbox.network,
+            forbidden_writable_roots: &pm3.sandbox.forbidden_writable_roots,
             home_dir,
+            cfg_dir,
             search_path: &pm3.search_path,
             logs_dir,
             tmp_dir,
@@ -192,6 +217,12 @@ pub fn resolve_checked(
 ) -> Result<AppSpec, AppsFileError> {
     let spec = resolve_entry(defaults, entry)?;
     validate_spec(&spec)?;
+    validate_forbidden_roots(&spec.sandbox, defaults.forbidden_writable_roots).map_err(
+        |source| SpecError::Sandbox {
+            app: spec.name.clone(),
+            source,
+        },
+    )?;
     if let Some(cron) = spec.schedule.as_deref() {
         validate_cron(&spec.name, cron)?;
     }
@@ -208,7 +239,9 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         }
     })?;
     let sandbox = resolve_sandbox(defaults, entry, &cwd)?;
+    let max_memory_kib = resolve_memory_limit(entry)?;
     Ok(AppSpec {
+        max_memory_kib,
         name: entry.name.clone(),
         script: script.to_string_lossy().into_owned(),
         args: entry.args.clone(),
@@ -248,18 +281,49 @@ fn resolve_sandbox(
         .map(|raw| parse_mode(&format!("app '{}'", entry.name), raw))
         .transpose()?
         .unwrap_or(defaults.sandbox_mode);
+    let read = declared
+        .and_then(|section| section.read.as_deref())
+        .map(|raw| parse_read(&format!("app '{}'", entry.name), raw))
+        .transpose()?
+        .unwrap_or(defaults.sandbox_read);
     let network = declared
         .and_then(|section| section.network)
         .unwrap_or(defaults.sandbox_network);
     let writable_roots = declared
         .and_then(|section| section.writable_roots.clone())
         .unwrap_or_default();
+    let readable_roots = declared
+        .and_then(|section| section.readable_roots.clone())
+        .unwrap_or_default();
     Ok(SandboxPolicy {
         mode,
+        read,
         network,
         writable_roots,
+        readable_roots,
         derived_roots: default_writable_roots(defaults, mode, cwd),
+        unreadable_roots: pm3_owned_roots(defaults),
     })
+}
+
+fn resolve_memory_limit(entry: &AppEntry) -> Result<Option<u64>, AppsFileError> {
+    let Some(declared) = entry.max_memory.as_deref() else {
+        return Ok(None);
+    };
+    parse_memory_limit(declared)
+        .map(Some)
+        .ok_or_else(|| AppsFileError::InvalidMemoryLimit {
+            app: entry.name.clone(),
+            limit: declared.to_string(),
+        })
+}
+
+fn pm3_owned_roots(defaults: &SpecDefaults<'_>) -> Vec<String> {
+    let candidates = [defaults.home_dir, defaults.cfg_dir]
+        .into_iter()
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    dedup_roots(candidates)
 }
 
 fn default_writable_roots(
@@ -282,6 +346,13 @@ fn parse_mode(scope: &str, raw: &str) -> Result<SandboxMode, AppsFileError> {
     SandboxMode::parse(raw).ok_or_else(|| AppsFileError::InvalidSandboxMode {
         scope: scope.to_string(),
         mode: raw.to_string(),
+    })
+}
+
+fn parse_read(scope: &str, raw: &str) -> Result<ReadScope, AppsFileError> {
+    ReadScope::parse(raw).ok_or_else(|| AppsFileError::InvalidSandboxRead {
+        scope: scope.to_string(),
+        read: raw.to_string(),
     })
 }
 

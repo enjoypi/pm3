@@ -6,6 +6,7 @@ pub mod logs;
 pub mod paths;
 pub mod persistence;
 pub mod presenter;
+pub mod private_file;
 pub mod process;
 pub mod program;
 pub mod sandbox;
@@ -21,10 +22,10 @@ pub use usecases::{
     AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome,
     FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, Ports,
     ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView,
-    SandboxError, SandboxMode, SandboxPolicy, Scheduler, SignalError, Signaler, SpecError,
-    SpecResolveError, StartKind, StartOutcome, StartReport, StrandedProcess, SupervisionEffect,
-    SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand,
-    delete_app, describe_app, list_apps, log_paths, start_apps, validate_app_name,
+    ReadScope, SandboxError, SandboxMode, SandboxPolicy, Scheduler, SignalError, SignalScope,
+    Signaler, SpecError, SpecResolveError, StartKind, StartOutcome, StartReport, StrandedProcess,
+    SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor,
+    WrappedCommand, delete_app, describe_app, list_apps, log_paths, start_apps, validate_app_name,
 };
 
 pub use self::{
@@ -61,6 +62,7 @@ pub use self::{
         render_daemon_gone, render_daemon_stopped, render_describe, render_reply, render_started,
         render_table, unsaved_reason,
     },
+    private_file::{OWNER_ONLY_FILE, append_private, append_private_blocking, write_private},
     process::{
         AdoptedWatch, KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
         Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,

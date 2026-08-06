@@ -96,7 +96,7 @@ async fn read_optional(path: &Path) -> Result<Option<String>, DumpError> {
 
 async fn write_atomically(path: &Path, contents: &str) -> Result<(), DumpError> {
     let staged = staging_path(path);
-    fs::write(&staged, contents)
+    crate::private_file::write_private(&staged, contents)
         .await
         .map_err(|e| write_error(&staged, &e.to_string()))?;
     fs::rename(&staged, path)

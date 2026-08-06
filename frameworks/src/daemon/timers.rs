@@ -12,6 +12,7 @@ pub struct TaskBoard {
     fires: HashMap<String, JoinHandle<()>>,
     restarts: HashMap<String, JoinHandle<()>>,
     force_kills: HashMap<String, JoinHandle<()>>,
+    memory_sample: Option<JoinHandle<()>>,
 }
 
 impl TaskBoard {
@@ -23,6 +24,7 @@ impl TaskBoard {
             fires: HashMap::new(),
             restarts: HashMap::new(),
             force_kills: HashMap::new(),
+            memory_sample: None,
         }
     }
 
@@ -30,6 +32,7 @@ impl TaskBoard {
         use SupervisionEffect as Se;
 
         match effect {
+            Se::ScheduleMemorySample { delay_ms } => self.schedule_memory_sample(delay_ms),
             Se::ArmTimer {
                 name,
                 fire_at_ms,
@@ -81,6 +84,16 @@ impl TaskBoard {
                 .await
                 .ok();
         });
+    }
+
+    fn schedule_memory_sample(&mut self, delay_ms: u64) {
+        abort(self.memory_sample.take());
+        let events = self.events.clone();
+        let task = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            events.send(DaemonEvent::SampleMemory).await.ok();
+        });
+        self.memory_sample = Some(task);
     }
 
     fn arm(&mut self, name: String, fire_at_ms: u64, delay_ms: u64) {

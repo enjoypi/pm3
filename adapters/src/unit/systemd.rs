@@ -14,6 +14,7 @@ pub fn render_unit(spec: &UnitSpec) -> String {
     let restart_delay_secs = spec.restart_delay_secs;
     let restart = escape_value(&spec.restart_condition);
     let pm3_env = render_environment(&spec.pm3_env);
+    let umask = format!("{:04o}", spec.umask);
     format!(
         "[Unit]
 Description={label}
@@ -26,6 +27,8 @@ WorkingDirectory={working_directory}
 Restart={restart}
 RestartSec={restart_delay_secs}
 KillMode=process
+UMask={umask}
+LimitCORE=0
 Environment=\"{HOME_VARIABLE}={home}\"
 Environment=\"{PATH_VARIABLE}={search_path}\"
 {pm3_env}StandardOutput=append:{log_path}

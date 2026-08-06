@@ -237,3 +237,55 @@ async fn a_persistence_failure_still_reports_the_services_it_reclaimed() {
         .expect("a persistence failure must not hide the services already reclaimed");
     assert_eq!(outcomes.len(), 1);
 }
+
+#[tokio::test]
+async fn a_survivor_without_an_identity_is_signalled_by_pid_not_by_group() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = None;
+    ports.seed_stored(vec![record]);
+    resurrected(&ports).await;
+    assert!(
+        ports
+            .signal_scopes()
+            .iter()
+            .any(|(pid, scope)| *pid == SURVIVOR_PID && *scope == SignalScope::SinglePid),
+        "an unverified pid must not take the whole process group down: {:?}",
+        ports.signal_scopes()
+    );
+}
+
+#[tokio::test]
+async fn a_survivor_without_an_identity_that_already_left_is_not_signalled() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = None;
+    ports.seed_stored(vec![record]);
+    ports.hide_from_probe(SURVIVOR_PID);
+    resurrected(&ports).await;
+    assert!(
+        ports.terminated().is_empty(),
+        "got: {:?}",
+        ports.terminated()
+    );
+}
+
+#[tokio::test]
+async fn a_confirmed_survivor_is_still_signalled_through_its_process_group() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    resurrected(&ports).await;
+    assert!(
+        ports
+            .signal_scopes()
+            .iter()
+            .all(|(_, scope)| *scope == SignalScope::ProcessGroup),
+        "got: {:?}",
+        ports.signal_scopes()
+    );
+}

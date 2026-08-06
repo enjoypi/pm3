@@ -103,3 +103,17 @@ pub fn log_unschedulable(app: &str, cron: &str) {
         "pm3 daemon cannot work out a next fire for a schedule",
     );
 }
+
+pub fn log_memory_breach(breach: &crate::query::MemoryBreach) {
+    let app = breach.name.as_str();
+    let rss_kib = breach.rss_kib;
+    let limit_kib = breach.limit_kib;
+    tracing::warn!(
+        feature = "supervisor",
+        action = "memory_breach",
+        app,
+        rss_kib,
+        limit_kib,
+        "pm3 restarts a service that grew past its memory limit",
+    );
+}

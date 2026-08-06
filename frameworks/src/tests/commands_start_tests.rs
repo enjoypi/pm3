@@ -32,6 +32,8 @@ fn inline_request<'s>(program: &'s str, args: &'s [String]) -> InlineStart<'s> {
         autorestart: None,
         network: false,
         writable_dirs: &[],
+        readable_dirs: &[],
+        max_memory: None,
         force: false,
     }
 }

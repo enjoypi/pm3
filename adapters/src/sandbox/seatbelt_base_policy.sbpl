@@ -7,8 +7,6 @@
 (allow signal (target same-sandbox))
 (allow process-info* (target same-sandbox))
 
-(allow file-read*)
-
 (allow file-write-data
   (require-all
     (path "/dev/null")

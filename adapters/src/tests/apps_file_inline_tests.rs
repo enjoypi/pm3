@@ -1,4 +1,4 @@
-use usecases::SandboxMode;
+use usecases::{ReadScope, SandboxMode};
 
 use super::*;
 use crate::{
@@ -25,6 +25,8 @@ fn request(writable_dirs: &[String]) -> InlineRequest<'_> {
         autorestart: None,
         network: true,
         writable_dirs,
+        readable_dirs: &[],
+        max_memory: None,
     }
 }
 
@@ -181,6 +183,7 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
     let defaults = SpecDefaults::from_config(
         &config.pm3,
         "/tmp/pm3-fixture",
+        "/tmp/pm3-fixture-cfg",
         "/tmp/pm3-fixture/logs",
         None,
     )
@@ -249,10 +252,13 @@ fn fully_declared_entry() -> AppEntry {
         max_restarts: Some(7),
         restart_delay_ms: Some(50),
         schedule: None,
+        max_memory: Some("300M".to_string()),
         sandbox: Some(SandboxEntry {
             mode: Some(SandboxMode::WorkspaceWrite.as_str().to_string()),
+            read: Some(ReadScope::Minimal.as_str().to_string()),
             network: Some(false),
             writable_roots: Some(vec!["/srv".to_string()]),
+            readable_roots: Some(vec!["/opt/data".to_string()]),
         }),
     }
 }
@@ -288,8 +294,10 @@ fn an_empty_sandbox_section_is_omitted() {
     let mut entry = fully_declared_entry();
     entry.sandbox = Some(SandboxEntry {
         mode: None,
+        read: None,
         network: None,
         writable_roots: None,
+        readable_roots: None,
     });
     let yaml = encode_service_file(&entry);
     assert!(!yaml.contains("sandbox"), "got: {yaml}");
@@ -349,4 +357,38 @@ fn an_app_without_a_cron_omits_the_schedule_key() {
     let dirs: Vec<String> = Vec::new();
     let entry = inline_entry(&request(&dirs));
     assert!(!encode_service_file(&entry).contains("schedule:"));
+}
+
+#[test]
+fn readable_dirs_are_declared_and_folded_like_the_writable_ones() {
+    let readable = ["/home/dev/data".to_string()];
+    let mut asked = request(&[]);
+    asked.readable_dirs = &readable;
+    let entry = inline_entry(&asked);
+    let sandbox = entry
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(
+        sandbox.readable_roots,
+        Some(vec!["${HOME}/data".to_string()])
+    );
+}
+
+#[test]
+fn no_readable_dirs_leaves_the_defaults_alone() {
+    let entry = inline_entry(&request(&[]));
+    let sandbox = entry
+        .sandbox
+        .as_ref()
+        .expect("an inline app always declares a sandbox");
+    assert_eq!(sandbox.readable_roots, None);
+}
+
+#[test]
+fn a_declared_memory_limit_reaches_the_encoded_service() {
+    let mut asked = request(&[]);
+    asked.max_memory = Some("300M");
+    let yaml = encode_service_file(&inline_entry(&asked));
+    assert!(yaml.contains("max_memory: \"300M\""), "got: {yaml}");
 }

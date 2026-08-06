@@ -17,6 +17,7 @@ pub struct Daemon {
     board: TaskBoard,
     poll_interval_ms: u64,
     kill_timeout_ms: u64,
+    memory_poll_interval_ms: u64,
 }
 
 impl Daemon {
@@ -33,6 +34,7 @@ impl Daemon {
             ports,
             poll_interval_ms: specs.config.daemon_poll_interval_ms.max(1),
             kill_timeout_ms,
+            memory_poll_interval_ms: specs.config.memory_poll_interval_ms.max(1),
             specs,
             events,
         }
@@ -69,6 +71,14 @@ impl Daemon {
         let effects = self
             .supervisor
             .on_fire(name, fire_at_ms, &*self.ports)
+            .await;
+        self.run(effects);
+    }
+
+    pub async fn on_memory_sample(&mut self) {
+        let effects = self
+            .supervisor
+            .on_memory_sample(self.memory_poll_interval_ms, &*self.ports)
             .await;
         self.run(effects);
     }
@@ -119,6 +129,7 @@ impl Daemon {
                     .await;
                 self.board.forget_force_kill(&name);
             }
+            DaemonEvent::SampleMemory => self.on_memory_sample().await,
             DaemonEvent::Shutdown => self.shutdown().await,
         }
     }

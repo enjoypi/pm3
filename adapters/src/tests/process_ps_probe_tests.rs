@@ -213,3 +213,74 @@ async fn a_batch_line_without_a_start_time_is_ignored() {
     let (_dir, probe) = probe_with("echo '7    '");
     assert_eq!(probe.identities(&[7]).await.get(&7), Some(&Liveness::Gone));
 }
+
+#[tokio::test]
+async fn a_live_process_reports_a_resident_memory_footprint() {
+    let sampled = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS)
+        .resident_memory(&[std::process::id()])
+        .await;
+    let rss = sampled
+        .get(&std::process::id())
+        .copied()
+        .expect("the test process occupies memory");
+    assert!(rss > 0, "got: {rss}");
+}
+
+#[tokio::test]
+async fn an_empty_batch_samples_no_memory_at_all() {
+    let (_dir, probe) = probe_with("echo unreachable");
+    assert!(probe.resident_memory(&[]).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_memory_sample_ps_refuses_reports_nothing() {
+    let (_dir, probe) = probe_with("exit 2");
+    assert!(probe.resident_memory(&[7]).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_memory_sample_ps_cannot_answer_in_time_reports_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = fake_ps(&dir, "sleep 5").to_string_lossy().into_owned();
+    let probe = PsProcessProbe::new(program, 20, POLL_STEP_MS);
+    assert!(probe.resident_memory(&[7]).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_missing_ps_samples_no_memory() {
+    let probe = PsProcessProbe::new(
+        "/nonexistent/ps".to_string(),
+        PROBE_TIMEOUT_MS,
+        POLL_STEP_MS,
+    );
+    assert!(probe.resident_memory(&[7]).await.is_empty());
+}
+
+#[tokio::test]
+async fn an_unparsable_memory_line_is_skipped() {
+    let (_dir, probe) = probe_with("echo '7 plenty'; echo '8 4096'");
+    let sampled = probe.resident_memory(&[7, 8]).await;
+    assert_eq!(sampled.get(&7), None);
+    assert_eq!(sampled.get(&8), Some(&4096));
+}
+
+#[tokio::test]
+async fn a_memory_line_without_a_numeric_pid_is_skipped() {
+    let (_dir, probe) = probe_with("echo 'header rss'; echo '8 4096'");
+    let sampled = probe.resident_memory(&[8]).await;
+    assert_eq!(sampled.get(&8), Some(&4096));
+    assert_eq!(sampled.len(), 1);
+}
+
+#[tokio::test]
+async fn a_memory_sample_for_a_pid_that_already_left_reports_nothing() {
+    let (_dir, probe) = probe_with("exit 1");
+    assert!(probe.resident_memory(&[7]).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_memory_line_without_a_separator_is_skipped() {
+    let (_dir, probe) = probe_with("echo 'unsplittable'; echo '8 4096'");
+    let sampled = probe.resident_memory(&[8]).await;
+    assert_eq!(sampled.len(), 1);
+}

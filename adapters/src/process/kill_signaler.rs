@@ -4,7 +4,7 @@ use tokio::{
     process::Command,
     time::{Instant, timeout},
 };
-use usecases::{SignalError, Signaler};
+use usecases::{SignalError, SignalScope, Signaler};
 
 use crate::exit_status::{describe_refusal, exit_code_of};
 
@@ -37,14 +37,14 @@ impl KillSignaler {
         Self::new(KILL_PROGRAM.to_string(), stop_signal, timeout_ms)
     }
 
-    async fn deliver(&self, signal: &str, pid: u32) -> Result<(), SignalError> {
+    async fn deliver(&self, signal: &str, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         if !is_signalable(pid) {
             return Err(SignalError::Delivery {
                 pid,
                 reason: UNSAFE_PID_REASON.to_string(),
             });
         }
-        if self.signal(signal, &group_target(pid), pid).await.is_ok() {
+        if scope.reaches_the_group() && self.signal(signal, &group_target(pid), pid).await.is_ok() {
             return Ok(());
         }
         self.signal(signal, &pid.to_string(), pid).await
@@ -96,13 +96,13 @@ impl KillSignaler {
 }
 
 impl Signaler for KillSignaler {
-    async fn terminate(&self, pid: u32) -> Result<(), SignalError> {
+    async fn terminate(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         let signal = self.stop_signal.clone();
-        self.deliver(&signal, pid).await
+        self.deliver(&signal, pid, scope).await
     }
 
-    async fn force_kill(&self, pid: u32) -> Result<(), SignalError> {
-        self.deliver(FORCE_SIGNAL, pid).await
+    async fn force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        self.deliver(FORCE_SIGNAL, pid, scope).await
     }
 }
 
