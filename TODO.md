@@ -29,6 +29,7 @@
 - [ ] 仓库根还没有 README，也没有 LICENSE。README 写定位（极简 pm2 + 严格沙箱）、安装、快速上手（`start` / `list` / `logs` / `restart` / `service install`）、默认沙箱行为（只写自己 cwd、拒网、`read: minimal`）、`<name>.env` 的凭据约定、两个目录各放什么
   - 与 `docs/requirements.md` **分工要清楚**：那份是需求描述（为什么这样设计），README 是上手指南（怎么用）⇒ MUST NOT 复制粘贴，否则两份必然漂移
   - crates.io 发布要求 `readme` 与 `license` 字段 ⇒ 与上一节联动
+  - README 内容：1. pm3是什么，为什么要新做个 pm3，设计理念是什么；2. 安装方法；3. 使用方法；4. 和 pm2 相比有什么优劣；5. 和 docker/podman 相比有什么优劣；6. 性能测试数据
 
 ## 对照 pm2 还可以补的功能
 
@@ -42,3 +43,5 @@
 - [ ] 日志写侧 rotate（size 触发）：读侧 `LogFollower::reopen_if_rotated` 已兼容外部 rotate，自己不切割也不清空（也没有 `pm2 flush` 等价物）
 - [ ] 多服务聚合 tail：`pm3 logs` 一次只能盯一个服务
 - [ ] 手动重置熔断计数（`pm2 reset` 等价物）：跑满 `min_uptime` 会自动清零，所以影响有限；errored 后立刻 restart 再快速崩溃会当场再次熔断
+
+## [ ] Windows Service
