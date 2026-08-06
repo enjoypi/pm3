@@ -22,6 +22,22 @@ pub struct Home {
     pub config: PathBuf,
 }
 
+impl Drop for Home {
+    fn drop(&mut self) {
+        if !self.root.join("pm3.pid").exists() {
+            return;
+        }
+        for args in [["list"].as_slice(), ["kill", "--with-services"].as_slice()] {
+            std::process::Command::new(PM3)
+                .arg("--config")
+                .arg(&self.config)
+                .args(args)
+                .output()
+                .ok();
+        }
+    }
+}
+
 pub const FULL_READ: &str = "full";
 pub const MINIMAL_READ: &str = "minimal";
 
