@@ -158,6 +158,50 @@ fn validate_rejects_zero_min_uptime() {
 }
 
 #[test]
+fn validate_rejects_zero_max_restart_delay() {
+    let mut cfg = valid_config();
+    cfg.pm3.restart.max_restart_delay_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidMaxRestartDelay(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_zero_log_rotate_interval() {
+    let mut cfg = valid_config();
+    cfg.pm3.log_rotate_interval_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidLogRotateInterval(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_zero_ready_timeout() {
+    let mut cfg = valid_config();
+    cfg.pm3.ready_timeout_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidReadyTimeout(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_zero_ready_poll_interval() {
+    let mut cfg = valid_config();
+    cfg.pm3.ready_poll_interval_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidReadyPollInterval(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn validate_accepts_zero_max_restarts() {
     let mut cfg = valid_config();
     cfg.pm3.restart.max_restarts = 0;
@@ -426,6 +470,9 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidPollCeiling { max: 1, floor: 2 },
         ConfigError::InvalidFollowInterval(0),
         ConfigError::InvalidLogTailLines(0),
+        ConfigError::InvalidLogRotateInterval(0),
+        ConfigError::InvalidReadyTimeout(0),
+        ConfigError::InvalidReadyPollInterval(0),
         ConfigError::InvalidChannelDepth(0),
         ConfigError::InvalidBodyLimit(0),
         ConfigError::InvalidMaxTasks(0),
@@ -435,6 +482,7 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidRestartCondition("sometimes".to_string()),
         ConfigError::InvalidStopSignal("BOOM".to_string()),
         ConfigError::InvalidMinUptime(0),
+        ConfigError::InvalidMaxRestartDelay(0),
         ConfigError::InvalidSandboxMode {
             mode: "yolo".to_string(),
             expected: "read-only, workspace-write, danger-full-access".to_string(),

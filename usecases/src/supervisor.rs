@@ -1,4 +1,6 @@
-use entities::AppSpec;
+use std::collections::{HashMap, HashSet};
+
+use entities::{AppSpec, ProcessStatus};
 
 use crate::{
     Ports, SignalScope,
@@ -13,17 +15,17 @@ use crate::{
     restart::{RestartOutcome, restart_app},
     resurrect::resurrect,
     selector::AppSelector,
-    start::{StartOutcome, StartReport, refused_services, start_apps},
+    start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
     stop::{persist_for_handover, stop_all_apps, stop_app},
-    supervise::{ExitAction, handle_child_exit},
+    supervise::{ExitAction, handle_child_exit, settle_failed_probe},
     supervision::{
         SupervisionEffect, SupervisionFailure, SupervisionOutcome, SupervisionReply,
         SupervisionRequest,
     },
     supervisor_log::{
         log_armed, log_exit_after_delete, log_failure, log_handover, log_memory_breach,
-        log_partial_start, log_settled, log_spared_force_kill, log_stale_restart,
-        log_stuck_force_kill, log_unschedulable,
+        log_partial_start, log_rotate_failed, log_rotated, log_settled, log_spared_force_kill,
+        log_stale_restart, log_stuck_force_kill, log_unschedulable,
     },
     table::ProcessTable,
     timer_state::TimerState,
@@ -31,20 +33,33 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Supervisor {
-    table: ProcessTable,
-    timers: TimerState,
-    logs_dir: String,
-    kill_timeout_ms: u64,
+    pub(crate) table: ProcessTable,
+    pub(crate) timers: TimerState,
+    pub(crate) logs_dir: String,
+    pub(crate) kill_timeout_ms: u64,
+    pub(crate) ready_timeout_ms: u64,
+    pub(crate) ready_poll_interval_ms: u64,
+    pub(crate) waiters: HashMap<String, Vec<String>>,
+    pub(crate) ready_failed: HashSet<String>,
 }
 
 impl Supervisor {
     #[must_use]
-    pub fn new(logs_dir: String, kill_timeout_ms: u64) -> Self {
+    pub fn new(
+        logs_dir: String,
+        kill_timeout_ms: u64,
+        ready_timeout_ms: u64,
+        ready_poll_interval_ms: u64,
+    ) -> Self {
         Self {
             table: ProcessTable::new(),
             timers: TimerState::new(),
             logs_dir,
             kill_timeout_ms,
+            ready_timeout_ms,
+            ready_poll_interval_ms,
+            waiters: HashMap::new(),
+            ready_failed: HashSet::new(),
         }
     }
 
@@ -88,16 +103,30 @@ impl Supervisor {
             SupervisionRequest::Start { services } => {
                 self.start(&services, resolver, ports, &mut effects).await
             }
-            SupervisionRequest::List => Ok(SupervisionReply::Listed(
-                list_apps(&self.table, ports.now_ms())
+            SupervisionRequest::List => {
+                let views: Vec<ProcessView> = list_apps(&self.table, ports.now_ms())
                     .into_iter()
                     .map(|view| self.with_next_fire(view))
-                    .collect(),
-            )),
+                    .collect();
+                let pids: Vec<u32> = views.iter().filter_map(|view| view.pid).collect();
+                let samples = ports.resource_usage(&pids).await;
+                Ok(SupervisionReply::Listed(
+                    views
+                        .into_iter()
+                        .map(|view| view.with_sample(&samples))
+                        .collect(),
+                ))
+            }
             SupervisionRequest::Describe(selector) => {
-                describe_app(&self.table, &selector, ports.now_ms())
-                    .map(|view| SupervisionReply::Described(self.with_next_fire(view)))
-                    .map_err(Into::into)
+                match describe_app(&self.table, &selector, ports.now_ms()) {
+                    Ok(view) => {
+                        let view = self.with_next_fire(view);
+                        let pids: Vec<u32> = view.pid.into_iter().collect();
+                        let samples = ports.resource_usage(&pids).await;
+                        Ok(SupervisionReply::Described(view.with_sample(&samples)))
+                    }
+                    Err(error) => Err(error.into()),
+                }
             }
             SupervisionRequest::Stop(selector) => self.stop(&selector, ports, &mut effects).await,
             SupervisionRequest::Restart(selector) => {
@@ -126,6 +155,13 @@ impl Supervisor {
         }];
         if self.table.find_by_name(name).is_none() {
             log_exit_after_delete(name);
+            return effects;
+        }
+        if self.ready_failed.remove(name) {
+            match settle_failed_probe(&mut self.table, name, ports).await {
+                Ok(()) => log_settled(name, ProcessStatus::Errored),
+                Err(error) => log_failure("exit", name, &error),
+            }
             return effects;
         }
         match handle_child_exit(&mut self.table, name, outcome, ports).await {
@@ -191,6 +227,29 @@ impl Supervisor {
         effects
     }
 
+    pub async fn on_log_rotate(
+        &self,
+        max_bytes: u64,
+        interval_ms: u64,
+        ports: &impl Ports,
+    ) -> Vec<SupervisionEffect> {
+        let effects = vec![SupervisionEffect::ScheduleLogRotate {
+            delay_ms: interval_ms,
+        }];
+        if max_bytes == 0 {
+            return effects;
+        }
+        match ports.rotate_logs(&self.logs_dir, max_bytes).await {
+            Ok(rotated) => {
+                for done in &rotated {
+                    log_rotated(done);
+                }
+            }
+            Err(error) => log_rotate_failed(&error.to_string()),
+        }
+        effects
+    }
+
     pub async fn on_force_kill(
         &self,
         name: &str,
@@ -242,11 +301,20 @@ impl Supervisor {
             outcomes,
             failure,
             unsaved,
+            pending,
         } = start_apps(&mut self.table, &specs, &self.logs_dir, ports).await;
         self.watch_all(&outcomes, effects);
+        for deferred in pending {
+            self.waiters
+                .entry(deferred.waiting_on)
+                .or_default()
+                .push(deferred.name);
+        }
         for outcome in &outcomes {
             self.cancel_restart(&outcome.name, effects);
-            self.arm_timer(&outcome.name, ports, effects);
+            if outcome.kind != StartKind::Deferred {
+                self.arm_timer(&outcome.name, ports, effects);
+            }
         }
         if outcomes.is_empty() {
             if let Some(error) = failure.or(unsaved) {
@@ -281,6 +349,7 @@ impl Supervisor {
         let outcome = stop_app(&mut self.table, selector, ports).await?;
         self.disarm(&outcome.name, effects);
         self.cancel_restart(&outcome.name, effects);
+        self.cancel_ready(&outcome.name, effects);
         let token = self.identity_token(&outcome.name);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
         Ok(SupervisionReply::Stopped { name: outcome.name })
@@ -324,6 +393,7 @@ impl Supervisor {
         let outcome = delete_app(&mut self.table, selector, ports).await?;
         self.disarm(&outcome.name, effects);
         self.cancel_restart(&outcome.name, effects);
+        self.cancel_ready(&outcome.name, effects);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
         Ok(SupervisionReply::Deleted { name: outcome.name })
     }
@@ -340,6 +410,7 @@ impl Supervisor {
         for outcome in &stopped {
             names.push(outcome.name.clone());
             covered.extend(outcome.force_kill_pid);
+            self.cancel_ready(&outcome.name, effects);
             let token = self.identity_token(&outcome.name);
             self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
         }
@@ -424,7 +495,12 @@ impl Supervisor {
         });
     }
 
-    fn arm_timer(&mut self, name: &str, ports: &impl Ports, effects: &mut Vec<SupervisionEffect>) {
+    pub(crate) fn arm_timer(
+        &mut self,
+        name: &str,
+        ports: &impl Ports,
+        effects: &mut Vec<SupervisionEffect>,
+    ) {
         self.disarm(name, effects);
         let Some(cron) = schedule_of(&self.table, name) else {
             return;
@@ -443,7 +519,7 @@ impl Supervisor {
         });
     }
 
-    fn schedule_force_kill(
+    pub(crate) fn schedule_force_kill(
         &self,
         name: &str,
         pid: Option<u32>,
@@ -462,13 +538,17 @@ impl Supervisor {
         });
     }
 
-    fn watch_all(&mut self, outcomes: &[StartOutcome], effects: &mut Vec<SupervisionEffect>) {
+    pub(crate) fn watch_all(
+        &mut self,
+        outcomes: &[StartOutcome],
+        effects: &mut Vec<SupervisionEffect>,
+    ) {
         for outcome in outcomes {
             self.watch(outcome, effects);
         }
     }
 
-    fn watch(&mut self, started: &StartOutcome, effects: &mut Vec<SupervisionEffect>) {
+    pub(crate) fn watch(&mut self, started: &StartOutcome, effects: &mut Vec<SupervisionEffect>) {
         let (Some(pid), true) = (started.pid, started.kind.needs_watching()) else {
             return;
         };
@@ -479,6 +559,35 @@ impl Supervisor {
             generation,
             pid,
             token,
+        });
+        self.await_ready_if_probing(&started.name, generation, effects);
+    }
+
+    fn await_ready_if_probing(
+        &self,
+        name: &str,
+        generation: u64,
+        effects: &mut Vec<SupervisionEffect>,
+    ) {
+        let record = self
+            .table
+            .find_by_name(name)
+            .expect("internal error: a watched outcome always has a record");
+        let Some(probe) = record.spec.ready_probe.clone() else {
+            return;
+        };
+        if record.runtime.status != ProcessStatus::Launching {
+            return;
+        }
+        effects.push(SupervisionEffect::AwaitReady {
+            name: name.to_string(),
+            generation,
+            probe,
+            timeout_ms: record
+                .spec
+                .listen_timeout_ms
+                .unwrap_or(self.ready_timeout_ms),
+            interval_ms: self.ready_poll_interval_ms,
         });
     }
 

@@ -1,6 +1,55 @@
 use entities::ProcessStatus;
 
-use crate::UsecaseError;
+use crate::{UsecaseError, ports::RotatedLog};
+
+pub fn log_rotated(rotated: &RotatedLog) {
+    let path = rotated.path.as_str();
+    let bytes = rotated.bytes;
+    tracing::info!(
+        feature = "supervisor",
+        action = "log_rotate",
+        path,
+        bytes,
+        "pm3 rotated a service log past its size limit",
+    );
+}
+
+pub fn log_probe_ready(app: &str) {
+    tracing::info!(
+        feature = "lifecycle",
+        action = "ready",
+        app,
+        "pm3 marks a service online after its readiness probe passed",
+    );
+}
+
+pub fn log_ready_timeout(app: &str, reason: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "ready_timeout",
+        app,
+        reason,
+        "pm3 stops a service that never became ready",
+    );
+}
+
+pub fn log_waiter_cancelled(app: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "ready_timeout",
+        app,
+        "pm3 cancels a service whose dependency never became ready",
+    );
+}
+
+pub fn log_rotate_failed(reason: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "log_rotate",
+        reason,
+        "pm3 could not scan the log directory for rotation",
+    );
+}
 
 pub fn log_settled(app: &str, status: ProcessStatus) {
     let status = status.as_str();

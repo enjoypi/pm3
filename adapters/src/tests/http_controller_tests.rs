@@ -271,3 +271,33 @@ async fn a_body_beyond_the_limit_is_refused_before_it_reaches_the_daemon() {
     let exchange = exchange_without_a_daemon(post_to("/apps", &oversized)).await;
     assert_eq!(exchange.status, StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+#[tokio::test]
+async fn listing_apps_carries_the_structured_views() {
+    let outcome = Ok(SupervisionReply::Listed(vec![running_view(0, "web")]));
+    let exchange = exchange(outcome, get_from("/apps")).await;
+    let views = reply_of(&exchange.body).views;
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].name, "web");
+    assert_eq!(views[0].status, "online");
+}
+
+#[tokio::test]
+async fn describing_an_app_carries_the_structured_view() {
+    let outcome = Ok(SupervisionReply::Described(running_view(3, "web")));
+    let exchange = exchange(outcome, get_from("/apps/web")).await;
+    let views = reply_of(&exchange.body).views;
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].pm_id, 3);
+}
+
+#[tokio::test]
+async fn an_action_reply_carries_no_views() {
+    let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
+    assert!(reply_of(&exchange.body).views.is_empty());
+    assert!(
+        !exchange.body.contains("\"views\""),
+        "an empty view list stays off the wire: {}",
+        exchange.body
+    );
+}

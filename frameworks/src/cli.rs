@@ -45,20 +45,38 @@ pub enum Commands {
     Delete { selector: String },
 
     #[command(about = "Show everything known about one app")]
-    Describe { selector: String },
+    Describe {
+        selector: String,
+
+        #[arg(long, help = "Print the description as JSON")]
+        json: bool,
+    },
 
     #[command(about = "List every managed app")]
-    List,
+    List {
+        #[arg(long, help = "Print the listing as JSON")]
+        json: bool,
+    },
 
-    #[command(about = "Show the stdout log of a managed app")]
+    #[command(about = "Show the logs of managed apps")]
     Logs {
-        name: String,
+        names: Vec<String>,
 
         #[arg(short = 'n', long)]
         lines: Option<usize>,
 
         #[arg(short = 'f', long)]
         follow: bool,
+
+        #[arg(long, help = "Show the stderr log instead of stdout")]
+        err: bool,
+
+        #[arg(
+            long,
+            conflicts_with = "err",
+            help = "Merge the stdout and stderr logs"
+        )]
+        all: bool,
     },
 
     #[command(about = "Configuration management")]
@@ -143,6 +161,28 @@ pub struct StartArgs {
     )]
     pub max_memory: Option<String>,
 
+    #[arg(
+        long = "ready-exec",
+        value_name = "CMD",
+        help = "Probe readiness with this command; repeatable, first one is the program"
+    )]
+    pub ready_exec: Vec<String>,
+
+    #[arg(
+        long = "ready-tcp",
+        value_name = "HOST:PORT",
+        conflicts_with = "ready_exec",
+        help = "Probe readiness by connecting to this endpoint"
+    )]
+    pub ready_tcp: Option<String>,
+
+    #[arg(
+        long = "listen-timeout",
+        value_name = "MS",
+        help = "Fail the service when it is not ready within this budget"
+    )]
+    pub listen_timeout_ms: Option<u64>,
+
     #[arg(long, help = "Overwrite an existing service file")]
     pub force: bool,
 
@@ -200,15 +240,27 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
                 .map(Some)
         }
         Commands::Delete { selector } => commands::delete_app(&config, &selector).await.map(Some),
-        Commands::Describe { selector } => {
-            commands::describe_app(&config, &selector).await.map(Some)
-        }
-        Commands::List => commands::list_apps(&config).await.map(Some),
+        Commands::Describe { selector, json } => commands::describe_app(&config, &selector, json)
+            .await
+            .map(Some),
+        Commands::List { json } => commands::list_apps(&config, json).await.map(Some),
         Commands::Logs {
-            name,
+            names,
             lines,
             follow,
-        } => run_logs(&config, &name, lines, follow, commands::FOLLOW_FOREVER).await,
+            err,
+            all,
+        } => {
+            let request = crate::logs::LogRequest {
+                names,
+                lines,
+                err,
+                all,
+                follow,
+                polls: crate::logs::FOLLOW_FOREVER,
+            };
+            crate::logs::run_logs(&config, &request, &emit).await
+        }
         Commands::Config { command } => run_config(&config, &command).map(Some),
         Commands::Service { command } => crate::service::run_service(&config, command.as_ref())
             .await
@@ -263,6 +315,9 @@ async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
                 writable_dirs: &args.writable_dirs,
                 readable_dirs: &args.readable_dirs,
                 max_memory: args.max_memory.as_deref(),
+                ready_exec: &args.ready_exec,
+                ready_tcp: args.ready_tcp.as_deref(),
+                listen_timeout_ms: args.listen_timeout_ms,
                 force: args.force,
             };
             commands::start_inline(config, &request).await?
@@ -295,23 +350,6 @@ fn confirm_via_stdio(name: &str) -> bool {
     let stdout = std::io::stdout();
     let mut output = stdout.lock();
     prompt::confirm_restart(name, &mut input, &mut output)
-}
-
-async fn run_logs(
-    config: &str,
-    name: &str,
-    lines: Option<usize>,
-    follow: bool,
-    polls: u32,
-) -> Result<Option<String>> {
-    let tail = commands::read_log_tail(config, name, lines).await?;
-    if !follow {
-        return Ok(Some(tail));
-    }
-    emit(&tail);
-    commands::follow_log(config, name, polls, &emit)
-        .await
-        .map(|()| None)
 }
 
 fn run_config(config: &str, command: &ConfigCommands) -> Result<String> {

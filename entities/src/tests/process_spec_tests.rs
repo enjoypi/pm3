@@ -132,6 +132,51 @@ fn validate_rejects_zero_min_uptime() {
 }
 
 #[test]
+fn validate_rejects_zero_max_restart_delay() {
+    let candidate = AppSpec {
+        max_restart_delay_ms: 0,
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(err, SpecError::InvalidMaxRestartDelay("api".to_string()));
+}
+
+#[test]
+fn validate_rejects_a_probe_without_a_command() {
+    let candidate = AppSpec {
+        ready_probe: Some(ReadyProbe::Exec {
+            command: Vec::new(),
+        }),
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(err, SpecError::EmptyReadyProbe("api".to_string()));
+}
+
+#[test]
+fn validate_accepts_a_real_probe() {
+    let candidate = AppSpec {
+        ready_probe: Some(ReadyProbe::Tcp {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+        }),
+        listen_timeout_ms: Some(5000),
+        ..spec("api")
+    };
+    validate_spec(&candidate).expect("a real probe should validate");
+}
+
+#[test]
+fn validate_rejects_zero_listen_timeout() {
+    let candidate = AppSpec {
+        listen_timeout_ms: Some(0),
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(err, SpecError::InvalidListenTimeout("api".to_string()));
+}
+
+#[test]
 fn validate_rejects_empty_env_key() {
     let candidate = AppSpec {
         env: vec![(String::new(), "value".to_string())],
@@ -186,6 +231,7 @@ fn restart_policy_mirrors_the_spec_fields() {
         min_uptime_ms: 500,
         max_restarts: 3,
         restart_delay_ms: 100,
+        max_restart_delay_ms: 15000,
         ..spec("api")
     };
     assert_eq!(
@@ -195,6 +241,7 @@ fn restart_policy_mirrors_the_spec_fields() {
             min_uptime_ms: 500,
             max_restarts: 3,
             restart_delay_ms: 100,
+            max_restart_delay_ms: 15000,
         }
     );
 }
@@ -227,6 +274,13 @@ fn every_spec_error_renders_a_message() {
         },
         SpecError::SelfDependency("api".to_string()),
         SpecError::InvalidMinUptime("api".to_string()),
+        SpecError::InvalidMaxRestartDelay("api".to_string()),
+        SpecError::EmptyReadyProbe("api".to_string()),
+        SpecError::InvalidReadyEndpoint {
+            app: "api".to_string(),
+            endpoint: ":0".to_string(),
+        },
+        SpecError::InvalidListenTimeout("api".to_string()),
         SpecError::EmptyEnvKey("api".to_string()),
         SpecError::EmptySchedule("api".to_string()),
         SpecError::Sandbox {

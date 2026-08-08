@@ -294,3 +294,105 @@ async fn a_memory_line_without_a_separator_is_skipped() {
     let sampled = probe.resident_memory(&[8]).await;
     assert_eq!(sampled.len(), 1);
 }
+
+#[tokio::test]
+async fn a_live_process_reports_its_resource_usage() {
+    let sampled = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS)
+        .resource_usage(&[std::process::id()])
+        .await;
+    let sample = sampled
+        .get(&std::process::id())
+        .copied()
+        .expect("the test process occupies memory");
+    assert!(sample.rss_kib > 0, "got: {sample:?}");
+}
+
+#[tokio::test]
+async fn an_empty_batch_samples_no_resources_at_all() {
+    let (_dir, probe) = probe_with("echo unreachable");
+    assert!(probe.resource_usage(&[]).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_resource_sample_ps_refuses_reports_nothing() {
+    let (_dir, probe) = probe_with("exit 2");
+    assert!(probe.resource_usage(&[7]).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_resource_report_carries_rss_and_cpu_side_by_side() {
+    let (_dir, probe) = probe_with("echo '7 4096 12.3'; echo '8 2048 0.0'");
+    let sampled = probe.resource_usage(&[7, 8]).await;
+    assert_eq!(
+        sampled.get(&7),
+        Some(&ResourceSample {
+            rss_kib: 4096,
+            cpu_tenths: 123,
+        })
+    );
+    assert_eq!(
+        sampled.get(&8),
+        Some(&ResourceSample {
+            rss_kib: 2048,
+            cpu_tenths: 0,
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_cpu_value_without_a_fraction_reads_as_whole_percents() {
+    let (_dir, probe) = probe_with("echo '7 4096 12'");
+    let sampled = probe.resource_usage(&[7]).await;
+    assert_eq!(
+        sampled.get(&7),
+        Some(&ResourceSample {
+            rss_kib: 4096,
+            cpu_tenths: 120,
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_resource_line_with_a_broken_cpu_is_skipped() {
+    let (_dir, probe) = probe_with("echo '7 4096 12.'; echo '8 2048 0.5'");
+    let sampled = probe.resource_usage(&[7, 8]).await;
+    assert_eq!(sampled.get(&7), None);
+    assert_eq!(
+        sampled.get(&8),
+        Some(&ResourceSample {
+            rss_kib: 2048,
+            cpu_tenths: 5,
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_resource_line_with_a_broken_rss_is_skipped() {
+    let (_dir, probe) = probe_with("echo '7 plenty 0.5'; echo '8 2048 0.5'");
+    let sampled = probe.resource_usage(&[7, 8]).await;
+    assert_eq!(sampled.get(&7), None);
+    assert!(sampled.contains_key(&8));
+}
+
+#[tokio::test]
+async fn a_resource_line_that_ends_early_is_skipped() {
+    let (_dir, probe) = probe_with("echo '7 4096'; echo '8 2048 0.5'");
+    let sampled = probe.resource_usage(&[7, 8]).await;
+    assert_eq!(sampled.get(&7), None);
+    assert!(sampled.contains_key(&8));
+}
+
+#[tokio::test]
+async fn malformed_resource_lines_are_skipped_one_by_one() {
+    let body = "echo ''; echo 'abc 2048 0.5'; echo '7'; echo '8 xx 0.5'; echo '9 2048 xx.5'; echo '11 2048 1.x'; echo '12 1024 0.5'";
+    let (_dir, probe) = probe_with(body);
+    let sampled = probe.resource_usage(&[12]).await;
+    assert_eq!(sampled.len(), 1);
+    assert_eq!(
+        sampled.get(&12),
+        Some(&ResourceSample {
+            rss_kib: 1024,
+            cpu_tenths: 5,
+        })
+    );
+}

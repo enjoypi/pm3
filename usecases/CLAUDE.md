@@ -7,6 +7,7 @@ Interactor + Output Port（trait）。与外层交互只经 `ports/` 下的 trai
 | 文件 | 内容 |
 |---|---|
 | `supervisor.rs` | `Supervisor`：daemon 全部编排的落点，吃 `SupervisionRequest`/生命周期事件，吐 `(结果, Vec<SupervisionEffect>)` |
+| `supervisor_ready.rs` | 就绪探针编排（`on_ready`/`on_ready_timeout`/waiters 级联）：`Supervisor` 的第二个 impl 块，共享字段与方法用 `pub(crate)`，第二 impl 块要 `#[expect(clippy::multiple_inherent_impl)]` |
 | `supervision.rs` | 边界契约：`SupervisionRequest` / `SupervisionReply` / `SupervisionFailure` |
 | `supervisor_log.rs` | `Supervisor` 的业务日志（`log_*`），MUST 是 `pub`——私有模块内的 `pub(crate)` 触发 clippy `redundant_pub_crate` |
 | `timer_state.rs` | `TimerState`：定时器/待重启/generation 的**业务状态**，不持 `JoinHandle` |
@@ -19,7 +20,7 @@ Interactor + Output Port（trait）。与外层交互只经 `ports/` 下的 trai
 | `query.rs` / `table.rs` / `selector.rs` | 查询、列表数据、`AppSelector` 解析 |
 | `log_paths.rs` | 日志路径推导 |
 | `handover.rs` | `pm3 install` 的 before/after 服务对比：`compare_handover`（adopted/restarted/lost）与 `describe_handover`，纯函数 |
-| `ports/` | `clock` `dump_store` `fingerprint` `launcher` `probe` `scheduler` `signaler` `wrapper` |
+| `ports/` | `clock` `dump_store` `fingerprint` `launcher` `log_rotate` `probe` `ready` `scheduler` `signaler` `wrapper` |
 
 ## 本层规则
 

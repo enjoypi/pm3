@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Mutex, time::Duration};
 
-use adapters::{Pm3Paths, resolve_paths};
+use adapters::{LogStream, Pm3Paths, resolve_paths};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     sync::oneshot,
@@ -10,8 +10,8 @@ use tokio::{
 use crate::{
     Result,
     client::UdsClient,
-    commands::stdout_log,
     daemon::run_daemon_with_shutdown,
+    logs::log_file,
     test_support::{REQUEST_TIMEOUT_MS, write_apps_file, write_config},
 };
 
@@ -83,8 +83,8 @@ pub fn sleeper_apps_file(fixture: &Fixture) -> String {
         .into_owned()
 }
 
-pub fn seed_log(fixture: &Fixture, name: &str, content: &str) -> String {
-    let path = stdout_log(&fixture.paths, name).expect("a safe service name");
+pub fn seed_log(fixture: &Fixture, name: &str, stream: LogStream, content: &str) -> String {
+    let path = log_file(&fixture.paths, name, stream).expect("a safe service name");
     std::fs::create_dir_all(&fixture.paths.logs_dir).expect("create the log directory");
     std::fs::write(&path, content).expect("seed the log");
     path

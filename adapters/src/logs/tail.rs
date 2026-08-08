@@ -81,16 +81,23 @@ fn line_breaks(buffer: &[u8]) -> usize {
 
 impl LogFollower {
     pub async fn start_at_end(path: &Path) -> Result<Self, LogReadError> {
-        let mut file = File::open(path)
-            .await
-            .map_err(|e| read_error(path, &e.to_string()))?;
+        let follower = Self::start_at_end_if_exists(path).await?;
+        follower.ok_or_else(|| read_error(path, "the log file does not exist"))
+    }
+
+    pub async fn start_at_end_if_exists(path: &Path) -> Result<Option<Self>, LogReadError> {
+        let mut file = match File::open(path).await {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(read_error(path, &error.to_string())),
+        };
         let offset = seek_to_end(&mut file).await;
-        Ok(Self {
+        Ok(Some(Self {
             path: path.to_path_buf(),
             file,
             offset,
             pending: Vec::new(),
-        })
+        }))
     }
 
     pub async fn poll_appended(&mut self) -> Result<Vec<String>, LogReadError> {

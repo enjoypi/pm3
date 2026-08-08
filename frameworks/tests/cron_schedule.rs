@@ -65,7 +65,7 @@ fn a_scheduled_task_advertises_its_next_fire() {
     let started = start_task(&home, "* * * * *", &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
 
-    let next = field_of(&task_row(&home), 6);
+    let next = field_of(&task_row(&home), 8);
     assert!(
         next.contains(':') && (next.contains('+') || next.contains('-')),
         "the next column should read as HH:MM±HH:MM, got: {next}"
@@ -83,12 +83,12 @@ fn stopping_a_scheduled_task_clears_its_next_fire() {
     let home = home();
     let started = start_task(&home, "* * * * *", &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
-    assert_ne!(field_of(&task_row(&home), 6), "-");
+    assert_ne!(field_of(&task_row(&home), 8), "-");
 
     let stopped = pm3(&home, &["stop", TASK]);
     assert!(stopped.status.success(), "{}", stderr_of(&stopped));
     assert_eq!(
-        field_of(&task_row(&home), 6),
+        field_of(&task_row(&home), 8),
         "-",
         "a stopped task must drop its timer"
     );

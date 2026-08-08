@@ -24,17 +24,4 @@
   - crates.io 发布要求 `readme` 与 `license` 字段 ⇒ 与上一节联动
   - README 内容：1. pm3是什么，为什么要新做个 pm3，设计理念是什么；2. 安装方法；3. 使用方法；4. 和 pm2 相比有什么优劣；5. 和 docker/podman 相比有什么优劣；6. 性能测试数据
 
-## 对照 pm2 还可以补的功能
-
-来源 `docs/pm2-comparison.md`，按那里的优先级；P2 那批（cluster/scale/零停机 reload/watch/deploy/模块/programmatic API/APM）已判定与「极简+单机+强隔离」定位冲突，**不进本清单**。
-
-- [ ] `pm3 logs --err` / `--all`：`-err.log` 一直在落盘，但 CLI 只暴露 `stdout_log`（`frameworks/src/commands.rs`），看错误日志只能自己 `cat`。复用 `usecases::log_paths::STDERR_SUFFIX`，走 `stdout_log` 同一条名字校验
-- [ ] `--json` 输出（`list` / `describe`）：`adapters/src/presenter/` 加一个 JSON presenter 与 `table.rs`/`describe.rs` 并列，MUST 沿用「不含 env」的字段集。没有它，脚本与监控消费不了 pm3 的状态
-- [ ] 就绪探针（`ready_probe`: exec/tcp + `listen_timeout`）：`DepGraph` 目前只保证 spawn 先后，不保证被依赖者真的可服务——这是依赖编排的配套语义缺口。判定放 `usecases`，探测实现放 `adapters`
-- [ ] 指数退避重启：扩 `entities/src/process/restart.rs::decide_restart`（纯函数，测试成本低），对应 pm2 的 `exp_backoff_restart_delay`；现在 `restart_delay_ms` 是固定值
-- [ ] `list` 显示资源占用：RSS 已经在采样（内存熔断用），但只进判定不进表格；CPU 完全没采集
-- [ ] 日志写侧 rotate（size 触发）：读侧 `LogFollower::reopen_if_rotated` 已兼容外部 rotate，自己不切割也不清空（也没有 `pm2 flush` 等价物）
-- [ ] 多服务聚合 tail：`pm3 logs` 一次只能盯一个服务
-- [ ] 手动重置熔断计数（`pm2 reset` 等价物）：跑满 `min_uptime` 会自动清零，所以影响有限；errored 后立刻 restart 再快速崩溃会当场再次熔断
-
 ## [ ] Windows Service

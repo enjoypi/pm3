@@ -1,10 +1,12 @@
-use entities::{ReadScope, SandboxMode, SandboxPolicy};
+use entities::{ReadScope, ReadyProbe, SandboxMode, SandboxPolicy};
 
 use super::*;
 
 fn spec() -> AppSpec {
     AppSpec {
         max_memory_kib: None,
+        ready_probe: None,
+        listen_timeout_ms: None,
         name: "api".to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
@@ -17,6 +19,7 @@ fn spec() -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 0,
+        max_restart_delay_ms: 15000,
         schedule: None,
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
@@ -96,6 +99,7 @@ fn the_restart_policy_leaves_the_identity_unchanged() {
         min_uptime_ms: 5000,
         max_restarts: 1,
         restart_delay_ms: 250,
+        max_restart_delay_ms: 15000,
         ..spec()
     };
     assert_eq!(render_identity(&spec()), render_identity(&retuned));
@@ -222,4 +226,17 @@ fn a_pid_that_cannot_be_read_is_never_judged_recycled() {
 #[test]
 fn a_pid_that_is_gone_is_never_judged_recycled() {
     assert!(!pid_was_recycled(&Liveness::Gone, Some("token")));
+}
+
+#[test]
+fn the_ready_probe_leaves_the_identity_unchanged() {
+    let reprobed = AppSpec {
+        ready_probe: Some(ReadyProbe::Tcp {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+        }),
+        listen_timeout_ms: Some(5000),
+        ..spec()
+    };
+    assert_eq!(render_identity(&spec()), render_identity(&reprobed));
 }

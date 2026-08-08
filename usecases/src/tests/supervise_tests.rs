@@ -220,3 +220,13 @@ async fn handling_an_exit_persists_the_table() {
         .expect("exit handled");
     assert_eq!(ports.save_count(), 2);
 }
+
+#[tokio::test]
+async fn settling_a_probe_failure_for_an_unknown_service_is_reported() {
+    let ports = FakePorts::new(0);
+    let mut table = ProcessTable::new();
+    let err = settle_failed_probe(&mut table, "ghost", &ports)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, UsecaseError::NotFound(_)), "got: {err}");
+}

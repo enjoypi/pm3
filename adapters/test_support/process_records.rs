@@ -22,6 +22,8 @@ pub fn sample_identity() -> ProcessIdentity {
 pub fn sample_spec(name: &str) -> AppSpec {
     AppSpec {
         max_memory_kib: None,
+        ready_probe: None,
+        listen_timeout_ms: None,
         name: name.to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
@@ -31,6 +33,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 40,
+        max_restart_delay_ms: 15000,
         schedule: None,
         depends_on: vec!["db".to_string()],
         sandbox: SandboxPolicy {

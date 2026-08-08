@@ -189,7 +189,7 @@ fn delete_takes_a_selector() {
 fn describe_takes_a_selector() {
     let cli = parse(&["pm3", "describe", "web"]);
     assert!(
-        matches!(&cli.command, Commands::Describe { selector } if selector == "web"),
+        matches!(&cli.command, Commands::Describe { selector, json: _ } if selector == "web"),
         "got: {:?}",
         cli.command
     );
@@ -197,7 +197,10 @@ fn describe_takes_a_selector() {
 
 #[test]
 fn list_takes_no_argument() {
-    assert!(matches!(parse(&["pm3", "list"]).command, Commands::List));
+    assert!(matches!(
+        parse(&["pm3", "list"]).command,
+        Commands::List { json: false }
+    ));
 }
 
 #[test]
@@ -206,8 +209,14 @@ fn logs_leave_the_line_count_to_the_config_without_following() {
     assert!(
         matches!(
             &cli.command,
-            Commands::Logs { name, lines, follow }
-                if name == "web" && lines.is_none() && !follow
+            Commands::Logs {
+                names,
+                lines,
+                follow,
+                err,
+                all
+            }
+            if names == &["web".to_string()] && lines.is_none() && !follow && !err && !all
         ),
         "got: {:?}",
         cli.command
@@ -220,7 +229,7 @@ fn logs_accept_a_line_count_and_the_follow_flag() {
     assert!(
         matches!(
             &cli.command,
-            Commands::Logs { name: _, lines, follow } if *lines == Some(5) && *follow
+            Commands::Logs { lines, follow, .. } if *lines == Some(5) && *follow
         ),
         "got: {:?}",
         cli.command
@@ -278,6 +287,11 @@ fn the_hidden_sleep_target_takes_a_duration() {
 #[test]
 fn an_unknown_subcommand_is_rejected() {
     assert!(Cli::try_parse_from(["pm3", "teleport"]).is_err());
+}
+
+#[test]
+fn the_err_and_all_log_flags_conflict() {
+    assert!(Cli::try_parse_from(["pm3", "logs", "web", "--err", "--all"]).is_err());
 }
 
 #[tokio::test]
@@ -503,6 +517,3 @@ async fn starting_two_apps_files_is_rejected() {
         .to_string();
     assert!(err.contains("exactly one apps file"), "got: {err}");
 }
-
-#[path = "cli_logs_tests.rs"]
-mod logs;

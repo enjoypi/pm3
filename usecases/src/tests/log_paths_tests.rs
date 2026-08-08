@@ -18,3 +18,15 @@ fn repeated_trailing_slashes_collapse() {
     let paths = log_paths("/logs///", "api");
     assert_eq!(paths.stderr, "/logs/api-err.log");
 }
+
+#[test]
+fn a_single_stream_path_picks_the_matching_suffix() {
+    assert_eq!(
+        log_path("/home/u/.pm3/logs", "api", LogStream::Stdout),
+        "/home/u/.pm3/logs/api-out.log"
+    );
+    assert_eq!(
+        log_path("/home/u/.pm3/logs", "api", LogStream::Stderr),
+        "/home/u/.pm3/logs/api-err.log"
+    );
+}

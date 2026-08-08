@@ -10,6 +10,34 @@ const MS_PER_SECOND: u64 = 1000;
 const SECONDS_PER_MINUTE: u64 = 60;
 const MINUTES_PER_HOUR: u64 = 60;
 const HOURS_PER_DAY: u64 = 24;
+const KIB_PER_MIB: u64 = 1024;
+const TENTHS_PER_PERCENT: u32 = 10;
+
+pub fn format_memory(rss_kib: Option<u64>) -> String {
+    let Some(kib) = rss_kib else {
+        return MISSING.to_string();
+    };
+    if kib >= KIB_PER_MIB {
+        let tenths = kib.saturating_mul(TENTHS_PER_PERCENT.into()) / KIB_PER_MIB;
+        return format!(
+            "{}.{}M",
+            tenths / u64::from(TENTHS_PER_PERCENT),
+            tenths % u64::from(TENTHS_PER_PERCENT)
+        );
+    }
+    format!("{kib}K")
+}
+
+pub fn format_cpu(tenths: Option<u32>) -> String {
+    let Some(tenths) = tenths else {
+        return MISSING.to_string();
+    };
+    format!(
+        "{}.{}%",
+        tenths / TENTHS_PER_PERCENT,
+        tenths % TENTHS_PER_PERCENT
+    )
+}
 
 pub fn format_pid(pid: Option<u32>) -> String {
     pid.map_or_else(|| MISSING.to_string(), |value| value.to_string())

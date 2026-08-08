@@ -188,6 +188,7 @@ fn resolve_specs_fills_the_restart_defaults_from_the_config() {
         min_uptime_ms,
         max_restarts,
         restart_delay_ms,
+        max_restart_delay_ms,
     } = pm3_config(SandboxMode::WorkspaceWrite.as_str()).restart;
     let spec = resolve_one(&defaults(), &minimal_entry());
     assert_eq!(
@@ -197,6 +198,7 @@ fn resolve_specs_fills_the_restart_defaults_from_the_config() {
             min_uptime_ms,
             max_restarts,
             restart_delay_ms,
+            max_restart_delay_ms,
         }
     );
 }
@@ -208,6 +210,7 @@ fn resolve_specs_keeps_explicit_restart_overrides() {
         min_uptime_ms: Some(250),
         max_restarts: Some(3),
         restart_delay_ms: Some(40),
+        max_restart_delay_ms: Some(9000),
         ..minimal_entry()
     };
     let spec = resolve_one(&defaults(), &entry);
@@ -218,6 +221,7 @@ fn resolve_specs_keeps_explicit_restart_overrides() {
             min_uptime_ms: 250,
             max_restarts: 3,
             restart_delay_ms: 40,
+            max_restart_delay_ms: 9000,
         }
     );
 }
@@ -565,4 +569,102 @@ fn spec_defaults_rejects_an_unknown_configured_read_scope() {
         err.contains("sandbox read 'everything' for pm3.sandbox"),
         "got: {err}"
     );
+}
+
+#[test]
+fn resolve_specs_reads_an_exec_ready_probe() {
+    let entry = AppEntry {
+        ready_probe: Some(ReadyProbeEntry {
+            exec: Some(vec!["curl".to_string(), "-sf".to_string()]),
+            tcp: None,
+        }),
+        listen_timeout_ms: Some(20000),
+        ..minimal_entry()
+    };
+    let spec = resolve_one(&defaults(), &entry);
+    assert_eq!(
+        spec.ready_probe,
+        Some(ReadyProbe::Exec {
+            command: vec!["curl".to_string(), "-sf".to_string()]
+        })
+    );
+    assert_eq!(spec.listen_timeout_ms, Some(20000));
+}
+
+#[test]
+fn resolve_specs_reads_a_tcp_ready_probe() {
+    let entry = AppEntry {
+        ready_probe: Some(ReadyProbeEntry {
+            exec: None,
+            tcp: Some("127.0.0.1:8080".to_string()),
+        }),
+        ..minimal_entry()
+    };
+    let spec = resolve_one(&defaults(), &entry);
+    assert_eq!(
+        spec.ready_probe,
+        Some(ReadyProbe::Tcp {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+        })
+    );
+}
+
+#[test]
+fn resolve_specs_leaves_an_undeclared_probe_absent() {
+    let spec = resolve_one(&defaults(), &minimal_entry());
+    assert_eq!(spec.ready_probe, None);
+    assert_eq!(spec.listen_timeout_ms, None);
+}
+
+#[test]
+fn resolve_specs_refuses_a_probe_with_both_kinds() {
+    let entry = AppEntry {
+        ready_probe: Some(ReadyProbeEntry {
+            exec: Some(vec!["true".to_string()]),
+            tcp: Some("127.0.0.1:8080".to_string()),
+        }),
+        ..minimal_entry()
+    };
+    let err = resolve_one_err(&defaults(), &entry);
+    assert!(err.contains("exactly one"), "got: {err}");
+}
+
+#[test]
+fn resolve_specs_refuses_a_probe_with_neither_kind() {
+    let entry = AppEntry {
+        ready_probe: Some(ReadyProbeEntry {
+            exec: None,
+            tcp: None,
+        }),
+        ..minimal_entry()
+    };
+    let err = resolve_one_err(&defaults(), &entry);
+    assert!(err.contains("declare exec or tcp"), "got: {err}");
+}
+
+#[test]
+fn resolve_specs_refuses_a_tcp_probe_without_a_port() {
+    let entry = AppEntry {
+        ready_probe: Some(ReadyProbeEntry {
+            exec: None,
+            tcp: Some("127.0.0.1".to_string()),
+        }),
+        ..minimal_entry()
+    };
+    let err = resolve_one_err(&defaults(), &entry);
+    assert!(err.contains("host:port"), "got: {err}");
+}
+
+#[test]
+fn resolve_specs_refuses_a_tcp_probe_with_a_non_numeric_port() {
+    let entry = AppEntry {
+        ready_probe: Some(ReadyProbeEntry {
+            exec: None,
+            tcp: Some("127.0.0.1:http".to_string()),
+        }),
+        ..minimal_entry()
+    };
+    let err = resolve_one_err(&defaults(), &entry);
+    assert!(err.contains("1-65535"), "got: {err}");
 }

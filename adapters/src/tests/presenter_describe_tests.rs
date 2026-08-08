@@ -93,7 +93,7 @@ fn describe_marks_an_empty_list_as_missing() {
 
 #[test]
 fn every_field_gets_its_own_line() {
-    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 14);
+    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 16);
 }
 
 #[test]
@@ -118,4 +118,20 @@ fn describe_marks_an_unscheduled_app_as_missing() {
     let view = idle_view(0, "web");
     assert_eq!(value_of(&view, "schedule"), "-");
     assert_eq!(value_of(&view, "next fire"), "-");
+}
+
+#[test]
+fn describe_reports_the_sampled_resources() {
+    let mut view = running_view(0, "web");
+    view.rss_kib = Some(1536);
+    view.cpu_tenths = Some(7);
+    assert_eq!(value_of(&view, "memory"), "1.5M");
+    assert_eq!(value_of(&view, "cpu"), "0.7%");
+}
+
+#[test]
+fn describe_marks_an_unsampled_app_as_missing() {
+    let view = idle_view(0, "web");
+    assert_eq!(value_of(&view, "memory"), "-");
+    assert_eq!(value_of(&view, "cpu"), "-");
 }

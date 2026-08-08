@@ -74,12 +74,76 @@ pub fn home_with_timeout(
     build_home(mode, FULL_READ, network, log_level, start_timeout_ms)
 }
 
+#[derive(Copy, Clone)]
+pub struct HomeTunables {
+    pub memory_poll_interval_ms: u64,
+    pub log_rotate_max_bytes: u64,
+    pub log_rotate_interval_ms: u64,
+}
+
+impl Default for HomeTunables {
+    fn default() -> Self {
+        Self {
+            memory_poll_interval_ms: 30000,
+            log_rotate_max_bytes: 0,
+            log_rotate_interval_ms: 60000,
+        }
+    }
+}
+
+pub fn home_with_memory_poll(memory_poll_interval_ms: u64) -> Home {
+    build_home_full(
+        "danger-full-access",
+        FULL_READ,
+        true,
+        "info",
+        START_TIMEOUT_MS,
+        HomeTunables {
+            memory_poll_interval_ms,
+            ..HomeTunables::default()
+        },
+    )
+}
+
+pub fn home_with_log_rotate(max_bytes: u64, interval_ms: u64) -> Home {
+    build_home_full(
+        "danger-full-access",
+        FULL_READ,
+        true,
+        "debug",
+        START_TIMEOUT_MS,
+        HomeTunables {
+            log_rotate_max_bytes: max_bytes,
+            log_rotate_interval_ms: interval_ms,
+            ..HomeTunables::default()
+        },
+    )
+}
+
 fn build_home(
     mode: &str,
     read: &str,
     network: bool,
     log_level: &str,
     start_timeout_ms: u64,
+) -> Home {
+    build_home_full(
+        mode,
+        read,
+        network,
+        log_level,
+        start_timeout_ms,
+        HomeTunables::default(),
+    )
+}
+
+fn build_home_full(
+    mode: &str,
+    read: &str,
+    network: bool,
+    log_level: &str,
+    start_timeout_ms: u64,
+    tunables: HomeTunables,
 ) -> Home {
     let dir = tempfile::tempdir().expect("temp dir");
     let root = dir.path().join("home");
@@ -94,6 +158,7 @@ fn build_home(
             network,
             log_level,
             start_timeout_ms,
+            &tunables,
         ),
     )
     .expect("write the pm3 config");
@@ -107,7 +172,11 @@ pub fn config_yaml(
     network: bool,
     log_level: &str,
     start_timeout_ms: u64,
+    tunables: &HomeTunables,
 ) -> String {
+    let memory_poll_interval_ms = tunables.memory_poll_interval_ms;
+    let log_rotate_max_bytes = tunables.log_rotate_max_bytes;
+    let log_rotate_interval_ms = tunables.log_rotate_interval_ms;
     format!(
         r#"pm3:
   home: "{home}"
@@ -121,9 +190,13 @@ pub fn config_yaml(
   command_timeout_ms: 5000
   daemon_poll_interval_ms: 40
   daemon_poll_max_interval_ms: 200
-  memory_poll_interval_ms: 30000
+  memory_poll_interval_ms: {memory_poll_interval_ms}
   log_follow_interval_ms: 200
   log_tail_lines: 20
+  log_rotate_max_bytes: {log_rotate_max_bytes}
+  log_rotate_interval_ms: {log_rotate_interval_ms}
+  ready_timeout_ms: 30000
+  ready_poll_interval_ms: 200
   daemon_channel_depth: 32
   request_body_limit_bytes: 131072
   restart:
@@ -131,6 +204,7 @@ pub fn config_yaml(
     min_uptime_ms: 1000
     max_restarts: 15
     restart_delay_ms: 0
+    max_restart_delay_ms: 15000
   sandbox:
     mode: "{sandbox_mode}"
     read: "{sandbox_read}"

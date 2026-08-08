@@ -4,6 +4,7 @@ pub struct RestartPolicy {
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
     pub restart_delay_ms: u64,
+    pub max_restart_delay_ms: u64,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -28,6 +29,7 @@ pub const fn decide_restart(
         min_uptime_ms,
         max_restarts,
         restart_delay_ms,
+        max_restart_delay_ms,
     } = policy;
 
     if !autorestart {
@@ -48,9 +50,22 @@ pub const fn decide_restart(
     }
 
     RestartDecision::Restart {
-        delay_ms: restart_delay_ms,
+        delay_ms: backoff_delay(restart_delay_ms, max_restart_delay_ms, unstable_restarts),
         unstable_restarts,
     }
+}
+
+const fn backoff_delay(base: u64, cap: u64, unstable_restarts: u32) -> u64 {
+    let mut delay = base;
+    let mut doublings = 1;
+    while doublings < unstable_restarts {
+        delay = delay.saturating_mul(2);
+        if delay >= cap {
+            return cap;
+        }
+        doublings += 1;
+    }
+    if delay > cap { cap } else { delay }
 }
 
 #[cfg(test)]

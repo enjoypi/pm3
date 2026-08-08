@@ -4,6 +4,7 @@ pub mod commands;
 pub mod daemon;
 pub mod install;
 pub mod layout;
+pub mod logs;
 pub mod prompt;
 pub mod sandbox_probe;
 pub mod server;

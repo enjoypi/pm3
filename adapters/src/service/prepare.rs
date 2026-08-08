@@ -17,6 +17,9 @@ pub struct InlineStart<'s> {
     pub writable_dirs: &'s [String],
     pub readable_dirs: &'s [String],
     pub max_memory: Option<&'s str>,
+    pub ready_exec: &'s [String],
+    pub ready_tcp: Option<&'s str>,
+    pub listen_timeout_ms: Option<u64>,
     pub force: bool,
 }
 
@@ -61,6 +64,9 @@ pub async fn prepare_inline(
         writable_dirs: request.writable_dirs,
         readable_dirs: request.readable_dirs,
         max_memory: request.max_memory,
+        ready_exec: request.ready_exec,
+        ready_tcp: request.ready_tcp,
+        listen_timeout_ms: request.listen_timeout_ms,
     });
     let contents = encode_service_file(&entry);
     let path = crate::apps_file::service_file_of(context.cfg_dir, request.name)?;

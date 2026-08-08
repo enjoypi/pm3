@@ -1,12 +1,14 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use adapters::{
-    AdoptedWatch, Clock, CommandWrapper, CronScheduler, DumpContents, DumpError, DumpStore,
-    ExitOutcome, FingerprintError, Fingerprinter, HostSandbox, KillSignaler, LaunchError,
-    LaunchSpec, LaunchedProcess, Liveness, PollCadence, Ports, ProcessLauncher, ProcessProbe,
-    ProcessRecord, PsProcessProbe, SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler,
-    Sha256Fingerprinter, SignalError, SignalScope, Signaler, SpecSource, SystemClock,
-    TokioProcessLauncher, WrappedCommand, YamlDumpStore, wait_for_exit,
+    AdoptedWatch, Clock, CommandWrapper, CopyTruncateRotator, CronScheduler, DumpContents,
+    DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter, HostReadyProber,
+    HostSandbox, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Liveness, LogRotateError,
+    LogRotator, PollCadence, Ports, ProcessLauncher, ProcessProbe, ProcessRecord, PsProcessProbe,
+    Readiness, ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxCommandWrapper,
+    SandboxError, SandboxPolicy, Scheduler, Sha256Fingerprinter, SignalError, SignalScope,
+    Signaler, SpecSource, SystemClock, TokioProcessLauncher, WrappedCommand, YamlDumpStore,
+    wait_for_exit,
 };
 
 #[derive(Debug)]
@@ -21,6 +23,8 @@ pub struct DaemonPorts {
     fingerprinter: Sha256Fingerprinter,
     scheduler: CronScheduler,
     cadence: PollCadence,
+    rotator: CopyTruncateRotator,
+    prober: HostReadyProber,
 }
 
 impl DaemonPorts {
@@ -48,6 +52,8 @@ impl DaemonPorts {
             fingerprinter: Sha256Fingerprinter,
             scheduler: CronScheduler,
             cadence,
+            rotator: CopyTruncateRotator,
+            prober: HostReadyProber::new(command_timeout_ms),
         }
     }
 
@@ -134,9 +140,29 @@ impl ProcessProbe for DaemonPorts {
     async fn resident_memory(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
         self.probe.resident_memory(pids).await
     }
+
+    async fn resource_usage(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
+        self.probe.resource_usage(pids).await
+    }
 }
 
 impl Ports for DaemonPorts {}
+
+impl LogRotator for DaemonPorts {
+    async fn rotate_logs(
+        &self,
+        logs_dir: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<RotatedLog>, LogRotateError> {
+        self.rotator.rotate_logs(logs_dir, max_bytes).await
+    }
+}
+
+impl ReadyProber for DaemonPorts {
+    async fn check_ready(&self, probe: &ReadyProbe) -> Readiness {
+        self.prober.check_ready(probe).await
+    }
+}
 
 impl Signaler for DaemonPorts {
     async fn terminate(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {

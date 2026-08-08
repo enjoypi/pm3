@@ -48,13 +48,3 @@ fn half_startable_apps_file(fixture: &Fixture) -> (String, PathBuf) {
     let cfg_dir = fixture.paths.root.join("service");
     (apps_file.to_string_lossy().into_owned(), cfg_dir)
 }
-
-#[tokio::test]
-async fn following_a_log_path_that_is_not_a_file_fails() {
-    let fixture = running_daemon().await;
-    let blocked = stdout_log(&fixture.paths, "blocked").expect("a safe service name");
-    std::fs::create_dir_all(&blocked).expect("block the log path with a directory");
-    let outcome = follow_log(&fixture.config_path, "blocked", 1, &|_line| {}).await;
-    assert!(outcome.is_err(), "got: {outcome:?}");
-    stop_daemon(fixture).await;
-}

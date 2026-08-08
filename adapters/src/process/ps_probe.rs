@@ -7,7 +7,7 @@ use tokio::{
     process::Command,
     time::{Instant, sleep, timeout},
 };
-use usecases::{Liveness, ProcessProbe};
+use usecases::{Liveness, ProcessProbe, ResourceSample};
 
 pub const PS_PROGRAM: &str = "/bin/ps";
 
@@ -17,6 +17,7 @@ const WIDE_FLAG: &str = "-ww";
 const FORMAT_FLAG: &str = "-o";
 const BATCH_FORMAT: &str = "pid=,lstart=";
 const MEMORY_FORMAT: &str = "pid=,rss=";
+const RESOURCE_FORMAT: &str = "pid=,rss=,pcpu=";
 const PID_SEPARATOR: &str = ",";
 const PID_FLAG: &str = "-p";
 const LOCALE_VARIABLE: &str = "LC_ALL";
@@ -55,6 +56,20 @@ impl PsProcessProbe {
         };
         let listed = parse_memory_report(&stdout);
         log_memory_probe(&joined, listed.len(), started.elapsed().as_millis());
+        listed
+    }
+
+    pub async fn resource_samples(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
+        if pids.is_empty() {
+            return BTreeMap::new();
+        }
+        let joined = join_pids(pids);
+        let started = Instant::now();
+        let Some(stdout) = self.ask_ps(RESOURCE_FORMAT, &joined).await else {
+            return BTreeMap::new();
+        };
+        let listed = parse_resource_report(&stdout);
+        log_resource_probe(&joined, listed.len(), started.elapsed().as_millis());
         listed
     }
 
@@ -139,6 +154,32 @@ fn parse_memory_report(stdout: &str) -> BTreeMap<u32, u64> {
         .collect()
 }
 
+fn parse_resource_report(stdout: &str) -> BTreeMap<u32, ResourceSample> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let pid = fields.next()?.parse::<u32>().ok()?;
+            let rss_kib = fields.next()?.parse::<u64>().ok()?;
+            let cpu_tenths = parse_tenths(fields.next()?)?;
+            Some((
+                pid,
+                ResourceSample {
+                    rss_kib,
+                    cpu_tenths,
+                },
+            ))
+        })
+        .collect()
+}
+
+fn parse_tenths(raw: &str) -> Option<u32> {
+    let (whole, fraction) = raw.split_once('.').unwrap_or((raw, "0"));
+    let whole = whole.parse::<u32>().ok()?;
+    let tenths = fraction.chars().next()?.to_digit(10)?;
+    Some(whole.saturating_mul(10).saturating_add(tenths))
+}
+
 fn parse_report(stdout: &str) -> HashMap<u32, String> {
     stdout
         .lines()
@@ -163,6 +204,10 @@ impl ProcessProbe for PsProcessProbe {
 
     async fn resident_memory(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
         self.resident_memory_kib(pids).await
+    }
+
+    async fn resource_usage(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
+        self.resource_samples(pids).await
     }
 
     async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
@@ -202,6 +247,17 @@ fn log_memory_probe(pids: &str, sampled: usize, duration_ms: u128) {
         duration_ms,
         action = "probe_memory",
         "sampled the resident memory of the managed processes"
+    );
+}
+
+fn log_resource_probe(pids: &str, sampled: usize, duration_ms: u128) {
+    tracing::debug!(
+        feature = "supervisor",
+        pids,
+        sampled,
+        duration_ms,
+        action = "probe_resources",
+        "sampled the resource usage of the managed processes"
     );
 }
 

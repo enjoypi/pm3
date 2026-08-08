@@ -25,9 +25,12 @@ pub fn render_identity(spec: &AppSpec) -> String {
         min_uptime_ms: _,
         max_restarts: _,
         restart_delay_ms: _,
+        max_restart_delay_ms: _,
         schedule: _,
         depends_on: _,
         max_memory_kib: _,
+        ready_probe: _,
+        listen_timeout_ms: _,
         sandbox,
     } = spec;
 

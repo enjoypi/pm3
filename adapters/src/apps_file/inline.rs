@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 
 use super::{
-    file::{AppEntry, SandboxEntry},
+    file::{AppEntry, ReadyProbeEntry, SandboxEntry},
     roots::dedup_roots,
 };
 use crate::program::{fold_home, fold_service_cwd};
@@ -23,6 +23,9 @@ pub struct InlineRequest<'r> {
     pub writable_dirs: &'r [String],
     pub readable_dirs: &'r [String],
     pub max_memory: Option<&'r str>,
+    pub ready_exec: &'r [String],
+    pub ready_tcp: Option<&'r str>,
+    pub listen_timeout_ms: Option<u64>,
 }
 
 #[must_use]
@@ -45,11 +48,27 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
         min_uptime_ms: None,
         max_restarts: None,
         restart_delay_ms: None,
+        max_restart_delay_ms: None,
         schedule: request.cron.map(ToString::to_string),
         max_memory: request.max_memory.map(ToString::to_string),
+        listen_timeout_ms: request.listen_timeout_ms,
+        ready_probe: ready_probe_of(request),
         sandbox: Some(sandbox),
     };
     fold_entry(&entry, request.home)
+}
+
+fn ready_probe_of(request: &InlineRequest<'_>) -> Option<ReadyProbeEntry> {
+    if !request.ready_exec.is_empty() {
+        return Some(ReadyProbeEntry {
+            exec: Some(request.ready_exec.to_vec()),
+            tcp: None,
+        });
+    }
+    request.ready_tcp.map(|endpoint| ReadyProbeEntry {
+        exec: None,
+        tcp: Some(endpoint.to_string()),
+    })
 }
 
 #[must_use]
@@ -115,10 +134,31 @@ fn encode_entry(entry: &AppEntry) -> String {
     text.push_str(&optional("min_uptime_ms", entry.min_uptime_ms));
     text.push_str(&optional("max_restarts", entry.max_restarts));
     text.push_str(&optional("restart_delay_ms", entry.restart_delay_ms));
+    text.push_str(&optional(
+        "max_restart_delay_ms",
+        entry.max_restart_delay_ms,
+    ));
     text.push_str(&optional_text("schedule", entry.schedule.as_deref()));
     text.push_str(&optional_text("max_memory", entry.max_memory.as_deref()));
+    text.push_str(&optional("listen_timeout_ms", entry.listen_timeout_ms));
+    text.push_str(&encode_ready_probe(entry.ready_probe.as_ref()));
     text.push_str(&encode_sandbox(entry.sandbox.as_ref()));
     text
+}
+
+fn encode_ready_probe(probe: Option<&ReadyProbeEntry>) -> String {
+    let Some(section) = probe else {
+        return String::new();
+    };
+    let exec = section.exec.as_deref().unwrap_or_default();
+    let mut text = sequence(NESTED_INDENT, "exec", exec);
+    if let Some(endpoint) = section.tcp.as_deref() {
+        text.push_str(&nested("tcp", &quote(endpoint)));
+    }
+    if text.is_empty() {
+        return text;
+    }
+    format!("ready_probe:\n{text}")
 }
 
 fn encode_sandbox(sandbox: Option<&SandboxEntry>) -> String {

@@ -13,6 +13,7 @@ pub mod stop;
 pub mod supervise;
 pub mod supervision;
 pub mod supervisor;
+pub mod supervisor_ready;
 pub mod table;
 pub mod timer_state;
 
@@ -21,10 +22,10 @@ mod supervisor_log;
 
 pub use entities::{
     AppSpec, DependencyError, DependencyNode, MemoryVerdict, PolicyError, ProcessIdentity,
-    ProcessRuntime, ProcessStatus, ReadScope, RestartDecision, RestartPolicy, RuntimeError,
-    SandboxMode, SandboxPolicy, SpecError, covers_path, decide_memory_verdict, decide_restart,
-    normalize_root, parse_memory_limit, topo_sort, validate_app_name, validate_forbidden_roots,
-    validate_spec,
+    ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe, RestartDecision, RestartPolicy,
+    RuntimeError, SandboxMode, SandboxPolicy, SpecError, covers_path, decide_memory_verdict,
+    decide_restart, normalize_root, parse_memory_limit, topo_sort, validate_app_name,
+    validate_forbidden_roots, validate_spec,
 };
 use thiserror::Error;
 
@@ -32,12 +33,13 @@ pub use self::{
     delete::{DeleteOutcome, delete_app},
     fingerprint::{pid_was_recycled, render_identity},
     handover::{HandoverComparison, ServiceSnapshot, compare_handover, describe_handover},
-    log_paths::{LogPaths, log_paths},
+    log_paths::{LogPaths, LogStream, log_path, log_paths},
     ports::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome, FingerprintError,
-        Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher,
-        ProcessProbe, SandboxError, Scheduler, SignalError, SignalScope, Signaler,
-        SpecResolveError, SpecResolver, StrandedProcess, WrappedCommand,
+        Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, LogRotateError,
+        LogRotator, ProcessLauncher, ProcessProbe, Readiness, ReadyProber, ResourceSample,
+        RotatedLog, SandboxError, Scheduler, SignalError, SignalScope, Signaler, SpecResolveError,
+        SpecResolver, StrandedProcess, WrappedCommand,
     },
     query::{
         armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,
@@ -68,6 +70,8 @@ pub trait Ports:
     + ProcessProbe
     + Fingerprinter
     + Scheduler
+    + LogRotator
+    + ReadyProber
 {
 }
 

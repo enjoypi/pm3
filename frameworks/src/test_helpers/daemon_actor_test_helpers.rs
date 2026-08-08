@@ -36,7 +36,25 @@ pub fn harness_with_kill_timeout(kill_timeout_ms: u64) -> Harness {
     built_harness(kill_timeout_ms, SANDBOX_MODE)
 }
 
+pub fn harness_with_log_rotate(max_bytes: u64, interval_ms: u64) -> Harness {
+    built_harness_with_rotate(
+        pm3_config_with_home("/unused").kill_timeout_ms,
+        SANDBOX_MODE,
+        max_bytes,
+        interval_ms,
+    )
+}
+
 fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
+    built_harness_with_rotate(kill_timeout_ms, sandbox_mode, 0, 60000)
+}
+
+fn built_harness_with_rotate(
+    kill_timeout_ms: u64,
+    sandbox_mode: &str,
+    log_rotate_max_bytes: u64,
+    log_rotate_interval_ms: u64,
+) -> Harness {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(dir.path());
     std::fs::create_dir_all(&paths.logs_dir).expect("create the log directory");
@@ -45,6 +63,8 @@ fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
     let mut config = pm3_config_with_home(&paths.root.to_string_lossy());
     config.kill_timeout_ms = kill_timeout_ms;
     config.sandbox.mode = sandbox_mode.to_string();
+    config.log_rotate_max_bytes = log_rotate_max_bytes;
+    config.log_rotate_interval_ms = log_rotate_interval_ms;
     let specs = SpecSource {
         cfg_dir: cfg_dir.clone(),
         config,

@@ -3,13 +3,14 @@ use std::{
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
-use entities::{AppSpec, ReadScope, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy};
 
 use crate::{
     Ports,
     ports::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, FingerprintError, Fingerprinter,
-        LaunchError, LaunchSpec, LaunchedProcess, Liveness, ProcessLauncher, ProcessProbe,
+        LaunchError, LaunchSpec, LaunchedProcess, Liveness, LogRotateError, LogRotator,
+        ProcessLauncher, ProcessProbe, Readiness, ReadyProber, ResourceSample, RotatedLog,
         SandboxError, Scheduler, SignalError, SignalScope, Signaler, StrandedProcess,
         WrappedCommand,
     },
@@ -50,6 +51,7 @@ struct FakeState {
     load_fails: bool,
     save_fails: bool,
     live: BTreeMap<u32, String>,
+    resources: BTreeMap<u32, ResourceSample>,
     probe_blind: Vec<u32>,
     probe_broken: Vec<u32>,
     adopted: Vec<u32>,
@@ -127,6 +129,12 @@ impl FakePorts {
     pub fn seed_live(&self, pid: u32, token: &str) {
         self.with_state(|state| {
             state.live.insert(pid, token.to_string());
+        });
+    }
+
+    pub fn seed_resource(&self, pid: u32, sample: ResourceSample) {
+        self.with_state(|state| {
+            state.resources.insert(pid, sample);
         });
     }
 
@@ -371,9 +379,33 @@ impl DumpStore for FakePorts {
     }
 }
 
+impl LogRotator for FakePorts {
+    async fn rotate_logs(
+        &self,
+        _logs_dir: &str,
+        _max_bytes: u64,
+    ) -> Result<Vec<RotatedLog>, LogRotateError> {
+        Ok(Vec::new())
+    }
+}
+
+impl ReadyProber for FakePorts {
+    async fn check_ready(&self, _probe: &ReadyProbe) -> Readiness {
+        Readiness::Ready
+    }
+}
+
 impl ProcessProbe for FakePorts {
     async fn resident_memory(&self, _pids: &[u32]) -> BTreeMap<u32, u64> {
         BTreeMap::new()
+    }
+
+    async fn resource_usage(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
+        self.read(|state| {
+            pids.iter()
+                .filter_map(|pid| state.resources.get(pid).map(|sample| (*pid, *sample)))
+                .collect()
+        })
     }
 
     async fn identity(&self, pid: u32) -> Liveness {
@@ -441,6 +473,8 @@ impl Scheduler for FakePorts {
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
         max_memory_kib: None,
+        ready_probe: None,
+        listen_timeout_ms: None,
         name: name.to_string(),
         script: "/usr/bin/true".to_string(),
         args: Vec::new(),
@@ -450,6 +484,7 @@ pub fn spec(name: &str) -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 2,
         restart_delay_ms: 250,
+        max_restart_delay_ms: 15000,
         schedule: None,
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
@@ -468,6 +503,16 @@ pub fn spec(name: &str) -> AppSpec {
 pub fn spec_with_deps(name: &str, depends_on: &[&str]) -> AppSpec {
     AppSpec {
         depends_on: depends_on.iter().map(|dep| (*dep).to_string()).collect(),
+        ..spec(name)
+    }
+}
+
+#[must_use]
+pub fn spec_probed(name: &str) -> AppSpec {
+    AppSpec {
+        ready_probe: Some(ReadyProbe::Exec {
+            command: vec!["/usr/bin/true".to_string()],
+        }),
         ..spec(name)
     }
 }

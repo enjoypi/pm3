@@ -509,3 +509,9 @@ async fn restarting_a_stopped_app_through_a_command_starts_it_again() {
 mod batch;
 #[path = "daemon_actor_memory_tests.rs"]
 mod memory;
+#[path = "daemon_actor_ready_tests.rs"]
+mod ready;
+#[path = "daemon_actor_resource_tests.rs"]
+mod resource;
+#[path = "daemon_actor_rotate_tests.rs"]
+mod rotate;

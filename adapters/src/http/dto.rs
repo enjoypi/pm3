@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::view_dto::ProcessViewDto;
+
 pub const HEALTH_OK: &str = "ok";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -22,6 +24,9 @@ pub struct ReplyDto {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unsaved: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub views: Vec<ProcessViewDto>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

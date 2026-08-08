@@ -1,3 +1,4 @@
+use entities::ReadyProbe;
 use thiserror::Error;
 
 use crate::{
@@ -116,5 +117,18 @@ pub enum SupervisionEffect {
         generation: u64,
         pid: u32,
         token: Option<String>,
+    },
+    ScheduleLogRotate {
+        delay_ms: u64,
+    },
+    AwaitReady {
+        name: String,
+        generation: u64,
+        probe: ReadyProbe,
+        timeout_ms: u64,
+        interval_ms: u64,
+    },
+    CancelReady {
+        name: String,
     },
 }

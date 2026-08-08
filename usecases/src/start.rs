@@ -1,4 +1,6 @@
-use entities::{AppSpec, DependencyNode, ProcessIdentity, topo_sort, validate_spec};
+use std::collections::HashSet;
+
+use entities::{AppSpec, DependencyNode, ProcessIdentity, ProcessStatus, topo_sort, validate_spec};
 
 use crate::{
     Ports, Result, UsecaseError, fingerprint::render_identity, log_paths::log_paths,
@@ -17,6 +19,7 @@ pub enum StartKind {
     AlreadyRunning,
     Adopted,
     Scheduled,
+    Deferred,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27,11 +30,18 @@ pub struct StartOutcome {
     pub kind: StartKind,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeferredStart {
+    pub name: String,
+    pub waiting_on: String,
+}
+
 #[derive(Debug, Default)]
 pub struct StartReport {
     pub outcomes: Vec<StartOutcome>,
     pub failure: Option<UsecaseError>,
     pub unsaved: Option<UsecaseError>,
+    pub pending: Vec<DeferredStart>,
 }
 
 impl StartReport {
@@ -40,6 +50,7 @@ impl StartReport {
             outcomes: Vec::new(),
             failure: Some(error),
             unsaved: None,
+            pending: Vec::new(),
         }
     }
 }
@@ -81,10 +92,25 @@ pub async fn start_apps(
         outcomes: Vec::with_capacity(order.len()),
         failure: None,
         unsaved: None,
+        pending: Vec::new(),
     };
+    let mut waiting: HashSet<String> = HashSet::new();
+    let by_name: std::collections::HashMap<&str, &AppSpec> = specs
+        .iter()
+        .map(|spec| (spec.name.as_str(), spec))
+        .collect();
     for name in &order {
+        if let Some(waiting_on) = waiting_dependency(by_name[name.as_str()], &waiting) {
+            defer_one(table, name, waiting_on, &mut report, &mut waiting);
+            continue;
+        }
         match launch(table, name, logs_dir, ports, StartMode::Register).await {
-            Ok(outcome) => report.outcomes.push(outcome),
+            Ok(outcome) => {
+                if awaits_ready(table, name) {
+                    waiting.insert(name.clone());
+                }
+                report.outcomes.push(outcome);
+            }
             Err(error) => {
                 log_abandoned_start(name, &error);
                 report.failure = Some(error);
@@ -100,6 +126,44 @@ pub async fn start_apps(
         report.unsaved = Some(error);
     }
     report
+}
+
+fn waiting_dependency(spec: &AppSpec, waiting: &HashSet<String>) -> Option<String> {
+    spec.depends_on
+        .iter()
+        .find(|dependency| waiting.contains(*dependency))
+        .cloned()
+}
+
+fn defer_one(
+    table: &ProcessTable,
+    name: &str,
+    waiting_on: String,
+    report: &mut StartReport,
+    waiting: &mut HashSet<String>,
+) {
+    let pm_id = table
+        .find_by_name(name)
+        .expect("internal error: a declared service always has a record")
+        .runtime
+        .pm_id;
+    report.outcomes.push(StartOutcome {
+        pm_id,
+        name: name.to_string(),
+        pid: None,
+        kind: StartKind::Deferred,
+    });
+    report.pending.push(DeferredStart {
+        name: name.to_string(),
+        waiting_on,
+    });
+    waiting.insert(name.to_string());
+}
+
+fn awaits_ready(table: &ProcessTable, name: &str) -> bool {
+    table.find_by_name(name).is_some_and(|record| {
+        record.spec.ready_probe.is_some() && record.runtime.status == ProcessStatus::Launching
+    })
 }
 
 fn forget_unlaunched(
@@ -217,10 +281,13 @@ async fn launch(
     let launched = ports.spawn(&launch).await?;
     let now_ms = ports.now_ms();
     let identity = capture_identity(&record.spec, launched.pid, ports).await;
+    let has_probe = record.spec.ready_probe.is_some();
 
     record.runtime.arm_schedule();
     record.runtime.mark_launched(launched.pid, now_ms);
-    record.runtime.mark_online();
+    if !has_probe {
+        record.runtime.mark_online();
+    }
     record.runtime.record_identity(identity);
     log_started(name, launched.pid);
     Ok(StartOutcome {

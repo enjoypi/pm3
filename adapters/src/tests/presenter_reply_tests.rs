@@ -219,3 +219,18 @@ fn a_start_that_could_not_be_recorded_says_so() {
 fn a_reply_that_started_nothing_refuses_nothing() {
     assert!(refused_names(&SupervisionReply::Listed(Vec::new())).is_empty());
 }
+
+#[test]
+fn a_deferred_start_reads_as_queued_behind_its_dependency() {
+    let outcome = StartOutcome {
+        pm_id: 3,
+        name: "web".to_string(),
+        pid: None,
+        kind: StartKind::Deferred,
+    };
+    assert!(
+        render_started(&[outcome], None, None)
+            .starts_with("queued web until its dependency becomes ready"),
+        "unexpected headline"
+    );
+}

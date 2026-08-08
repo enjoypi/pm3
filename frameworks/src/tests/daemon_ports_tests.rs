@@ -62,6 +62,8 @@ fn stored_record() -> ProcessRecord {
     ProcessRecord {
         spec: AppSpec {
             max_memory_kib: None,
+            ready_probe: None,
+            listen_timeout_ms: None,
             name: "web".to_string(),
             script: "/bin/echo".to_string(),
             args: Vec::new(),
@@ -71,6 +73,7 @@ fn stored_record() -> ProcessRecord {
             min_uptime_ms: 1000,
             max_restarts: 15,
             restart_delay_ms: 0,
+            max_restart_delay_ms: 15000,
             schedule: None,
             depends_on: Vec::new(),
             sandbox: unconfined_policy(),

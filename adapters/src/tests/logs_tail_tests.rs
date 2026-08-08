@@ -304,3 +304,51 @@ async fn following_keeps_waiting_when_the_log_is_renamed_away() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn a_conditional_follow_reports_a_missing_log_as_absent() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let missing = dir.path().join("ghost-out.log");
+    let opened = LogFollower::start_at_end_if_exists(&missing)
+        .await
+        .expect("a missing log is not an error");
+    assert!(opened.is_none());
+}
+
+#[tokio::test]
+async fn a_conditional_follow_opens_an_existing_log() {
+    let (_dir, path) = temp_log(THREE_LINES.as_bytes());
+    let opened = LogFollower::start_at_end_if_exists(&path)
+        .await
+        .expect("should open");
+    assert!(opened.is_some());
+}
+
+#[tokio::test]
+async fn a_conditional_follow_still_fails_when_the_log_cannot_be_read() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let blocker = dir.path().join("blocker");
+    std::fs::write(&blocker, b"file").expect("write the blocker");
+    let outcome = LogFollower::start_at_end_if_exists(&blocker.join("web-out.log")).await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
+async fn a_strict_follow_still_reports_a_missing_log_as_an_error() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let missing = dir.path().join("ghost-out.log");
+    let err = LogFollower::start_at_end(&missing)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot read log file"), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_strict_follow_fails_when_the_log_cannot_be_read() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let blocker = dir.path().join("blocker");
+    std::fs::write(&blocker, b"file").expect("write the blocker");
+    let outcome = LogFollower::start_at_end(&blocker.join("web-out.log")).await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}

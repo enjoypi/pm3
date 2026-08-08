@@ -1,6 +1,10 @@
 use thiserror::Error;
 
-use super::{depgraph::DependencyNode, restart::RestartPolicy};
+use super::{
+    depgraph::DependencyNode,
+    ready::{ReadyProbe, validate_probe},
+    restart::RestartPolicy,
+};
 use crate::sandbox::{PolicyError, SandboxPolicy, validate_policy};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14,9 +18,12 @@ pub struct AppSpec {
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
     pub restart_delay_ms: u64,
+    pub max_restart_delay_ms: u64,
     pub schedule: Option<String>,
     pub depends_on: Vec<String>,
     pub max_memory_kib: Option<u64>,
+    pub ready_probe: Option<ReadyProbe>,
+    pub listen_timeout_ms: Option<u64>,
     pub sandbox: SandboxPolicy,
 }
 
@@ -50,6 +57,20 @@ pub enum SpecError {
     #[error("cannot accept min_uptime_ms 0 for app '{0}': must be >= 1")]
     InvalidMinUptime(String),
 
+    #[error("cannot accept max_restart_delay_ms 0 for app '{0}': must be >= 1")]
+    InvalidMaxRestartDelay(String),
+
+    #[error("cannot accept a ready probe with a blank command for app '{0}'")]
+    EmptyReadyProbe(String),
+
+    #[error(
+        "cannot accept ready probe endpoint '{endpoint}' for app '{app}': use host:port with a port of 1-65535"
+    )]
+    InvalidReadyEndpoint { app: String, endpoint: String },
+
+    #[error("cannot accept listen_timeout_ms 0 for app '{0}': must be >= 1")]
+    InvalidListenTimeout(String),
+
     #[error("cannot accept blank environment variable name for app '{0}'")]
     EmptyEnvKey(String),
 
@@ -68,6 +89,7 @@ impl AppSpec {
             min_uptime_ms: self.min_uptime_ms,
             max_restarts: self.max_restarts,
             restart_delay_ms: self.restart_delay_ms,
+            max_restart_delay_ms: self.max_restart_delay_ms,
         }
     }
 
@@ -125,6 +147,15 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
     }
     if spec.min_uptime_ms < 1 {
         return Err(SpecError::InvalidMinUptime(spec.name.clone()));
+    }
+    if spec.max_restart_delay_ms < 1 {
+        return Err(SpecError::InvalidMaxRestartDelay(spec.name.clone()));
+    }
+    if let Some(probe) = &spec.ready_probe {
+        validate_probe(&spec.name, probe)?;
+    }
+    if spec.listen_timeout_ms == Some(0) {
+        return Err(SpecError::InvalidListenTimeout(spec.name.clone()));
     }
     if spec.env.iter().any(|(key, _value)| key.trim().is_empty()) {
         return Err(SpecError::EmptyEnvKey(spec.name.clone()));

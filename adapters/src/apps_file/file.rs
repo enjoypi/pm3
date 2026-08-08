@@ -6,7 +6,7 @@ use std::{
 use serde::Deserialize;
 use thiserror::Error;
 use usecases::{
-    AppSpec, ReadScope, SandboxMode, SandboxPolicy, SpecError, parse_memory_limit,
+    AppSpec, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy, SpecError, parse_memory_limit,
     validate_forbidden_roots, validate_spec,
 };
 
@@ -45,6 +45,12 @@ pub struct AppEntry {
     #[serde(default)]
     pub restart_delay_ms: Option<u64>,
     #[serde(default)]
+    pub max_restart_delay_ms: Option<u64>,
+    #[serde(default)]
+    pub listen_timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub ready_probe: Option<ReadyProbeEntry>,
+    #[serde(default)]
     pub schedule: Option<String>,
     #[serde(default)]
     pub max_memory: Option<String>,
@@ -64,6 +70,14 @@ pub struct SandboxEntry {
     pub writable_roots: Option<Vec<String>>,
     #[serde(default)]
     pub readable_roots: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReadyProbeEntry {
+    #[serde(default)]
+    pub exec: Option<Vec<String>>,
+    #[serde(default)]
+    pub tcp: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -120,6 +134,9 @@ pub enum AppsFileError {
         "cannot accept max_memory '{limit}' for app '{app}': use a byte count or a size like 300M"
     )]
     InvalidMemoryLimit { app: String, limit: String },
+
+    #[error("cannot accept ready_probe for app '{app}': {reason}")]
+    InvalidReadyProbe { app: String, reason: String },
 
     #[error(transparent)]
     EnvFile(#[from] super::env_file::EnvFileError),
@@ -240,8 +257,11 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
     })?;
     let sandbox = resolve_sandbox(defaults, entry, &cwd)?;
     let max_memory_kib = resolve_memory_limit(entry)?;
+    let ready_probe = resolve_ready_probe(entry)?;
     Ok(AppSpec {
         max_memory_kib,
+        ready_probe,
+        listen_timeout_ms: entry.listen_timeout_ms,
         name: entry.name.clone(),
         script: script.to_string_lossy().into_owned(),
         args: entry.args.clone(),
@@ -255,6 +275,9 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         restart_delay_ms: entry
             .restart_delay_ms
             .unwrap_or(defaults.restart.restart_delay_ms),
+        max_restart_delay_ms: entry
+            .max_restart_delay_ms
+            .unwrap_or(defaults.restart.max_restart_delay_ms),
         schedule: entry.schedule.clone(),
         depends_on: entry.depends_on.clone(),
         sandbox,
@@ -316,6 +339,46 @@ fn resolve_memory_limit(entry: &AppEntry) -> Result<Option<u64>, AppsFileError> 
             app: entry.name.clone(),
             limit: declared.to_string(),
         })
+}
+
+fn resolve_ready_probe(entry: &AppEntry) -> Result<Option<ReadyProbe>, AppsFileError> {
+    let Some(section) = &entry.ready_probe else {
+        return Ok(None);
+    };
+    match (&section.exec, &section.tcp) {
+        (Some(command), None) => Ok(Some(ReadyProbe::Exec {
+            command: command.clone(),
+        })),
+        (None, Some(endpoint)) => parse_tcp_endpoint(&entry.name, endpoint).map(Some),
+        (Some(_), Some(_)) => Err(invalid_ready_probe(
+            &entry.name,
+            "use exactly one of exec or tcp",
+        )),
+        (None, None) => Err(invalid_ready_probe(&entry.name, "declare exec or tcp")),
+    }
+}
+
+fn parse_tcp_endpoint(app: &str, endpoint: &str) -> Result<ReadyProbe, AppsFileError> {
+    let Some((host, port)) = endpoint.rsplit_once(':') else {
+        return Err(invalid_ready_probe(app, "use host:port"));
+    };
+    let Ok(port) = port.parse::<u16>() else {
+        return Err(invalid_ready_probe(
+            app,
+            "the port must be a number of 1-65535",
+        ));
+    };
+    Ok(ReadyProbe::Tcp {
+        host: host.to_string(),
+        port,
+    })
+}
+
+fn invalid_ready_probe(app: &str, reason: &str) -> AppsFileError {
+    AppsFileError::InvalidReadyProbe {
+        app: app.to_string(),
+        reason: reason.to_string(),
+    }
 }
 
 fn pm3_owned_roots(defaults: &SpecDefaults<'_>) -> Vec<String> {

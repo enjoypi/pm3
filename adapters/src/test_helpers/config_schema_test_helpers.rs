@@ -8,6 +8,7 @@ pub fn valid_restart_config() -> RestartConfig {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 0,
+        max_restart_delay_ms: 15000,
     }
 }
 
@@ -52,6 +53,10 @@ pub fn valid_pm3_config() -> Pm3Config {
         memory_poll_interval_ms: 30000,
         log_follow_interval_ms: 200,
         log_tail_lines: 20,
+        log_rotate_max_bytes: 0,
+        log_rotate_interval_ms: 60000,
+        ready_timeout_ms: 30000,
+        ready_poll_interval_ms: 200,
         daemon_channel_depth: 32,
         request_body_limit_bytes: 131_072,
         restart: valid_restart_config(),

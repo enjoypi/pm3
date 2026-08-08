@@ -48,6 +48,10 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         memory_poll_interval_ms: MEMORY_POLL_INTERVAL_MS,
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         log_tail_lines: LOG_TAIL_LINES,
+        log_rotate_max_bytes: 0,
+        log_rotate_interval_ms: 60000,
+        ready_timeout_ms: 30000,
+        ready_poll_interval_ms: 200,
         daemon_channel_depth: CHANNEL_DEPTH,
         request_body_limit_bytes: BODY_LIMIT_BYTES,
         restart: RestartConfig {
@@ -55,6 +59,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
             min_uptime_ms: MIN_UPTIME_MS,
             max_restarts: MAX_RESTARTS,
             restart_delay_ms: 0,
+            max_restart_delay_ms: 15000,
         },
         sandbox: SandboxConfig {
             mode: SANDBOX_MODE.to_string(),
@@ -95,6 +100,10 @@ pub fn config_yaml(home: &str) -> String {
   memory_poll_interval_ms: {MEMORY_POLL_INTERVAL_MS}
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   log_tail_lines: {LOG_TAIL_LINES}
+  log_rotate_max_bytes: 0
+  log_rotate_interval_ms: 60000
+  ready_timeout_ms: 30000
+  ready_poll_interval_ms: 200
   daemon_channel_depth: {CHANNEL_DEPTH}
   request_body_limit_bytes: {BODY_LIMIT_BYTES}
   restart:
@@ -102,6 +111,7 @@ pub fn config_yaml(home: &str) -> String {
     min_uptime_ms: {MIN_UPTIME_MS}
     max_restarts: {MAX_RESTARTS}
     restart_delay_ms: 0
+    max_restart_delay_ms: 15000
   sandbox:
     mode: "{SANDBOX_MODE}"
     read: "{SANDBOX_READ}"

@@ -31,21 +31,21 @@ pm3 在**安全边界、状态正确性、工程质量**三个维度显著优于
 
 1. **无 cluster / `instances` / `scale` / 负载均衡** —— Node web 服务吃不满多核。pm2 靠 Node 内置 cluster 的 SO_REUSEPORT。
 2. **无零停机 reload** —— pm3 的 `restart` 是 stop→start，必有中断窗口；`reload_declaration` 只是重读配置。pm2 有 hard/soft reload（但仅 cluster 模式生效，fork 模式同样退化成 restart）。
-3. **无就绪探针** —— 没有 `wait_ready`/`listen_timeout` 等价物。**这是 `DepGraph` 的配套缺口**：依赖顺序只保证 spawn 先后，不保证被依赖者真的可服务。
+3. ~~**无就绪探针**~~ —— 已补：`ready_probe: {exec | tcp}` + `listen_timeout_ms`（全局默认 `pm3.ready_timeout_ms`）。带探针的服务 spawn 后停留 `launching`，探针通过才 `online`；依赖者记为 `queued`（Deferred），等被依赖者就绪后才拉起；超时/探针命令不存在 → 服务 `errored` 并级联取消等待者。探针在宿主侧、沙箱外执行。
 4. ~~**无内存熔断**~~ —— 已补：`max_memory: "300M"` + `--max-memory`，`pm3.memory_poll_interval_ms` 默认 30s，超限走 `restart_app`。与 pm2 同样兜不住突发 OOM。~~挡不住 fork bomb~~ 也已补，但走的不是 seccomp / `RLIMIT_NPROC`（那要 `unsafe`）：改由服务管理器声明 `pm3.service.max_tasks` → systemd `TasksMax=` / launchd `NumberOfProcesses`，是内核级硬限制但**作用于 pm3 整体**而非每服务；CPU 配额（`cpu_quota_percent` → `CPUQuota=`）只有 systemd 有，默认关闭。
-5. **无任何资源指标** —— RSS 只在内存熔断的判定里用，`list` 仍看不到资源占用，无 CPU 采集，无 `monit` 面板。
+5. ~~**无任何资源指标**~~ —— 已补：`list` 新增 `rss`/`cpu` 两列（请求时现采一条 `ps -o pid=,rss=,pcpu=`，cpu 是进程生命周期均值），`describe` 同步加 `memory`/`cpu` 两行。无 `monit` 面板。
 6. **无 watch 热重载** —— 开发态不可用（pm2 有 `--watch` 与 `pm2-dev`）。
 7. **无 programmatic API / 事件总线** —— 集成面只有 UDS 上 6 条 HTTP 路由；pm2 有 `pm2.connect()`、27 个 RPC 方法、pub/sub bus。
 8. **无 deploy / 模块系统 / APM 生态** —— pm2 有 `pm2 deploy`、`pm2 install <module>`、pm2.io 上报、OpenTelemetry。
 
 ### 软缺口（低成本可补，当前确实硌手）
 
-9. **stderr 无 CLI 入口** —— `-err.log` 有落盘（`usecases/src/log_paths.rs:2`），但 `frameworks/src/commands.rs:261` 只暴露 `stdout_log`，看错误日志只能自己 `cat`。
-10. **无 JSON 输出** —— 没有 `jlist` 等价物，`list`/`describe` 只有人类可读表格，脚本与监控无法消费。
-11. **无多服务聚合 tail** —— `pm3 logs` 只能盯一个服务；pm2 `pm2 logs` 可聚合。
-12. **无日志写侧 rotate、无 `flush`** —— 读侧兼容外部 rotate（inode 变化重开），但自己不切割也不清空。
-13. **无指数退避** —— `restart_delay_ms` 固定值；pm2 有 `exp_backoff_restart_delay`（上限硬编码 15s）。
-14. **无手动重置熔断计数** —— 无 `pm2 reset` 等价物。影响不大（跑满 `min_uptime` 自动清零），但 errored 后立刻 restart 再快速崩溃会当场再次熔断。
+9. ~~**stderr 无 CLI 入口**~~ —— 已补：`pm3 logs --err`（只看错误流）/ `--all`（双流合并，行前缀带 `[out]`/`[err]`）。
+10. ~~**无 JSON 输出**~~ —— 已补：`pm3 list --json` / `pm3 describe --json`，字段集与表格一致、天然不含 env。
+11. ~~**无多服务聚合 tail**~~ —— 已补：裸 `pm3 logs` 聚合全部声明的服务，`pm3 logs a b` 聚合子集，行前缀 `name | `。
+12. ~~**无日志写侧 rotate、无 `flush`**~~ —— 已补一半：`pm3.log_rotate_max_bytes`（默认 0=关闭）+ `pm3.log_rotate_interval_ms`，超限 copytruncate 保留 1 代（`<name>-out.log.1`）。无 `flush` 等价物（truncate 即事实上的 flush）。
+13. ~~**无指数退避**~~ —— 已补：连续不稳定重启时 delay = `restart_delay_ms × 2^(n−1)`，封顶 `pm3.restart.max_restart_delay_ms`（默认 15000，每服务可用 `max_restart_delay_ms` 覆盖）；base 为 0（默认）时行为与之前完全一致。
+14. **无手动重置熔断计数** —— **明确不做**：跑满 `min_uptime` 自动清零已够用。
 
 ### 结构性限制
 
@@ -63,19 +63,12 @@ pm3 在**安全边界、状态正确性、工程质量**三个维度显著优于
 
 ### P0（低成本、不破坏设计目标，建议做）
 
-| 项 | 落点 |
-|---|---|
-| stderr 查看入口 `pm3 logs --err` / `--all` | `frameworks/src/commands.rs` 复用 `usecases::log_paths::STDERR_SUFFIX`，与 `stdout_log` 同一校验路径 |
-| `--json` 输出（`list` / `describe`） | `adapters/src/presenter/` 加一个 JSON presenter，与 `table.rs`/`describe.rs` 并列；MUST 沿用「不含 env」的字段集 |
-| ~~内存熔断~~（已补） | 判定在 `entities/src/process/limits.rs`，采样走**独立一条** `ps -o pid=,rss=`。注意 `BATCH_FORMAT` 不能加列（会污染身份令牌），`watcher.rs` 的轮询也不能复用（它只覆盖 adopt 来的进程） |
+已全部落地（2026-08-08）：stderr 查看入口、聚合 tail、`--json` 输出、list 资源列、写侧 rotate、指数退避、就绪探针。
 
 ### P1（有价值但改动面大）
 
-- 就绪探针（`ready_probe`: exec/tcp + `listen_timeout`），补 `DepGraph` 的语义缺口 —— 判定逻辑放 `usecases`，探测实现放 `adapters`
-- 指数退避（扩 `entities/src/process/restart.rs::decide_restart`，纯函数，测试成本低）
-- 日志写侧 rotate（size 触发，读侧 `LogFollower::reopen_if_rotated` 已兼容）
-- ~~dump 记 boot 标识~~ —— 已补，但取的不是 `/proc/stat` 的 `btime` / `sysctl kern.boottime`（那要新外部程序或 `libc`），而是 **pid 1 的 `ps lstart`**：复用既有 `ProcessProbe`，两平台通吃。跨过一次重启即 `PidTrust::Lost`，全程不对陌生 pid 发信号；dump 无该字段或读不出 pid 1 都退回原有 token 校验
+无剩余。
 
 ### P2（与「极简 + 单机 + 强隔离」定位冲突，建议明确不做）
 
-cluster / `scale` / 零停机 reload（需要端口共享或 socket 传递，与沙箱模型冲突）、watch 热重载、deploy、模块系统、programmatic API、APM 上报。
+cluster / `scale` / 零停机 reload（需要端口共享或 socket 传递，与沙箱模型冲突）、watch 热重载、deploy、模块系统、programmatic API、APM 上报、手动重置熔断计数（`pm2 reset` 等价物）。

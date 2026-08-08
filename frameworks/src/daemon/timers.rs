@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use adapters::{ExitOutcome, SupervisionEffect};
+use adapters::{ExitOutcome, Readiness, ReadyProbe, ReadyProber as _, SupervisionEffect};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 use super::{events::DaemonEvent, ports::DaemonPorts};
@@ -12,7 +12,9 @@ pub struct TaskBoard {
     fires: HashMap<String, JoinHandle<()>>,
     restarts: HashMap<String, JoinHandle<()>>,
     force_kills: HashMap<String, JoinHandle<()>>,
+    ready: HashMap<String, JoinHandle<()>>,
     memory_sample: Option<JoinHandle<()>>,
+    log_rotate: Option<JoinHandle<()>>,
 }
 
 impl TaskBoard {
@@ -24,7 +26,9 @@ impl TaskBoard {
             fires: HashMap::new(),
             restarts: HashMap::new(),
             force_kills: HashMap::new(),
+            ready: HashMap::new(),
             memory_sample: None,
+            log_rotate: None,
         }
     }
 
@@ -55,6 +59,15 @@ impl TaskBoard {
                 pid,
                 token,
             } => self.watch(name, generation, pid, token),
+            Se::ScheduleLogRotate { delay_ms } => self.schedule_log_rotate(delay_ms),
+            Se::AwaitReady {
+                name,
+                generation,
+                probe,
+                timeout_ms,
+                interval_ms,
+            } => self.await_ready(name, generation, probe, timeout_ms, interval_ms),
+            Se::CancelReady { name } => abort(self.ready.remove(&name)),
         }
     }
 
@@ -94,6 +107,75 @@ impl TaskBoard {
             events.send(DaemonEvent::SampleMemory).await.ok();
         });
         self.memory_sample = Some(task);
+    }
+
+    fn schedule_log_rotate(&mut self, delay_ms: u64) {
+        abort(self.log_rotate.take());
+        let events = self.events.clone();
+        let task = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            events.send(DaemonEvent::RotateLogs).await.ok();
+        });
+        self.log_rotate = Some(task);
+    }
+
+    fn await_ready(
+        &mut self,
+        name: String,
+        generation: u64,
+        probe: ReadyProbe,
+        timeout_ms: u64,
+        interval_ms: u64,
+    ) {
+        abort(self.ready.remove(&name));
+        let ports = Arc::clone(&self.ports);
+        let events = self.events.clone();
+        let probing = name.clone();
+        let task = tokio::spawn(async move {
+            let budget = Duration::from_millis(timeout_ms);
+            let step = Duration::from_millis(interval_ms.max(1));
+            let started = tokio::time::Instant::now();
+            loop {
+                match ports.check_ready(&probe).await {
+                    Readiness::Ready => {
+                        events
+                            .send(DaemonEvent::Ready {
+                                name: probing,
+                                generation,
+                            })
+                            .await
+                            .ok();
+                        return;
+                    }
+                    Readiness::Failed(reason) => {
+                        events
+                            .send(DaemonEvent::ReadyTimeout {
+                                name: probing,
+                                generation,
+                                reason,
+                            })
+                            .await
+                            .ok();
+                        return;
+                    }
+                    Readiness::Pending => {}
+                }
+                let remaining = budget.saturating_sub(started.elapsed());
+                if remaining.is_zero() {
+                    events
+                        .send(DaemonEvent::ReadyTimeout {
+                            name: probing,
+                            generation,
+                            reason: format!("not ready within {timeout_ms}ms"),
+                        })
+                        .await
+                        .ok();
+                    return;
+                }
+                tokio::time::sleep(remaining.min(step)).await;
+            }
+        });
+        self.ready.insert(name, task);
     }
 
     fn arm(&mut self, name: String, fire_at_ms: u64, delay_ms: u64) {

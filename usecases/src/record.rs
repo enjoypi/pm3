@@ -1,4 +1,8 @@
+use std::collections::BTreeMap;
+
 use entities::{AppSpec, ProcessRuntime, ProcessStatus};
+
+use crate::ports::ResourceSample;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessRecord {
@@ -23,6 +27,19 @@ pub struct ProcessView {
     pub cwd: String,
     pub depends_on: Vec<String>,
     pub writable_roots: Vec<String>,
+    pub rss_kib: Option<u64>,
+    pub cpu_tenths: Option<u32>,
+}
+
+impl ProcessView {
+    #[must_use]
+    pub fn with_sample(mut self, samples: &BTreeMap<u32, ResourceSample>) -> Self {
+        if let Some(sample) = self.pid.and_then(|pid| samples.get(&pid)) {
+            self.rss_kib = Some(sample.rss_kib);
+            self.cpu_tenths = Some(sample.cpu_tenths);
+        }
+        self
+    }
 }
 
 impl ProcessRecord {
@@ -50,6 +67,8 @@ impl ProcessRecord {
                 .into_iter()
                 .map(ToString::to_string)
                 .collect(),
+            rss_kib: None,
+            cpu_tenths: None,
         }
     }
 }

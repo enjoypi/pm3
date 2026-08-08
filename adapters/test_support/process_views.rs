@@ -20,6 +20,8 @@ pub fn running_view(pm_id: u32, name: &str) -> ProcessView {
         cwd: "/srv/web".to_string(),
         depends_on: vec!["db".to_string()],
         writable_roots: vec!["/srv/web".to_string()],
+        rss_kib: None,
+        cpu_tenths: None,
     }
 }
 

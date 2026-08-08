@@ -485,3 +485,44 @@ fn outcome_named(name: &str) -> StartOutcome {
         kind: StartKind::Spawned,
     }
 }
+
+#[tokio::test]
+async fn a_service_whose_dependency_is_probing_is_deferred() {
+    let ports = FakePorts::new(0);
+    let mut table = ProcessTable::new();
+    let specs = [
+        crate::ports_test_helpers::spec_probed("db"),
+        spec_with_deps("web", &["db"]),
+    ];
+    let report = start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
+    assert_eq!(report.outcomes.len(), 2);
+    let web = report
+        .outcomes
+        .iter()
+        .find(|outcome| outcome.name == "web")
+        .expect("web should be listed");
+    assert_eq!(web.kind, StartKind::Deferred);
+    assert_eq!(
+        report.pending,
+        vec![crate::start::DeferredStart {
+            name: "web".to_string(),
+            waiting_on: "db".to_string(),
+        }]
+    );
+    assert!(report.failure.is_none());
+}
+
+#[tokio::test]
+async fn a_service_whose_dependency_has_no_probe_starts_right_away() {
+    let ports = FakePorts::new(0);
+    let mut table = ProcessTable::new();
+    let specs = [spec("db"), spec_with_deps("web", &["db"])];
+    let report = start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
+    assert!(
+        report
+            .outcomes
+            .iter()
+            .all(|outcome| outcome.kind == StartKind::Spawned)
+    );
+    assert!(report.pending.is_empty());
+}

@@ -8,11 +8,11 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 |---|---|
 | `config/` | `Pm3Config` schema、loader、`substitute_env_vars`；`app.rs` 是 `pm3 config check/show` |
 | `apps_file/` | 用户 apps 文件与单体服务文件的解析、`SpecSource`、`roots`；`env_file.rs` 是 `<name>.env`（环境变量 sidecar）的解析与加载 |
-| `http/` | daemon 侧 controller / routes / DTO（`ReplyDto`） |
-| `logs/` | `pm3 logs` 的 `tail_lines` / `read_tail` / `LogFollower`（`-f` 跟随） |
+| `http/` | daemon 侧 controller / routes / DTO（`ReplyDto` + `ProcessViewDto`） |
+| `logs/` | `pm3 logs` 的 `tail_lines` / `read_tail` / `LogFollower`（`-f` 跟随）；`rotate.rs` 是 copytruncate 写侧切割 |
 | `persistence/` | `dump.yaml` 的 `yaml_store` 与 DTO |
-| `presenter/` | `list` 表格、`describe`、reply 文案；`fields.rs` 是单字段格式化 |
-| `process/` | `tokio_launcher` `kill_signaler` `ps_probe` `sha256_fingerprinter` `system_clock` `watcher` |
+| `presenter/` | `list` 表格、`describe`、reply 文案、`json`（`--json` 输出）；`fields.rs` 是单字段格式化 |
+| `process/` | `tokio_launcher` `kill_signaler` `ps_probe`（`resource_usage` 走独立一条 `pid=,rss=,pcpu=`） `ready_probe`（宿主侧就绪探测） `sha256_fingerprinter` `system_clock` `watcher` |
 | `sandbox/` | `seatbelt`（macOS，含 `.sbpl`）/ `bwrap`（Linux）/ `wrapper` / `backend` |
 | `schedule/` | `cron_scheduler` + `random_expand`（OpenBSD `~` 展开） |
 | `unit/` | OS 服务单元：`spec.rs`（`UnitKind` / `unit_dir_of` / `parse_launchd_pid` / `parse_main_pid`）、`launchd` / `systemd` unit 渲染、`plan`（含 `write_targets`）`actions` `runner`（含 `query_supervised_pid` / `hand_back_to_manager`）`command` |

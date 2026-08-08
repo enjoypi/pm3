@@ -1,7 +1,5 @@
 use super::*;
-use crate::daemon_fixture::{
-    Collected, Fixture, running_daemon, seed_log, sleeper_apps_file, stop_daemon,
-};
+use crate::daemon_fixture::{Fixture, running_daemon, sleeper_apps_file, stop_daemon};
 
 #[test]
 fn a_missing_apps_file_cannot_be_resolved() {
@@ -42,7 +40,9 @@ async fn sleeping_returns_after_the_requested_delay() {
 #[tokio::test]
 async fn listing_an_empty_daemon_reports_that_nothing_runs() {
     let fixture = running_daemon().await;
-    let listed = list_apps(&fixture.config_path).await.expect("should list");
+    let listed = list_apps(&fixture.config_path, false)
+        .await
+        .expect("should list");
     assert!(listed.contains("no apps"), "got: {listed}");
     stop_daemon(fixture).await;
 }
@@ -112,7 +112,7 @@ async fn describing_a_started_app_reports_its_script() {
     start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
-    let described = describe_app(&fixture.config_path, "web")
+    let described = describe_app(&fixture.config_path, "web", false)
         .await
         .expect("should describe");
     assert!(described.contains("/bin/sh"), "got: {described}");
@@ -143,7 +143,7 @@ async fn a_selector_that_would_break_the_request_line_is_refused_before_dialling
 
 #[tokio::test]
 async fn a_selector_that_would_escape_the_apps_path_is_refused_before_dialling() {
-    let error = describe_app("/nonexistent/config.yaml", "../health")
+    let error = describe_app("/nonexistent/config.yaml", "../health", false)
         .await
         .unwrap_err();
     assert!(matches!(error, Error::Spec(_)), "got: {error}");
@@ -159,7 +159,7 @@ async fn deleting_with_a_selector_that_would_escape_the_apps_path_is_refused() {
 
 #[tokio::test]
 async fn describing_without_a_config_is_reported() {
-    let error = describe_app("/nonexistent/config.yaml", "web")
+    let error = describe_app("/nonexistent/config.yaml", "web", false)
         .await
         .unwrap_err();
     assert!(!matches!(error, Error::Spec(_)), "got: {error}");
@@ -237,7 +237,7 @@ async fn deleting_a_started_app_confirms_it() {
 #[tokio::test]
 async fn a_refused_request_carries_the_daemon_reason() {
     let fixture = running_daemon().await;
-    let err = describe_app(&fixture.config_path, "ghost")
+    let err = describe_app(&fixture.config_path, "ghost", false)
         .await
         .unwrap_err()
         .to_string();
@@ -247,7 +247,7 @@ async fn a_refused_request_carries_the_daemon_reason() {
 
 #[tokio::test]
 async fn listing_without_a_config_fails() {
-    assert!(list_apps("/nonexistent/pm3.yaml").await.is_err());
+    assert!(list_apps("/nonexistent/pm3.yaml", false).await.is_err());
 }
 
 #[tokio::test]
@@ -273,7 +273,7 @@ async fn a_blocked_home_stops_a_command() {
     std::fs::write(&blocked, "occupied").expect("occupy the parent");
     let home = blocked.join("home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
-    let err = list_apps(config.to_str().expect("path"))
+    let err = list_apps(config.to_str().expect("path"), false)
         .await
         .unwrap_err()
         .to_string();
@@ -285,7 +285,7 @@ async fn a_daemon_that_never_comes_up_stops_a_command() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
     let config = crate::test_support::write_impatient_config(dir.path(), &home.to_string_lossy());
-    let err = list_apps(config.to_str().expect("path"))
+    let err = list_apps(config.to_str().expect("path"), false)
         .await
         .unwrap_err()
         .to_string();
@@ -299,7 +299,7 @@ async fn a_daemon_that_disappears_after_the_probe_stops_a_command() {
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
     let answering = crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock"));
-    let err = list_apps(config.to_str().expect("path"))
+    let err = list_apps(config.to_str().expect("path"), false)
         .await
         .unwrap_err()
         .to_string();
@@ -313,8 +313,35 @@ async fn a_daemon_that_disappears_after_the_probe_stops_a_command() {
 #[path = "commands_safety_tests.rs"]
 mod safety;
 
-#[path = "commands_logs_tests.rs"]
-mod logs;
-
 #[path = "commands_start_tests.rs"]
 mod start;
+
+#[tokio::test]
+async fn listing_with_json_renders_the_structured_views() {
+    let fixture = running_daemon().await;
+    let apps_file = sleeper_apps_file(&fixture);
+    start_apps(&fixture.config_path, &apps_file, false)
+        .await
+        .expect("should start");
+    let listed = list_apps(&fixture.config_path, true)
+        .await
+        .expect("should list");
+    assert!(listed.contains("\"name\":\"web\""), "got: {listed}");
+    assert!(listed.contains("\"status\":\"online\""), "got: {listed}");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn describing_with_json_renders_the_structured_view() {
+    let fixture = running_daemon().await;
+    let apps_file = sleeper_apps_file(&fixture);
+    start_apps(&fixture.config_path, &apps_file, false)
+        .await
+        .expect("should start");
+    let described = describe_app(&fixture.config_path, "web", true)
+        .await
+        .expect("should describe");
+    assert!(described.contains("\"name\":\"web\""), "got: {described}");
+    assert!(described.starts_with('{'), "got: {described}");
+    stop_daemon(fixture).await;
+}

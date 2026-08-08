@@ -18,6 +18,8 @@ pub struct Daemon {
     poll_interval_ms: u64,
     kill_timeout_ms: u64,
     memory_poll_interval_ms: u64,
+    log_rotate_max_bytes: u64,
+    log_rotate_interval_ms: u64,
 }
 
 impl Daemon {
@@ -29,12 +31,19 @@ impl Daemon {
     ) -> Self {
         let kill_timeout_ms = specs.config.kill_timeout_ms;
         Self {
-            supervisor: Supervisor::new(specs.logs_dir.clone(), kill_timeout_ms),
+            supervisor: Supervisor::new(
+                specs.logs_dir.clone(),
+                kill_timeout_ms,
+                specs.config.ready_timeout_ms,
+                specs.config.ready_poll_interval_ms.max(1),
+            ),
             board: TaskBoard::new(events.clone(), Arc::clone(&ports)),
             ports,
             poll_interval_ms: specs.config.daemon_poll_interval_ms.max(1),
             kill_timeout_ms,
             memory_poll_interval_ms: specs.config.memory_poll_interval_ms.max(1),
+            log_rotate_max_bytes: specs.config.log_rotate_max_bytes,
+            log_rotate_interval_ms: specs.config.log_rotate_interval_ms.max(1),
             specs,
             events,
         }
@@ -79,6 +88,34 @@ impl Daemon {
         let effects = self
             .supervisor
             .on_memory_sample(self.memory_poll_interval_ms, &*self.ports)
+            .await;
+        self.run(effects);
+    }
+
+    pub async fn on_log_rotate(&mut self) {
+        let effects = self
+            .supervisor
+            .on_log_rotate(
+                self.log_rotate_max_bytes,
+                self.log_rotate_interval_ms,
+                &*self.ports,
+            )
+            .await;
+        self.run(effects);
+    }
+
+    pub async fn on_ready(&mut self, name: &str, generation: u64) {
+        let effects = self
+            .supervisor
+            .on_ready(name, generation, &*self.ports)
+            .await;
+        self.run(effects);
+    }
+
+    pub async fn on_ready_timeout(&mut self, name: &str, generation: u64, reason: &str) {
+        let effects = self
+            .supervisor
+            .on_ready_timeout(name, generation, reason, &*self.ports)
             .await;
         self.run(effects);
     }
@@ -130,6 +167,15 @@ impl Daemon {
                 self.board.forget_force_kill(&name);
             }
             DaemonEvent::SampleMemory => self.on_memory_sample().await,
+            DaemonEvent::RotateLogs => self.on_log_rotate().await,
+            DaemonEvent::Ready { name, generation } => self.on_ready(&name, generation).await,
+            DaemonEvent::ReadyTimeout {
+                name,
+                generation,
+                reason,
+            } => {
+                self.on_ready_timeout(&name, generation, &reason).await;
+            }
             DaemonEvent::Shutdown => self.shutdown().await,
         }
     }

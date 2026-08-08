@@ -118,3 +118,30 @@ fn a_stamp_names_its_timezone_offset() {
         "got: {stamp}"
     );
 }
+
+#[test]
+fn an_unsampled_process_shows_no_memory() {
+    assert_eq!(format_memory(None), MISSING);
+}
+
+#[test]
+fn a_sub_mebibyte_memory_is_reported_in_kibibytes() {
+    assert_eq!(format_memory(Some(512)), "512K");
+}
+
+#[test]
+fn a_memory_past_a_mebibyte_is_reported_in_mebibytes() {
+    assert_eq!(format_memory(Some(1024)), "1.0M");
+    assert_eq!(format_memory(Some(1536)), "1.5M");
+}
+
+#[test]
+fn an_unsampled_process_shows_no_cpu() {
+    assert_eq!(format_cpu(None), MISSING);
+}
+
+#[test]
+fn cpu_tenths_are_rendered_as_a_percentage() {
+    assert_eq!(format_cpu(Some(7)), "0.7%");
+    assert_eq!(format_cpu(Some(150)), "15.0%");
+}

@@ -27,7 +27,7 @@ fn an_empty_table_explains_that_nothing_is_managed() {
 fn the_header_names_every_column() {
     let header = header_of(&[running_view(0, "web")]);
     for column in [
-        "id", "name", "pid", "status", "↺", "uptime", "next", "sandbox",
+        "id", "name", "pid", "status", "↺", "uptime", "rss", "cpu", "next", "sandbox",
     ] {
         assert!(header.contains(column), "{column} missing from: {header}");
     }
@@ -46,9 +46,21 @@ fn a_row_reports_every_field_of_a_running_app() {
             "2",
             "5s",
             "-",
+            "-",
+            "-",
             "workspace-write",
         ]
     );
+}
+
+#[test]
+fn a_row_reports_the_sampled_resources() {
+    let mut view = running_view(0, "web");
+    view.rss_kib = Some(1536);
+    view.cpu_tenths = Some(7);
+    let cells = body_cells(&[view]);
+    assert_eq!(cells.get(6).map(String::as_str), Some("1.5M"));
+    assert_eq!(cells.get(7).map(String::as_str), Some("0.7%"));
 }
 
 #[test]
@@ -56,7 +68,18 @@ fn a_row_reports_every_field_of_an_idle_app() {
     let cells = body_cells(&[idle_view(0, "web")]);
     assert_eq!(
         cells,
-        vec!["0", "web", "-", "stopped", "2", "-", "-", "workspace-write"]
+        vec![
+            "0",
+            "web",
+            "-",
+            "stopped",
+            "2",
+            "-",
+            "-",
+            "-",
+            "-",
+            "workspace-write"
+        ]
     );
 }
 
@@ -98,7 +121,7 @@ fn a_scheduled_row_shows_the_next_clock_time_with_its_offset() {
     let mut view = idle_view(0, "sweep");
     view.next_fire_ms = Some(1_700_000_000_000);
     let cells = body_cells(&[view]);
-    let next = cells.get(6).expect("next column present");
+    let next = cells.get(8).expect("next column present");
     assert!(
         next.contains(':') && (next.contains('+') || next.contains('-')),
         "next column should read as HH:MM±HH:MM, got: {next}"

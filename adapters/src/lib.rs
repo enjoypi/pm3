@@ -22,18 +22,19 @@ use thiserror::Error;
 pub use usecases::{
     AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome,
     FingerprintError, Fingerprinter, HandoverComparison, LaunchError, LaunchSpec, LaunchedProcess,
-    Liveness, Ports, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus,
-    ProcessView, ReadScope, SandboxError, SandboxMode, SandboxPolicy, Scheduler, ServiceSnapshot,
-    SignalError, SignalScope, Signaler, SpecError, SpecResolveError, StartKind, StartOutcome,
-    StartReport, StrandedProcess, SupervisionEffect, SupervisionOutcome, SupervisionReply,
-    SupervisionRequest, Supervisor, WrappedCommand, compare_handover, delete_app, describe_app,
-    describe_handover, list_apps, log_paths, start_apps, validate_app_name,
+    Liveness, LogRotateError, LogRotator, LogStream, Ports, ProcessLauncher, ProcessProbe,
+    ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness, ReadyProbe,
+    ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
+    ServiceSnapshot, SignalError, SignalScope, Signaler, SpecError, SpecResolveError, StartKind,
+    StartOutcome, StartReport, StrandedProcess, SupervisionEffect, SupervisionOutcome,
+    SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand, compare_handover, delete_app,
+    describe_app, describe_handover, list_apps, log_path, log_paths, start_apps, validate_app_name,
 };
 
 pub use self::{
     apps_file::{
         AppEntry, AppsFile, AppsFileError, ENV_FILE_SUFFIX, EnvFileError, InlineRequest,
-        SERVICE_FILE_SUFFIX, SandboxEntry, SpecDefaults, SpecSource, diff_lines,
+        ReadyProbeEntry, SERVICE_FILE_SUFFIX, SandboxEntry, SpecDefaults, SpecSource, diff_lines,
         encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file, load_env_file,
         load_service_file, parse_apps_file, parse_env_file, parse_service_file, resolve_checked,
         service_file_of,
@@ -47,15 +48,15 @@ pub use self::{
     },
     exit_status::{UNKNOWN_EXIT_CODE, describe_refusal, exit_code_of},
     http::{
-        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, REQUEST_ID_HEADER, ReplyDecodeError,
-        ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto, app_action_path, app_path, decode_reply,
-        encode_start_request, router,
+        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, ProcessViewDto, REQUEST_ID_HEADER,
+        ReplyDecodeError, ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto, app_action_path,
+        app_path, decode_reply, encode_start_request, router,
     },
     install::{
         InstallError, back_up, backup_name, backup_root, binary_version, destination_of,
         parse_version_output, replace_binary,
     },
-    logs::{LogFollower, LogReadError, read_tail, tail_lines},
+    logs::{CopyTruncateRotator, LogFollower, LogReadError, read_tail, tail_lines},
     paths::{
         CONFIG_FILE, DEFAULT_HOME, PathError, Pm3Paths, default_config_path, expand_home,
         resolve_paths,
@@ -66,13 +67,14 @@ pub use self::{
     },
     presenter::{
         DAEMON_NOT_RUNNING, EMPTY_NOTICE, NOTHING_STARTED, affected_service, already_running_names,
-        render_daemon_gone, render_daemon_stopped, render_describe, render_reply, render_started,
-        render_table, unsaved_reason,
+        render_daemon_gone, render_daemon_stopped, render_describe, render_json_list,
+        render_json_one, render_reply, render_started, render_table, unsaved_reason,
     },
     private_file::{OWNER_ONLY_FILE, append_private, append_private_blocking, write_private},
     process::{
-        AdoptedWatch, KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
-        Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
+        AdoptedWatch, HostReadyProber, KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence,
+        PsProcessProbe, Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit,
+        wait_until_released,
     },
     program::{
         HOME_PLACEHOLDER, SERVICE_CWD_NAME, SERVICE_CWD_PLACEHOLDER, fold_home, fold_service_cwd,

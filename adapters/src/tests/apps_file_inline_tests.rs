@@ -27,6 +27,9 @@ fn request(writable_dirs: &[String]) -> InlineRequest<'_> {
         writable_dirs,
         readable_dirs: &[],
         max_memory: None,
+        ready_exec: &[],
+        ready_tcp: None,
+        listen_timeout_ms: None,
     }
 }
 
@@ -251,6 +254,12 @@ fn fully_declared_entry() -> AppEntry {
         min_uptime_ms: Some(2000),
         max_restarts: Some(7),
         restart_delay_ms: Some(50),
+        max_restart_delay_ms: Some(60000),
+        listen_timeout_ms: Some(20000),
+        ready_probe: Some(ReadyProbeEntry {
+            exec: None,
+            tcp: Some("127.0.0.1:8080".to_string()),
+        }),
         schedule: None,
         max_memory: Some("300M".to_string()),
         sandbox: Some(SandboxEntry {
@@ -272,6 +281,7 @@ fn a_fully_declared_app_encodes_every_field() {
         "min_uptime_ms: 2000",
         "max_restarts: 7",
         "restart_delay_ms: 50",
+        "max_restart_delay_ms: 60000",
         "mode: \"workspace-write\"",
         "network: false",
         "writable_roots:",
@@ -391,4 +401,47 @@ fn a_declared_memory_limit_reaches_the_encoded_service() {
     asked.max_memory = Some("300M");
     let yaml = encode_service_file(&inline_entry(&asked));
     assert!(yaml.contains("max_memory: \"300M\""), "got: {yaml}");
+}
+
+#[test]
+fn an_inline_exec_probe_round_trips() {
+    let probe = ["curl".to_string(), "-sf".to_string()];
+    let mut asked = request(&[]);
+    asked.ready_exec = &probe;
+    let entry = inline_entry(&asked);
+    let yaml = encode_service_file(&entry);
+    assert!(yaml.contains("ready_probe:\n"), "{yaml}");
+    assert!(yaml.contains("- \"curl\""), "{yaml}");
+    let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
+    assert_eq!(
+        reparsed.ready_probe.and_then(|section| section.exec),
+        Some(probe.to_vec())
+    );
+}
+
+#[test]
+fn an_inline_tcp_probe_round_trips() {
+    let mut asked = request(&[]);
+    asked.ready_tcp = Some("127.0.0.1:8080");
+    let entry = inline_entry(&asked);
+    let yaml = encode_service_file(&entry);
+    assert!(yaml.contains("tcp: \"127.0.0.1:8080\""), "{yaml}");
+    let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
+    assert_eq!(
+        reparsed.ready_probe.and_then(|section| section.tcp),
+        Some("127.0.0.1:8080".to_string())
+    );
+}
+
+#[test]
+fn an_empty_probe_section_is_omitted() {
+    let entry = AppEntry {
+        ready_probe: Some(ReadyProbeEntry {
+            exec: None,
+            tcp: None,
+        }),
+        ..fully_declared_entry()
+    };
+    let yaml = encode_service_file(&entry);
+    assert!(!yaml.contains("ready_probe"), "{yaml}");
 }

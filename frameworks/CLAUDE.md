@@ -10,7 +10,8 @@
 |---|---|
 | `main.rs` | 只调 `frameworks::cli`，无重复 mod 编译 |
 | `cli.rs` / `commands.rs` | clap 定义与子命令分发 |
-| `daemon/` | `bootstrap` `actor`（事件循环：把事件交给 `adapters::Supervisor`，再把返回的 `SupervisionEffect` 逐条交给 `TaskBoard`）`timers`（`TaskBoard`：纯 `JoinHandle` 表，spawn/abort cron 定时器、待重启任务、强杀延时、退出监听）`socket` `service` `ports` |
+| `logs.rs` | `pm3 logs`：读侧聚合（`cfg_dir` 枚举、流选择、行前缀、follow），不经 daemon |
+| `daemon/` | `bootstrap` `actor`（事件循环：把事件交给 `adapters::Supervisor`，再把返回的 `SupervisionEffect` 逐条交给 `TaskBoard`）`timers`（`TaskBoard`：纯 `JoinHandle` 表，spawn/abort cron 定时器、待重启任务、强杀延时、退出监听、就绪探针、内存采样与日志切割 tick）`socket` `service` `ports` |
 | `client/uds.rs` | CLI 侧 Unix socket 客户端（`ask` / `ask_report`） |
 | `server.rs` | `serve_listener`：接管已 bound 的 listener，避开 bind→drop→re-bind 的抢占窗口 |
 | `service.rs` | `pm3 service install/uninstall` |

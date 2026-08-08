@@ -1,16 +1,11 @@
-use std::{
-    io,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{io, path::PathBuf, time::Duration};
 
 use adapters::{
-    APPS_PATH, AppConfig, DAEMON_NOT_RUNNING, InlineStart, KillSignaler, LogFollower, Pm3Config,
-    Pm3Paths, Reconciled, ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext,
-    ServiceUndo, SignalScope, Signaler as _, app_action_path, app_path, decode_reply,
-    encode_start_request, forget, load_and_parse_config, log_paths, prepare_inline, read_tail,
-    render_daemon_gone, render_daemon_stopped, split_apps_file, validate_app_name,
-    wait_until_released,
+    APPS_PATH, AppConfig, DAEMON_NOT_RUNNING, InlineStart, KillSignaler, Pm3Paths, Reconciled,
+    ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext, ServiceUndo, SignalScope,
+    Signaler as _, app_action_path, app_path, decode_reply, encode_start_request, forget,
+    load_and_parse_config, prepare_inline, render_daemon_gone, render_daemon_stopped,
+    split_apps_file, wait_until_released,
 };
 
 use crate::{
@@ -23,7 +18,6 @@ use crate::{
     telemetry::init_cli_telemetry,
 };
 
-pub const FOLLOW_FOREVER: u32 = u32::MAX;
 pub const STOP_ACTION: &str = "stop";
 pub const RESTART_ACTION: &str = "restart";
 
@@ -121,6 +115,7 @@ async fn finish_start(
         already_running,
         refused,
         unsaved,
+        views: _,
     } = reply;
     if !refused.is_empty() {
         undo.run_for(&refused).await;
@@ -139,15 +134,25 @@ async fn finish_start(
     })
 }
 
-pub async fn list_apps(config_path: &str) -> Result<String> {
+pub async fn list_apps(config_path: &str, json: bool) -> Result<String> {
     let session = prepared_session(config_path).await?;
-    ask_report(&session, "GET", APPS_PATH, None).await
+    let reply = ask(&session, "GET", APPS_PATH, None).await?;
+    Ok(if json {
+        adapters::render_json_list(&reply.views)
+    } else {
+        reply.report
+    })
 }
 
-pub async fn describe_app(config_path: &str, selector: &str) -> Result<String> {
+pub async fn describe_app(config_path: &str, selector: &str, json: bool) -> Result<String> {
     let path = app_path(selector)?;
     let session = prepared_session(config_path).await?;
-    ask_report(&session, "GET", &path, None).await
+    let reply = ask(&session, "GET", &path, None).await?;
+    Ok(if json {
+        adapters::render_json_one(reply.views.first())
+    } else {
+        reply.report
+    })
 }
 
 pub async fn act_on_app(config_path: &str, selector: &str, action: &str) -> Result<String> {
@@ -216,37 +221,6 @@ async fn report_gone_daemon(
     Ok(render_daemon_gone(stopped))
 }
 
-pub async fn read_log_tail(config_path: &str, name: &str, lines: Option<usize>) -> Result<String> {
-    let session = open_session(config_path)?;
-    let count = lines.unwrap_or_else(|| log_tail_lines(&session.config.pm3));
-    let stdout = stdout_log(&session.paths, name)?;
-    let tail = read_tail(Path::new(&stdout), count).await?;
-    Ok(tail.join("\n"))
-}
-
-fn log_tail_lines(pm3: &Pm3Config) -> usize {
-    usize::try_from(pm3.log_tail_lines).unwrap_or(usize::MAX)
-}
-
-pub async fn follow_log(
-    config_path: &str,
-    name: &str,
-    polls: u32,
-    emit: &(dyn Fn(&str) + Send + Sync),
-) -> Result<()> {
-    let session = open_session(config_path)?;
-    let interval = Duration::from_millis(session.config.pm3.log_follow_interval_ms);
-    let stdout = stdout_log(&session.paths, name)?;
-    let mut follower = LogFollower::start_at_end(Path::new(&stdout)).await?;
-    for _poll in 0..polls {
-        for line in follower.poll_appended().await? {
-            emit(&line);
-        }
-        tokio::time::sleep(interval).await;
-    }
-    Ok(())
-}
-
 pub fn check_config(config_path: &str) -> Result<String> {
     Ok(adapters::check_config(config_path)?)
 }
@@ -257,11 +231,6 @@ pub fn show_config(config_path: &str) -> Result<String> {
 
 pub async fn sleep_for(ms: u64) {
     tokio::time::sleep(Duration::from_millis(ms)).await;
-}
-
-pub fn stdout_log(paths: &Pm3Paths, name: &str) -> Result<String> {
-    validate_app_name(name)?;
-    Ok(log_paths(&paths.logs_dir.to_string_lossy(), name).stdout)
 }
 
 pub fn canonical_apps_file(apps_file: &str) -> Result<String> {

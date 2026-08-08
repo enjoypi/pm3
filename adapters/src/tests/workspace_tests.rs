@@ -14,6 +14,8 @@ fn spec_with_args(cwd: &str, args: &[&str]) -> AppSpec {
 fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
     AppSpec {
         max_memory_kib: None,
+        ready_probe: None,
+        listen_timeout_ms: None,
         name: "web".to_string(),
         script: "/bin/sh".to_string(),
         args: Vec::new(),
@@ -23,6 +25,7 @@ fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 0,
+        max_restart_delay_ms: 15000,
         schedule: None,
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {

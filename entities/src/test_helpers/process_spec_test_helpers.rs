@@ -16,6 +16,8 @@ pub fn confined_policy() -> SandboxPolicy {
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
         max_memory_kib: None,
+        ready_probe: None,
+        listen_timeout_ms: None,
         name: name.to_string(),
         script: "/usr/bin/true".to_string(),
         args: Vec::new(),
@@ -25,6 +27,7 @@ pub fn spec(name: &str) -> AppSpec {
         min_uptime_ms: 1000,
         max_restarts: 15,
         restart_delay_ms: 0,
+        max_restart_delay_ms: 15000,
         schedule: None,
         depends_on: Vec::new(),
         sandbox: confined_policy(),

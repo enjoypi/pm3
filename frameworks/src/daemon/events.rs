@@ -22,5 +22,15 @@ pub enum DaemonEvent {
         token: Option<String>,
     },
     SampleMemory,
+    RotateLogs,
+    Ready {
+        name: String,
+        generation: u64,
+    },
+    ReadyTimeout {
+        name: String,
+        generation: u64,
+        reason: String,
+    },
     Shutdown,
 }

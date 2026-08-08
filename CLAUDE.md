@@ -151,15 +151,29 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 ### 内存熔断
 
-- 采样 MUST 走**独立一条** `ps -ww -o pid=,rss=`（`resident_memory_kib`），MUST NOT 往 `BATCH_FORMAT`（`pid=,lstart=`）加列：`parse_report` 按第一个空格切、余下整段当身份令牌，加一列 rss 会让每次内存波动都被判成 pid 复用，全部服务在换代时被驱逐
+- 采样 MUST 走**独立一条** `ps -ww -o pid=,rss=`（`resident_memory_kib`），MUST NOT 往 `BATCH_FORMAT`（`pid=,lstart=`）加列：`parse_report` 按第一个空格切、余下整段当身份令牌，加一列 rss 会让每次内存波动都被判成 pid 复用，全部服务在换代时被驱逐。`list`/`describe` 的资源列走另一条 `ps -o pid=,rss=,pcpu=`（`resource_usage`，请求路径现采，不进 tick）
 - `AdoptedWatch` 不能复用：`wait_for_exit` 先判 `is_child`，自己 spawn 的进程走 `Child::wait`，所以那条轮询常态下是空的；它的 cadence 还会退避到 `daemon_poll_max_interval_ms`
-- tick 是自持循环（`SupervisionEffect::ScheduleMemorySample` → `DaemonEvent::SampleMemory` → 处理完再排下一次），**无条件续排**、只在「没有服务声明限额」时跳过 `ps`：这样不必跟踪「tick 是否在途」，start/delete 也不用管重新武装
+- tick 是自持循环（`SupervisionEffect::ScheduleMemorySample` → `DaemonEvent::SampleMemory` → 处理完再排下一次），**无条件续排**、只在「没有服务声明限额」时跳过 `ps`：这样不必跟踪「tick 是否在途」，start/delete 也不用管重新武装。**首拍由 `serve_supervised` 在 resurrect 之后注入**（`events.send(SampleMemory)`，日志 rotate 的 `RotateLogs` 同处）——曾经没有首踢，整条链在生产上从未启动，单测全绿（它们直接调 handler），内存熔断形同虚设；新增自持 tick 时 MUST 在同一个注入点登记
 - `max_memory_kib` **不进指纹**（`fingerprint.rs` 里标 `_`）：限额是运维策略不是进程身份，改限额不该 evict+respawn
 - 超限只调 `restart_app`（与 cron 同一条路径），所以 `restart` 是异步的——测试断言要看 `stopping` 状态或事件，不能直接比对新旧 pid
 
+### 就绪探针
+
+- 带 `ready_probe` 的服务 spawn 后停留 `Launching`，`TaskBoard` 的探针 task 报 `Ready`/`ReadyTimeout` 事件才推进；adopt 来的进程直接 Online（显然已在服务），MUST NOT 重新等探针
+- 探针在**宿主机、沙箱外**执行（exec 探针经宿主 `search_path` 解析、tcp 探针测客户端视角可达性；沙箱内 `network: false` 的服务也能被探到）；探针命令 MUST NOT 进日志（凭据规则同 spawn 参数）
+- 就绪等待是异步的，所以 `start` 回复在探针出结果前已发出：`Launching` 与被依赖挂起的 `Deferred` 都 MUST 算正常 outcome、MUST NOT 进 `refused`（否则 CLI 会把服务文件回滚删掉）
+- 探针超时是终态：terminate + `ready_failed` 标记，随后的退出事件直接记 `Errored`，MUST NOT 走 `decide_restart`（不触发 autorestart）；等待中的依赖者级联标 `Errored`
+- `stop`/`delete`/`stop_all` MUST 走 `cancel_ready`（中止探针 task + 从 waiters 摘除 + 级联取消），否则依赖就绪后会把用户已停掉的 Deferred 服务拉起来
+- 已知限制：探针窗口内 daemon 换代，Deferred 服务以 `Stopped` 落盘、不自动续拉（无孤儿无双开，需人工 `start`）；waiters 只在内存，不落盘
+
+### 日志
+
+- 服务日志 fd 由子进程独占（daemon 以 O_APPEND 打开后 move 给子进程），rename 式 rotate 无效 ⇒ 写侧 rotate 只能 **copytruncate**（`adapters/src/logs/rotate.rs`，O_APPEND 下截断无稀疏洞），保留 1 代 `<name>-*.log.1`；`pm3.log_rotate_max_bytes` 默认 0 = 关闭。读侧 `LogFollower::resync` 对 truncate 与 rename+recreate 都已兼容
+- `pm3 logs` 全程不经 daemon：裸 logs 从 `cfg_dir` 枚举服务文件名取 stem（排序、过滤 `.env` 与非 yaml），单服务输出逐字无前缀，聚合加 `name | ` 前缀，`--all` 双流用 `name [out] | ` / `name [err] | `；聚合模式缺日志文件跳过，单服务模式报错
+
 ### CLI ↔ daemon 协议
 
-- 是 JSON envelope `ReplyDto { report, service, already_running, refused }`：新增命令走 `ask_report`（只要文案）或 `ask`（要结构化字段）；MUST NOT 靠 `.contains(渲染文本)` 反解业务状态
+- 是 JSON envelope `ReplyDto { report, service, already_running, refused, unsaved, views }`：新增命令走 `ask_report`（只要文案）或 `ask`（要结构化字段）；MUST NOT 靠 `.contains(渲染文本)` 反解业务状态。`views` 是 `ProcessViewDto`（adapters 侧 DTO，白名单字段天然不含 env），只有 list/describe 填；`--json` 由 CLI 拿 `views` 调 `render_json_*` 本地渲染，frameworks 不许碰 serde_json
 - `start` 是**部分提交**的批处理，所以回滚粒度 MUST 与提交粒度一致：daemon 在「起了一部分」时回 200 + `refused`（未起来的服务名），CLI 只 `undo.run_for(&refused)` 并以 `Error::PartialStart` 结束（非零退出）；一个都没起来才回非 200、CLI 全量回滚。把部分成功当成「什么都没发生」而全量删服务文件，会让已在跑的服务下次 daemon 启动时 `rejoin` 失败被丢弃 → 永久孤儿
 - `start` 的「某个服务起不来」与「起来了但落不了盘」MUST 是两个独立字段（`refused` / `unsaved`）：`refused` 由「requested 减 outcomes」反推，天然表达不了「全都起来了但 `dump.yaml` 写失败」⇒ 回 200 + 空 `refused` ⇒ CLI 退出码 0，而 dump 里没有这些服务，下次 daemon 重启 `resurrect` 读不到记录、既不 evict 也不监控 ⇒ 永久孤儿，CI 按退出码判定完全无感。`unsaved` 非空时 CLI MUST 非零退出（`Error::UnsavedStart`）且 MUST NOT 回滚服务文件（服务在跑）。`Supervisor::start` 只在 `outcomes` 为空时才返回 `Err`
 - `start` 请求只传服务名列表（`services: Vec<String>`）——服务文件是唯一事实来源，MUST NOT 把 spec 塞进请求体

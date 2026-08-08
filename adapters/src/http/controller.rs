@@ -13,6 +13,7 @@ use usecases::{
 use super::{
     dto::{HealthDto, ReplyDto, StartRequestDto},
     routes::REQUEST_ID_HEADER,
+    view_dto::ProcessViewDto,
 };
 use crate::{
     presenter::{
@@ -128,6 +129,7 @@ fn refusal(error: &DaemonError) -> ReplyDto {
         already_running: Vec::new(),
         refused: Vec::new(),
         unsaved: None,
+        views: Vec::new(),
     }
 }
 
@@ -173,6 +175,21 @@ fn envelope(reply: &SupervisionReply) -> ReplyDto {
         already_running: already_running_names(reply),
         refused: refused_names(reply),
         unsaved: unsaved_reason(reply),
+        views: views_of(reply),
+    }
+}
+
+fn views_of(reply: &SupervisionReply) -> Vec<ProcessViewDto> {
+    use SupervisionReply as Dr;
+
+    match reply {
+        Dr::Listed(views) => views.iter().map(ProcessViewDto::from).collect(),
+        Dr::Described(view) => vec![ProcessViewDto::from(view)],
+        Dr::Started { .. }
+        | Dr::Stopped { .. }
+        | Dr::Restarted { .. }
+        | Dr::Deleted { .. }
+        | Dr::StoppedAll { .. } => Vec::new(),
     }
 }
 

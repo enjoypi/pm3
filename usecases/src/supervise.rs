@@ -22,6 +22,19 @@ pub async fn handle_child_exit(
     Ok(action)
 }
 
+pub async fn settle_failed_probe(
+    table: &mut ProcessTable,
+    name: &str,
+    ports: &impl Ports,
+) -> Result<()> {
+    let record = table
+        .find_by_name_mut(name)
+        .ok_or_else(|| UsecaseError::NotFound(name.to_string()))?;
+    record.runtime.mark_exited(ProcessStatus::Errored);
+    save_table(table, ports).await?;
+    Ok(())
+}
+
 fn classify_exit(
     table: &mut ProcessTable,
     name: &str,

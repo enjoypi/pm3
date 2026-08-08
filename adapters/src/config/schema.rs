@@ -42,6 +42,15 @@ pub enum ConfigError {
     #[error("cannot accept pm3.log_tail_lines {0}: must be >= 1")]
     InvalidLogTailLines(u64),
 
+    #[error("cannot accept pm3.log_rotate_interval_ms {0}: must be >= 1")]
+    InvalidLogRotateInterval(u64),
+
+    #[error("cannot accept pm3.ready_timeout_ms {0}: must be >= 1")]
+    InvalidReadyTimeout(u64),
+
+    #[error("cannot accept pm3.ready_poll_interval_ms {0}: must be >= 1")]
+    InvalidReadyPollInterval(u64),
+
     #[error("cannot accept pm3.daemon_channel_depth {0}: must be >= 1")]
     InvalidChannelDepth(usize),
 
@@ -62,6 +71,9 @@ pub enum ConfigError {
 
     #[error("cannot accept pm3.restart.min_uptime_ms {0}: must be >= 1")]
     InvalidMinUptime(u64),
+
+    #[error("cannot accept pm3.restart.max_restart_delay_ms {0}: must be >= 1")]
+    InvalidMaxRestartDelay(u64),
 
     #[error("cannot accept pm3.memory_poll_interval_ms {0}: must be >= 1")]
     InvalidMemoryPollInterval(u64),
@@ -129,6 +141,10 @@ pub struct Pm3Config {
     pub memory_poll_interval_ms: u64,
     pub log_follow_interval_ms: u64,
     pub log_tail_lines: u64,
+    pub log_rotate_max_bytes: u64,
+    pub log_rotate_interval_ms: u64,
+    pub ready_timeout_ms: u64,
+    pub ready_poll_interval_ms: u64,
     pub daemon_channel_depth: usize,
     pub request_body_limit_bytes: usize,
     pub restart: RestartConfig,
@@ -142,6 +158,7 @@ pub struct RestartConfig {
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
     pub restart_delay_ms: u64,
+    pub max_restart_delay_ms: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -254,6 +271,19 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.log_tail_lines < 1 {
         return Err(ConfigError::InvalidLogTailLines(pm3.log_tail_lines));
     }
+    if pm3.log_rotate_interval_ms < 1 {
+        return Err(ConfigError::InvalidLogRotateInterval(
+            pm3.log_rotate_interval_ms,
+        ));
+    }
+    if pm3.ready_timeout_ms < 1 {
+        return Err(ConfigError::InvalidReadyTimeout(pm3.ready_timeout_ms));
+    }
+    if pm3.ready_poll_interval_ms < 1 {
+        return Err(ConfigError::InvalidReadyPollInterval(
+            pm3.ready_poll_interval_ms,
+        ));
+    }
     if pm3.daemon_channel_depth < 1 {
         return Err(ConfigError::InvalidChannelDepth(pm3.daemon_channel_depth));
     }
@@ -269,6 +299,11 @@ fn validate_choices(pm3: &Pm3Config) -> Result<(), ConfigError> {
     }
     if pm3.restart.min_uptime_ms < 1 {
         return Err(ConfigError::InvalidMinUptime(pm3.restart.min_uptime_ms));
+    }
+    if pm3.restart.max_restart_delay_ms < 1 {
+        return Err(ConfigError::InvalidMaxRestartDelay(
+            pm3.restart.max_restart_delay_ms,
+        ));
     }
     if SandboxMode::parse(&pm3.sandbox.mode).is_none() {
         return Err(ConfigError::InvalidSandboxMode {
