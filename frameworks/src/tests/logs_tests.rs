@@ -462,3 +462,124 @@ async fn the_cli_reads_the_stderr_log_with_the_err_flag() {
     assert_eq!(printed.as_deref(), Some("boom"));
     stop_daemon(fixture).await;
 }
+
+fn clearing(items: &[&str]) -> LogRequest {
+    LogRequest {
+        action: LogAction::Clear,
+        ..reading(items)
+    }
+}
+
+#[tokio::test]
+async fn clearing_a_log_truncates_it_and_reports_the_path() {
+    let fixture = running_daemon().await;
+    let path = seed_log(&fixture, "web", LogStream::Stdout, "old\n");
+    let printed = run_logs(&fixture.config_path, &clearing(&["web"]), &|_| {})
+        .await
+        .expect("should clear");
+    assert_eq!(printed.as_deref(), Some(format!("cleared {path}").as_str()));
+    assert_eq!(std::fs::metadata(&path).expect("stat").len(), 0);
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn clearing_with_err_only_truncates_the_stderr_log() {
+    let fixture = running_daemon().await;
+    let out = seed_log(&fixture, "web", LogStream::Stdout, "out\n");
+    let err = seed_log(&fixture, "web", LogStream::Stderr, "err\n");
+    let request = LogRequest {
+        err: true,
+        ..clearing(&["web"])
+    };
+    let printed = run_logs(&fixture.config_path, &request, &|_| {})
+        .await
+        .expect("should clear");
+    assert_eq!(printed.as_deref(), Some(format!("cleared {err}").as_str()));
+    assert_eq!(std::fs::metadata(&err).expect("stat err").len(), 0);
+    assert_eq!(std::fs::metadata(&out).expect("stat out").len(), 4);
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn clearing_with_all_truncates_both_streams() {
+    let fixture = running_daemon().await;
+    let out = seed_log(&fixture, "web", LogStream::Stdout, "out\n");
+    let err = seed_log(&fixture, "web", LogStream::Stderr, "err\n");
+    let request = LogRequest {
+        all: true,
+        ..clearing(&["web"])
+    };
+    let printed = run_logs(&fixture.config_path, &request, &|_| {})
+        .await
+        .expect("should clear");
+    assert_eq!(
+        printed.as_deref(),
+        Some(format!("cleared {out}\ncleared {err}").as_str())
+    );
+    assert_eq!(std::fs::metadata(&out).expect("stat out").len(), 0);
+    assert_eq!(std::fs::metadata(&err).expect("stat err").len(), 0);
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn clearing_a_missing_log_fails() {
+    let fixture = running_daemon().await;
+    let err = run_logs(&fixture.config_path, &clearing(&["ghost"]), &|_| {})
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot clear log file"), "got: {err}");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn clearing_an_aggregation_truncates_every_declared_service_and_skips_missing_logs() {
+    let fixture = running_daemon().await;
+    declare(&fixture, &["web", "api"]);
+    let path = seed_log(&fixture, "web", LogStream::Stdout, "web-line\n");
+    let printed = run_logs(&fixture.config_path, &clearing(&[]), &|_| {})
+        .await
+        .expect("should clear");
+    assert_eq!(printed.as_deref(), Some(format!("cleared {path}").as_str()));
+    assert_eq!(std::fs::metadata(&path).expect("stat").len(), 0);
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn clearing_the_log_of_an_unsafe_name_is_refused() {
+    let fixture = running_daemon().await;
+    let outcome = run_logs(&fixture.config_path, &clearing(&["../escape"]), &|_| {}).await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
+async fn the_cli_clears_a_log_with_the_clear_flag() {
+    let fixture = running_daemon().await;
+    let path = seed_log(&fixture, "web", LogStream::Stdout, "old\n");
+    let printed = execute(Cli::parse_from([
+        "pm3",
+        "--config",
+        &fixture.config_path,
+        "logs",
+        "web",
+        "--clear",
+    ]))
+    .await
+    .expect("should clear");
+    assert_eq!(printed.as_deref(), Some(format!("cleared {path}").as_str()));
+    assert_eq!(std::fs::metadata(&path).expect("stat").len(), 0);
+    stop_daemon(fixture).await;
+}
+
+#[test]
+fn the_clear_flag_conflicts_with_follow_and_a_line_count() {
+    assert!(
+        Cli::try_parse_from(["pm3", "logs", "web", "--clear", "--follow"]).is_err(),
+        "--clear must conflict with --follow"
+    );
+    assert!(
+        Cli::try_parse_from(["pm3", "logs", "web", "--clear", "-n", "5"]).is_err(),
+        "--clear must conflict with -n"
+    );
+}

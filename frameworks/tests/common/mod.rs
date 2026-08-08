@@ -79,6 +79,7 @@ pub struct HomeTunables {
     pub memory_poll_interval_ms: u64,
     pub log_rotate_max_bytes: u64,
     pub log_rotate_interval_ms: u64,
+    pub wait_for_network: bool,
 }
 
 impl Default for HomeTunables {
@@ -87,8 +88,23 @@ impl Default for HomeTunables {
             memory_poll_interval_ms: 30000,
             log_rotate_max_bytes: 0,
             log_rotate_interval_ms: 60000,
+            wait_for_network: false,
         }
     }
+}
+
+pub fn home_waiting_for_network() -> Home {
+    build_home_full(
+        "danger-full-access",
+        FULL_READ,
+        true,
+        "info",
+        START_TIMEOUT_MS,
+        HomeTunables {
+            wait_for_network: true,
+            ..HomeTunables::default()
+        },
+    )
 }
 
 pub fn home_with_memory_poll(memory_poll_interval_ms: u64) -> Home {
@@ -177,6 +193,7 @@ pub fn config_yaml(
     let memory_poll_interval_ms = tunables.memory_poll_interval_ms;
     let log_rotate_max_bytes = tunables.log_rotate_max_bytes;
     let log_rotate_interval_ms = tunables.log_rotate_interval_ms;
+    let service = service_yaml(tunables.wait_for_network);
     format!(
         r#"pm3:
   home: "{home}"
@@ -223,21 +240,28 @@ pub fn config_yaml(
       - "/"
       - "/etc"
       - "/usr"
-  service:
-    label: "{SERVICE_LABEL}"
-    restart_delay_secs: 2
-    restart_condition: "always"
-    max_tasks: 4096
-    cpu_quota_percent: 0
-    launchctl_path: "/bin/launchctl"
-    systemctl_path: "/usr/bin/systemctl"
-    loginctl_path: "/usr/bin/loginctl"
+{service}
 
 telemetry:
   service_name: "pm3"
   log_level: "{log_level}"
   log_format: "json"
 "#
+    )
+}
+
+fn service_yaml(wait_for_network: bool) -> String {
+    format!(
+        r#"  service:
+    label: "{SERVICE_LABEL}"
+    restart_delay_secs: 2
+    restart_condition: "always"
+    max_tasks: 4096
+    cpu_quota_percent: 0
+    wait_for_network: {wait_for_network}
+    launchctl_path: "/bin/launchctl"
+    systemctl_path: "/usr/bin/systemctl"
+    loginctl_path: "/usr/bin/loginctl""#
     )
 }
 

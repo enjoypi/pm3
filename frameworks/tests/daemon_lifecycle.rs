@@ -74,6 +74,29 @@ fn an_unknown_app_fails_the_command() {
 }
 
 #[test]
+fn a_signal_command_delivers_to_the_process_group() {
+    let home = home();
+    let apps = sleeper_apps(&home, "web");
+    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+    let pid = self::common::described_pid(&home, "web");
+
+    let signalled = pm3(&home, &["signal", "web", "USR1"]);
+    assert!(signalled.status.success(), "{}", stdout_of(&signalled));
+    assert_eq!(stdout_of(&signalled).trim(), "sent USR1 to web");
+
+    let deadline = std::time::Instant::now() + self::common::READY_BUDGET;
+    while self::common::process_is_alive(pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "pid {pid} should have exited on USR1"
+        );
+        std::thread::sleep(self::common::PROBE_INTERVAL);
+    }
+    shutdown_daemon(&home);
+}
+
+#[test]
 fn config_check_needs_no_daemon() {
     let home = home();
     let checked = pm3(&home, &["config", "check"]);
@@ -81,6 +104,22 @@ fn config_check_needs_no_daemon() {
     assert!(
         !home.root.join("pm3.sock").exists(),
         "config check must not start a daemon"
+    );
+}
+
+#[test]
+fn completion_prints_a_script_without_a_daemon() {
+    let home = home();
+    let generated = pm3(&home, &["completion", "bash"]);
+    assert!(generated.status.success(), "{}", stdout_of(&generated));
+    assert!(
+        stdout_of(&generated).contains("pm3"),
+        "the script should name the binary: {}",
+        stdout_of(&generated)
+    );
+    assert!(
+        !home.root.join("pm3.sock").exists(),
+        "completion must not start a daemon"
     );
 }
 

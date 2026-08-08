@@ -11,7 +11,7 @@ use usecases::{
 };
 
 use super::{
-    dto::{HealthDto, ReplyDto, StartRequestDto},
+    dto::{HealthDto, ReplyDto, SignalRequestDto, StartRequestDto},
     routes::REQUEST_ID_HEADER,
     view_dto::ProcessViewDto,
 };
@@ -87,6 +87,27 @@ pub async fn delete(
         SupervisionRequest::Delete(selector(&raw)),
     )
     .await
+}
+
+pub async fn reset(
+    State(handle): State<DaemonHandle>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+) -> Response {
+    dispatch(&handle, &headers, SupervisionRequest::Reset(selector(&raw))).await
+}
+
+pub async fn signal(
+    State(handle): State<DaemonHandle>,
+    headers: HeaderMap,
+    Path(raw): Path<String>,
+    Json(body): Json<SignalRequestDto>,
+) -> Response {
+    let request = SupervisionRequest::Signal {
+        selector: selector(&raw),
+        signal: body.signal,
+    };
+    dispatch(&handle, &headers, request).await
 }
 
 pub async fn stop_all(State(handle): State<DaemonHandle>, headers: HeaderMap) -> Response {
@@ -189,6 +210,8 @@ fn views_of(reply: &SupervisionReply) -> Vec<ProcessViewDto> {
         | Dr::Stopped { .. }
         | Dr::Restarted { .. }
         | Dr::Deleted { .. }
+        | Dr::Reset { .. }
+        | Dr::Signalled { .. }
         | Dr::StoppedAll { .. } => Vec::new(),
     }
 }
@@ -206,8 +229,10 @@ const fn usecase_status(error: &UsecaseError) -> StatusCode {
 
     match error {
         Ue::NotFound(_) => StatusCode::NOT_FOUND,
-        Ue::StillDependedOn { .. } => StatusCode::CONFLICT,
-        Ue::Spec(_) | Ue::Dependency(_) | Ue::Policy(_) | Ue::Sandbox(_) => StatusCode::BAD_REQUEST,
+        Ue::NotRunning(_) | Ue::StillDependedOn { .. } => StatusCode::CONFLICT,
+        Ue::Spec(_) | Ue::Dependency(_) | Ue::Policy(_) | Ue::Sandbox(_) | Ue::InvalidSignal(_) => {
+            StatusCode::BAD_REQUEST
+        }
         Ue::Launch(_) | Ue::Signal(_) | Ue::Dump(_) | Ue::Fingerprint(_) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }

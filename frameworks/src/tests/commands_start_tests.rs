@@ -37,6 +37,7 @@ fn inline_request<'s>(program: &'s str, args: &'s [String]) -> InlineStart<'s> {
         ready_exec: &[],
         ready_tcp: None,
         listen_timeout_ms: None,
+        stop_exit_codes: &[],
         force: false,
     }
 }

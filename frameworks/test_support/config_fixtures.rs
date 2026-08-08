@@ -76,6 +76,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
             restart_condition: SERVICE_RESTART_CONDITION.to_string(),
             max_tasks: SERVICE_MAX_TASKS,
             cpu_quota_percent: SERVICE_CPU_QUOTA_PERCENT,
+            wait_for_network: false,
             launchctl_path: LAUNCHCTL_PATH.to_string(),
             systemctl_path: SYSTEMCTL_PATH.to_string(),
             loginctl_path: LOGINCTL_PATH.to_string(),
@@ -128,6 +129,7 @@ pub fn config_yaml(home: &str) -> String {
     restart_condition: "{SERVICE_RESTART_CONDITION}"
     max_tasks: {SERVICE_MAX_TASKS}
     cpu_quota_percent: {SERVICE_CPU_QUOTA_PERCENT}
+    wait_for_network: false
     launchctl_path: "{LAUNCHCTL_PATH}"
     systemctl_path: "{SYSTEMCTL_PATH}"
     loginctl_path: "{LOGINCTL_PATH}"

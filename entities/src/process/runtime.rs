@@ -98,6 +98,14 @@ impl ProcessRuntime {
         self.unstable_restarts = unstable_restarts;
     }
 
+    pub fn reset_restarts(&mut self) {
+        self.restart_time = 0;
+        self.unstable_restarts = 0;
+        if self.status == ProcessStatus::Errored {
+            self.status = ProcessStatus::Stopped;
+        }
+    }
+
     pub const fn request_restart(&mut self) {
         self.pending_restart = true;
     }

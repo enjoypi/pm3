@@ -3,6 +3,7 @@ mod limits;
 mod ready;
 mod restart;
 mod runtime;
+mod signal;
 mod spec;
 mod status;
 
@@ -12,6 +13,7 @@ pub use self::{
     ready::{ReadyProbe, validate_probe},
     restart::{RestartDecision, RestartPolicy, decide_restart},
     runtime::{ProcessIdentity, ProcessRuntime, RuntimeError},
+    signal::{SignalNameError, VALID_SIGNALS, parse_signal_name},
     spec::{AppSpec, SpecError, validate_app_name, validate_spec},
     status::ProcessStatus,
 };

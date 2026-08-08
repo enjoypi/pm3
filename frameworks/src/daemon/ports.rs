@@ -172,6 +172,10 @@ impl Signaler for DaemonPorts {
     async fn force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         self.signaler.force_kill(pid, scope).await
     }
+
+    async fn deliver(&self, signal: &str, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        self.signaler.deliver(signal, pid, scope).await
+    }
 }
 
 #[cfg(test)]

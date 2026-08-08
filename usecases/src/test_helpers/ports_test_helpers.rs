@@ -37,6 +37,7 @@ struct FakeState {
     spawn_failures: Vec<String>,
     wrap_failures: Vec<String>,
     terminated: Vec<u32>,
+    delivered: Vec<(String, u32)>,
     signal_failures: Vec<u32>,
     stubborn: Vec<u32>,
     waited: Vec<u32>,
@@ -188,6 +189,11 @@ impl FakePorts {
     }
 
     #[must_use]
+    pub fn delivered(&self) -> Vec<(String, u32)> {
+        self.read(|state| state.delivered.clone())
+    }
+
+    #[must_use]
     pub fn waited(&self) -> Vec<u32> {
         self.read(|state| state.waited.clone())
     }
@@ -279,6 +285,26 @@ impl FakePorts {
         Ok(())
     }
 
+    fn record_deliver(
+        &self,
+        signal: &str,
+        pid: u32,
+        scope: SignalScope,
+    ) -> Result<(), SignalError> {
+        {
+            let mut guard = self.locked();
+            guard.signal_scopes.push((pid, scope));
+            if guard.signal_failures.contains(&pid) {
+                return Err(SignalError::Delivery {
+                    pid,
+                    reason: "injected signal failure".to_string(),
+                });
+            }
+            guard.delivered.push((signal.to_string(), pid));
+        }
+        Ok(())
+    }
+
     fn record_save(&self, records: &[ProcessRecord], boot: Option<&str>) -> Result<(), DumpError> {
         {
             let mut guard = self.locked();
@@ -338,6 +364,10 @@ impl Signaler for FakePorts {
 
     async fn force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         self.record_force_kill(pid, scope)
+    }
+
+    async fn deliver(&self, signal: &str, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        self.record_deliver(signal, pid, scope)
     }
 }
 
@@ -475,6 +505,7 @@ pub fn spec(name: &str) -> AppSpec {
         max_memory_kib: None,
         ready_probe: None,
         listen_timeout_ms: None,
+        stop_exit_codes: Vec::new(),
         name: name.to_string(),
         script: "/usr/bin/true".to_string(),
         args: Vec::new(),

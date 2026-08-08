@@ -142,6 +142,22 @@ async fn a_selector_that_would_break_the_request_line_is_refused_before_dialling
 }
 
 #[tokio::test]
+async fn signalling_with_a_selector_that_would_escape_is_refused_before_dialling() {
+    let error = signal_app("/nonexistent/config.yaml", "my app", "HUP")
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::Spec(_)), "got: {error}");
+}
+
+#[tokio::test]
+async fn signalling_without_a_config_is_reported() {
+    let error = signal_app("/nonexistent/config.yaml", "web", "HUP")
+        .await
+        .unwrap_err();
+    assert!(!matches!(error, Error::Spec(_)), "got: {error}");
+}
+
+#[tokio::test]
 async fn a_selector_that_would_escape_the_apps_path_is_refused_before_dialling() {
     let error = describe_app("/nonexistent/config.yaml", "../health", false)
         .await

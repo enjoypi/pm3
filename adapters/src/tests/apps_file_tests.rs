@@ -668,3 +668,20 @@ fn resolve_specs_refuses_a_tcp_probe_with_a_non_numeric_port() {
     let err = resolve_one_err(&defaults(), &entry);
     assert!(err.contains("1-65535"), "got: {err}");
 }
+
+#[test]
+fn resolve_specs_carries_stop_exit_codes() {
+    let entry = AppEntry {
+        stop_exit_codes: vec![0, 3],
+        ..minimal_entry()
+    };
+    let spec = resolve_one(&defaults(), &entry);
+    assert_eq!(spec.stop_exit_codes, vec![0, 3]);
+}
+
+#[test]
+fn a_service_file_reads_stop_exit_codes() {
+    let entry = parse_service_file("name: web\nscript: /bin/sh\nstop_exit_codes:\n  - 3\n  - 0\n")
+        .expect("should parse");
+    assert_eq!(entry.stop_exit_codes, vec![3, 0]);
+}

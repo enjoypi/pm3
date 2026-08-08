@@ -121,6 +121,73 @@ async fn stopping_an_app_confirms_its_name() {
 }
 
 #[tokio::test]
+async fn resetting_an_app_clears_its_restart_counters() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", CRASHER).await;
+    let (name, generation, outcome) = next_exit(&mut harness.events).await;
+    harness.daemon.on_exit(&name, generation, outcome).await;
+    let before = described(&mut harness, "web").await;
+    assert_eq!(before.restart_time, 1, "got: {before:?}");
+    let reply = harness
+        .daemon
+        .handle(SupervisionRequest::Reset(selector("web")))
+        .await
+        .expect("should reset");
+    assert_eq!(
+        reply,
+        SupervisionReply::Reset {
+            name: "web".to_string(),
+        }
+    );
+    let after = described(&mut harness, "web").await;
+    assert_eq!(after.restart_time, 0, "got: {after:?}");
+}
+
+#[tokio::test]
+async fn resetting_an_unknown_app_reports_not_found() {
+    let mut harness = harness();
+    let outcome = harness
+        .daemon
+        .handle(SupervisionRequest::Reset(selector("ghost")))
+        .await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
+async fn signalling_a_running_app_confirms_the_delivery() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    let reply = harness
+        .daemon
+        .handle(SupervisionRequest::Signal {
+            selector: selector("web"),
+            signal: "USR1".to_string(),
+        })
+        .await
+        .expect("should signal");
+    assert_eq!(
+        reply,
+        SupervisionReply::Signalled {
+            name: "web".to_string(),
+            signal: "USR1".to_string(),
+        }
+    );
+}
+
+#[tokio::test]
+async fn signalling_an_unknown_app_reports_not_found() {
+    let mut harness = harness();
+    let outcome = harness
+        .daemon
+        .handle(SupervisionRequest::Signal {
+            selector: selector("ghost"),
+            signal: "USR1".to_string(),
+        })
+        .await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
 async fn restarting_a_running_app_waits_for_its_exit() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;
@@ -424,4 +491,28 @@ async fn shutting_down_counts_only_the_services_still_running() {
         .expect("should stop db");
     harness.daemon.shutdown().await;
     assert_eq!(status_of(&mut harness, "web").await, "online");
+}
+
+#[tokio::test]
+async fn a_listed_exit_code_settles_as_a_clean_stop() {
+    let mut harness = harness();
+    clean_exit_apps_file(&harness, "flap", 7);
+    harness
+        .daemon
+        .handle(SupervisionRequest::Start {
+            services: vec!["flap".to_string()],
+        })
+        .await
+        .expect("should start");
+    let (name, generation, outcome) = next_exit(&mut harness.events).await;
+    harness.daemon.on_exit(&name, generation, outcome).await;
+    let reply = harness
+        .daemon
+        .handle(SupervisionRequest::Describe(selector("flap")))
+        .await
+        .expect("should describe");
+    assert!(
+        matches!(&reply, SupervisionReply::Described(view) if view.status.as_str() == "stopped" && view.restart_time == 0),
+        "a listed exit code should settle as a clean stop: {reply:?}"
+    );
 }

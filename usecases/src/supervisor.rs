@@ -12,9 +12,11 @@ use crate::{
         memory_watch_list, owner_of_pid, running_pids, schedule_of, unswept_pids,
     },
     record::ProcessView,
+    reset::reset_app,
     restart::{RestartOutcome, restart_app},
     resurrect::resurrect,
     selector::AppSelector,
+    signal::signal_app,
     start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
     stop::{persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit, settle_failed_probe},
@@ -134,6 +136,10 @@ impl Supervisor {
             }
             SupervisionRequest::Delete(selector) => {
                 self.delete(&selector, ports, &mut effects).await
+            }
+            SupervisionRequest::Reset(selector) => self.reset(&selector, ports).await,
+            SupervisionRequest::Signal { selector, signal } => {
+                self.signal(&selector, &signal, ports).await
             }
             SupervisionRequest::StopAll => self.stop_all(ports, &mut effects).await,
         };
@@ -396,6 +402,24 @@ impl Supervisor {
         self.cancel_ready(&outcome.name, effects);
         self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
         Ok(SupervisionReply::Deleted { name: outcome.name })
+    }
+
+    async fn reset(&mut self, selector: &AppSelector, ports: &impl Ports) -> SupervisionOutcome {
+        let name = reset_app(&mut self.table, selector, ports).await?;
+        Ok(SupervisionReply::Reset { name })
+    }
+
+    async fn signal(
+        &mut self,
+        selector: &AppSelector,
+        signal: &str,
+        ports: &impl Ports,
+    ) -> SupervisionOutcome {
+        let outcome = signal_app(&mut self.table, selector, signal, ports).await?;
+        Ok(SupervisionReply::Signalled {
+            name: outcome.name,
+            signal: outcome.signal,
+        })
     }
 
     async fn stop_all(

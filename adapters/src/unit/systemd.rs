@@ -17,11 +17,12 @@ pub fn render_unit(spec: &UnitSpec) -> String {
     let umask = format!("{:04o}", spec.umask);
     let max_tasks = spec.max_tasks;
     let cpu_quota = render_cpu_quota(spec.cpu_quota_percent);
+    let network_wait = render_network_wait(spec.wait_for_network);
     format!(
         "[Unit]
 Description={label}
 After=default.target
-
+{network_wait}
 [Service]
 Type=simple
 ExecStart={exec_start}
@@ -86,6 +87,14 @@ fn escape_value(raw: &str) -> String {
         }
     }
     escaped
+}
+
+const fn render_network_wait(wait_for_network: bool) -> &'static str {
+    if wait_for_network {
+        "Wants=network-online.target\nAfter=network-online.target\n"
+    } else {
+        ""
+    }
 }
 
 #[cfg(test)]

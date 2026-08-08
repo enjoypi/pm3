@@ -26,6 +26,7 @@ pub struct InlineRequest<'r> {
     pub ready_exec: &'r [String],
     pub ready_tcp: Option<&'r str>,
     pub listen_timeout_ms: Option<u64>,
+    pub stop_exit_codes: &'r [i32],
 }
 
 #[must_use]
@@ -51,6 +52,7 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
         max_restart_delay_ms: None,
         schedule: request.cron.map(ToString::to_string),
         max_memory: request.max_memory.map(ToString::to_string),
+        stop_exit_codes: request.stop_exit_codes.to_vec(),
         listen_timeout_ms: request.listen_timeout_ms,
         ready_probe: ready_probe_of(request),
         sandbox: Some(sandbox),
@@ -140,6 +142,7 @@ fn encode_entry(entry: &AppEntry) -> String {
     ));
     text.push_str(&optional_text("schedule", entry.schedule.as_deref()));
     text.push_str(&optional_text("max_memory", entry.max_memory.as_deref()));
+    text.push_str(&number_sequence("stop_exit_codes", &entry.stop_exit_codes));
     text.push_str(&optional("listen_timeout_ms", entry.listen_timeout_ms));
     text.push_str(&encode_ready_probe(entry.ready_probe.as_ref()));
     text.push_str(&encode_sandbox(entry.sandbox.as_ref()));
@@ -213,6 +216,16 @@ fn sequence(indent: &str, key: &str, values: &[String]) -> String {
             let _ = writeln!(text, "{indent}  - {}", quote(value));
             text
         })
+}
+
+fn number_sequence(key: &str, values: &[i32]) -> String {
+    if values.is_empty() {
+        return String::new();
+    }
+    values.iter().fold(format!("{key}:\n"), |mut text, value| {
+        let _ = writeln!(text, "  - {value}");
+        text
+    })
 }
 
 fn quote(raw: &str) -> String {

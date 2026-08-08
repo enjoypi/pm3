@@ -50,13 +50,16 @@ pub use self::{
     http::{
         APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, ProcessViewDto, REQUEST_ID_HEADER,
         ReplyDecodeError, ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto, app_action_path,
-        app_path, decode_reply, encode_start_request, router,
+        app_path, decode_reply, encode_signal_request, encode_start_request, router,
     },
     install::{
         InstallError, back_up, backup_name, backup_root, binary_version, destination_of,
         parse_version_output, replace_binary,
     },
-    logs::{CopyTruncateRotator, LogFollower, LogReadError, read_tail, tail_lines},
+    logs::{
+        CopyTruncateRotator, LogClearError, LogFollower, LogReadError, clear_log, read_tail,
+        tail_lines,
+    },
     paths::{
         CONFIG_FILE, DEFAULT_HOME, PathError, Pm3Paths, default_config_path, expand_home,
         resolve_paths,

@@ -179,6 +179,7 @@ pub struct ServiceConfig {
     pub restart_condition: String,
     pub max_tasks: u64,
     pub cpu_quota_percent: u64,
+    pub wait_for_network: bool,
     pub launchctl_path: String,
     pub systemctl_path: String,
     pub loginctl_path: String,
@@ -201,7 +202,6 @@ pub const RESTART_CONDITION_ON_FAILURE: &str = "on-failure";
 
 const VALID_LOG_LEVELS: &[&str] = &["trace", "debug", "info", "warn", "error"];
 const VALID_LOG_FORMATS: &[&str] = &[LOG_FORMAT_JSON, LOG_FORMAT_PRETTY];
-const VALID_STOP_SIGNALS: &[&str] = &[STOP_SIGNAL_TERM, "INT", "QUIT", "HUP", "USR1", "USR2"];
 const VALID_RESTART_CONDITIONS: &[&str] = &[RESTART_CONDITION_ALWAYS, RESTART_CONDITION_ON_FAILURE];
 
 pub fn validate_config(cfg: &AppConfig) -> Result<(), ConfigError> {
@@ -294,7 +294,7 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
 }
 
 fn validate_choices(pm3: &Pm3Config) -> Result<(), ConfigError> {
-    if !VALID_STOP_SIGNALS.contains(&pm3.stop_signal.as_str()) {
+    if !usecases::VALID_SIGNALS.contains(&pm3.stop_signal.as_str()) {
         return Err(ConfigError::InvalidStopSignal(pm3.stop_signal.clone()));
     }
     if pm3.restart.min_uptime_ms < 1 {

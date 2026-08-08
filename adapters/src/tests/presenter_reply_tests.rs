@@ -113,6 +113,32 @@ fn a_delete_reply_confirms_the_app() {
 }
 
 #[test]
+fn a_reset_reply_confirms_the_app() {
+    let reply = SupervisionReply::Reset {
+        name: "web".to_string(),
+    };
+    assert_eq!(render_reply(&reply), "reset web");
+}
+
+#[test]
+fn a_reset_reply_names_the_affected_service() {
+    let reply = SupervisionReply::Reset {
+        name: "web".to_string(),
+    };
+    assert_eq!(affected_service(&reply), Some("web".to_string()));
+}
+
+#[test]
+fn a_signal_reply_confirms_the_delivery() {
+    let reply = SupervisionReply::Signalled {
+        name: "web".to_string(),
+        signal: "HUP".to_string(),
+    };
+    assert_eq!(render_reply(&reply), "sent HUP to web");
+    assert_eq!(affected_service(&reply), Some("web".to_string()));
+}
+
+#[test]
 fn a_reclaimed_app_says_it_was_reclaimed() {
     let rendered = render_started(&[started("web", StartKind::Adopted)], None, None);
     assert_eq!(rendered, format!("reclaimed web (id 3, pid {RUNNING_PID})"));

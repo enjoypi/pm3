@@ -324,3 +324,39 @@ fn an_app_without_a_schedule_is_never_a_task() {
     };
     assert!(!candidate.is_scheduled_task());
 }
+
+#[test]
+fn a_listed_exit_code_is_a_clean_stop() {
+    let candidate = AppSpec {
+        stop_exit_codes: vec![3],
+        ..spec("api")
+    };
+    assert!(candidate.stops_on(3));
+    assert!(!candidate.stops_on(7));
+}
+
+#[test]
+fn validate_rejects_a_stop_exit_code_above_255() {
+    let candidate = AppSpec {
+        stop_exit_codes: vec![256],
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept stop_exit_code 256 for app 'api': use a code of 0-255"
+    );
+}
+
+#[test]
+fn validate_rejects_a_negative_stop_exit_code() {
+    let candidate = AppSpec {
+        stop_exit_codes: vec![-1],
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept stop_exit_code -1 for app 'api': use a code of 0-255"
+    );
+}

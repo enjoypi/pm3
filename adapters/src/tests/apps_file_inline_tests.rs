@@ -30,6 +30,7 @@ fn request(writable_dirs: &[String]) -> InlineRequest<'_> {
         ready_exec: &[],
         ready_tcp: None,
         listen_timeout_ms: None,
+        stop_exit_codes: &[],
     }
 }
 
@@ -262,6 +263,7 @@ fn fully_declared_entry() -> AppEntry {
         }),
         schedule: None,
         max_memory: Some("300M".to_string()),
+        stop_exit_codes: Vec::new(),
         sandbox: Some(SandboxEntry {
             mode: Some(SandboxMode::WorkspaceWrite.as_str().to_string()),
             read: Some(ReadScope::Minimal.as_str().to_string()),
@@ -444,4 +446,25 @@ fn an_empty_probe_section_is_omitted() {
     };
     let yaml = encode_service_file(&entry);
     assert!(!yaml.contains("ready_probe"), "{yaml}");
+}
+
+#[test]
+fn an_inline_request_renders_stop_exit_codes() {
+    let entry = inline_entry(&InlineRequest {
+        stop_exit_codes: &[0, 3],
+        ..request(&[])
+    });
+    let yaml = encode_service_file(&entry);
+    assert!(
+        yaml.contains("stop_exit_codes:\n  - 0\n  - 3\n"),
+        "got: {yaml}"
+    );
+    let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
+    assert_eq!(reparsed.stop_exit_codes, vec![0, 3]);
+}
+
+#[test]
+fn an_inline_request_without_stop_exit_codes_renders_none() {
+    let yaml = encode_service_file(&inline_entry(&request(&[])));
+    assert!(!yaml.contains("stop_exit_codes"), "got: {yaml}");
 }

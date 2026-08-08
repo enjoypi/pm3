@@ -2,7 +2,7 @@ use thiserror::Error;
 use usecases::{AppSelector, SpecError, validate_app_name};
 
 use super::{
-    dto::{ReplyDto, StartRequestDto},
+    dto::{ReplyDto, SignalRequestDto, StartRequestDto},
     routes::APPS_PATH,
 };
 
@@ -19,6 +19,15 @@ pub fn encode_start_request(services: &[String]) -> String {
     };
     serde_json::to_string(&request)
         .expect("internal error: StartRequestDto serialization is infallible")
+}
+
+#[must_use]
+pub fn encode_signal_request(signal: &str) -> String {
+    let request = SignalRequestDto {
+        signal: signal.to_string(),
+    };
+    serde_json::to_string(&request)
+        .expect("internal error: SignalRequestDto serialization is infallible")
 }
 
 pub fn decode_reply(body: &str) -> Result<ReplyDto, ReplyDecodeError> {

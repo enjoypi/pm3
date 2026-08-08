@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use adapters::{CONFIG_FILE, InlineStart, default_config_path, validate_cron};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory as _, Parser, Subcommand};
 
 use crate::{
     Error, Result, commands,
@@ -27,6 +27,10 @@ pub struct Cli {
     pub command: Commands,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "start carries the whole inline declaration once per CLI invocation"
+)]
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     #[command(
@@ -43,6 +47,15 @@ pub enum Commands {
 
     #[command(about = "Stop a managed app and forget it")]
     Delete { selector: String },
+
+    #[command(about = "Clear a managed app's restart counters and breaker state")]
+    Reset { selector: String },
+
+    #[command(
+        about = "Send a signal to a managed app's process group",
+        long_about = "Send a signal to a managed app's process group. NAME is one of TERM, INT, QUIT, HUP, USR1, USR2 (case-insensitive)."
+    )]
+    Signal { selector: String, name: String },
 
     #[command(about = "Show everything known about one app")]
     Describe {
@@ -77,6 +90,13 @@ pub enum Commands {
             help = "Merge the stdout and stderr logs"
         )]
         all: bool,
+
+        #[arg(
+            long,
+            conflicts_with_all = ["follow", "lines"],
+            help = "Truncate the selected log files instead of showing them"
+        )]
+        clear: bool,
     },
 
     #[command(about = "Configuration management")]
@@ -111,6 +131,9 @@ pub enum Commands {
 
     #[command(about = "Run the pm3 daemon in the foreground")]
     Daemon,
+
+    #[command(about = "Print the shell completion script for SHELL")]
+    Completion { shell: clap_complete::Shell },
 
     #[command(name = "__sleep", hide = true, about = "Sleep, then exit cleanly")]
     Sleep { ms: u64 },
@@ -183,6 +206,13 @@ pub struct StartArgs {
     )]
     pub listen_timeout_ms: Option<u64>,
 
+    #[arg(
+        long = "stop-exit-code",
+        value_name = "CODE",
+        help = "Treat this exit code as a clean stop; repeatable"
+    )]
+    pub stop_exit_codes: Vec<i32>,
+
     #[arg(long, help = "Overwrite an existing service file")]
     pub force: bool,
 
@@ -229,17 +259,13 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
     let Cli { config, command } = cli;
     match command {
         Commands::Start(args) => run_start(&config, &args).await,
-        Commands::Stop { selector } => {
-            commands::act_on_app(&config, &selector, commands::STOP_ACTION)
-                .await
-                .map(Some)
-        }
-        Commands::Restart { selector } => {
-            commands::act_on_app(&config, &selector, commands::RESTART_ACTION)
-                .await
-                .map(Some)
-        }
+        Commands::Stop { selector } => act(&config, &selector, commands::STOP_ACTION).await,
+        Commands::Restart { selector } => act(&config, &selector, commands::RESTART_ACTION).await,
         Commands::Delete { selector } => commands::delete_app(&config, &selector).await.map(Some),
+        Commands::Reset { selector } => act(&config, &selector, commands::RESET_ACTION).await,
+        Commands::Signal { selector, name } => commands::signal_app(&config, &selector, &name)
+            .await
+            .map(Some),
         Commands::Describe { selector, json } => commands::describe_app(&config, &selector, json)
             .await
             .map(Some),
@@ -250,6 +276,7 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
             follow,
             err,
             all,
+            clear,
         } => {
             let request = crate::logs::LogRequest {
                 names,
@@ -257,6 +284,11 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
                 err,
                 all,
                 follow,
+                action: if clear {
+                    crate::logs::LogAction::Clear
+                } else {
+                    crate::logs::LogAction::Show
+                },
                 polls: crate::logs::FOLLOW_FOREVER,
             };
             crate::logs::run_logs(&config, &request, &emit).await
@@ -270,11 +302,20 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
             .await
             .map(Some),
         Commands::Daemon => crate::daemon::run_daemon(&config).await.map(|()| None),
+        Commands::Completion { shell } => {
+            print_completion(shell);
+            Ok(None)
+        }
         Commands::Sleep { ms } => {
             commands::sleep_for(ms).await;
             Ok(None)
         }
     }
+}
+
+fn print_completion(shell: clap_complete::Shell) {
+    let mut command = Cli::command();
+    clap_complete::generate(shell, &mut command, "pm3", &mut std::io::stdout());
 }
 
 #[must_use]
@@ -283,6 +324,12 @@ pub fn default_config(pm3_home_env: Option<&str>, home_env: Option<&str>) -> Str
         |_unresolved| CONFIG_FILE.to_string(),
         |path| path.to_string_lossy().into_owned(),
     )
+}
+
+async fn act(config: &str, selector: &str, action: &str) -> Result<Option<String>> {
+    commands::act_on_app(config, selector, action)
+        .await
+        .map(Some)
 }
 
 async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
@@ -318,6 +365,7 @@ async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
                 ready_exec: &args.ready_exec,
                 ready_tcp: args.ready_tcp.as_deref(),
                 listen_timeout_ms: args.listen_timeout_ms,
+                stop_exit_codes: &args.stop_exit_codes,
                 force: args.force,
             };
             commands::start_inline(config, &request).await?

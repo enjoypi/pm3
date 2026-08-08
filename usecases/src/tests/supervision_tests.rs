@@ -18,6 +18,14 @@ fn every_request_names_its_action() {
         (SupervisionRequest::Stop(named("web")), "stop"),
         (SupervisionRequest::Restart(named("web")), "restart"),
         (SupervisionRequest::Delete(named("web")), "delete"),
+        (SupervisionRequest::Reset(named("web")), "reset"),
+        (
+            SupervisionRequest::Signal {
+                selector: named("web"),
+                signal: "HUP".to_string(),
+            },
+            "signal",
+        ),
         (SupervisionRequest::StopAll, "stop_all"),
     ];
     for (request, action) in actions {
@@ -46,6 +54,11 @@ fn a_single_app_request_targets_its_selector() {
         SupervisionRequest::Stop(named("web")),
         SupervisionRequest::Restart(named("web")),
         SupervisionRequest::Delete(named("web")),
+        SupervisionRequest::Reset(named("web")),
+        SupervisionRequest::Signal {
+            selector: named("web"),
+            signal: "HUP".to_string(),
+        },
     ];
     for request in selectors {
         assert_eq!(request.target(), "web", "got: {request:?}");

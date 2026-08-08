@@ -9,6 +9,11 @@ pub struct StartRequestDto {
     pub services: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SignalRequestDto {
+    pub signal: String,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ReplyDto {
     pub report: String,

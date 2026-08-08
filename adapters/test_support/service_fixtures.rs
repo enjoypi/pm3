@@ -47,6 +47,7 @@ pub fn request<'s>(
         ready_exec: &[],
         ready_tcp: None,
         listen_timeout_ms: None,
+        stop_exit_codes: &[],
         force,
     }
 }

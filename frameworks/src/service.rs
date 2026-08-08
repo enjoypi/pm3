@@ -167,6 +167,7 @@ fn build_spec(
         umask: OWNER_ONLY_UMASK,
         max_tasks: config.pm3.service.max_tasks,
         cpu_quota_percent: config.pm3.service.cpu_quota_percent,
+        wait_for_network: config.pm3.service.wait_for_network,
     })
 }
 

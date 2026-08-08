@@ -176,6 +176,49 @@ fn restart_takes_a_selector() {
 }
 
 #[test]
+fn reset_takes_a_selector() {
+    let cli = parse(&["pm3", "reset", "web"]);
+    assert!(
+        matches!(&cli.command, Commands::Reset { selector } if selector == "web"),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn signal_takes_a_selector_and_a_signal_name() {
+    let cli = parse(&["pm3", "signal", "web", "hup"]);
+    assert!(
+        matches!(&cli.command, Commands::Signal { selector, name } if selector == "web" && name == "hup"),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn completion_takes_a_shell() {
+    let cli = parse(&["pm3", "completion", "bash"]);
+    assert!(
+        matches!(&cli.command, Commands::Completion { shell } if *shell == clap_complete::Shell::Bash),
+        "got: {:?}",
+        cli.command
+    );
+}
+
+#[test]
+fn completion_rejects_an_unknown_shell() {
+    assert!(Cli::try_parse_from(["pm3", "completion", "tcsh"]).is_err());
+}
+
+#[tokio::test]
+async fn completion_prints_the_script_and_has_no_report() {
+    let printed = execute(parse(&["pm3", "completion", "zsh"]))
+        .await
+        .expect("should generate");
+    assert!(printed.is_none(), "got: {printed:?}");
+}
+
+#[test]
 fn delete_takes_a_selector() {
     let cli = parse(&["pm3", "delete", "web"]);
     assert!(
@@ -214,9 +257,10 @@ fn logs_leave_the_line_count_to_the_config_without_following() {
                 lines,
                 follow,
                 err,
-                all
+                all,
+                clear
             }
-            if names == &["web".to_string()] && lines.is_none() && !follow && !err && !all
+            if names == &["web".to_string()] && lines.is_none() && !follow && !err && !all && !clear
         ),
         "got: {:?}",
         cli.command
@@ -357,6 +401,25 @@ async fn checking_a_missing_config_fails() {
 }
 
 #[tokio::test]
+async fn an_accepted_signal_delivers_and_reports() {
+    let fixture = crate::daemon_fixture::running_daemon().await;
+    let apps_file = crate::daemon_fixture::sleeper_apps_file(&fixture);
+    let config = fixture.config_path.clone();
+    execute(parse(&["pm3", "--config", &config, "start", &apps_file]))
+        .await
+        .expect("should start");
+
+    let signalled = execute(parse(&[
+        "pm3", "--config", &config, "signal", "web", "usr1",
+    ]))
+    .await
+    .expect("should signal");
+    assert_eq!(signalled.as_deref(), Some("sent USR1 to web"));
+
+    crate::daemon_fixture::stop_daemon(fixture).await;
+}
+
+#[tokio::test]
 async fn every_app_subcommand_reaches_the_daemon() {
     let fixture = crate::daemon_fixture::running_daemon().await;
     let apps_file = crate::daemon_fixture::sleeper_apps_file(&fixture);
@@ -390,6 +453,23 @@ async fn every_app_subcommand_reaches_the_daemon() {
         .await
         .expect("should restart");
     assert_eq!(restarted.as_deref(), Some("restarted web"));
+
+    let reset = execute(parse(&["pm3", "--config", &config, "reset", "web"]))
+        .await
+        .expect("should reset");
+    assert_eq!(reset.as_deref(), Some("reset web"));
+
+    let after_reset = execute(parse(&["pm3", "--config", &config, "describe", "web"]))
+        .await
+        .expect("should describe");
+    let restarts = after_reset
+        .unwrap_or_default()
+        .lines()
+        .find(|line| line.starts_with("restarts"))
+        .expect("a restarts row")
+        .trim_end()
+        .to_string();
+    assert!(restarts.ends_with('0'), "got: {restarts}");
 
     let stopped = execute(parse(&["pm3", "--config", &config, "stop", "web"]))
         .await
@@ -516,4 +596,23 @@ async fn starting_two_apps_files_is_rejected() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("exactly one apps file"), "got: {err}");
+}
+
+#[test]
+fn start_accepts_repeated_stop_exit_codes() {
+    let cli = parse(&[
+        "pm3",
+        "start",
+        "--name",
+        "web",
+        "--stop-exit-code",
+        "3",
+        "--stop-exit-code",
+        "0",
+        "/bin/true",
+    ]);
+    let Commands::Start(args) = &cli.command else {
+        panic!("expected the start command, got: {:?}", cli.command);
+    };
+    assert_eq!(args.stop_exit_codes, [3, 0]);
 }

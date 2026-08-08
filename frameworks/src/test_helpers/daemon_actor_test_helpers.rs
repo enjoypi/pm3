@@ -176,6 +176,14 @@ pub fn capped_apps_file(harness: &Harness, name: &str, script: &str, max_memory:
     write_both(harness, name, &fields)
 }
 
+pub fn clean_exit_apps_file(harness: &Harness, name: &str, code: i32) -> PathBuf {
+    let cwd = workspace_of(harness);
+    let fields = format!(
+        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nmin_uptime_ms: 50\nmax_restarts: 1\nstop_exit_codes:\n  - {code}\nargs:\n  - \"-c\"\n  - \"exit {code}\"\n"
+    );
+    write_both(harness, name, &fields)
+}
+
 pub fn workspace_of(harness: &Harness) -> String {
     let workspace = harness.paths.root.join("work");
     std::fs::create_dir_all(&workspace).expect("prepare the workspace");

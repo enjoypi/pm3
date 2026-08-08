@@ -73,7 +73,15 @@ fn parse_config_reads_every_pm3_setting() {
     assert_eq!(cfg.pm3.restart.restart_delay_ms, 0);
     assert_eq!(cfg.pm3.sandbox.mode, SANDBOX_MODE);
     assert!(!cfg.pm3.sandbox.network);
+    assert!(!cfg.pm3.service.wait_for_network);
     assert_eq!(cfg.telemetry.service_name, "pm3");
+}
+
+#[test]
+fn parse_config_reads_an_opted_in_network_wait() {
+    let yaml = valid_yaml().replace("wait_for_network: false", "wait_for_network: true");
+    let cfg = parse_config(&yaml).expect("should parse");
+    assert!(cfg.pm3.service.wait_for_network);
 }
 
 #[test]

@@ -146,6 +146,76 @@ async fn stopping_an_app_forwards_the_selector() {
 }
 
 #[tokio::test]
+async fn resetting_an_app_forwards_the_selector() {
+    let outcome = Ok(SupervisionReply::Reset {
+        name: "web".to_string(),
+    });
+    let exchange = exchange(outcome, post_to("/apps/web/reset", "")).await;
+    assert_eq!(
+        exchange.request,
+        Some(SupervisionRequest::Reset(AppSelector::Name(
+            "web".to_string()
+        )))
+    );
+}
+
+#[tokio::test]
+async fn resetting_an_app_confirms_the_app() {
+    let outcome = Ok(SupervisionReply::Reset {
+        name: "web".to_string(),
+    });
+    let exchange = exchange(outcome, post_to("/apps/web/reset", "")).await;
+    assert_eq!(reply_of(&exchange.body).report, "reset web");
+}
+
+#[tokio::test]
+async fn signalling_an_app_forwards_the_selector_and_the_signal() {
+    let outcome = Ok(SupervisionReply::Signalled {
+        name: "web".to_string(),
+        signal: "HUP".to_string(),
+    });
+    let exchange = exchange(outcome, post_to("/apps/web/signal", r#"{"signal":"HUP"}"#)).await;
+    assert_eq!(
+        exchange.request,
+        Some(SupervisionRequest::Signal {
+            selector: AppSelector::Name("web".to_string()),
+            signal: "HUP".to_string(),
+        })
+    );
+}
+
+#[tokio::test]
+async fn signalling_an_app_confirms_the_delivery() {
+    let outcome = Ok(SupervisionReply::Signalled {
+        name: "web".to_string(),
+        signal: "HUP".to_string(),
+    });
+    let exchange = exchange(outcome, post_to("/apps/web/signal", r#"{"signal":"HUP"}"#)).await;
+    assert_eq!(reply_of(&exchange.body).report, "sent HUP to web");
+}
+
+#[tokio::test]
+async fn an_unknown_signal_answers_bad_request() {
+    let outcome = Err(UsecaseError::InvalidSignal(usecases::SignalNameError {
+        raw: "KILL9".to_string(),
+    })
+    .into());
+    let exchange = exchange(
+        outcome,
+        post_to("/apps/web/signal", r#"{"signal":"KILL9"}"#),
+    )
+    .await;
+    assert_eq!(exchange.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn signalling_a_stopped_app_answers_conflict() {
+    let outcome = Err(UsecaseError::NotRunning("web".to_string()).into());
+    let exchange = exchange(outcome, post_to("/apps/web/signal", r#"{"signal":"HUP"}"#)).await;
+    assert_eq!(exchange.status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
 async fn stopping_an_app_confirms_the_app() {
     let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
     assert_eq!(reply_of(&exchange.body).report, "stopped web");

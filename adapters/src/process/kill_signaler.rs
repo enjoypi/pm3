@@ -37,19 +37,6 @@ impl KillSignaler {
         Self::new(KILL_PROGRAM.to_string(), stop_signal, timeout_ms)
     }
 
-    async fn deliver(&self, signal: &str, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
-        if !is_signalable(pid) {
-            return Err(SignalError::Delivery {
-                pid,
-                reason: UNSAFE_PID_REASON.to_string(),
-            });
-        }
-        if scope.reaches_the_group() && self.signal(signal, &group_target(pid), pid).await.is_ok() {
-            return Ok(());
-        }
-        self.signal(signal, &pid.to_string(), pid).await
-    }
-
     async fn signal(&self, signal: &str, target: &str, pid: u32) -> Result<(), SignalError> {
         let flag = format!("-{signal}");
         let started = Instant::now();
@@ -103,6 +90,19 @@ impl Signaler for KillSignaler {
 
     async fn force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         self.deliver(FORCE_SIGNAL, pid, scope).await
+    }
+
+    async fn deliver(&self, signal: &str, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
+        if !is_signalable(pid) {
+            return Err(SignalError::Delivery {
+                pid,
+                reason: UNSAFE_PID_REASON.to_string(),
+            });
+        }
+        if scope.reaches_the_group() && self.signal(signal, &group_target(pid), pid).await.is_ok() {
+            return Ok(());
+        }
+        self.signal(signal, &pid.to_string(), pid).await
     }
 }
 

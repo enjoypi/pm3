@@ -20,6 +20,7 @@ pub struct InlineStart<'s> {
     pub ready_exec: &'s [String],
     pub ready_tcp: Option<&'s str>,
     pub listen_timeout_ms: Option<u64>,
+    pub stop_exit_codes: &'s [i32],
     pub force: bool,
 }
 
@@ -67,6 +68,7 @@ pub async fn prepare_inline(
         ready_exec: request.ready_exec,
         ready_tcp: request.ready_tcp,
         listen_timeout_ms: request.listen_timeout_ms,
+        stop_exit_codes: request.stop_exit_codes,
     });
     let contents = encode_service_file(&entry);
     let path = crate::apps_file::service_file_of(context.cfg_dir, request.name)?;

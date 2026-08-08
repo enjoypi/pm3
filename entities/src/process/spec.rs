@@ -24,6 +24,7 @@ pub struct AppSpec {
     pub max_memory_kib: Option<u64>,
     pub ready_probe: Option<ReadyProbe>,
     pub listen_timeout_ms: Option<u64>,
+    pub stop_exit_codes: Vec<i32>,
     pub sandbox: SandboxPolicy,
 }
 
@@ -77,6 +78,9 @@ pub enum SpecError {
     #[error("cannot accept blank schedule for app '{0}'")]
     EmptySchedule(String),
 
+    #[error("cannot accept stop_exit_code {code} for app '{app}': use a code of 0-255")]
+    InvalidStopExitCode { app: String, code: i32 },
+
     #[error("cannot accept sandbox policy for app '{app}': {source}")]
     Sandbox { app: String, source: PolicyError },
 }
@@ -96,6 +100,11 @@ impl AppSpec {
     #[must_use]
     pub const fn is_scheduled_task(&self) -> bool {
         self.schedule.is_some() && !self.autorestart
+    }
+
+    #[must_use]
+    pub fn stops_on(&self, code: i32) -> bool {
+        self.stop_exit_codes.contains(&code)
     }
 
     #[must_use]
@@ -166,6 +175,17 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
         .is_some_and(|cron| cron.trim().is_empty())
     {
         return Err(SpecError::EmptySchedule(spec.name.clone()));
+    }
+    if let Some(code) = spec
+        .stop_exit_codes
+        .iter()
+        .copied()
+        .find(|code| !(0..=255).contains(code))
+    {
+        return Err(SpecError::InvalidStopExitCode {
+            app: spec.name.clone(),
+            code,
+        });
     }
     validate_policy(&spec.sandbox).map_err(|source| SpecError::Sandbox {
         app: spec.name.clone(),

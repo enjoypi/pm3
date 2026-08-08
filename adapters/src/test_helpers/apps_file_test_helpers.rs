@@ -51,6 +51,7 @@ pub fn minimal_entry() -> AppEntry {
         ready_probe: None,
         schedule: None,
         max_memory: None,
+        stop_exit_codes: Vec::new(),
         sandbox: None,
     }
 }

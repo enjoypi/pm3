@@ -8,12 +8,19 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SupervisionRequest {
-    Start { services: Vec<String> },
+    Start {
+        services: Vec<String>,
+    },
     List,
     Describe(AppSelector),
     Stop(AppSelector),
     Restart(AppSelector),
     Delete(AppSelector),
+    Reset(AppSelector),
+    Signal {
+        selector: AppSelector,
+        signal: String,
+    },
     StopAll,
 }
 
@@ -35,6 +42,13 @@ pub enum SupervisionReply {
     },
     Deleted {
         name: String,
+    },
+    Reset {
+        name: String,
+    },
+    Signalled {
+        name: String,
+        signal: String,
     },
     StoppedAll {
         names: Vec<String>,
@@ -62,6 +76,8 @@ impl SupervisionRequest {
             Self::Stop(_) => "stop",
             Self::Restart(_) => "restart",
             Self::Delete(_) => "delete",
+            Self::Reset(_) => "reset",
+            Self::Signal { .. } => "signal",
             Self::StopAll => "stop_all",
         }
     }
@@ -74,7 +90,12 @@ impl SupervisionRequest {
             Self::Describe(selector)
             | Self::Stop(selector)
             | Self::Restart(selector)
-            | Self::Delete(selector) => selector.to_string(),
+            | Self::Delete(selector)
+            | Self::Reset(selector)
+            | Self::Signal {
+                selector,
+                signal: _,
+            } => selector.to_string(),
         }
     }
 }

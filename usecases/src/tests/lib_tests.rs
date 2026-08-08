@@ -83,6 +83,21 @@ fn not_found_names_the_selector() {
 }
 
 #[test]
+fn not_running_names_the_app() {
+    let err = UsecaseError::NotRunning("api".to_string());
+    assert_eq!(err.to_string(), "cannot signal 'api': it is not running");
+}
+
+#[test]
+fn an_invalid_signal_renders_transparently() {
+    let source = entities::SignalNameError {
+        raw: "KILL9".to_string(),
+    };
+    let expected = source.to_string();
+    assert_transparent(&UsecaseError::from(source), &expected);
+}
+
+#[test]
 fn the_fake_scheduler_answers_a_fixed_interval() {
     use crate::ports::Scheduler as _;
 

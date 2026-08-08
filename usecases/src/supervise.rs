@@ -60,6 +60,15 @@ fn classify_exit(
         });
     }
 
+    if let ExitOutcome::Code(code) = outcome
+        && record.spec.stops_on(code)
+    {
+        record.runtime.mark_exited(ProcessStatus::Stopped);
+        return Ok(ExitAction::Settled {
+            status: ProcessStatus::Stopped,
+        });
+    }
+
     let decision = decide_restart(
         record.spec.restart_policy(),
         record.runtime.uptime_ms(now_ms),

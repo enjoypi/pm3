@@ -143,3 +143,13 @@ fn the_plist_carries_no_cpu_quota_because_launchd_offers_none() {
         "launchd only caps total cpu seconds, which would kill a healthy long-running daemon"
     );
 }
+
+#[test]
+fn a_launchd_unit_never_waits_for_the_network() {
+    let spec = UnitSpec {
+        wait_for_network: true,
+        ..spec_for(UnitKind::Launchd, Path::new("/home/dev"))
+    };
+    let plist = render_plist(&spec);
+    assert!(!plist.contains("network-online"), "got: {plist}");
+}

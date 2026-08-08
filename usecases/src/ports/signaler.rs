@@ -25,6 +25,12 @@ pub trait Signaler: Send + Sync {
         pid: u32,
         scope: SignalScope,
     ) -> impl Future<Output = Result<(), SignalError>> + Send;
+    fn deliver(
+        &self,
+        signal: &str,
+        pid: u32,
+        scope: SignalScope,
+    ) -> impl Future<Output = Result<(), SignalError>> + Send;
 }
 
 impl SignalScope {

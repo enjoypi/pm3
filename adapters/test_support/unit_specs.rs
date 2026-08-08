@@ -38,6 +38,7 @@ pub fn spec_for(kind: UnitKind, home: &Path) -> UnitSpec {
         umask: UMASK,
         max_tasks: MAX_TASKS,
         cpu_quota_percent: CPU_QUOTA_PERCENT,
+        wait_for_network: false,
     }
 }
 

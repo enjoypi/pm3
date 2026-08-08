@@ -190,3 +190,22 @@ fn a_declared_cpu_quota_reaches_the_unit() {
         render_unit(&spec)
     );
 }
+
+#[test]
+fn a_unit_can_wait_for_the_network() {
+    let spec = UnitSpec {
+        wait_for_network: true,
+        ..spec_for(UnitKind::Systemd, Path::new("/home/dev"))
+    };
+    let unit = render_unit(&spec);
+    assert!(
+        unit.contains("Wants=network-online.target\nAfter=network-online.target"),
+        "got: {unit}"
+    );
+}
+
+#[test]
+fn a_unit_does_not_wait_for_the_network_by_default() {
+    let unit = rendered();
+    assert!(!unit.contains("network-online"), "got: {unit}");
+}

@@ -3,9 +3,9 @@ use std::{io, path::PathBuf, time::Duration};
 use adapters::{
     APPS_PATH, AppConfig, DAEMON_NOT_RUNNING, InlineStart, KillSignaler, Pm3Paths, Reconciled,
     ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext, ServiceUndo, SignalScope,
-    Signaler as _, app_action_path, app_path, decode_reply, encode_start_request, forget,
-    load_and_parse_config, prepare_inline, render_daemon_gone, render_daemon_stopped,
-    split_apps_file, wait_until_released,
+    Signaler as _, app_action_path, app_path, decode_reply, encode_signal_request,
+    encode_start_request, forget, load_and_parse_config, prepare_inline, render_daemon_gone,
+    render_daemon_stopped, split_apps_file, wait_until_released,
 };
 
 use crate::{
@@ -20,6 +20,8 @@ use crate::{
 
 pub const STOP_ACTION: &str = "stop";
 pub const RESTART_ACTION: &str = "restart";
+pub const RESET_ACTION: &str = "reset";
+pub const SIGNAL_ACTION: &str = "signal";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartReport {
@@ -159,6 +161,13 @@ pub async fn act_on_app(config_path: &str, selector: &str, action: &str) -> Resu
     let path = app_action_path(selector, action)?;
     let session = prepared_session(config_path).await?;
     ask_report(&session, "POST", &path, None).await
+}
+
+pub async fn signal_app(config_path: &str, selector: &str, signal: &str) -> Result<String> {
+    let path = app_action_path(selector, SIGNAL_ACTION)?;
+    let session = prepared_session(config_path).await?;
+    let body = encode_signal_request(signal);
+    ask_report(&session, "POST", &path, Some(&body)).await
 }
 
 pub async fn delete_app(config_path: &str, selector: &str) -> Result<String> {

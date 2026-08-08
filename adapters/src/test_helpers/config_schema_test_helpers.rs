@@ -31,6 +31,7 @@ pub fn valid_service_config() -> ServiceConfig {
         restart_condition: RESTART_CONDITION_ALWAYS.to_string(),
         max_tasks: 4096,
         cpu_quota_percent: 0,
+        wait_for_network: false,
         launchctl_path: "/bin/launchctl".to_string(),
         systemctl_path: "/usr/bin/systemctl".to_string(),
         loginctl_path: "/usr/bin/loginctl".to_string(),

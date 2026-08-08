@@ -26,6 +26,9 @@ pub enum Error {
     Log(#[from] adapters::LogReadError),
 
     #[error(transparent)]
+    LogClear(#[from] adapters::LogClearError),
+
+    #[error(transparent)]
     Telemetry(#[from] telemetry::TelemetryError),
 
     #[error(transparent)]

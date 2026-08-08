@@ -230,3 +230,58 @@ async fn settling_a_probe_failure_for_an_unknown_service_is_reported() {
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotFound(_)), "got: {err}");
 }
+
+#[tokio::test]
+async fn a_listed_exit_code_settles_as_a_clean_stop() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        stop_exit_codes: vec![3],
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    let action = handle_child_exit(&mut table, "api", ExitOutcome::Code(3), &ports)
+        .await
+        .expect("exit handled");
+    assert_eq!(
+        action,
+        ExitAction::Settled {
+            status: ProcessStatus::Stopped,
+        }
+    );
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.restart_time, 0);
+}
+
+#[tokio::test]
+async fn an_unlisted_exit_code_still_restarts() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        stop_exit_codes: vec![3],
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    let action = handle_child_exit(&mut table, "api", ExitOutcome::Code(7), &ports)
+        .await
+        .expect("exit handled");
+    assert!(
+        matches!(action, ExitAction::RestartAfter { .. }),
+        "got: {action:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_signal_death_is_never_a_clean_stop() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        stop_exit_codes: vec![3],
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    let action = handle_child_exit(&mut table, "api", ExitOutcome::Signalled, &ports)
+        .await
+        .expect("exit handled");
+    assert!(
+        matches!(action, ExitAction::RestartAfter { .. }),
+        "got: {action:?}"
+    );
+}

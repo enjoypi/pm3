@@ -5,9 +5,11 @@ pub mod log_paths;
 pub mod ports;
 pub mod query;
 pub mod record;
+pub mod reset;
 pub mod restart;
 pub mod resurrect;
 pub mod selector;
+pub mod signal;
 pub mod start;
 pub mod stop;
 pub mod supervise;
@@ -23,9 +25,9 @@ mod supervisor_log;
 pub use entities::{
     AppSpec, DependencyError, DependencyNode, MemoryVerdict, PolicyError, ProcessIdentity,
     ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe, RestartDecision, RestartPolicy,
-    RuntimeError, SandboxMode, SandboxPolicy, SpecError, covers_path, decide_memory_verdict,
-    decide_restart, normalize_root, parse_memory_limit, topo_sort, validate_app_name,
-    validate_forbidden_roots, validate_spec,
+    RuntimeError, SandboxMode, SandboxPolicy, SignalNameError, SpecError, VALID_SIGNALS,
+    covers_path, decide_memory_verdict, decide_restart, normalize_root, parse_memory_limit,
+    parse_signal_name, topo_sort, validate_app_name, validate_forbidden_roots, validate_spec,
 };
 use thiserror::Error;
 
@@ -46,9 +48,11 @@ pub use self::{
         running_pids, schedule_of, unsettled_count,
     },
     record::{ProcessRecord, ProcessView},
+    reset::reset_app,
     restart::{RestartOutcome, restart_app},
     resurrect::resurrect,
     selector::AppSelector,
+    signal::{SignalOutcome, signal_app},
     start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
     stop::{StopOutcome, persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
@@ -93,6 +97,9 @@ pub enum UsecaseError {
     Signal(#[from] SignalError),
 
     #[error(transparent)]
+    InvalidSignal(#[from] SignalNameError),
+
+    #[error(transparent)]
     Sandbox(#[from] SandboxError),
 
     #[error(transparent)]
@@ -103,6 +110,9 @@ pub enum UsecaseError {
 
     #[error("cannot find app '{0}'")]
     NotFound(String),
+
+    #[error("cannot signal '{0}': it is not running")]
+    NotRunning(String),
 
     #[error("cannot delete app '{name}': {} still depends on it", .dependents.join(", "))]
     StillDependedOn {

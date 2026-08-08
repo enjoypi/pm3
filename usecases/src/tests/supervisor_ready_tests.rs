@@ -304,11 +304,9 @@ async fn stopping_a_probe_in_flight_cancels_it_and_drops_its_waiters() {
     let mut effects = Vec::new();
     supervisor.cancel_ready("web", &mut effects);
 
-    assert!(
-        effects.iter().any(
-            |candidate| matches!(candidate, SupervisionEffect::CancelReady { name } if name == "web")
-        )
-    );
+    assert!(effects.iter().any(
+        |candidate| matches!(candidate, SupervisionEffect::CancelReady { name } if name == "web")
+    ));
     let remaining = supervisor
         .waiters
         .get("db")

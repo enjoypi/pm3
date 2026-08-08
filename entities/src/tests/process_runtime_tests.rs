@@ -218,3 +218,32 @@ fn count_restart_saturates_the_total() {
     runtime.count_restart(0);
     assert_eq!(runtime.restart_time, u32::MAX);
 }
+
+#[test]
+fn resetting_clears_the_restart_counters() {
+    let mut runtime = online_at(1000);
+    runtime.count_restart(3);
+    runtime.reset_restarts();
+    assert_eq!(runtime.restart_time, 0);
+    assert_eq!(runtime.unstable_restarts, 0);
+}
+
+#[test]
+fn resetting_an_online_service_keeps_it_online() {
+    let mut runtime = online_at(1000);
+    runtime.reset_restarts();
+    assert_eq!(runtime.status, ProcessStatus::Online);
+}
+
+#[test]
+fn resetting_an_errored_service_marks_it_stopped() {
+    let mut runtime = ProcessRuntime {
+        status: ProcessStatus::Errored,
+        restart_time: 7,
+        unstable_restarts: 7,
+        ..ProcessRuntime::new(1, "api".to_string(), 1000)
+    };
+    runtime.reset_restarts();
+    assert_eq!(runtime.status, ProcessStatus::Stopped);
+    assert_eq!(runtime.restart_time, 0);
+}

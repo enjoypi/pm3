@@ -24,6 +24,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
         max_memory_kib: None,
         ready_probe: None,
         listen_timeout_ms: None,
+        stop_exit_codes: Vec::new(),
         name: name.to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],

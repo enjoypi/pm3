@@ -59,6 +59,7 @@ pm3:
     restart_condition: "always"
     max_tasks: 4096
     cpu_quota_percent: 0
+    wait_for_network: false
     launchctl_path: "${PM3_LAUNCHCTL_PATH:-/bin/launchctl}"
     systemctl_path: "${PM3_SYSTEMCTL_PATH:-/usr/bin/systemctl}"
     loginctl_path: "${PM3_LOGINCTL_PATH:-/usr/bin/loginctl}"

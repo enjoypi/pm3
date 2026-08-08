@@ -22,7 +22,11 @@ pub fn affected_service(reply: &SupervisionReply) -> Option<String> {
     use SupervisionReply as Dr;
 
     match reply {
-        Dr::Stopped { name } | Dr::Restarted { name } | Dr::Deleted { name } => Some(name.clone()),
+        Dr::Stopped { name }
+        | Dr::Restarted { name }
+        | Dr::Deleted { name }
+        | Dr::Reset { name }
+        | Dr::Signalled { name, signal: _ } => Some(name.clone()),
         Dr::Started {
             outcomes: _,
             refused: _,
@@ -95,6 +99,8 @@ pub fn render_reply(reply: &SupervisionReply) -> String {
         SupervisionReply::Stopped { name } => format!("stopped {name}"),
         SupervisionReply::Restarted { name } => format!("restarted {name}"),
         SupervisionReply::Deleted { name } => format!("deleted {name}"),
+        SupervisionReply::Reset { name } => format!("reset {name}"),
+        SupervisionReply::Signalled { name, signal } => format!("sent {signal} to {name}"),
         SupervisionReply::StoppedAll { names } => render_stopped_all(names),
     }
 }

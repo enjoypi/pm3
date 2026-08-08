@@ -87,6 +87,7 @@ pub struct UnitSpec {
     pub umask: u32,
     pub max_tasks: u64,
     pub cpu_quota_percent: u64,
+    pub wait_for_network: bool,
 }
 
 impl UnitSpec {

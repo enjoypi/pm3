@@ -16,6 +16,7 @@ fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
         max_memory_kib: None,
         ready_probe: None,
         listen_timeout_ms: None,
+        stop_exit_codes: Vec::new(),
         name: "web".to_string(),
         script: "/bin/sh".to_string(),
         args: Vec::new(),

@@ -55,6 +55,8 @@ pub struct AppEntry {
     #[serde(default)]
     pub max_memory: Option<String>,
     #[serde(default)]
+    pub stop_exit_codes: Vec<i32>,
+    #[serde(default)]
     pub sandbox: Option<SandboxEntry>,
 }
 
@@ -280,6 +282,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
             .unwrap_or(defaults.restart.max_restart_delay_ms),
         schedule: entry.schedule.clone(),
         depends_on: entry.depends_on.clone(),
+        stop_exit_codes: entry.stop_exit_codes.clone(),
         sandbox,
     })
 }

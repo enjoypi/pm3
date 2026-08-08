@@ -481,3 +481,27 @@ async fn an_uninstall_removes_the_unit_it_installed() {
 
 #[path = "service_status_tests.rs"]
 mod status;
+
+#[tokio::test]
+async fn an_install_renders_the_network_wait_into_the_unit() {
+    let fixture = fixture(TRUE_PROGRAM);
+    let home = home_of(&fixture);
+    let yaml = crate::test_support::config_yaml(&fixture.dir.path().join("home").to_string_lossy())
+        .replace("wait_for_network: false", "wait_for_network: true");
+    std::fs::write(&fixture.config_path, yaml).expect("rewrite the config");
+    let command = ServiceCommands::Install {
+        dry_run: true,
+        force: false,
+    };
+    let report = dispatch_service(
+        &fixture.config_path,
+        Some(&command),
+        &context(&fixture, UnitKind::Systemd, &home),
+    )
+    .await
+    .expect("a dry run should never fail");
+    assert!(
+        report.contains("After=network-online.target"),
+        "got: {report}"
+    );
+}

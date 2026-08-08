@@ -68,3 +68,22 @@ fn logs_with_all_merges_both_streams() {
     assert!(shown.contains("web [err] | web-err"), "got: {shown}");
     shutdown_daemon(&home);
 }
+
+#[test]
+fn logs_with_clear_truncates_the_selected_log() {
+    let home = home();
+    start_chatty(&home);
+    let cleared = stdout_of(&pm3(&home, &["logs", "web", "--clear"]));
+    assert!(cleared.contains("cleared "), "got: {cleared}");
+    assert_eq!(
+        std::fs::metadata(app_log(&home, "web"))
+            .expect("stat the cleared log")
+            .len(),
+        0
+    );
+    let err_log = std::fs::metadata(app_error_log(&home, "web"))
+        .expect("stat the untouched err log")
+        .len();
+    assert!(err_log > 0, "the err log must stay, got: {err_log}");
+    shutdown_daemon(&home);
+}

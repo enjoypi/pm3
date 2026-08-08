@@ -1,8 +1,8 @@
 use std::{ffi::OsStr, path::Path, time::Duration};
 
 use adapters::{
-    LogFollower, LogStream, Pm3Config, Pm3Paths, SERVICE_FILE_SUFFIX, log_path, read_tail,
-    validate_app_name,
+    LogFollower, LogStream, Pm3Config, Pm3Paths, SERVICE_FILE_SUFFIX, clear_log, log_path,
+    read_tail, validate_app_name,
 };
 
 use crate::{
@@ -19,7 +19,15 @@ pub struct LogRequest {
     pub err: bool,
     pub all: bool,
     pub follow: bool,
+    pub action: LogAction,
     pub polls: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LogAction {
+    #[default]
+    Show,
+    Clear,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -38,6 +46,9 @@ pub async fn run_logs(
     let session = open_session(config)?;
     let targets = resolve_targets(&session, &request.names, request.err, request.all)?;
     let strict = targets.len() == 1 && !request.all;
+    if request.action == LogAction::Clear {
+        return clear_targets(&targets, strict).await.map(Some);
+    }
     let count = request
         .lines
         .unwrap_or_else(|| log_tail_lines(&session.config.pm3));
@@ -164,6 +175,26 @@ fn append_lines(output: &mut String, target: &LogTarget, lines: &[String]) {
         output.push_str(&target.prefix);
         output.push_str(line);
     }
+}
+
+async fn clear_targets(targets: &[LogTarget], strict: bool) -> Result<String> {
+    let mut output = String::new();
+    for target in targets {
+        match clear_log(Path::new(&target.path)).await {
+            Ok(()) => append_cleared(&mut output, &target.path),
+            Err(error) if strict => return Err(error.into()),
+            Err(error) => log_skipped_target(target, &error.to_string()),
+        }
+    }
+    Ok(output)
+}
+
+fn append_cleared(output: &mut String, path: &str) {
+    if !output.is_empty() {
+        output.push('\n');
+    }
+    output.push_str("cleared ");
+    output.push_str(path);
 }
 
 struct ActiveFollower {
