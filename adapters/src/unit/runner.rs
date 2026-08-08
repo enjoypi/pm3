@@ -11,9 +11,12 @@ use tokio::{
 };
 
 use super::{
-    command::{UnitCommand, UnitProgramSet, loginctl_show_linger},
-    plan::{UnitStep, status_command},
-    spec::{LingerState, UnitKind, UnitSpec, UnitStatus, parse_linger_state, parse_run_state},
+    command::{UnitCommand, UnitProgramSet, launchctl_kickstart, loginctl_show_linger},
+    plan::{UnitStep, status_command, supervised_pid_command},
+    spec::{
+        LingerState, UnitKind, UnitSpec, UnitStatus, parse_launchd_pid, parse_linger_state,
+        parse_main_pid, parse_run_state,
+    },
 };
 use crate::exit_status::{describe_refusal, exit_code_of};
 
@@ -126,6 +129,33 @@ pub async fn query_status(
         return Ok(UnitStatus::Running);
     }
     Ok(UnitStatus::InstalledNotRunning)
+}
+
+pub async fn query_supervised_pid(
+    spec: &UnitSpec,
+    programs: &UnitProgramSet,
+    timeout_ms: u64,
+) -> Result<Option<u32>, UnitCommandError> {
+    let captured = capture(&supervised_pid_command(spec, programs), timeout_ms).await?;
+    if !captured.success {
+        return Ok(None);
+    }
+    Ok(match spec.kind {
+        UnitKind::Launchd => parse_launchd_pid(&captured.stdout),
+        UnitKind::Systemd => parse_main_pid(&captured.stdout),
+    })
+}
+
+pub async fn hand_back_to_manager(
+    spec: &UnitSpec,
+    programs: &UnitProgramSet,
+    timeout_ms: u64,
+) -> Result<bool, UnitCommandError> {
+    let Some(kickstart) = launchctl_kickstart(programs, &spec.label) else {
+        return Ok(false);
+    };
+    run_command(&kickstart, timeout_ms).await?;
+    Ok(true)
 }
 
 async fn run_step(step: &UnitStep, timeout_ms: u64) -> Result<Option<String>, UnitCommandError> {

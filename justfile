@@ -33,9 +33,10 @@ test *args:
 cov *args:
     bun dev_scripts/cov.ts "$@"
 
-[doc("装到真机：opt-level 3 构建、备份、原子换二进制、重装 launchd/systemd unit，并核对服务是否被原 pid 接管")]
+[doc("装到真机：opt-level 3 构建后交给 pm3 install（备份、原子换二进制、重装 unit、核对接管）")]
 install:
-    bun dev_scripts/install.ts
+    CARGO_PROFILE_RELEASE_OPT_LEVEL=3 cargo build {{ cargo_locked }} -p frameworks --release
+    target/release/pm3 --config config.yaml install target/release/pm3
 
 [doc("tail 服务日志并过滤：crash 匹配 panic 与致命信号，business 匹配 error 与 WARN/ERROR")]
 monitor kind:

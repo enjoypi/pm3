@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 adapters = { path = "../adapters" }
 axum = { workspace = true }
+chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

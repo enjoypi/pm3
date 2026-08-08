@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use adapters::{CONFIG_FILE, InlineStart, default_config_path, validate_cron};
 use clap::{Args, Parser, Subcommand};
 
@@ -69,6 +71,15 @@ pub enum Commands {
     Service {
         #[command(subcommand)]
         command: Option<ServiceCommands>,
+    },
+
+    #[command(
+        about = "Install or upgrade pm3 itself",
+        long_about = "Backs up the running install, swaps in SOURCE (the running binary by default), reinstalls the auto-start service, and verifies every managed service is reclaimed."
+    )]
+    Install {
+        #[arg(value_name = "SOURCE", help = "New binary to install")]
+        source: Option<PathBuf>,
     },
 
     #[command(
@@ -202,6 +213,7 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
         Commands::Service { command } => crate::service::run_service(&config, command.as_ref())
             .await
             .map(Some),
+        Commands::Install { source } => crate::install::run(&config, source).await.map(|()| None),
         Commands::Kill { with_services } => commands::kill_daemon(&config, with_services)
             .await
             .map(Some),

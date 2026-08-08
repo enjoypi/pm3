@@ -132,3 +132,30 @@ fn linger_cannot_be_read_for_an_unknown_uid() {
         "loginctl show-user without a user reports nothing at all"
     );
 }
+
+#[test]
+fn reading_the_main_pid_stays_on_the_user_scope_bus() {
+    let command = systemctl_show_main_pid(&owned_programs(), UNIT_NAME);
+    assert_eq!(command.program, FAKE);
+    assert_eq!(
+        command.args,
+        ["--user", "show", "-p", "MainPID", "--value", UNIT_NAME]
+    );
+    assert_eq!(
+        command.env,
+        [("XDG_RUNTIME_DIR".to_string(), OWNER_RUNTIME_DIR.to_string())]
+    );
+}
+
+#[test]
+fn a_kickstart_targets_the_gui_domain_of_the_owner() {
+    let command =
+        launchctl_kickstart(&owned_programs(), "pm3-test").expect("a known uid can be kicked");
+    assert_eq!(command.program, FAKE);
+    assert_eq!(command.args, ["kickstart", "gui/4242/pm3-test"]);
+}
+
+#[test]
+fn a_kickstart_without_a_known_uid_is_impossible() {
+    assert!(launchctl_kickstart(&programs(), "pm3-test").is_none());
+}

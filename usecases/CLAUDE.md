@@ -18,6 +18,7 @@ Interactor + Output Port（trait）。与外层交互只经 `ports/` 下的 trai
 | `record.rs` / `persist.rs` | 运行态记录与落盘编排 |
 | `query.rs` / `table.rs` / `selector.rs` | 查询、列表数据、`AppSelector` 解析 |
 | `log_paths.rs` | 日志路径推导 |
+| `handover.rs` | `pm3 install` 的 before/after 服务对比：`compare_handover`（adopted/restarted/lost）与 `describe_handover`，纯函数 |
 | `ports/` | `clock` `dump_store` `fingerprint` `launcher` `probe` `scheduler` `signaler` `wrapper` |
 
 ## 本层规则

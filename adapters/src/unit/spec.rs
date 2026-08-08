@@ -149,6 +149,25 @@ pub fn parse_run_state(kind: UnitKind, exit_success: bool, stdout: &str) -> bool
     }
 }
 
+#[must_use]
+pub fn parse_launchd_pid(stdout: &str) -> Option<u32> {
+    for line in stdout.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() != LAUNCHD_PID_KEY {
+            continue;
+        }
+        return value.trim().trim_end_matches(';').trim().parse().ok();
+    }
+    None
+}
+
+#[must_use]
+pub fn parse_main_pid(stdout: &str) -> Option<u32> {
+    stdout.trim().parse::<u32>().ok().filter(|pid| *pid > 0)
+}
+
 #[cfg(test)]
 #[path = "../tests/unit_spec_tests.rs"]
 mod tests;

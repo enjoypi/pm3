@@ -18,9 +18,9 @@ use crate::{
 const OWNER_ONLY_UMASK: u32 = 0o077;
 
 #[cfg(target_os = "macos")]
-const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
+pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
 #[cfg(not(target_os = "macos"))]
-const HOST_SERVICE_KIND: UnitKind = UnitKind::Systemd;
+pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Systemd;
 
 #[derive(Debug)]
 pub struct ServiceContext<'c> {
@@ -41,6 +41,9 @@ pub struct ServiceSession {
     pub source: String,
     pub programs: UnitProgramSet,
     pub command_timeout_ms: u64,
+    pub start_timeout_ms: u64,
+    pub request_timeout_ms: u64,
+    pub daemon_poll_interval_ms: u64,
 }
 
 pub async fn run_service(config_path: &str, command: Option<&ServiceCommands>) -> Result<String> {
@@ -99,6 +102,9 @@ pub fn open_service_session(
         source: loaded.source,
         programs,
         command_timeout_ms,
+        start_timeout_ms: loaded.config.pm3.start_timeout_ms,
+        request_timeout_ms: loaded.config.pm3.request_timeout_ms,
+        daemon_poll_interval_ms: loaded.config.pm3.daemon_poll_interval_ms,
     })
 }
 

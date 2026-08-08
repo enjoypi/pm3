@@ -15,7 +15,8 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 | `process/` | `tokio_launcher` `kill_signaler` `ps_probe` `sha256_fingerprinter` `system_clock` `watcher` |
 | `sandbox/` | `seatbelt`（macOS，含 `.sbpl`）/ `bwrap`（Linux）/ `wrapper` / `backend` |
 | `schedule/` | `cron_scheduler` + `random_expand`（OpenBSD `~` 展开） |
-| `unit/` | OS 服务单元：`spec.rs`（`UnitKind` / `unit_dir_of`）、`launchd` / `systemd` unit 渲染、`plan` `actions` `runner` `command` |
+| `unit/` | OS 服务单元：`spec.rs`（`UnitKind` / `unit_dir_of` / `parse_launchd_pid` / `parse_main_pid`）、`launchd` / `systemd` unit 渲染、`plan`（含 `write_targets`）`actions` `runner`（含 `query_supervised_pid` / `hand_back_to_manager`）`command` |
+| `install/` | `pm3 install` 的 Gateway：`layout`（destination/备份根/stamp 纯函数）、`store`（`back_up` 0700/0600、`replace_binary` 的 `.incoming`+rename）、`InstallError` |
 | `service/` | pm3 服务文件 Gateway：`store`（读写 / `reconcile` / `ServiceUndo`）、`prepare`（`prepare_inline` / `split_apps_file`） |
 | 根文件 | `paths.rs` `program.rs` `startup.rs` `state.rs` `workspace.rs` |
 

@@ -149,3 +149,37 @@ fn an_empty_runtime_directory_follows_the_uid() {
 fn an_unknown_owner_has_no_runtime_directory() {
     assert_eq!(runtime_dir_of(None, None), None);
 }
+
+#[test]
+fn a_launchd_listing_yields_its_pid() {
+    let listing = "{\n\t\"PID\" = 4242;\n\t\"Label\" = \"pm3-test\";\n};\n";
+    assert_eq!(parse_launchd_pid(listing), Some(4242));
+}
+
+#[test]
+fn a_launchd_listing_without_a_pid_yields_nothing() {
+    assert_eq!(
+        parse_launchd_pid("{\n\t\"Label\" = \"pm3-test\";\n};\n"),
+        None
+    );
+}
+
+#[test]
+fn a_launchd_listing_with_an_unreadable_pid_yields_nothing() {
+    assert_eq!(parse_launchd_pid("\"PID\" = soon;"), None);
+}
+
+#[test]
+fn a_main_pid_is_parsed_from_the_value_line() {
+    assert_eq!(parse_main_pid("4242\n"), Some(4242));
+}
+
+#[test]
+fn a_zero_main_pid_means_unsupervised() {
+    assert_eq!(parse_main_pid("0\n"), None);
+}
+
+#[test]
+fn an_unreadable_main_pid_means_unsupervised() {
+    assert_eq!(parse_main_pid("n/a"), None);
+}

@@ -2,6 +2,7 @@ pub mod cli;
 pub mod client;
 pub mod commands;
 pub mod daemon;
+pub mod install;
 pub mod layout;
 pub mod prompt;
 pub mod sandbox_probe;
@@ -40,6 +41,20 @@ pub enum Error {
 
     #[error(transparent)]
     ServiceFile(#[from] adapters::ServiceError),
+
+    #[error(transparent)]
+    Install(#[from] adapters::InstallError),
+
+    #[error(transparent)]
+    Dump(#[from] adapters::DumpError),
+
+    #[error(
+        "the pm3 service did not come under the service manager's supervision within {timeout_ms} ms; the previous install is backed up in '{backup}' — restore the binary, unit and config from there, then run `pm3 service install --force`"
+    )]
+    InstallTakeover { timeout_ms: u64, backup: String },
+
+    #[error("not every managed service came back after the install:\n{report}")]
+    InstallLost { report: String },
 
     #[error(transparent)]
     Signal(#[from] adapters::SignalError),

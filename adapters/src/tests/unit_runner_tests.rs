@@ -428,3 +428,100 @@ fn every_error_variant_renders_a_message() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_launchd_supervised_pid_comes_from_the_listing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Launchd, dir.path());
+    let program = fake_program(dir.path(), "launchctl", "echo '\"PID\" = 4242;'");
+    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
+        .await
+        .expect("the listing should be readable");
+    assert_eq!(pid, Some(4242));
+}
+
+#[tokio::test]
+async fn a_systemd_supervised_pid_comes_from_the_main_pid_property() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Systemd, dir.path());
+    let program = fake_program(dir.path(), "systemctl", "echo 4242");
+    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
+        .await
+        .expect("the property should be readable");
+    assert_eq!(pid, Some(4242));
+}
+
+#[tokio::test]
+async fn a_zero_main_pid_means_nothing_is_supervised() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Systemd, dir.path());
+    let program = fake_program(dir.path(), "systemctl", "echo 0");
+    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
+        .await
+        .expect("a zero answer is not an error");
+    assert_eq!(pid, None);
+}
+
+#[tokio::test]
+async fn a_refused_pid_query_means_nothing_is_supervised() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Systemd, dir.path());
+    let pid = query_supervised_pid(&spec, &program_set(FALSE_PROGRAM), TIMEOUT_MS)
+        .await
+        .expect("a refused query is not an error");
+    assert_eq!(pid, None);
+}
+
+#[tokio::test]
+async fn a_missing_pid_query_program_is_an_error() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Systemd, dir.path());
+    let err = query_supervised_pid(&spec, &program_set(MISSING_PROGRAM), TIMEOUT_MS)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.starts_with("cannot run '/nonexistent/"), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_hand_back_kickstarts_the_agent() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Launchd, dir.path());
+    let program = fake_program(dir.path(), "launchctl", "printf '%s' \"$*\" > \"$0.args\"");
+    let handed = hand_back_to_manager(
+        &spec,
+        &program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR),
+        TIMEOUT_MS,
+    )
+    .await
+    .expect("a kickstart should succeed");
+    assert!(handed);
+    let recorded =
+        std::fs::read_to_string(format!("{program}.args")).expect("the args were logged");
+    assert_eq!(recorded, "kickstart gui/4242/pm3-test");
+}
+
+#[tokio::test]
+async fn a_hand_back_without_a_known_uid_is_impossible() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Launchd, dir.path());
+    let handed = hand_back_to_manager(&spec, &program_set(TRUE_PROGRAM), TIMEOUT_MS)
+        .await
+        .expect("an unknown uid is not an error");
+    assert!(!handed);
+}
+
+#[tokio::test]
+async fn a_failed_hand_back_is_an_error() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::Launchd, dir.path());
+    let err = hand_back_to_manager(
+        &spec,
+        &program_set_for_user(FALSE_PROGRAM, OWNER_UID, OWNER_RUNTIME_DIR),
+        TIMEOUT_MS,
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("cannot complete"), "got: {err}");
+}

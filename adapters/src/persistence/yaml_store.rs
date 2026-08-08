@@ -5,7 +5,8 @@ use std::{
 
 use tokio::fs;
 use usecases::{
-    DumpContents, DumpError, DumpStore, ProcessRecord, ProcessRuntime, StrandedProcess,
+    DumpContents, DumpError, DumpStore, ProcessRecord, ProcessRuntime, ServiceSnapshot,
+    StrandedProcess,
 };
 
 use super::dto::{DecodeError, DumpDocument, StateDto, decode_state, encode_states};
@@ -92,6 +93,22 @@ async fn read_optional(path: &Path) -> Result<Option<String>, DumpError> {
         Ok(raw) => Ok(Some(raw)),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
         Err(e) => Err(read_error(path, &e.to_string())),
+    }
+}
+
+pub async fn dump_snapshot(path: &Path) -> Result<Vec<ServiceSnapshot>, DumpError> {
+    let Some(raw) = read_optional(path).await? else {
+        return Ok(Vec::new());
+    };
+    let doc: DumpDocument =
+        serde_yaml2::from_str(&raw).map_err(|e| read_error(path, &e.to_string()))?;
+    Ok(doc.services.into_iter().map(snapshot_of).collect())
+}
+
+fn snapshot_of(state: StateDto) -> ServiceSnapshot {
+    ServiceSnapshot {
+        name: state.name,
+        pid: state.runtime.pid,
     }
 }
 

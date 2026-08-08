@@ -3,5 +3,5 @@ mod yaml_store;
 
 pub use self::{
     dto::{DecodeError, DumpDocument, RuntimeDto, StateDto, decode_state, encode_states},
-    yaml_store::YamlDumpStore,
+    yaml_store::{YamlDumpStore, dump_snapshot},
 };

@@ -7,6 +7,7 @@ const SHOW_USER: &str = "show-user";
 const PROPERTY_FLAG: &str = "-p";
 const VALUE_FLAG: &str = "--value";
 const LINGER_PROPERTY: &str = "Linger";
+const MAIN_PID_PROPERTY: &str = "MainPID";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnitCommand {
@@ -80,6 +81,27 @@ pub fn systemctl_disable_now(programs: &UnitProgramSet, unit_name: &str) -> Unit
 #[must_use]
 pub fn systemctl_is_active(programs: &UnitProgramSet, unit_name: &str) -> UnitCommand {
     user_scoped(programs, &["is-active", unit_name])
+}
+
+#[must_use]
+pub fn systemctl_show_main_pid(programs: &UnitProgramSet, unit_name: &str) -> UnitCommand {
+    user_scoped(
+        programs,
+        &[
+            "show",
+            PROPERTY_FLAG,
+            MAIN_PID_PROPERTY,
+            VALUE_FLAG,
+            unit_name,
+        ],
+    )
+}
+
+#[must_use]
+pub fn launchctl_kickstart(programs: &UnitProgramSet, label: &str) -> Option<UnitCommand> {
+    let uid = programs.uid?;
+    let target = format!("gui/{uid}/{label}");
+    Some(command(&programs.launchctl, &["kickstart", &target]))
 }
 
 #[must_use]

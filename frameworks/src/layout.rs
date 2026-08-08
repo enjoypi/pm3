@@ -93,6 +93,16 @@ pub fn host_pm3_home() -> Option<String> {
 }
 
 #[must_use]
+pub fn host_install_destination() -> Option<String> {
+    std::env::var("PM3_INSTALL_PATH").ok()
+}
+
+#[must_use]
+pub fn host_install_backups() -> Option<String> {
+    std::env::var("PM3_INSTALL_BACKUPS").ok()
+}
+
+#[must_use]
 pub fn host_pm3_env() -> Vec<(String, String)> {
     pm3_variables(std::env::vars().collect())
 }

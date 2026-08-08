@@ -4,7 +4,7 @@ use super::{
     command::{
         UnitCommand, UnitProgramSet, launchctl_list, launchctl_load, launchctl_unload,
         loginctl_enable_linger, systemctl_daemon_reload, systemctl_disable_now,
-        systemctl_enable_now, systemctl_is_active,
+        systemctl_enable_now, systemctl_is_active, systemctl_show_main_pid,
     },
     launchd::render_plist,
     spec::{LingerState, UnitKind, UnitSpec},
@@ -107,6 +107,19 @@ pub fn status_command(spec: &UnitSpec, programs: &UnitProgramSet) -> UnitCommand
         UnitKind::Launchd => launchctl_list(programs, &spec.label),
         UnitKind::Systemd => systemctl_is_active(programs, &spec.unit_name()),
     }
+}
+
+#[must_use]
+pub fn supervised_pid_command(spec: &UnitSpec, programs: &UnitProgramSet) -> UnitCommand {
+    match spec.kind {
+        UnitKind::Launchd => launchctl_list(programs, &spec.label),
+        UnitKind::Systemd => systemctl_show_main_pid(programs, &spec.unit_name()),
+    }
+}
+
+#[must_use]
+pub fn write_targets(spec: &UnitSpec) -> Vec<PathBuf> {
+    vec![spec.config_path.clone(), spec.unit_path()]
 }
 
 #[cfg(test)]

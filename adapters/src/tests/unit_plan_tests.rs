@@ -165,3 +165,34 @@ fn contents_of(steps: &[UnitStep]) -> String {
     }
     panic!("an install plan should write a unit file")
 }
+
+#[test]
+fn launchd_supervision_reads_the_pid_from_the_listing() {
+    let spec = spec_for(UnitKind::Launchd, Path::new("/home/dev"));
+    let command = supervised_pid_command(&spec, &program_set(FAKE));
+    assert_eq!(command.args, ["list", "pm3-test"]);
+}
+
+#[test]
+fn systemd_supervision_reads_the_main_pid_property() {
+    let spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
+    let command = supervised_pid_command(&spec, &program_set(FAKE));
+    assert_eq!(
+        command.args,
+        [
+            "--user",
+            "show",
+            "-p",
+            "MainPID",
+            "--value",
+            "pm3-test.service"
+        ]
+    );
+}
+
+#[test]
+fn an_install_overwrites_exactly_the_config_and_the_unit() {
+    let spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
+    let targets = write_targets(&spec);
+    assert_eq!(targets, [spec.config_path.clone(), spec.unit_path()]);
+}

@@ -4,13 +4,6 @@
 
 - [ ] 在 macOS 上跑一次 `just lint` + `just cov --fresh` 复核：四处平台性缺口的修法（`layout.rs` 的 `owner_uid_of`、`ps_probe.rs` 的重探测试、`watcher.rs` 的自计数 fake ps、`private_file.rs` 的 `fill`）都是在 Linux 上验证的，两平台应同为 100%
 
-## 安装能力搬进二进制
-
-- [ ] `pm3` 自己要能完成全部安装动作，不依赖仓库里的 `dev_scripts/install.ts`：拿到单个二进制的用户现在装不出同样的效果（脚本独有的是备份、原子换二进制、`uninstall → kill → 等 daemon 退净 → install --force` 的换代顺序、等「服务管理器报的 pid == `pm3.pid`」、before/after 服务对比与 `lost` 判定）。目标形态是 `pm3 install` 自己走完，`just install` 退化成「opt-level 3 构建 + 调它」
-  - 换代顺序是硬约束（根 `CLAUDE.md`「装真机与换代」），搬迁 MUST 逐条保住，尤其「install 后等 pid 对齐再跑任何 CLI 命令」——否则 `ensure_daemon_running` 会拉起非托管 daemon 抢 socket
-  - **难点是「二进制自己换掉自己」**：脚本能先 `kill` 再 `cp`（`Text file busy` 因此绕开），而 `pm3 install` 是运行中的那个二进制去覆写自己。`.incoming` + `rename` 已是原子的，但发起者仍在运行 ⇒ 需要设计谁在最后一步落地（候选：新二进制自己 `service install`；或换完只做 rename、由服务管理器拉起新代）
-  - 备份策略沿用 `backupRoot`（`<pm3.home>/install-backups/<时间戳>/`，目录 0700）
-
 ## 发布与用户安装方案
 
 现状：仓库没有 `.github/`（无 CI）、没有 README、没有 LICENSE，装 pm3 的唯一路子是 clone 仓库跑 `just install`。
@@ -20,7 +13,7 @@
   - 还缺 crates.io 必需元数据：`license`（或 `license-file`）、`description`、`repository`、`readme`，四个 `Cargo.toml` 现在一个都没有 ⇒ 与下面的 README/LICENSE 两条绑在一起做
   - `dev_scripts/rename.ts` 是改**项目名**的模板脚本，不负责这次的 crate 改名
 - [ ] **`cargo install --git <url> --bin pm3`**：不需要发布、不要求包名匹配，成本最低 ⇒ 可以先把这条写进 README 顶住，再慢慢推 crates.io
-- [ ] **`curl … | sh` 一行装**：前提是先有 CI 构建矩阵（macOS arm64/x86_64 + Linux arm64/x86_64）与 GitHub Releases 产物，而 `.github/` 现在还不存在。装完是裸二进制，紧接着就该能 `pm3 install` 自己注册开机自启 ⇒ **与上面「安装能力搬进二进制」一起做收益最大**，否则用户装完还得去 clone 仓库
+- [ ] **`curl … | sh` 一行装**：前提是先有 CI 构建矩阵（macOS arm64/x86_64 + Linux arm64/x86_64）与 GitHub Releases 产物，而 `.github/` 现在还不存在。装完是裸二进制，紧接着跑 `pm3 install` 就能自己落位并注册开机自启
 - [ ] 安装文档 MUST 写明运行时依赖：`/bin/ps` 与 `/bin/kill`（procps，缺了每次 daemon 重启全部服务被判探测失败而驱逐）、Linux 侧的 `bwrap`（缺了沙箱起不来）
 - [ ] 可选分发面：Homebrew tap、`cargo-binstall`（后者跟着 Releases 产物白拿）
 

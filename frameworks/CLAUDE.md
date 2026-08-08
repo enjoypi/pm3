@@ -14,6 +14,7 @@
 | `client/uds.rs` | CLI 侧 Unix socket 客户端（`ask` / `ask_report`） |
 | `server.rs` | `serve_listener`：接管已 bound 的 listener，避开 bind→drop→re-bind 的抢占窗口 |
 | `service.rs` | `pm3 service install/uninstall` |
+| `install.rs` | `pm3 install`：备份、原子换二进制、换代重装、接管等待、before/after 对比（编排放这里，判定纯函数在 `usecases::handover`，fs/管理器探测在 `adapters::install` 与 `adapters::unit`） |
 | `signal.rs` | SIGINT 吞掉、SIGTERM 落盘退出 |
 | `layout.rs` / `telemetry.rs` / `prompt.rs` / `sandbox_probe.rs` | 路径布局、日志、交互询问、沙箱可用性探测 |
 

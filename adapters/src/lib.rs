@@ -2,6 +2,7 @@ pub mod apps_file;
 pub mod config;
 pub mod exit_status;
 pub mod http;
+pub mod install;
 pub mod logs;
 pub mod paths;
 pub mod persistence;
@@ -20,12 +21,13 @@ pub mod workspace;
 use thiserror::Error;
 pub use usecases::{
     AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome,
-    FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, Ports,
-    ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView,
-    ReadScope, SandboxError, SandboxMode, SandboxPolicy, Scheduler, SignalError, SignalScope,
-    Signaler, SpecError, SpecResolveError, StartKind, StartOutcome, StartReport, StrandedProcess,
-    SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor,
-    WrappedCommand, delete_app, describe_app, list_apps, log_paths, start_apps, validate_app_name,
+    FingerprintError, Fingerprinter, HandoverComparison, LaunchError, LaunchSpec, LaunchedProcess,
+    Liveness, Ports, ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus,
+    ProcessView, ReadScope, SandboxError, SandboxMode, SandboxPolicy, Scheduler, ServiceSnapshot,
+    SignalError, SignalScope, Signaler, SpecError, SpecResolveError, StartKind, StartOutcome,
+    StartReport, StrandedProcess, SupervisionEffect, SupervisionOutcome, SupervisionReply,
+    SupervisionRequest, Supervisor, WrappedCommand, compare_handover, delete_app, describe_app,
+    describe_handover, list_apps, log_paths, start_apps, validate_app_name,
 };
 
 pub use self::{
@@ -49,13 +51,15 @@ pub use self::{
         ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto, app_action_path, app_path, decode_reply,
         encode_start_request, router,
     },
+    install::{InstallError, back_up, backup_root, backup_stamp, destination_of, replace_binary},
     logs::{LogFollower, LogReadError, read_tail, tail_lines},
     paths::{
         CONFIG_FILE, DEFAULT_HOME, PathError, Pm3Paths, default_config_path, expand_home,
         resolve_paths,
     },
     persistence::{
-        DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state, encode_states,
+        DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state,
+        dump_snapshot, encode_states,
     },
     presenter::{
         DAEMON_NOT_RUNNING, EMPTY_NOTICE, NOTHING_STARTED, affected_service, already_running_names,
@@ -83,8 +87,9 @@ pub use self::{
     state::{DaemonCommand, DaemonError, DaemonHandle},
     unit::{
         CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, UnitCommandError, UnitKind,
-        UnitProgramSet, UnitSpec, UnitStatus, install_unit, pm3_variables, runtime_dir_of,
-        status_report, uninstall_unit, unit_dir_of,
+        UnitProgramSet, UnitSpec, UnitStatus, hand_back_to_manager, install_unit, pm3_variables,
+        query_status, query_supervised_pid, runtime_dir_of, status_report, uninstall_unit,
+        unit_dir_of, write_targets,
     },
     workspace::{expand_service_cwd, materialise_workspace},
 };

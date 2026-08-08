@@ -1,5 +1,6 @@
 pub mod delete;
 pub mod fingerprint;
+pub mod handover;
 pub mod log_paths;
 pub mod ports;
 pub mod query;
@@ -30,6 +31,7 @@ use thiserror::Error;
 pub use self::{
     delete::{DeleteOutcome, delete_app},
     fingerprint::{pid_was_recycled, render_identity},
+    handover::{HandoverComparison, ServiceSnapshot, compare_handover, describe_handover},
     log_paths::{LogPaths, log_paths},
     ports::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome, FingerprintError,

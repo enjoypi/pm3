@@ -20,7 +20,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 | `frameworks` | 组装与入口：`main.rs`/`cli.rs`/`daemon/`/`client/`/`service.rs`/`signal.rs` | `frameworks/CLAUDE.md` |
 | `arch_tests` | 依赖方向强制 | `arch_tests/CLAUDE.md` |
 
-`dev_scripts/*.ts`（Bun）驱动 `just` 的复杂 recipe：`cov.ts` + `coverage_gate.ts`（覆盖率门禁）、`install.ts` + `install_plan.ts`（真机安装）、`monitor.ts`、`rename.ts`、`cargo_invocation.ts`。
+`dev_scripts/*.ts`（Bun）驱动 `just` 的复杂 recipe：`cov.ts` + `coverage_gate.ts`（覆盖率门禁）、`monitor.ts`、`rename.ts`、`cargo_invocation.ts`。
 
 | recipe | 作用 |
 |---|---|
@@ -29,7 +29,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 | `just lint` | clippy 四组 lint 全开，任何 warning 即失败 |
 | `just test` | 裸 nextest，不含覆盖率门禁 |
 | `just cov` | **日常验收**：四指标 + lcov 真值 plate + 生产文件完整性自检；`--fresh` 清 workspace 重算 |
-| `just install` | 装到真机：opt-level 3 构建、备份、原子换二进制、重装 unit、核对 pid 接管 |
+| `just install` | 装到真机：opt-level 3 构建后调 `pm3 install`（备份、原子换二进制、重装 unit、核对接管） |
 | `just monitor <kind>` | tail 服务日志；`crash` 匹配 panic 与致命信号，`business` 匹配 error 与 WARN/ERROR |
 | `just typecheck` | TS 严格检查，禁 `any` / 非空断言 / `ts-ignore` |
 | `just test-scripts` | dev_scripts 的 TS 单元测试 |
@@ -47,17 +47,19 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 ### 装真机与换代
 
-- 固定走 `just install`，MUST NOT 手工搬二进制（换代顺序有硬约束，见下）
+- 固定走 `just install`（构建后调 `pm3 install`），MUST NOT 手工搬二进制（换代顺序有硬约束，见下）。`pm3 install [SOURCE]` 自己走完：备份 → `.incoming` + rename 换二进制 → `service uninstall` → `kill` → `service install --force` → 等接管 → before/after 对比（lost 非空即非零退出）。换代步骤在**进程内**完成，不 spawn 新二进制：rename 覆写正在执行的文件两平台都合法（ETXTBSY 只在 write-open），且 `ServiceContext.binary` 显式注入 destination——rename 后 `current_exe()` 在 Linux 会带 ` (deleted)` 后缀，流程内 MUST NOT 再读它
+- 「等 daemon 退净」不靠 `pgrep -f "<bin> daemon"`：`kill_daemon` 内置 `wait_until_released(socket)`（daemon 收尾先删 pid 再删 socket，socket 消失即清理完毕），比 pgrep 准且少一个外部程序
+- before/after 服务对比直读 `dump.yaml`（`dump_snapshot`，只取 name+pid，不 resolve spec），MUST NOT 调 `pm3 list`——那会经 `ensure_daemon_running` 拉起非托管 daemon 抢 socket；after 快照由「接管等待」收敛（Running + 管理器 pid == `pm3.pid` + UDS 健康三者同时成立，因为 pid 文件先于 resurrect 写入，单靠 pid 对齐不算接管完成）
 - 排查真机先从 `~/.pm3/config.yaml` 读 `cfg_dir`：它与 `pm3.home` 各自独立配置（本机 `home=~/.pm3`、`cfg_dir=~/.config/pm3`、二进制在 `~/bin/pm3`），按 `<home>/service` 猜必定扑空
 - `pm3 service install` 用 `current_exe()` 渲染 unit → MUST NOT 在仓库目录执行（会把 plist 钉在 `target/release/pm3`，一次 `cargo clean` 就起不来）；先把二进制 `cp` 到最终位置，再用**那个**二进制执行 install
 - **症状**：`launchctl list` 的 PID 列是 `-`，job 已载入但 launchd 未监管、KeepAlive 形同虚设
   **原因**：任何 pm3 CLI 命令都会经 `ensure_daemon_running` 自动拉起一个**非 launchd 托管**的 daemon；它扛不住 `launchctl unload`，且会抢赢 socket 竞争让 launchd 那份直接退出
-  **修法**：换代顺序 MUST 是 `service uninstall` → `pm3 kill` → 等 `pgrep -f "<bin> daemon"` 归零 → `service install --force`；install 后 MUST 等「launchd 报的 pid == `pm3.pid` 内容」再跑任何 CLI 命令，否则又会拉起竞争者。已处于未监管态时先 `pm3 kill` 停掉自启实例，再 `launchctl kickstart gui/$(id -u)/<label>` 交回 launchd
+  **修法**：换代顺序 MUST 是 `service uninstall` → `pm3 kill` → 等 daemon 退净 → `service install --force`（`pm3 install` 内建这一整套）；install 后 MUST 等「launchd 报的 pid == `pm3.pid` 内容」再跑任何 CLI 命令，否则又会拉起竞争者。已处于未监管态时先 `pm3 kill` 停掉自启实例，再 `launchctl kickstart gui/$(id -u)/<label>` 交回 launchd（`pm3 install` 在 launchd 超时后自动做一次 kickstart 重试）
 - unit MUST 导出安装时的 `PM3_*` 环境（`UnitSpec.pm3_env`，两个渲染器都写，值要排序否则 `reconcile` 的逐字节比对每次都判 Stale）：install 拷进 `pm3.home` 的 `config.yaml` 是**未做变量替换**的原文，而 unit 只导出 `HOME`/`PATH` 时，`${PM3_HOME:-~/.pm3}` 在服务管理器起的 daemon 里退回默认值 ⇒ daemon 在 `~/.pm3` 建 socket/pid/dump，而 CLI（shell 里有 `PM3_HOME`）去连 `/srv/pm3/pm3.sock` ⇒ 连不上就经 `ensure_daemon_running` 再拉起一个**非托管** daemon，正是本节开头那个坑。注意反过来把「替换后的文本」落盘会让 `reconcile` 每次 install 都判 Conflict
-- 换代备份落在 **`<pm3.home>/install-backups/<时间戳>/`**（`backupRoot`，`PM3_INSTALL_BACKUPS` 可覆盖），MUST NOT 放回 `~/.pm3-install-backups`：备份里有旧 `config.yaml`，而 `mkdir` 的权限受 umask 摆布（实测出过 0775）→ 放进 `pm3.home` 才被那层 0700 兜住，且它正好是沙箱的 hidden root ⇒ 被托管的服务连备份都看不见。回滚就是从最近那个时间戳目录取 `pm3` 二进制 + unit + config 三件套
+- 换代备份落在 **`<pm3.home>/install-backups/<时间戳>/`**（`adapters::install::backup_root`，`PM3_INSTALL_BACKUPS` 可覆盖，目的地 `PM3_INSTALL_PATH`），MUST NOT 放回 `~/.pm3-install-backups`：备份里有旧 `config.yaml`，而 `mkdir` 的权限受 umask 摆布（实测出过 0775）→ 放进 `pm3.home` 才被那层 0700 兜住（备份目录与文件再显式 chmod 0700/0600），且它正好是沙箱的 hidden root ⇒ 被托管的服务连备份都看不见。回滚就是从最近那个时间戳目录取 `pm3` 二进制 + unit + config 三件套
 - 换代前 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷；`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），排查残留只用 `pgrep`；但 `pgrep -f <pat>` 同样会匹配到发起它的 shell，按可执行名找用 `pgrep -x`
 - Linux 侧同一套顺序换 `systemctl --user`，但三件事只在 Linux 成立：
-  - **只有 `systemctl --user` 依赖 `XDG_RUNTIME_DIR`**（`loginctl` 走 system bus，不受影响——排查时别把两者混为一谈）：非登录会话（agent/CI shell）里它为空 → 走 systemctl 的调用失败，报文视 systemd 版本而异（`Failed to connect to bus: No medium found`，或 `Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined`）。**`just install` 与 `pm3 service *` 不再需要手工 export**：`host_runtime_dir()` 缺该变量时按 `/run/user/<uid>` 推导（uid 取 `/proc/self` 的属主，macOS 无 `/proc` 故为 `None`，launchd 也不需要），经 `UnitProgramSet.runtime_dir` 只注给 `systemctl --user` 那几条命令（`UnitCommand.env`）；`install.ts` 查 `MainPID` 时同样自己注入。手工敲 systemctl 排查时仍要自己 export
+  - **只有 `systemctl --user` 依赖 `XDG_RUNTIME_DIR`**（`loginctl` 走 system bus，不受影响——排查时别把两者混为一谈）：非登录会话（agent/CI shell）里它为空 → 走 systemctl 的调用失败，报文视 systemd 版本而异（`Failed to connect to bus: No medium found`，或 `Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined`）。**`just install` 与 `pm3 service *` 不再需要手工 export**：`host_runtime_dir()` 缺该变量时按 `/run/user/<uid>` 推导（uid 取 `/proc/self` 的属主，macOS 无 `/proc` 故为 `None`，launchd 也不需要），经 `UnitProgramSet.runtime_dir` 只注给 `systemctl --user` 那几条命令（`UnitCommand.env`）；`pm3 install` 查 `MainPID` 走的 `systemctl_show_main_pid` 同样经 `user_scoped` 注入。手工敲 systemctl 排查时仍要自己 export
   - `loginctl enable-linger` **不带用户名是合法的**（`enable-linger [USER...]`，省略即作用于调用者）：无授权时它只报 polkit `requires interactive authentication`、**不报缺参数** → 别以为是命令写错了去补用户名。它走 polkit 授权，polkit 被 mask 或无交互授权时必失败，故在 install plan 里是 `UnitStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。**linger 已启用时这一步整个不进 plan**（`linger_state` 先查，`LingerState::Enabled` 即跳过）→ 常见情形下 `just install` 不碰 polkit、无需任何特殊权限。仍看到 `skipped:` 说明 linger 真没开，由有 sudo 的账号补一次（已实测成功），否则用户注销后 user manager 回收会连带停掉 daemon
   - 查 linger MUST 传 uid（`loginctl show-user <uid> -p Linger --value`）：**不带用户名时它输出空串且 rv=0**（`show-user` 省略参数指“当前会话的用户”，非登录会话没有会话）→ 按「非零退出才是查不到」判会把「已开 linger」误读成未开，白跑一次必失败的 `enable-linger`。故 `loginctl_show_linger` 在 uid 未知时返回 `None`，判定退回 `Unknown`
 
@@ -185,7 +187,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 面向 AI 排障，所以字段名比文案重要；改日志前先看这里。
 
 - 每条业务日志 MUST 带 `feature` + `action` 两个字段。**MUST NOT 用 `operation`**：6 必备字段里是 `action`，混用会让按 `action` 过滤的查询整段漏掉（曾有 9 处用 `operation`，`server`/`signal`/`telemetry`/`startup`/`shutdown` 全查不到）。`action` 的值用 `snake_case`，MUST NOT 带点（`drain.start` → `drain_start`）
-- `feature` 取值收敛在：`lifecycle` `supervisor` `resurrect` `persistence` `api` `client` `server` `service` `unit`
+- `feature` 取值收敛在：`lifecycle` `supervisor` `resurrect` `persistence` `api` `client` `server` `service` `unit` `install`
 - 每个**外部调用**（`ps` / `kill` / `launchctl` / `systemctl` / UDS 往返）MUST 记 `duration_ms`：`let started = Instant::now();` 起头，日志里 `started.elapsed().as_millis()`
 - 级别按「谁看」分：AI/排障走 `debug`（外部调用、中间状态），人/监控走 `info+`（服务起停成败在 `usecases` 的 `start_one` / `request_stop` 里发）
 - **CLI 进程 MUST 自己装 subscriber**，否则 `feature` 为 `client`/`service`/`unit` 的日志全部静默丢弃：装在 `open_session` / `open_service_session`（这两处本来就已读过配置），写 **stderr**（daemon 写 stdout 只因为它被重定向进 `pm3.log`，CLI 的 stdout 是给人看的报文）。曾经 `init_telemetry` 只在 daemon 路径调用，于是 `log_stuck_undo`（服务文件回滚失败 = 盘上文件与运行中的服务不一致）这类**只有日志一条通路**的 warn 从来没人看得到——它不在退出码里、也不在 stderr 文案里

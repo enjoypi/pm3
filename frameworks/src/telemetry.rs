@@ -51,7 +51,7 @@ pub fn init_telemetry(cfg: &TelemetryConfig, sink: LogSink) -> Result<(), Teleme
             log_format = %cfg.log_format,
             "telemetry subscriber installed",
         ),
-        Err(e) => tracing::warn!(
+        Err(e) => tracing::debug!(
             feature = "lifecycle",
             action = "telemetry_init",
             result = "skipped",

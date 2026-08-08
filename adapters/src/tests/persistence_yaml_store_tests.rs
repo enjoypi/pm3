@@ -380,3 +380,68 @@ async fn a_dump_written_before_pm3_recorded_boots_still_loads() {
     let loaded = fixture.store.load().await.expect("should load");
     assert_eq!(loaded.boot, None);
 }
+
+#[tokio::test]
+async fn a_snapshot_of_a_missing_dump_is_empty() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let snapshot = dump_snapshot(&dir.path().join("dump.yaml"))
+        .await
+        .expect("a missing dump is not an error");
+    assert!(snapshot.is_empty());
+}
+
+#[tokio::test]
+async fn a_snapshot_reports_a_corrupt_dump() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("dump.yaml");
+    std::fs::write(&path, "not: [yaml").expect("write corrupt dump");
+    let error = dump_snapshot(&path).await.unwrap_err();
+    assert!(error.to_string().contains("cannot read"), "got: {error}");
+}
+
+#[tokio::test]
+async fn a_snapshot_reads_names_and_pids_without_resolving_specs() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("dump.yaml");
+    let body = "services:\n\
+                - name: api\n\
+                \x20 runtime:\n\
+                \x20   pm_id: 0\n\
+                \x20   status: online\n\
+                \x20   restart_time: 0\n\
+                \x20   unstable_restarts: 0\n\
+                \x20   created_at_ms: 1\n\
+                \x20   pid: 4242\n\
+                \x20   started_at_ms: 2\n\
+                - name: web\n\
+                \x20 runtime:\n\
+                \x20   pm_id: 1\n\
+                \x20   status: stopped\n\
+                \x20   restart_time: 0\n\
+                \x20   unstable_restarts: 0\n\
+                \x20   created_at_ms: 1\n\
+                \x20   pid: null\n\
+                \x20   started_at_ms: null\n";
+    std::fs::write(&path, body).expect("write dump");
+    let snapshot = dump_snapshot(&path).await.expect("the dump should parse");
+    assert_eq!(
+        snapshot,
+        vec![
+            usecases::ServiceSnapshot {
+                name: "api".to_string(),
+                pid: Some(4242),
+            },
+            usecases::ServiceSnapshot {
+                name: "web".to_string(),
+                pid: None,
+            },
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_snapshot_reports_a_dump_it_cannot_read() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let error = dump_snapshot(dir.path()).await.unwrap_err();
+    assert!(error.to_string().contains("cannot read"), "got: {error}");
+}
