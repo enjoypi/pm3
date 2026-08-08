@@ -5,11 +5,10 @@ use std::{
 };
 
 use adapters::{
-    UnitKind, UnitProgramSet, UnitStatus, back_up, backup_root, backup_stamp, compare_handover,
-    describe_handover, destination_of, dump_snapshot, hand_back_to_manager, query_status,
-    query_supervised_pid, replace_binary, write_targets,
+    UnitKind, UnitProgramSet, UnitStatus, back_up, backup_name, backup_root, binary_version,
+    compare_handover, describe_handover, destination_of, dump_snapshot, hand_back_to_manager,
+    query_status, query_supervised_pid, replace_binary, write_targets,
 };
-use chrono::{DateTime, Utc};
 
 use crate::{
     Error, Result,
@@ -35,7 +34,6 @@ pub struct InstallContext {
     pub uid: Option<u32>,
     pub current_exe: io::Result<PathBuf>,
     pub kind: UnitKind,
-    pub now: DateTime<Utc>,
     pub programs: Option<UnitProgramSet>,
 }
 
@@ -49,7 +47,6 @@ pub async fn run(config_path: &str, source: Option<PathBuf>) -> Result<()> {
         uid: host_uid(),
         current_exe: std::env::current_exe(),
         kind: HOST_SERVICE_KIND,
-        now: Utc::now(),
         programs: None,
     };
     run_install(config_path, source, &context, &emit).await
@@ -72,7 +69,7 @@ pub async fn run_install(
 
     let before = dump_snapshot(&session.paths.dump_file).await?;
     let root = backup_root(context.backups_env.as_deref(), &session.paths.root);
-    let stamp = backup_stamp(context.now);
+    let stamp = backup_name(binary_version(&destination).await.as_deref());
     let targets = write_targets(&session.spec);
     let backup = back_up(std::slice::from_ref(&destination), &root, &stamp).await?;
     replace_binary(&source, &destination).await?;

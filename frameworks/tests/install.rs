@@ -146,7 +146,10 @@ fn a_first_install_lands_the_binary_and_brings_the_daemon_under_supervision() {
 fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
     let fixture = fixture(home(), SUPERVISING_MANAGER);
     std::fs::create_dir_all(fixture.destination.parent().expect("dest dir")).expect("mkdir dest");
-    std::fs::write(&fixture.destination, "old binary").expect("write the old binary");
+    std::fs::write(&fixture.destination, "#!/bin/sh\necho 'pm3 1.7.1'\n")
+        .expect("write the old binary");
+    std::fs::set_permissions(&fixture.destination, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod the old binary");
     std::fs::write(fixture.home.root.join("config.yaml"), "old config").expect("seed config");
     let unit_dir = fixture.fake_home.join(".config/systemd/user");
     std::fs::create_dir_all(&unit_dir).expect("mkdir unit dir");
@@ -176,8 +179,13 @@ fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
         .expect("dir entry")
         .path();
     assert_eq!(
+        stamp,
+        fixture.backups.join("1.7.1"),
+        "named by the old version"
+    );
+    assert_eq!(
         std::fs::read_to_string(stamp.join("pm3")).expect("binary backup"),
-        "old binary"
+        "#!/bin/sh\necho 'pm3 1.7.1'\n"
     );
     assert_eq!(
         std::fs::read_to_string(stamp.join("config.yaml")).expect("config backup"),

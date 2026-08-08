@@ -5,7 +5,6 @@ use std::{
 };
 
 use adapters::{UnitKind, UnitProgramSet};
-use chrono::{DateTime, Utc};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 use super::*;
@@ -86,15 +85,8 @@ fn context_with_exe(
         uid,
         current_exe: exe,
         kind,
-        now: fixed_now(),
         programs: Some(programs),
     }
-}
-
-fn fixed_now() -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339("2026-07-30T13:33:44Z")
-        .expect("a valid timestamp")
-        .to_utc()
 }
 
 fn seed_source(fixture: &Fixture) -> PathBuf {
@@ -155,7 +147,7 @@ fn health_server(socket: PathBuf, refuse_first: u32) -> tokio::task::JoinHandle<
 }
 
 fn stamp_dir(fixture: &Fixture) -> PathBuf {
-    fixture.backups.join("20260730T133344Z")
+    fixture.backups.join("unknown")
 }
 
 const HEALTHY_SYSTEMD: &str =
@@ -196,7 +188,7 @@ async fn a_first_install_swaps_the_binary_and_verifies_the_takeover() {
 }
 
 #[tokio::test]
-async fn an_upgrade_backs_up_the_binary_the_config_and_the_unit() {
+async fn an_upgrade_backs_up_the_binary_the_config_and_the_unit_under_its_version() {
     let launchd = "case \"$1\" in\n  list) echo '\"PID\" = 4242;' ;;\nesac\nexit 0";
     let fixture = systemd_fixture(launchd);
     let source = seed_source(&fixture);
@@ -204,7 +196,10 @@ async fn an_upgrade_backs_up_the_binary_the_config_and_the_unit() {
     seed_dump(&fixture, "api", Some(MANAGER_PID));
     std::fs::create_dir_all(fixture.destination.parent().expect("the dest dir"))
         .expect("prepare the dest dir");
-    std::fs::write(&fixture.destination, "old binary").expect("write the old binary");
+    std::fs::write(&fixture.destination, "#!/bin/sh\necho 'pm3 9.9.9'\n")
+        .expect("write the old binary");
+    std::fs::set_permissions(&fixture.destination, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod the old binary");
     std::fs::write(fixture.home.join("config.yaml"), "old config").expect("write the old config");
     unit_file(&fixture, UnitKind::Launchd);
     let server = health_server(fixture.home.join("pm3.sock"), 1);
@@ -221,7 +216,7 @@ async fn an_upgrade_backs_up_the_binary_the_config_and_the_unit() {
     .expect("the install should succeed");
     server.abort();
 
-    let stamp = stamp_dir(&fixture);
+    let stamp = fixture.backups.join("9.9.9");
     assert!(stamp.join("pm3").is_file(), "the old binary is backed up");
     assert!(
         stamp.join("config.yaml").is_file(),
@@ -233,6 +228,7 @@ async fn an_upgrade_backs_up_the_binary_the_config_and_the_unit() {
     );
     let output = lines.lock().expect("lock").join("\n");
     assert!(output.contains("adopted 1: api"), "got: {output}");
+    assert!(output.contains("backups/9.9.9"), "got: {output}");
 }
 
 #[tokio::test]
@@ -461,7 +457,7 @@ async fn an_install_reports_a_takeover_that_never_happens() {
     server.abort();
     let message = error.to_string();
     assert!(message.contains("did not come under"), "got: {message}");
-    assert!(message.contains("20260730T133344Z"), "got: {message}");
+    assert!(message.contains("backups/unknown"), "got: {message}");
 }
 
 #[tokio::test]

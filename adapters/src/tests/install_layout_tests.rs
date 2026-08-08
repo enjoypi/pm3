@@ -1,11 +1,5 @@
 use super::*;
 
-fn fixed_now() -> chrono::DateTime<chrono::Utc> {
-    chrono::DateTime::parse_from_rfc3339("2026-07-30T13:33:44Z")
-        .expect("a valid timestamp")
-        .to_utc()
-}
-
 #[test]
 fn a_declared_destination_wins() {
     let destination = destination_of(Some("/opt/pm3"), Some("/home/dev")).expect("a declared path");
@@ -52,6 +46,29 @@ fn an_undeclared_backup_root_lives_under_the_pm3_home() {
 }
 
 #[test]
-fn a_backup_stamp_is_a_compact_utc_timestamp() {
-    assert_eq!(backup_stamp(fixed_now()), "20260730T133344Z");
+fn a_backup_name_is_the_old_version() {
+    assert_eq!(backup_name(Some("1.8.0")), "1.8.0");
+}
+
+#[test]
+fn a_backup_name_falls_back_to_unknown() {
+    assert_eq!(backup_name(None), "unknown");
+    assert_eq!(backup_name(Some("")), "unknown");
+}
+
+#[test]
+fn a_backup_name_rejects_path_unsafe_versions() {
+    assert_eq!(backup_name(Some("../etc")), "unknown");
+    assert_eq!(backup_name(Some("a/b")), "unknown");
+}
+
+#[test]
+fn a_version_output_yields_its_last_token() {
+    assert_eq!(parse_version_output("pm3 1.8.0\n"), Some("1.8.0"));
+}
+
+#[test]
+fn a_versionless_output_yields_nothing() {
+    assert_eq!(parse_version_output(""), None);
+    assert_eq!(parse_version_output("pm3 dirty/tree\n"), None);
 }
