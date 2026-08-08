@@ -1,0 +1,81 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: check the tag matches the workspace version
+        run: |
+          cargo_version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$cargo_version" != "$tag_version" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match workspace version ${cargo_version}"
+            exit 1
+          fi
+
+      - name: build
+        run: cargo build --locked --release -p frameworks
+
+      - name: package
+        run: |
+          strip target/release/pm3
+          mkdir -p dist/stage
+          cp target/release/pm3 LICENSE dist/stage/
+          tar -czf "dist/pm3-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" -C dist/stage pm3 LICENSE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pm3-${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: pm3-*
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          generate_release_notes: true
+          body: |
+            ## 安装
+
+            1. 下载对应平台的 tar.gz 解开：`tar xzf pm3-<版本>-<平台>.tar.gz`
+            2. 把 `pm3` 放进 PATH（如 `~/bin`）
+            3. 跑 `pm3 install`：备份旧版、原子落位、注册开机自启（launchd / systemd user）
+
+            macOS：二进制未签名，浏览器下载的首次运行前 `xattr -d com.apple.quarantine pm3`（curl 下载不带 quarantine 属性可跳过）。
+
+            ## 运行时依赖
+
+            - `/bin/ps` 与 `/bin/kill`（procps）：缺了每次 daemon 重启所有服务都会被判探测失败而驱逐重启
+            - Linux 沙箱需要 `bwrap`（bubblewrap）：缺了沙箱模式起不来
