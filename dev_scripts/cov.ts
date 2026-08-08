@@ -1,6 +1,8 @@
 import { rm } from "node:fs/promises";
+import { join } from "node:path";
 
 import { cargoFlagsFromEnvironment, runCargo } from "./cargo_invocation.ts";
+import { reapOrphanedDaemons } from "./reap.ts";
 import {
   findFilesBelowFullCoverage,
   findSourcesMissingFromLcov,
@@ -80,9 +82,26 @@ async function instrumentAndExport(
   ]);
 }
 
+async function reapOrphansQuietly(): Promise<void> {
+  try {
+    await reapOrphanedDaemons(join(process.cwd(), "target"));
+  } catch (error) {
+    process.stderr.write(`e2e reap skipped: ${String(error)}\n`);
+  }
+}
+
 export async function enforceCoverageGate(
   argv: readonly string[],
 ): Promise<number> {
+  await reapOrphansQuietly();
+  try {
+    return await runCoverageGate(argv);
+  } finally {
+    await reapOrphansQuietly();
+  }
+}
+
+async function runCoverageGate(argv: readonly string[]): Promise<number> {
   const exported = await instrumentAndExport(
     cargoFlagsFromEnvironment(),
     argv.includes(freshFlag),

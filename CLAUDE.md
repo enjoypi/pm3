@@ -279,6 +279,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 ### 残留清理
 
+- **自动 reap**：`just test` 与 `just cov` 跑前跑后各执行一次 `dev_scripts/reap.ts`，收走泄漏的 e2e daemon（连带子孙进程 TERM→KILL、删 fixture 临时目录）。三守卫全中才收：`ppid == 1`（在跑测试的 daemon 父进程是测试进程，不动）+ 二进制在 `<repo>/target/` 下（真机 `~/bin/pm3` 不动）+（config 已消失或含 `pm3-e2e-never-installed`/`pm3-fixture` 指纹）（手工 mktemp 的 home 不动）。只有 `just` 本身被 Ctrl-C 杀掉时才需要下面的手工排查
 - e2e 会泄漏 daemon 与子进程（tempdir 已删、进程仍在）：排查真机状态前先 `pgrep -f 'pm3 daemon --config /var/folders'`（Linux 是 `/tmp/.tmp*`）与 `pgrep -f 'pm3 __sleep'` 各清一遍，否则 `pgrep`/端口结果会误导；子进程自 `process_group(0)` 起不再随测试进程组被连带清理
 - 列残留 MUST 用 `pgrep -x pm3` 再逐个 `ps -o pid=,args= -p <pid>` 核对：`pgrep -f` 会把发起它的 shell 一起匹配进来（本轮就误报了两个 pid）。泄漏的 e2e daemon 特征是 `ppid=1` + `--config` 指向已不存在的 tempdir，真机那份指向 `~/.pm3/config.yaml`，别杀错
 - **nextest 中断残留** — 症状：flake 触发取消剩余测试 → `TempDir` 的 Drop 跑不到，`$TMPDIR` 留下 e2e fixture 目录（`config.yaml` + `home/{logs,service,pm3.sock}`）
