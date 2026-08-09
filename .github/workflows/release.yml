@@ -53,6 +53,40 @@ jobs:
           name: pm3-${{ matrix.target }}
           path: dist/*.tar.gz*
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: check the tag matches the workspace version
+        run: |
+          $cargoVersion = (Select-String -Path Cargo.toml -Pattern '^version' | Select-Object -First 1).Line.Split('"')[1]
+          $tagVersion = "${{ github.ref_name }}".TrimStart('v')
+          if ($cargoVersion -ne $tagVersion) {
+            Write-Error "tag ${{ github.ref_name }} does not match workspace version $cargoVersion"
+          }
+
+      - name: build
+        run: cargo build --locked --release -p frameworks
+
+      - name: package
+        run: |
+          New-Item -ItemType Directory -Force dist\stage | Out-Null
+          Copy-Item target\release\pm3.exe, LICENSE, config.yaml dist\stage\
+          $zip = "dist\pm3-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip"
+          Compress-Archive -Path dist\stage\* -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          [System.IO.File]::WriteAllText("$zip.sha256", "$hash  $(Split-Path $zip -Leaf)")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pm3-x86_64-pc-windows-msvc
+          path: dist/*.zip*
+
   windows-e2e:
     runs-on: windows-latest
     steps:
@@ -71,7 +105,7 @@ jobs:
         timeout-minutes: 30
 
   release:
-    needs: [build, windows-e2e]
+    needs: [build, build-windows, windows-e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

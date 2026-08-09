@@ -20,4 +20,6 @@
 PM3-59 已合入并发版（v1.11.0）：`pm3 service install/uninstall/status` 与 `pm3 install` 换代链在 Windows 走 Task Scheduler + 命名管道，能力矩阵见 `docs/windows.md`。剩余验收项：
 
 - [ ] Windows 真机验收：`service install --dry-run` 目检 → 注册/`/Query` → start/list/logs/stop → 注销重登自启 → `pm3 install` 换代 → uninstall 清场（`frameworks/tests/service_windows.rs` 已备好同路径 e2e；release.yml 已有 windows-latest job 在 tag 时自动跑这份 e2e）
+  - 重点疑点：`pm3 install` 默认落位 `~\bin\pm3` 无 `.exe` 后缀（`adapters/src/install/layout.rs` 的 `DEFAULT_DESTINATION`），Windows 上无扩展名不可执行，验收时确认并修
+  - 验收通过后：README 安装节补 Windows 手动安装说明（Releases 的 `pm3-<版本>-x86_64-pc-windows-msvc.zip`，产物链已进 release.yml 的 build-windows job）
 - [ ] schtasks 非英文 locale 下 `/Query` 输出解析失效（状态恒报 not running），需要时换 PowerShell `Get-ScheduledTask` 的对象化输出

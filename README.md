@@ -14,13 +14,13 @@
 
 ## 安装
 
-**一行装**（校验 sha256、落 `~/bin/pm3`、自动跑 `pm3 install` 注册开机自启）：
+**一行装**（macOS / Linux；校验 sha256、落 `~/bin/pm3`、自动跑 `pm3 install` 注册开机自启）：
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/enjoypi/pm3/main/install.sh | sh
 ```
 
-**手动下载**：从 [GitHub Releases](https://github.com/enjoypi/pm3/releases/latest) 下对应平台的 tar.gz 与同名 `.sha256`，校验后解开（内含 `pm3`、`LICENSE`、`config.yaml`）：
+**手动下载**（macOS / Linux）：从 [GitHub Releases](https://github.com/enjoypi/pm3/releases/latest) 下对应平台的 tar.gz 与同名 `.sha256`，校验后解开（内含 `pm3`、`LICENSE`、`config.yaml`）：
 
 ```sh
 shasum -a 256 -c pm3-<版本>-<平台>.tar.gz.sha256   # Linux 用 sha256sum -c
@@ -31,13 +31,15 @@ pm3 install                                       # 之后的升级
 
 macOS：二进制未签名，浏览器下载的首次运行前 `xattr -d com.apple.quarantine pm3`（curl 下载不带该属性，可跳过）。
 
-**从源码装**（需要 Rust 工具链）：
+**从源码装**（需要 Rust 工具链；**Windows 目前走这条路**，msvc 工具链）：
 
 ```sh
 cargo install --git https://github.com/enjoypi/pm3 --bin pm3 --locked
 ```
 
-**运行时依赖**（三条都必须满足，否则功能静默退化）：
+Windows 的能力矩阵（Task Scheduler 自启、命名管道 IPC、沙箱降级项）见 [docs/windows.md](docs/windows.md)。
+
+**运行时依赖**（macOS / Linux，三条都必须满足，否则功能静默退化；Windows 无这些依赖）：
 
 - `/bin/ps` 与 `/bin/kill`（procps）：缺了每次 daemon 重启所有服务都会被判探测失败而驱逐重启
 - Linux 沙箱需要 `bwrap`（bubblewrap）：缺了沙箱模式起不来
