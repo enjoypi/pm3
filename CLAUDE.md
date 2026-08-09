@@ -6,7 +6,7 @@
 
 @~/.claude/rust-p1.md
 
-pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 daemon 合一，经 Unix socket 通信。
+pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 daemon 合一，经 Unix socket（Windows 为命名管道）通信。
 
 需求描述见 `docs/requirements.md`，本文件只记踩过的坑。**跨层的坑记在本文件，单层实现细节下沉到各 crate 的 `CLAUDE.md`。**
 
@@ -45,11 +45,11 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - dev_scripts TS：`Bun.env.X` 触发 TS4111 → 写 `Bun.env["X"]`；`Bun.spawn` 不收 `readonly string[]` → 传 `[...command]`
 - Bash 命令里出现字面量 `.env` 会被 hook 整条拦掉（报 `禁止读写 .env 文件`），而本仓到处是 `spec.env` / `entry.env` / `<name>.env` → 查这些内容用 Read / Grep 工具，别用 `rg`/`grep`/`sed` 的 Bash 命令；真机 `cfg_dir` 下的凭据文件连 Read 也被权限设置拒掉 → 验收「`.env` 生效了没」只能看日志与服务状态，别把「读一眼那个文件」写进步骤
 - 手工验证要另建 pm3 home：scratchpad 路径太长，unix socket 会撞 macOS `SUN_LEN`（>104 字节，报 `path must be shorter than SUN_LEN`）→ 用 `mktemp -d`
-- 改 `adapters/` 的目录结构、重命名类型、或把常量下沉进 `config.yaml` 后 MUST 跑 `just test-scripts`：`dev_scripts/tests/rust_contract.test.ts` 靠**字符串路径**读 Rust 源码来守「TS 常量与 Rust 常量一致」，路径失效后 `sourceOf` 对缺失文件返回空串、只报「no longer declared the way this guard reads it」而不说文件已搬走（本轮发现 4 个守卫因 `service/`→`unit/` 早已静默失效，另一个因 `SYSTEMCTL_PROGRAM` 下沉进配置而失效 → 改成读 `config.yaml` 的 `:-` 默认值）
+- 改 `adapters/` 的目录结构、重命名类型、或把常量下沉进 `config.yaml` 后 MUST 跑 `just test-scripts`：`dev_scripts/tests/rust_contract.test.ts` 靠**字符串路径**读 Rust 源码来守「TS 常量与 Rust 常量一致」，路径失效后 `sourceOf` 对缺失文件返回空串、只报「no longer declared the way this guard reads it」而不说文件已搬走；常量下沉进 `config.yaml` 后守卫要改读配置的 `:-` 默认值
 
 ### 装真机与换代
 
-- 固定走 `just install`（构建后调 `pm3 install`），MUST NOT 手工搬二进制（换代顺序有硬约束，见下）。`pm3 install [SOURCE]` 自己走完：备份 → `.incoming` + rename 换二进制 → `service uninstall` → `kill` → `service install --force` → 等接管 → before/after 对比（lost 非空即非零退出）。换代步骤在**进程内**完成，不 spawn 新二进制：rename 覆写正在执行的文件两平台都合法（ETXTBSY 只在 write-open），且 `ServiceContext.binary` 显式注入 destination——rename 后 `current_exe()` 在 Linux 会带 ` (deleted)` 后缀，流程内 MUST NOT 再读它
+- 固定走 `just install`（构建后调 `pm3 install`），MUST NOT 手工搬二进制（换代顺序有硬约束，见下）。`pm3 install [SOURCE]` 自己走完：备份 → `.incoming` + rename 换二进制 → `service uninstall` → `kill` → `service install --force` → 等接管 → before/after 对比（lost 非空即非零退出）。换代步骤在**进程内**完成，不 spawn 新二进制：rename 覆写正在执行的文件在 macOS/Linux 合法（ETXTBSY 只在 write-open；Windows 不能覆写运行中的 exe，两步 rename 见「Windows」节），且 `ServiceContext.binary` 显式注入 destination——rename 后 `current_exe()` 在 Linux 会带 ` (deleted)` 后缀，流程内 MUST NOT 再读它
 - 「等 daemon 退净」不靠 `pgrep -f "<bin> daemon"`：`kill_daemon` 内置 `wait_until_released(socket)`（daemon 收尾先删 pid 再删 socket，socket 消失即清理完毕），比 pgrep 准且少一个外部程序
 - before/after 服务对比直读 `dump.yaml`（`dump_snapshot`，只取 name+pid，不 resolve spec），MUST NOT 调 `pm3 list`——那会经 `ensure_daemon_running` 拉起非托管 daemon 抢 socket；after 快照由「接管等待」收敛（Running + 管理器 pid == `pm3.pid` + UDS 健康三者同时成立，因为 pid 文件先于 resurrect 写入，单靠 pid 对齐不算接管完成）
 - 排查真机先从 `~/.pm3/config.yaml` 读 `cfg_dir`：它与 `pm3.home` 各自独立配置（本机 `home=~/.pm3`、`cfg_dir=~/.config/pm3`、二进制在 `~/bin/pm3`），按 `<home>/service` 猜必定扑空
@@ -57,12 +57,12 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - **症状**：`launchctl list` 的 PID 列是 `-`，job 已载入但 launchd 未监管、KeepAlive 形同虚设
   **原因**：任何 pm3 CLI 命令都会经 `ensure_daemon_running` 自动拉起一个**非 launchd 托管**的 daemon；它扛不住 `launchctl unload`，且会抢赢 socket 竞争让 launchd 那份直接退出
   **修法**：换代顺序 MUST 是 `service uninstall` → `pm3 kill` → 等 daemon 退净 → `service install --force`（`pm3 install` 内建这一整套）；install 后 MUST 等「launchd 报的 pid == `pm3.pid` 内容」再跑任何 CLI 命令，否则又会拉起竞争者。已处于未监管态时先 `pm3 kill` 停掉自启实例，再 `launchctl kickstart gui/$(id -u)/<label>` 交回 launchd（`pm3 install` 在 launchd 超时后自动做一次 kickstart 重试）
-- unit MUST 导出安装时的 `PM3_*` 环境（`UnitSpec.pm3_env`，两个渲染器都写，值要排序否则 `reconcile` 的逐字节比对每次都判 Stale）：install 拷进 `pm3.home` 的 `config.yaml` 是**未做变量替换**的原文，而 unit 只导出 `HOME`/`PATH` 时，`${PM3_HOME:-~/.pm3}` 在服务管理器起的 daemon 里退回默认值 ⇒ daemon 在 `~/.pm3` 建 socket/pid/dump，而 CLI（shell 里有 `PM3_HOME`）去连 `/srv/pm3/pm3.sock` ⇒ 连不上就经 `ensure_daemon_running` 再拉起一个**非托管** daemon，正是本节开头那个坑。注意反过来把「替换后的文本」落盘会让 `reconcile` 每次 install 都判 Conflict
+- unit MUST 导出安装时的 `PM3_*` 环境（`UnitSpec.pm3_env`，三个渲染器都写，Windows 写进 `.cmd` 包装脚本；值要排序否则 `reconcile` 的逐字节比对每次都判 Stale）：install 拷进 `pm3.home` 的 `config.yaml` 是**未做变量替换**的原文，而 unit 只导出 `HOME`/`PATH` 时，`${PM3_HOME:-~/.pm3}` 在服务管理器起的 daemon 里退回默认值 ⇒ daemon 在 `~/.pm3` 建 socket/pid/dump，而 CLI（shell 里有 `PM3_HOME`）去连 `/srv/pm3/pm3.sock` ⇒ 连不上就经 `ensure_daemon_running` 再拉起一个**非托管** daemon，正是本节开头那个坑。注意反过来把「替换后的文本」落盘会让 `reconcile` 每次 install 都判 Conflict
 - 换代备份落在 **`<pm3.home>/install-backups/<旧版本号>/`**（`adapters::install::backup_root`，`PM3_INSTALL_BACKUPS` 可覆盖，目的地 `PM3_INSTALL_PATH`；目录名取 `<旧二进制> --version` 的末位 token，查不到即 `unknown`），MUST NOT 放回 `~/.pm3-install-backups`：备份里有旧 `config.yaml`，而 `mkdir` 的权限受 umask 摆布（实测出过 0775）→ 放进 `pm3.home` 才被那层 0700 兜住（备份目录与文件再显式 chmod 0700/0600），且它正好是沙箱的 hidden root ⇒ 被托管的服务连备份都看不见。回滚就是从对应版本目录取 `pm3` 二进制 + unit + config 三件套
-- 换代前 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷；`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），排查残留只用 `pgrep`；但 `pgrep -f <pat>` 同样会匹配到发起它的 shell，按可执行名找用 `pgrep -x`
+- 换代前 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷；`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），列残留的方法见「残留清理」
 - Linux 侧同一套顺序换 `systemctl --user`，但三件事只在 Linux 成立：
   - **只有 `systemctl --user` 依赖 `XDG_RUNTIME_DIR`**（`loginctl` 走 system bus，不受影响——排查时别把两者混为一谈）：非登录会话（agent/CI shell）里它为空 → 走 systemctl 的调用失败，报文视 systemd 版本而异（`Failed to connect to bus: No medium found`，或 `Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined`）。**`just install` 与 `pm3 service *` 不再需要手工 export**：`host_runtime_dir()` 缺该变量时按 `/run/user/<uid>` 推导（uid 取 `/proc/self` 的属主，macOS 无 `/proc` 故为 `None`，launchd 也不需要），经 `UnitProgramSet.runtime_dir` 只注给 `systemctl --user` 那几条命令（`UnitCommand.env`）；`pm3 install` 查 `MainPID` 走的 `systemctl_show_main_pid` 同样经 `user_scoped` 注入。手工敲 systemctl 排查时仍要自己 export
-  - `loginctl enable-linger` **不带用户名是合法的**（`enable-linger [USER...]`，省略即作用于调用者）：无授权时它只报 polkit `requires interactive authentication`、**不报缺参数** → 别以为是命令写错了去补用户名。它走 polkit 授权，polkit 被 mask 或无交互授权时必失败，故在 install plan 里是 `UnitStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。**linger 已启用时这一步整个不进 plan**（`linger_state` 先查，`LingerState::Enabled` 即跳过）→ 常见情形下 `just install` 不碰 polkit、无需任何特殊权限。仍看到 `skipped:` 说明 linger 真没开，由有 sudo 的账号补一次（已实测成功），否则用户注销后 user manager 回收会连带停掉 daemon
+  - `loginctl enable-linger` **不带用户名是合法的**（`enable-linger [USER...]`，省略即作用于调用者）：无授权时它只报 polkit `requires interactive authentication`、**不报缺参数** → 别以为是命令写错了去补用户名。它走 polkit 授权，polkit 被 mask 或无交互授权时必失败，故在 install plan 里是 `UnitStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。**linger 已启用时这一步整个不进 plan**（`linger_state` 先查，`LingerState::Enabled` 即跳过）→ 常见情形下 `just install` 不碰 polkit、无需任何特殊权限。仍看到 `skipped:` 说明 linger 真没开，由有 sudo 的账号补一次，否则用户注销后 user manager 回收会连带停掉 daemon
   - 查 linger MUST 传 uid（`loginctl show-user <uid> -p Linger --value`）：**不带用户名时它输出空串且 rv=0**（`show-user` 省略参数指“当前会话的用户”，非登录会话没有会话）→ 按「非零退出才是查不到」判会把「已开 linger」误读成未开，白跑一次必失败的 `enable-linger`。故 `loginctl_show_linger` 在 uid 未知时返回 `None`，判定退回 `Unknown`
 
 ### Windows（Task Scheduler + 命名管道）
@@ -89,16 +89,16 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 改这里就必须同步那里，漏一处即编译失败或运行期对不上。
 
 - 给 `Pm3Config` 加字段要同步 6 处：根 `config.yaml`、`adapters/test_support/config_sections.rs`、`adapters/src/test_helpers/config_schema_test_helpers.rs`、`frameworks/test_support/config_fixtures.rs`、`frameworks/tests/common/mod.rs`、校验函数与 `every_error_variant` 表
-- 给 `UnitSpec` 加字段要同步 5 处：`adapters/src/unit/spec.rs` 的结构体、`launchd.rs` 与 `systemd.rs` 两个渲染器、`adapters/test_support/unit_specs.rs` 的 `spec_for`、`frameworks/src/service.rs` 的 `build_spec`（唯一生产构造点）；两个渲染器漏一个不会编译失败，症状是只有那个平台的 unit 少字段而另一平台测试全绿 → 新字段 MUST 在两份渲染器测试里各断言一次（一个平台没有对应能力时，就断言「它不出现」，别只写一边）
-- 给 `UnitProgramSet` 加字段要同步 4 处：`adapters/src/unit/command.rs` 的结构体与 `from_config`、`adapters/test_support/unit_specs.rs` 的 `program_set`、`frameworks/src/service.rs` 的 `ServiceContext` 与 `open_service_session`、`frameworks/src/tests/service_tests.rs` 的两处字面量；宿主派生值（uid、`XDG_RUNTIME_DIR`）MUST 由 `frameworks/src/layout.rs` 读一次 env 后经 `ServiceContext` 注入，MUST NOT 在 `adapters` 里读 env
-- 给 `SpecSource` 加字段要同步 4 处：`adapters/src/apps_file/source.rs` 的结构体、`frameworks/src/daemon/service.rs`（唯一生产构造点）、`adapters/test_support/spec_sources.rs`、`frameworks/src/test_helpers/daemon_actor_test_helpers.rs` 与 `frameworks/src/tests/daemon_ports_tests.rs`；宿主派生值（`host_home`）MUST 由 `frameworks/src/layout.rs` 读一次 env 后注入
+- 给 `UnitSpec` 加字段要同步 6 处：`adapters/src/unit/spec.rs` 的结构体、`launchd.rs`/`systemd.rs`/`schtasks.rs` 三个渲染器、`adapters/test_support/unit_specs.rs` 的 `spec_for`、`frameworks/src/service.rs` 的 `build_spec`（唯一生产构造点）；渲染器漏一个不会编译失败，症状是只有那个平台的 unit 少字段而其他平台测试全绿 → 新字段 MUST 在每份渲染器测试里各断言一次（某平台没有对应能力时，就断言「它不出现」）
+- 给 `UnitProgramSet` 加字段要同步 4 处：`adapters/src/unit/command.rs` 的结构体与 `from_config`、`adapters/test_support/unit_specs.rs` 的 `program_set`、`frameworks/src/service.rs` 的 `ServiceContext` 与 `open_service_session`、`frameworks/src/tests/service_tests.rs` 的两处字面量；宿主派生值（uid、`XDG_RUNTIME_DIR`）经 `ServiceContext` 注入（读 env 纪律见「配置与路径」）
+- 给 `SpecSource` 加字段要同步 4 处：`adapters/src/apps_file/source.rs` 的结构体、`frameworks/src/daemon/service.rs`（唯一生产构造点）、`adapters/test_support/spec_sources.rs`、`frameworks/src/test_helpers/daemon_actor_test_helpers.rs` 与 `frameworks/src/tests/daemon_ports_tests.rs`；宿主派生值（`host_home`）同样只在 `layout.rs` 读 env 后注入
 - 改 `usecases/src/ports/*` 里 trait 方法的签名要同步 3 个实现：`adapters` 侧的真实现（如 `YamlDumpStore`）、`frameworks/src/daemon/ports.rs` 的 `DaemonPorts` 转发、`usecases/src/test_helpers/ports_test_helpers.rs` 的 `FakePorts`；`FakePorts` 新增的 `seed_*` 若没人调用会触发 `dead_code`，且它计入覆盖率门禁
 - 给 `ExitOutcome` 加变体要同步 4 处：`usecases/src/ports/launcher.rs` 的 enum 与 `failed()`、`adapters/src/process/tokio_launcher.rs`（子进程）、`adapters/src/process/watcher.rs`（adopt 来的进程）、`frameworks/src/daemon/timers.rs` 的 `unwrap_or`
 - 给 `ProcessRuntime` 加字段要同步 4 处：`adapters/src/persistence/dto.rs` 的 `RuntimeDto` + `decode_state` + `encode_state`（两处都穷举解构）、`adapters/test_support/process_records.rs`；跨版本可读的字段一律 `#[serde(default)]`
 - 给 `ProcessTable` 加「非记录」字段（如 `boot`）要想清**谁负责填**：`from_records` 一律重建，所以 `resurrect` 里 `*table = ProcessTable::from_records(..)` **之后**才能 `remember_boot`；`save_table` 从表里取值，这样各 usecase 的 `save_table(table, ports)` 调用点一处不用改
 - 给 `SandboxPolicy` 加字段会波及 ~13 处字面量、给 `AppSpec` 加字段会波及 ~9 处（四层的 test_helpers/test_support）→ 加完先 `cargo build --workspace --all-targets` 靠 E0063 逐个补齐，字段插在字面量开头即可（顺序无关）
 - 落盘 MUST 走 `adapters::write_private` / `append_private`（`0o600`，`private_file.rs`）：`tokio::fs::write` 与裸 `OpenOptions` 把权限交给 umask，而 pm3 从不设 umask。`.mode()` 只在**创建**时生效，已存在的旧文件权限不变——真机升级后的旧 `dump.yaml` 仍是 0644，靠 `pm3.home` 的 0700 兜底
-- 写 `cfg_dir/<name>.yaml` 的两条路径（apps 文件与 `pm3 start --name`）MUST 共用**同一个** `adapters::fold_entry`：它把 `script`/`cwd`/`args`/`sandbox.writable_roots` 四处折回 `${HOME}`/`${PM3_SERVICE_CWD}` 并对 roots 去重。曾经 frameworks 与 adapters 各有一份副本，已分歧到「inline 去重、apps 不去重」，同一份声明编码出两种 yaml → `pm3 start <apps-file>` 被 `reconcile` 拒绝（症状：diff 只差一行重复的 root，或全是 `-"${HOME}/x"` / `+"/Users/me/x"`）。新增含路径的字段只改 `fold_entry` 一处
+- 写 `cfg_dir/<name>.yaml` 的两条路径（apps 文件与 `pm3 start --name`）MUST 共用**同一个** `adapters::fold_entry`：它把 `script`/`cwd`/`args`/`sandbox.writable_roots` 四处折回 `${HOME}`/`${PM3_SERVICE_CWD}` 并对 roots 去重。出现第二份副本必然分歧，症状是同一份声明编码出两种 yaml、`pm3 start <apps-file>` 被 `reconcile` 拒绝（diff 只差一行重复的 root，或全是 `-"${HOME}/x"` / `+"/Users/me/x"`）。新增含路径的字段只改 `fold_entry` 一处
 - 新增 `${...}` 占位符 MUST 在 `substitute_env_vars` 里登记为保留名（`SERVICE_CWD_NAME` 那个分支），否则加载 cfg 文件时因「变量未设置且无默认值」直接报 `EnvVarNotSet`；保留名不支持 `:-` 默认值
 
 ## 领域不变量
@@ -112,7 +112,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - `Stopping` 不是「已停止」：判「pm3 是否还持有进程」用 `ProcessStatus::is_settled()`（仅 Stopped|Errored），用 `!is_running()` 会让重复 `stop` 清空 pid、让 `restart` 再 spawn 一个同名实例
 - SIGTERM 只落盘退出、不停服务，彻底停机只有 `pm3 kill --with-services`
 - daemon 换代（shutdown）MUST NOT 把 `Stopping` 记录改写成 `Stopped`：`persist_for_handover` 只落盘、保留状态与 pid。改写会清掉 identity，让下一代 `resurrect` 的 `!is_settled()` 筛选整条跳过它 —— 既不 evict 也不监控，drain 未完的进程永久残留，随后一次 `start` 就起出第二份实例。对应地 `resurrect` 对 `Stopping` 记录走 `Verdict::Settle`：先 `evict` 掉幸存者再记 `Stopped`（把上一代没做完的 stop 做完），MUST NOT 让它走 `Adopt` —— 那会把运维明确停掉的服务重新拉回 `Online`
-- 所有强杀入口 MUST 共用一条带守卫的路径（`Supervisor::sweep_pid`：查 `tracked_pids` → `pid_was_recycled` 比对 token → `force_kill`，失败记 warn）。曾经三个入口各实现一半：`on_force_kill` 三道守卫齐全、`resurrect::judge` 的 `Verdict::Settle` 一道没有、`Daemon::force_kill_survivors` 在 frameworks 层裸发 SIGKILL —— 后两条在 pid 复用后会对无关进程组发信号（Linux 上尤其致命）。新增清扫入口时 MUST 复用 `sweep_pid`，MUST NOT 在 `frameworks` 层自己调 `ports.force_kill`
+- 所有强杀入口 MUST 共用一条带守卫的路径（`Supervisor::sweep_pid`：查 `tracked_pids` → `pid_was_recycled` 比对 token → `force_kill`，失败记 warn）。新增清扫入口 MUST 复用 `sweep_pid`，MUST NOT 在 `frameworks` 层自己调 `ports.force_kill`——裸发信号不校验 token，pid 复用后会打掉无关进程组（Linux 上尤其致命）
 - `delete` MUST NOT 清掉服务的 generation：`current_generation` 对未知名字返回哨兵 `0` 而 `is_current(name, 0)` 恒为真 ⇒ generation 守卫形同虚设；同时真实退出事件带着 generation≥1 抵达 `on_exit` 会因不匹配而提前 return，`CancelForceKill` 永不发出 ⇒ 延时强杀必定走完 `kill_timeout_ms` 并可能打到复用 pid。generation 是全局单调计数，同名服务重建不会撞号，本就不需要清；`on_exit` 里改用「表里已无此记录」判定并记 debug
 - 「延迟重启」在途期间 MUST 可被 `stop`/`delete`/`stop_all` 取消：`schedule_restart` 持 `JoinHandle` 存进 `TimerBoard.restarts`，三条路径都 `cancel_restart`，`on_restart` 先 `claim_restart` 再执行（抢在 abort 之前入队的事件因此被丢弃）。只 spawn 一个裸 sleep task 会让 `restart_delay_ms` 窗口内被停掉的服务自行复活，且每次崩溃多留一个孤儿 task
 - 子进程环境默认为空（`tokio_launcher` 有 `env_clear()`），所以 spawn 前必须已解析出绝对路径
@@ -150,7 +150,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - **默认 `read: minimal`**：`--tmpfs /` 打底后只铺 `pm3.sandbox.minimal_read_roots` + 声明的 `readable_roots` + **程序自身的路径**（漏了最后一条 exec 直接 ENOENT）。服务报 EACCES 时先补 `readable_roots`，退路是该服务写 `read: full`
 - **`unreadable_roots` 与「可写根」的先后顺序是安全语义，不是风格**：bwrap 是 `--tmpfs <hidden>` → `--bind <granted>`（最浅的先）→ **再** `--tmpfs` 那些落在 granted 之下的 hidden（`nested_in`）；seatbelt 不能靠顺序，deny 会连带遮住嵌套其中的 cwd，所以每条 allow 都带 `(require-not (subpath (param "HIDDEN_i")))` 的 carveout（照抄 codex `seatbelt.rs:369-406`）
 - **任何可写根都 MUST NOT 覆盖 hidden root**（`validate_policy` 拒绝，含 `derived_roots`）：`cwd: <pm3.home>` 会把 socket 与全部 `.env` 一起交回给服务，两种后端都救不回来——测试 fixture 因此一律用 `<home>/work` 而非 `<home>` 当 cwd
-- seatbelt 的路径一律走 `-D KEY=值` 参数 + `(param "KEY")`，profile 文本里不出现任何用户路径：这消掉了 SBPL 注入面，也是「含换行的 root 直接拒绝」那个 hack 被删掉的原因
+- seatbelt 的路径一律走 `-D KEY=值` 参数 + `(param "KEY")`，profile 文本里不出现任何用户路径：这消掉了 SBPL 注入面
 - `network: true` 只放行 IP（`(allow network-outbound (remote ip))`）：裸 `(allow network-outbound)` 连 unix socket 一起放行，macOS 上等于把 `pm3.sock` 交给服务。Linux 侧不靠这条——实测 `--ro-bind / /` 下 connect 直接 EACCES（只读挂载没有写权限），`--tmpfs` 遮盖后是 ENOENT
 - **bwrap MUST NOT 加 `--new-session`**（codex 加了，pm3 不能）：setsid 会让服务脱离 bwrap 的进程组，`kill -TERM -<pgid>` 打不到它，优雅停止退化成「杀 bwrap → pid namespace 塌掉 → 内核 SIGKILL」。TIOCSTI 面靠内核 `dev.tty.legacy_tiocsti=0`（Linux 6.2+ 默认）与「stdin 是 `Stdio::null()`」兜底
 - bwrap 的 namespace 里 cgroup 那条 MUST 写 `--unshare-cgroup-try` 而非 `--unshare-cgroup`：cgroup namespace 要内核 4.6+，硬形式在更老的内核上让 bwrap 直接退出 ⇒ 服务起不来。`user`/`pid`/`ipc`/`uts` 用硬形式（这四个到处都有）
@@ -166,7 +166,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 - 采样 MUST 走**独立一条** `ps -ww -o pid=,rss=`（`resident_memory_kib`），MUST NOT 往 `BATCH_FORMAT`（`pid=,lstart=`）加列：`parse_report` 按第一个空格切、余下整段当身份令牌，加一列 rss 会让每次内存波动都被判成 pid 复用，全部服务在换代时被驱逐。`list`/`describe` 的资源列走另一条 `ps -o pid=,rss=,pcpu=`（`resource_usage`，请求路径现采，不进 tick）
 - `AdoptedWatch` 不能复用：`wait_for_exit` 先判 `is_child`，自己 spawn 的进程走 `Child::wait`，所以那条轮询常态下是空的；它的 cadence 还会退避到 `daemon_poll_max_interval_ms`
-- tick 是自持循环（`SupervisionEffect::ScheduleMemorySample` → `DaemonEvent::SampleMemory` → 处理完再排下一次），**无条件续排**、只在「没有服务声明限额」时跳过 `ps`：这样不必跟踪「tick 是否在途」，start/delete 也不用管重新武装。**首拍由 `serve_supervised` 在 resurrect 之后注入**（`events.send(SampleMemory)`，日志 rotate 的 `RotateLogs` 同处）——曾经没有首踢，整条链在生产上从未启动，单测全绿（它们直接调 handler），内存熔断形同虚设；新增自持 tick 时 MUST 在同一个注入点登记
+- tick 是自持循环（`SupervisionEffect::ScheduleMemorySample` → `DaemonEvent::SampleMemory` → 处理完再排下一次），**无条件续排**、只在「没有服务声明限额」时跳过 `ps`：这样不必跟踪「tick 是否在途」，start/delete 也不用管重新武装。**首拍由 `serve_supervised` 在 resurrect 之后注入**（`events.send(SampleMemory)`，日志 rotate 的 `RotateLogs` 同处）——没有首拍整条链在生产上永不启动而单测全绿（单测直接调 handler）；新增自持 tick 时 MUST 在同一个注入点登记
 - `max_memory_kib` **不进指纹**（`fingerprint.rs` 里标 `_`）：限额是运维策略不是进程身份，改限额不该 evict+respawn
 - 超限只调 `restart_app`（与 cron 同一条路径），所以 `restart` 是异步的——测试断言要看 `stopping` 状态或事件，不能直接比对新旧 pid
 
@@ -192,7 +192,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - `start` 请求只传服务名列表（`services: Vec<String>`）——服务文件是唯一事实来源，MUST NOT 把 spec 塞进请求体
 - 但**手写 `cfg_dir/<name>.yaml` 不足以让服务被认出**：`pm3 start <name>` 对不在 daemon 服务表里的名字会退回按 apps 文件解析，报 `cannot resolve the apps file '<name>'`。新服务 MUST 先用 inline 形式注册一次（`pm3 start --name <name> [--network] <prog> [args]`），此后 `<name>` 才能直接用；pm3 写出的 yaml 可与手写的逐字节相同，差别只在注册路径
 - CLI MUST 在请求头带 `x-request-id`（`adapters::REQUEST_ID_HEADER`，值取 `<CLI pid>-<序号>`），daemon 的 `request_id_of` 优先读它、缺失或空才回退内部 `AtomicU64`。回退分支 MUST 保留：换代期间旧版 CLI 不发这个头。少了这层，一次 `pm3 start` 的客户端日志与 daemon 日志无法串起来（daemon 侧计数器每次重启从 1 开始，跨进程毫无意义）
-- **连进来的 peer 要过 uid 校验**（`OwnerOnlyListener`，`SO_PEERCRED` 经 `UnixStream::peer_cred`）：owner 取**socket 文件自己的属主**（本进程刚创建它，故两平台都拿得到，无需 `/proc` 也无需 `libc`），不匹配就 drop 连接并 warn、循环等下一个。**校验是 fail-open**：`admits` 在 peer 或 owner 任一未知时放行，退回 socket 0600 + 目录 0700 那道防线——一个探测不到属主的环境不该让整台机器的 pm3 停摆。拦截 MUST 发生在 `Listener::accept` 里（协议之前），MUST NOT 做成 axum 中间件：那样非法 peer 已经能塞进一个请求体
+- **连进来的 peer 要过 uid 校验**（`OwnerOnlyListener`，`SO_PEERCRED` 经 `UnixStream::peer_cred`）：owner 取**socket 文件自己的属主**（本进程刚创建它，macOS/Linux 都拿得到，无需 `/proc` 也无需 `libc`；Windows 无 `peer_cred`，准入见「Windows」节），不匹配就 drop 连接并 warn、循环等下一个。**校验是 fail-open**：`admits` 在 peer 或 owner 任一未知时放行，退回 socket 0600 + 目录 0700 那道防线——一个探测不到属主的环境不该让整台机器的 pm3 停摆。拦截 MUST 发生在 `Listener::accept` 里（协议之前），MUST NOT 做成 axum 中间件：那样非法 peer 已经能塞进一个请求体
 - 请求体上限走 `pm3.request_body_limit_bytes` + `DefaultBodyLimit`（超限回 413）：单 actor 循环下一个巨大 body 就是一条队头阻塞路径，而 axum 默认的 2 MB 对「一串服务名」来说过宽
 
 ### 环境变量与凭据
@@ -201,32 +201,32 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - **读取点只有 `SpecSource::resolve_service` 一处**：`SpecResolver::prepare`（CLI start）与 `YamlDumpStore::rejoin`（daemon 换代逐条读盘）都经过它。只在 `prepare` 里读会让换代后所有服务 env 变空 ⇒ env 进指纹 ⇒ 全部服务被判 `Change::Launch` 而 evict+respawn
 - `.env` **缺失 MUST 是 `Ok(空)`**，只有「存在但解析失败」才 `Err`：`rejoin` 拿到 `Err` 就没有 spec、造不出 `ProcessRecord`，那条记录进不了表
 - **进不了表的记录 MUST 被 evict，MUST NOT 静默丢弃**：`DumpStore::load` 返回 `DumpContents { records, stranded }`，`resolve_service` 失败的那条以 `StrandedProcess { name, pid, token }` 进 `stranded`，`resurrect` 开头先 `sweep_stranded`（复用 `surviving_pid` 的 token 守卫 + `evict_pid`）。只 return None 的话，手改 `.env` 打错一个字再换代，正在跑的进程就既不 evict 也不监控、pid 还从 dump 擦除 ⇒ 永久孤儿 + 下次 `start` 起出第二份实例
-- **`HOME` 由 pm3 注入**（`SpecSource.host_home` → `with_host_home`，`.env` 声明了同名 key 就以声明为准）：子进程环境被 `env_clear()` 清空，不注入的话服务只能在 `script`/`args` 里写死绝对路径。宿主 `$HOME` 只在 `frameworks/src/layout.rs::host_home()` 读一次再注入，adapters 层 MUST NOT 自己读 env。它随 `spec.env` 进指纹，安全的前提是 unit 会导出安装时的 `HOME`（见「装真机与换代」），launchd/systemd/shell 三种上下文取值一致
+- **`HOME` 由 pm3 注入**（`SpecSource.host_home` → `with_host_home`，`.env` 声明了同名 key 就以声明为准）：子进程环境被 `env_clear()` 清空，不注入的话服务只能在 `script`/`args` 里写死绝对路径。宿主 `$HOME` 由 `layout.rs::host_home()` 读一次注入（纪律见「配置与路径」）。它随 `spec.env` 进指纹，安全的前提是 unit 会导出安装时的 `HOME`（见「装真机与换代」），launchd/systemd/shell 三种上下文取值一致
 - `.env` MUST NOT 过 `substitute_env_vars`：那个替换器遇到含 `"` / `\` / 控制字符的值直接报错，还会把随机密码里的 `${...}` 当占位符展开。`.env` 自己只认**一个**变量：`$HOME` / `${HOME}` 展开成注入的 `host_home`（`PATH=$HOME/.cargo/bin:...` 这类要它），其余 `$` 一律原样。三条边界 MUST 保住：`$HOMEBREW_PREFIX` 不能被吃掉（`continues_a_name` 判词尾）、单引号值整体不展开（密码里真写了 `$HOME` 的逃生口）、`host_home` 为 `None` 时不展开
 - 收紧 `.env` 权限（`chmod 0600`）MUST 先用 `symlink_metadata` 排除软链：`set_permissions` 跟随软链，把 `<name>.env` 链到 `/etc/creds/x.env` 这类共享凭据时会改到**别人的**文件上（症状：另一个消费者突然 EACCES，而 pm3 这边只有一条 debug 日志）
-- 凭据 MUST NOT 出现在任何错误文案里：`EnvFileError` 只带路径、行号、key 名。曾经 `--env` 的 `InvalidEnvPair` 回显整个实参、yaml 冲突的 `diff_lines` 把新旧凭据一起打进 stderr —— 后者随「yaml 不再有 env」自动消失
+- 凭据 MUST NOT 出现在任何错误文案里：`EnvFileError` 只带路径、行号、key 名
 - pm3 **只读不写** `.env`（CLI 的 `--env` 已移除），所以 `ServiceUndo` / `reconcile` 都不必管它；只有 `forget` 要连带删除
 - 给 `AppSpec` 加字段时，**只有 `usecases/src/fingerprint.rs` 的 `render_identity` 会编译失败**（真·全字段 `let AppSpec { .. }` 解构）：`encode_state` 是 `let ProcessRecord { spec: _, runtime }`、`ProcessView` 是字段访问式构造，两者都会静默吞掉新字段。新字段若含凭据性质的内容，MUST 自己确认这两处。`AppSpec` derive 了 `Debug` 但没有 `Serialize`，MUST NOT 用 `?spec` / `{:?}` 打印它
-- `pm3 restart` 会**重新读盘**（`Supervisor::reload_declaration` 先 `resolver.prepare` 再覆盖 `record.spec`），所以改完 `.env` 用 restart 就生效；`on_restart`（延迟重启）与 `on_fire`（cron）MUST NOT 重读，避免定时任务因文件临时问题失败
+- `pm3 restart` 会**重新读盘**，所以改完 `.env` / `<name>.yaml` 用 restart 就生效；`on_restart` / `on_fire` / `restart_now` MUST NOT 重读（实现边界见 `usecases/CLAUDE.md`）
 
 ### 日志字段
 
 面向 AI 排障，所以字段名比文案重要；改日志前先看这里。
 
-- 每条业务日志 MUST 带 `feature` + `action` 两个字段。**MUST NOT 用 `operation`**：6 必备字段里是 `action`，混用会让按 `action` 过滤的查询整段漏掉（曾有 9 处用 `operation`，`server`/`signal`/`telemetry`/`startup`/`shutdown` 全查不到）。`action` 的值用 `snake_case`，MUST NOT 带点（`drain.start` → `drain_start`）
+- 每条业务日志 MUST 带 `feature` + `action` 两个字段。**MUST NOT 用 `operation`**：6 必备字段里是 `action`，混用会让按 `action` 过滤的查询整段漏掉。`action` 的值用 `snake_case`，MUST NOT 带点（`drain.start` → `drain_start`）
 - `feature` 取值收敛在：`lifecycle` `supervisor` `resurrect` `persistence` `api` `client` `server` `service` `unit` `install`
 - 每个**外部调用**（`ps` / `kill` / `launchctl` / `systemctl` / UDS 往返）MUST 记 `duration_ms`：`let started = Instant::now();` 起头，日志里 `started.elapsed().as_millis()`
 - 级别按「谁看」分：AI/排障走 `debug`（外部调用、中间状态），人/监控走 `info+`（服务起停成败在 `usecases` 的 `start_one` / `request_stop` 里发）
-- **CLI 进程 MUST 自己装 subscriber**，否则 `feature` 为 `client`/`service`/`unit` 的日志全部静默丢弃：装在 `open_session` / `open_service_session`（这两处本来就已读过配置），写 **stderr**（daemon 写 stdout 只因为它被重定向进 `pm3.log`，CLI 的 stdout 是给人看的报文）。曾经 `init_telemetry` 只在 daemon 路径调用，于是 `log_stuck_undo`（服务文件回滚失败 = 盘上文件与运行中的服务不一致）这类**只有日志一条通路**的 warn 从来没人看得到——它不在退出码里、也不在 stderr 文案里
+- **CLI 进程 MUST 自己装 subscriber**，否则 `feature` 为 `client`/`service`/`unit` 的日志全部静默丢弃：装在 `open_session` / `open_service_session`（这两处本来就已读过配置），写 **stderr**（daemon 写 stdout 只因为它被重定向进 `pm3.log`，CLI 的 stdout 是给人看的报文）。`log_stuck_undo` 这类**只有日志一条通路**的 warn（服务文件回滚失败）不在退出码也不在 stderr 文案里，CLI 不装就永远没人看到
 - spawn 日志 MUST NOT 打 `args` 与 `env`：服务的启动参数可能含运维塞进去的凭据
-- 「尽力而为」的收尾 IO 可以 `.ok()`，但**改变外部可见状态的失败 MUST 记 `warn`**：`force_kill` 失败意味着孤儿进程存活，服务文件回滚失败意味着盘上文件与运行中的服务不一致。曾经 `UndoStep::apply` 吞掉错误后仍无条件记「回滚成功」——日志说谎比没有日志更糟
+- 「尽力而为」的收尾 IO 可以 `.ok()`，但**改变外部可见状态的失败 MUST 记 `warn`**：`force_kill` 失败意味着孤儿进程存活，服务文件回滚失败意味着盘上文件与运行中的服务不一致。吞掉错误后仍记「成功」的日志比没有日志更糟
 
 ### 配置与路径
 
 - daemon 自己的 `config.yaml` 只能放在 `pm3.home`：`cfg_dir` 由配置本身定义，放不进去
 - `ensure_layout` 把 `pm3.home` 与 `cfg_dir` 收紧到 `0700`，但 **chmod 失败只 warn、MUST NOT 向上抛**：`cfg_dir` 可以指向配置管理预建（root 属主）或只读挂载的目录，一 `?` 就让**每条 CLI 命令**（`prepared_session`）和 daemon 启动一起失败，而目录权限本来只是「更安全一点」的加固
 - **pm3 调用的每个外部程序都来自配置**，代码里 MUST NOT 再出现第二份路径常量：`pm3.service.{launchctl,systemctl,loginctl}_path`（发行版差异大：Debian 在 `/usr/bin`、部分发行版在 `/bin`、NixOS 在 `/run/current-system/sw/bin`）、`pm3.sandbox.{seatbelt,bwrap}_program`（`bwrap` 走 `search_path` 解析，`sandbox-exec` 是绝对路径故 `search_path` 对它无效）。例外只有 `/bin/ps` 与 `/bin/kill`（身份令牌与进程组信号的硬约束，见「进程与信号」）
-- `PM3_HOME` 同时决定**配置发现**与 `pm3.home`：`default_config_path` 先读 `PM3_HOME` 再回退 `~/.pm3`。曾经只有 `config.yaml` 里的 `${PM3_HOME:-~/.pm3}` 认它，导致 `export PM3_HOME=/srv/pm3` 后 `pm3 list` 仍去读 `~/.pm3/config.yaml`，每条命令都得带 `--config`
+- `PM3_HOME` 同时决定**配置发现**与 `pm3.home`：`default_config_path` 先读 `PM3_HOME` 再回退 `~/.pm3`——只让 `config.yaml` 里的 `${PM3_HOME:-~/.pm3}` 认它的话，`export PM3_HOME=/srv/pm3` 后 `pm3 list` 仍去读 `~/.pm3/config.yaml`
 - 读 env 的逻辑 MUST 抽成接 `Option<&str>` 参数的纯函数（`default_config_path(pm3_home_env, home_env)`），env 只在 `frameworks/src/layout.rs` 的 `host_home` / `host_pm3_home` 里读一次：Rust 2024 的 `set_var` 是 `unsafe`，测试无法注入进程级 env
 - `substitute_env_vars` **不递归展开默认值**：`${PM3_SEARCH_PATH:-${HOME}/.cargo/bin:...}` 里的 `${HOME}` 会原样留在配置里 → 想让 pm3 找到 `~/.cargo/bin` 下的程序，不要改 `search_path`，直接把服务的 `script` 写成 `${HOME}/.cargo/bin/<prog>`（顶层占位符会展开）
 - args 里指代「该服务自己的可写工作目录」MUST 用 `${PM3_SERVICE_CWD}`（命令行写裸 `PM3_SERVICE_CWD`，CLI 折叠成带花括号形式），MUST NOT 写 `${HOME}/.pm3/<name>`（那把 pm3 布局烧进了参数）；只在 args 生效，`cwd`/`writable_roots`/`script` 里写它不展开、会被相对路径校验直接拒；`pm3 describe` 显示的是展开后的真实路径，不能拿它当「配置无绝对路径」的证据
@@ -240,7 +240,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 ### 门禁运行（`just cov`，四指标 100%）
 
 - 顺序 MUST 是 `just lint` → `just cov`：`cov` 只跑 nextest 不跑 clippy，`#[expect]` 失效这类问题它看不见；反过来 `cov` 又能暴露 `lint` 漏报的 test target `unused_imports`（clippy 增量缓存可能不重编测试目标）→ 两个都要跑
-- 门禁在两个平台都应 100%（曾经 macOS 差三处，已消除）→ 新出现的平台差异一律是本次改动引入的，两类根因：
+- 门禁在两个平台都应 100% → 新出现的平台差异一律是本次改动引入的，两类根因：
   - **读系统路径的薄包装**（`/proc/self` 之于 `host_uid`）：MUST 抽出接 `&Path` 参数的 inner fn（`owner_uid_of`），生产包装传常量、测试传 tempdir 与不存在的路径，两条臂在哪个平台都可达
   - **靠 sleep 竞争切换外部状态的测试**（fake `ps` 先报 alive、测试 sleep 后再 mark_gone）：慢机器上第一轮探测就已落在切换之后，于是「轮询后仍有等待者」这类分支只在快机器上被走到 → MUST 让 **fake 程序自持调用计数**（`if [ -f "$0.asked" ]; then exit 1; fi` + `touch`），第一次答 alive、第二次答 gone，与机器速度无关
 - `cargo-llvm-cov` 忽略路径含 `tests/` 的文件；`test_helpers/` 与 `test_support/` **计入**门禁，helper 里的 `panic!` 会变成未覆盖行
@@ -249,7 +249,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - **定位 region 缺口** — 症状：`just cov` 失败却一行文件明细都没打（lcov 不含 region 数据，`findFilesBelowFullCoverage` 自然无输出）
   修法：MUST 紧跟在一次 `just cov --fresh` 之后（中途不插其他 cargo 命令）跑 `cargo +nightly llvm-cov report --release --summary-only | awk 'NR>2 && $3+0>0'` 找文件，再 `--show-missing-lines`
   - 无输出且 lines 也缺 → 缺口在 bin 副本（lib+bin 双编译，region 按实例化计数）：补 e2e 走真实 binary，或让分支只存在于一处
-  - **按 crate 副本定位**（本轮唯一奏效的办法）：`frameworks` 至少有三份副本同时被计量——lib test、`pm3` bin、以及**每个 `frameworks/tests/*.rs` e2e 二进制各链一份 lib**。一行只被其中一份走到，门禁仍报缺失。定位脚本：`llvm-cov report --release --offline --json` → 取 `data[0].functions[]` 里 `filenames` 含目标文件的项 → 按名字里的 `Cs<hash>_` 分组 → 每组内对 `regions[]`（`[行起,列起,行止,列止,count,fileId,…]`）逐行取 `max(count)` → 哪一组为 0 就得让**那份副本**也走到（lib 侧缺补单测、bin/e2e 侧缺补 `frameworks/tests/` 用例）。本轮 `commands.rs` 的 `Error::UnsavedStart` 分支有 lib 单测仍挂，补一条 e2e 才过
+  - **按 crate 副本定位**：`frameworks` 至少有三份副本同时被计量——lib test、`pm3` bin、以及**每个 `frameworks/tests/*.rs` e2e 二进制各链一份 lib**。一行只被其中一份走到，门禁仍报缺失。定位脚本：`llvm-cov report --release --offline --json` → 取 `data[0].functions[]` 里 `filenames` 含目标文件的项 → 按名字里的 `Cs<hash>_` 分组 → 每组内对 `regions[]`（`[行起,列起,行止,列止,count,fileId,…]`）逐行取 `max(count)` → 哪一组为 0 就得让**那份副本**也走到（lib 侧缺补单测、bin/e2e 侧缺补 `frameworks/tests/` 用例）
   - 无输出而 lines 100% → 缺的是 `?`/短路的纯 region，重点怀疑新加的 `?`
   - 查完回到 `--fresh`
 - **lcov 明细全绿而门禁仍挂** — 症状：门禁报 `lines 382/383, branches 29/30`，但该文件的 `DA:`/`BRDA:` 逐条全非零、`--show-missing-lines` 不出列、`llvm-cov report --text` 里也找不到计数为 0 的行
@@ -271,7 +271,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - 轮询循环的 fall-through `}` 不产生计数（`for _ in 0..=n` 尤甚）→ 让函数返回值并在循环后以 `true` 收尾（`while cond { if 超预算 { return false } ... } true`），fall-through 才有可命中的 region
 - `tokio::select!` 展开出的不可达 region 无法覆盖；用一个 forward task 把两个 channel 汇成一个，主循环只 `recv()` 一个 queue
 - 泛型/`impl Trait` 参数会按实例化各算一份 region：把 `shutdown: impl Future` 改成 `Pin<Box<dyn Future + Send>>` 可把实例化收敛为一份
-- 泛型函数里的 `if` 若被两份实例化各走一半（lib 测试只走 true、e2e 只走 false），覆盖率**加多少测试都补不满**（组内取 max，见上一节）→ MUST 把判断抽成**非泛型**纯函数放进 `usecases`，在那里单测两条臂。踩过的坑：`Supervisor::stop_all` 里的 `if covered.contains(&pid)` → 抽成 `query::unswept_pids(tracked, scheduled)`。这类判断本就是业务查询，抽出去顺带把分层也修对了
+- 泛型函数里的 `if` 若被两份实例化各走一半（lib 测试只走 true、e2e 只走 false），覆盖率**加多少测试都补不满**（组内取 max，见上一节）→ MUST 把判断抽成**非泛型**纯函数放进 `usecases`，在那里单测两条臂（实例：`Supervisor::stop_all` 的 `if covered.contains(&pid)` → 抽成 `query::unswept_pids(tracked, scheduled)`）。这类判断本就是业务查询，抽出去顺带把分层也修对了
 - 不可达的防御分支应**重写消除**，而非加测试掩盖
 
 ### 集成 / e2e 技法
@@ -293,8 +293,8 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 ### 残留清理
 
 - **自动 reap**：`just test` 与 `just cov` 跑前跑后各执行一次 `dev_scripts/reap.ts`，收走泄漏的 e2e daemon（连带子孙进程 TERM→KILL、删 fixture 临时目录）。三守卫全中才收：`ppid == 1`（在跑测试的 daemon 父进程是测试进程，不动）+ 二进制在 `<repo>/target/` 下（真机 `~/bin/pm3` 不动）+（config 已消失或含 `pm3-e2e-never-installed`/`pm3-fixture` 指纹）（手工 mktemp 的 home 不动）。只有 `just` 本身被 Ctrl-C 杀掉时才需要下面的手工排查
-- e2e 会泄漏 daemon 与子进程（tempdir 已删、进程仍在）：排查真机状态前先 `pgrep -f 'pm3 daemon --config /var/folders'`（Linux 是 `/tmp/.tmp*`）与 `pgrep -f 'pm3 __sleep'` 各清一遍，否则 `pgrep`/端口结果会误导；子进程自 `process_group(0)` 起不再随测试进程组被连带清理
-- 列残留 MUST 用 `pgrep -x pm3` 再逐个 `ps -o pid=,args= -p <pid>` 核对：`pgrep -f` 会把发起它的 shell 一起匹配进来（本轮就误报了两个 pid）。泄漏的 e2e daemon 特征是 `ppid=1` + `--config` 指向已不存在的 tempdir，真机那份指向 `~/.pm3/config.yaml`，别杀错
+- e2e 会泄漏 daemon 与子进程（tempdir 已删、进程仍在）：排查真机状态前先清一遍，否则 `pgrep`/端口结果会误导；子进程自 `process_group(0)` 起不再随测试进程组被连带清理。泄漏的 e2e daemon 特征是 `ppid=1` + `--config` 指向已不存在的 tempdir（macOS `/var/folders/...`、Linux `/tmp/.tmp*`），真机那份指向 `~/.pm3/config.yaml`，别杀错
+- 列残留 MUST 用 `pgrep -x pm3` 再逐个 `ps -o pid=,args= -p <pid>` 核对：`pgrep -f` 会把发起它的 shell 一起匹配进来
 - **nextest 中断残留** — 症状：flake 触发取消剩余测试 → `TempDir` 的 Drop 跑不到，`$TMPDIR` 留下 e2e fixture 目录（`config.yaml` + `home/{logs,service,pm3.sock}`）
   修法：`rg -l --hidden 'pm3-e2e-never-installed|pm3-fixture' "$TMPDIR" -g config.yaml` 定位
   陷阱：`rg` 默认跳过隐藏目录而这些正是 `.tmp*`，漏 `--hidden` 会得到假阴性；按 label 指纹而非目录名匹配，才不会误删真机配置

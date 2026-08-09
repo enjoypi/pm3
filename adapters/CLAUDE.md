@@ -37,7 +37,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 
 - macOS `sandbox-exec` 的 `subpath` 只认真实路径，`/var/...` 这类符号链接不匹配 → spawn 前必须 canonicalize `cwd` 与 `writable_roots`
 - 后端程序名从 `SandboxProgramSet` 取（`SandboxBackend::resolve(&programs, search_path)`），`SandboxBackend` 本身只是 `Seatbelt`/`Bwrap` 两个标签、不再持有路径常量；`detect_host_backend` 在 `frameworks` 侧由 `SandboxProgramSet::from_config(&config.sandbox)` 喂入
-- `materialise_workspace` MUST NOT 改写 `spec.sandbox.writable_roots`——它是身份指纹的输入（见根 `CLAUDE.md`「身份指纹与接管」）：canonicalize 的结果**追加**进 `derived_roots`（与声明值相同时不重复追加），沙箱靠 `granted_roots()` 同时授予两者
+- `materialise_workspace` MUST NOT 改写 `spec.sandbox.writable_roots`（指纹纪律见根「身份指纹与接管」）：canonicalize 的结果**追加**进 `derived_roots`，与声明值相同时不重复追加
 - `materialise_workspace` 里展开 `${PM3_SERVICE_CWD}` MUST 排在 `spec.cwd = real_path(...)` **之后**；提前替换会把未 canonicalize 的 cwd 写进 args，正好复现上面那个陷阱
   回归测试：`src/tests/workspace_tests.rs::a_placeholder_expands_to_the_real_path_not_the_symlink` 与 `frameworks/tests/sandbox_isolation.rs::a_confined_app_can_write_through_the_cwd_placeholder`
 
@@ -55,8 +55,8 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 服务管理器
 
 - unit 文件位置由 OS 约定在**本层**派生（`~/Library/LaunchAgents/{label}.plist` / `~/.config/systemd/user/{label}.service`），**不进配置**——单个配置项无法同时对两个平台正确；`$HOME` 由 `frameworks` 注入，测试传 tempdir 就不会碰真实 `~`。但**管理器二进制的路径进配置**（`ServiceProgramSet::from_config`，见根 `CLAUDE.md`「配置与路径」）：`ServiceProgramSet` 刻意没有 `Default` impl，唯一生产构造点是 `open_service_session`，测试仍可经 `ServiceContext.programs: Option<&_>` 注入替身
-- **两平台的「何时重启」语义靠 `restart_condition` 统一**：`always` → systemd `Restart=always` / launchd `KeepAlive=<true/>`；`on-failure` → systemd `Restart=on-failure` / launchd `KeepAlive=<dict><key>SuccessfulExit</key><false/></dict>`。此前 systemd 侧写死 `on-failure` 而 launchd 侧写死无条件 `KeepAlive`，同一份配置在两个平台上行为相反（macOS 正常退出会被拉起、Linux 不会）。默认值取 `always`（与 `restart.autorestart: true` 的意图一致），所以**从旧版升上来的 Linux 机器跑 `service install --force` 后重启行为会变**，要旧语义就把 `pm3.service.restart_condition` 设回 `on-failure`。Windows（schtasks）不参与这张表：Task Scheduler 只有 RestartOnFailure，统一语义由 `.cmd` 包装脚本末尾的恒 `exit /b 1` 实现，`restart_condition` 两个取值在 Windows 上行为相同（见根 `CLAUDE.md`「Windows」节）
-- systemd 的转义表只剩 `escape_value` 一份，`quote_token` 委托它加一对引号 → 补转义规则只改 `escape_value`；MUST NOT 再复制一份（`ExecStart` 与 `Description`/`Environment` 曾各走一份，漏改一处就出现「参数被 systemd 二次解析、unit 装得上却起不来」的半修状态）
+- **systemd 与 launchd 的「何时重启」语义靠 `restart_condition` 统一**：`always` → systemd `Restart=always` / launchd `KeepAlive=<true/>`；`on-failure` → systemd `Restart=on-failure` / launchd `KeepAlive=<dict><key>SuccessfulExit</key><false/></dict>`。默认值取 `always`（与 `restart.autorestart: true` 的意图一致；旧版两管理器行为不一致，升级后要旧语义就显式设 `pm3.service.restart_condition: on-failure`）。Windows（schtasks）不参与这张表：Task Scheduler 只有 RestartOnFailure，统一语义由 `.cmd` 包装脚本末尾的恒 `exit /b 1` 实现，`restart_condition` 两个取值在 Windows 上行为相同（见根 `CLAUDE.md`「Windows」节）
+- systemd 的转义表只剩 `escape_value` 一份，`quote_token` 委托它加一对引号 → 补转义规则只改 `escape_value`；MUST NOT 再复制一份——漏改一处就会出现「参数被 systemd 二次解析、unit 装得上却起不来」
 - `UnitCommand.env` 只有 `user_scoped()` 会填（一条 `XDG_RUNTIME_DIR`，值来自 `UnitProgramSet.runtime_dir`）：`systemctl --user` 在非登录会话里没有它就连不上 user bus，而 launchctl 与 loginctl 走的都不是 user bus，故它们的命令 env 必须为空。新增 systemctl 子命令 MUST 经 `user_scoped`，别自己拼 `--user`
 - `install_plan` 接 `LingerState`：`Enabled` 时不生成 `enable-linger` 那步（它走 polkit，非交互会话必失败）。判定在 `runner::linger_state`，launchd 直接回 `Unknown`（不 fork loginctl）；`dry_run` 也会先查一次，所以假 loginctl 替身要按 `$1` 分派（`show-user` 回 `yes`/`no`，`enable-linger` 另算）
 - `capture()` MUST 包 `command_timeout_ms` 超时：`systemctl --user` 在无 bus 的非登录会话里、`launchctl load` 在 launchd 繁忙时都可能长时间挂住，没有超时会让 `pm3 service install/uninstall` 无限期卡死。失败走 `ServiceCommandError::Stalled`

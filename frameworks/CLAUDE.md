@@ -24,7 +24,7 @@
 ### daemon 编排
 
 - 业务判断一律不在本层：`Daemon` 只做「收事件 → 问 `Supervisor` → 派发效果」，新增行为改 `usecases/supervisor.rs`，本层只在 `TaskBoard::apply` 里补一条 spawn/abort
-- 本层 MUST NOT 自己给进程发信号：收尾清扫走 `Supervisor::force_kill_survivors`，与 `on_force_kill` 共用 `sweep_pid` 的身份守卫（曾经在 `Daemon::force_kill_survivors` 里裸 `ports.force_kill(pid).await.ok()`，既不校验 token 也不记失败日志，pid 复用后会打掉无关进程组）
+- 本层 MUST NOT 自己给进程发信号：收尾清扫走 `Supervisor::force_kill_survivors`，与 `on_force_kill` 共用 `sweep_pid` 的身份守卫（规则见根「进程与信号」）
 - 一种效果 MUST 只有一个执行者：`WatchExit` 的 spawn 也在 `TaskBoard` 里，别让 `Daemon::run` 提前截胡——那会让 `TaskBoard` 的对应 match arm 永不可达，覆盖率补不上（不可达分支应重写消除，不是加测试掩盖）
 
 ### CLI
@@ -32,7 +32,7 @@
 - `main() -> Result<()>` 会用 **Debug** 打印错误（`Error: ServiceConflict {..}`）→ MUST 用 `main() -> ExitCode` + 显式 `eprintln!("{error}")`
 - 全局默认值 MUST NOT 在 `execute()` 里现算，交给 clap `default_value_t` 在构建期算
   原因：e2e 的假进程是 `pm3 __sleep`，子进程环境被 `env_clear()` 清空后没有 `HOME`；「所有子命令都先解析配置路径」会让 sleeper 一启动就退出（症状：e2e 里 app 显示 `stopped ↺1`）。不读配置的命令自然不受影响
-- CLI 侧日志：`open_session` / `open_service_session` 各调一次 `init_cli_telemetry`（写 **stderr**，不能污染作为报文的 stdout）。MUST NOT 挪到 `dispatch`/`execute` 里——`pm3 __sleep` 不读配置（子进程 `env_clear()` 后没有 `HOME`），`pm3 daemon` 自己装 `LogSink::Stdout` 那份；`try_init` 的重复安装由 `.ok()` 兜住
+- CLI 侧日志：`open_session` / `open_service_session` 各调一次 `init_cli_telemetry`（写 **stderr**，不能污染作为报文的 stdout）。MUST NOT 挪到 `dispatch`/`execute` 里——`pm3 __sleep` 不读配置（原因见上条），`pm3 daemon` 自己装 `LogSink::Stdout` 那份；`try_init` 的重复安装由 `.ok()` 兜住
 - 早期校验 MUST 用 `pm3.search_path` 而非 `std::env::var("PATH")`，`sandbox_probe::detect_host_backend` 也是（它 MUST 返回解析后的 `HostSandbox { backend, program }` 绝对路径，不能只回一个 bool：子进程 `env_clear()` 后裸名 `bwrap` 只在 `/bin:/usr/bin` 里找，装在 `/usr/local/bin` 就每次 spawn 报 ENOENT 而探测仍宣称沙箱可用）
 
 ### 服务文件与回滚
@@ -47,7 +47,7 @@
 
 ### e2e（`tests/`）
 
-每个 e2e 用独立 `PM3_HOME` tempdir。既有覆盖面：全生命周期 CLI 链路、沙盒真隔离（cwd 内可写 / cwd 外被拒 / 网络被拒）、崩溃熔断、依赖启动序与环检测、自动持久化与 `resurrect`、孤儿 socket 自愈、SIGINT 吞掉且 SIGTERM 退出。新增端到端行为时先看这里有没有现成场景可挂。平台门禁走文件第一行的 `#![cfg(unix)]` / `#![cfg(windows)]`（后者目前只有 `service_windows.rs`：dry-run 渲染 + 真 schtasks 注册/卸载），MUST NOT 动挂载点（clippy `tests_outside_test_module` 只认 `#[cfg(test)]`）
+每个 e2e 用独立 `PM3_HOME` tempdir。既有覆盖面：全生命周期 CLI 链路、沙盒真隔离（cwd 内可写 / cwd 外被拒 / 网络被拒）、崩溃熔断、依赖启动序与环检测、自动持久化与 `resurrect`、孤儿 socket 自愈、SIGINT 吞掉且 SIGTERM 退出。新增端到端行为时先看这里有没有现成场景可挂。平台门禁走文件第一行的 `#![cfg(unix)]` / `#![cfg(windows)]`（后者目前只有 `service_windows.rs`：dry-run 渲染 + 真 schtasks 注册/卸载；挂载点约束见根「Windows」节）
 
 ### 覆盖率（本层最容易踩）
 
