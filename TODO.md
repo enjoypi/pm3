@@ -6,28 +6,18 @@
 
 ## 发布与用户安装方案
 
-现状：仓库没有 README。装 pm3 两条路：clone 仓库跑 `just install`；或 GitHub Releases 下三平台二进制（macOS arm64、Linux x86_64/arm64，tag `v*` 触发 `.github/workflows/release.yml` 构建，产物带 LICENSE 与安装提示）。
+现状：README 已写三条安装路径——`install.sh` 一行装（curl|sh，sha256 校验后自动 `pm3 install`）、GitHub Releases 手动下载（产物带 `config.yaml` 与 `.sha256`）、`cargo install --git <url> --bin pm3 --locked`（已实测 virtual workspace 下 `--bin` 能定位）。**前提：仓库转 public**，私有状态下匿名下载全部 404。
 
-- [ ] **`cargo install`**：要求**包名**就是用户敲的名字，而现在带 `[[bin]] pm3` 的包叫 `frameworks` ⇒ `cargo install pm3` 装不了。四个 crate 得改名（`pm3` + `pm3-entities` / `pm3-usecases` / `pm3-adapters`）并**全部发到 crates.io**——path 依赖不能发布，少一个都装不上。`entities`/`adapters` 这类通用名在 crates.io 上本就占不到，改名是必经之路
+- [ ] **`cargo install`（crates.io，暂缓：已拍板不改名先不发布）**：要求**包名**就是用户敲的名字，而现在带 `[[bin]] pm3` 的包叫 `frameworks` ⇒ `cargo install pm3` 装不了。四个 crate 得改名（`pm3` + `pm3-entities` / `pm3-usecases` / `pm3-adapters`）并**全部发到 crates.io**——path 依赖不能发布，少一个都装不上。`entities`/`adapters` 这类通用名在 crates.io 上本就占不到，改名是必经之路
   - MUST NOT 用「合并成单 crate」绕开：`arch_tests` 的依赖方向强制是**靠 crate 边界**成立的，合并等于把它拆了
-  - 还缺 crates.io 必需元数据：`license`（或 `license-file`）、`description`、`repository`、`readme`，四个 `Cargo.toml` 现在一个都没有 ⇒ 与下面的 README/LICENSE 两条绑在一起做
+  - 还缺 crates.io 必需元数据：`license`（或 `license-file`）、`description`、`repository`、`readme`，四个 `Cargo.toml` 现在一个都没有
   - `dev_scripts/rename.ts` 是改**项目名**的模板脚本，不负责这次的 crate 改名
-- [ ] **`cargo install --git <url> --bin pm3`**：不需要发布、不要求包名匹配，成本最低 ⇒ 可以先把这条写进 README 顶住，再慢慢推 crates.io
-- [ ] **`curl … | sh` 一行装**：前提（CI 构建矩阵 + GitHub Releases 产物）已满足，缺安装器脚本本体。装完是裸二进制，紧接着跑 `pm3 install` 就能自己落位并注册开机自启
-- [ ] 安装文档 MUST 写明运行时依赖：`/bin/ps` 与 `/bin/kill`（procps，缺了每次 daemon 重启全部服务被判探测失败而驱逐）、Linux 侧的 `bwrap`（缺了沙箱起不来）
 - [ ] 可选分发面：Homebrew tap、`cargo-binstall`（后者跟着 Releases 产物白拿）
-
-## README（中文）
-
-- [ ] 仓库根还没有 README。README 写定位（极简 pm2 + 严格沙箱）、安装、快速上手（`start` / `list` / `logs` / `restart` / `service install`）、默认沙箱行为（只写自己 cwd、拒网、`read: minimal`）、`<name>.env` 的凭据约定、两个目录各放什么
-  - 与 `docs/requirements.md` **分工要清楚**：那份是需求描述（为什么这样设计），README 是上手指南（怎么用）⇒ MUST NOT 复制粘贴，否则两份必然漂移
-  - crates.io 发布要求 `readme` 与 `license` 字段 ⇒ 与上一节联动
-  - README 内容：1. pm3是什么，为什么要新做个 pm3，设计理念是什么；2. 安装方法；3. 使用方法；4. 和 pm2 相比有什么优劣；5. 和 docker/podman 相比有什么优劣；6. 性能测试数据
+- [ ] install.sh 真机验收：等带 `.sha256` 与 `config.yaml` 的新 release 发出后，`HOME=$(mktemp -d)` 跑 install.sh 验首装路径，再跑一次验升级路径
 
 ## Windows 收尾
 
 PM3-59 已合入并发版（v1.11.0）：`pm3 service install/uninstall/status` 与 `pm3 install` 换代链在 Windows 走 Task Scheduler + 命名管道，能力矩阵见 `docs/windows.md`。剩余验收项：
 
-- [ ] Windows 真机验收：`service install --dry-run` 目检 → 注册/`/Query` → start/list/logs/stop → 注销重登自启 → `pm3 install` 换代 → uninstall 清场（`frameworks/tests/service_windows.rs` 已备好同路径 e2e）
-- [ ] CI 无 Windows runner：交叉编译只过了 `just check-windows`（check + clippy），运行时行为无自动化覆盖；考虑给 release.yml 加 windows-latest 跑 e2e
+- [ ] Windows 真机验收：`service install --dry-run` 目检 → 注册/`/Query` → start/list/logs/stop → 注销重登自启 → `pm3 install` 换代 → uninstall 清场（`frameworks/tests/service_windows.rs` 已备好同路径 e2e；release.yml 已有 windows-latest job 在 tag 时自动跑这份 e2e）
 - [ ] schtasks 非英文 locale 下 `/Query` 输出解析失效（状态恒报 not running），需要时换 PowerShell `Get-ScheduledTask` 的对象化输出

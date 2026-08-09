@@ -47,6 +47,10 @@ install:
 monitor kind:
     @bun dev_scripts/monitor.ts "$@"
 
+[doc("性能采集：临时 home 起 daemon，测冷启动/RSS/start 到 Online/list 热路径，输出 markdown 表格")]
+bench:
+    bun dev_scripts/bench.ts
+
 [doc("模板改名：全仓当前项目名替换为新 crate 名，随后跑 cargo check 验证")]
 rename new_name:
     bun dev_scripts/rename.ts "$@"

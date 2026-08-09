@@ -20,7 +20,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 | `frameworks` | 组装与入口：`main.rs`/`cli.rs`/`daemon/`/`client/`/`service.rs`/`signal.rs` | `frameworks/CLAUDE.md` |
 | `arch_tests` | 依赖方向强制 | `arch_tests/CLAUDE.md` |
 
-`dev_scripts/*.ts`（Bun）驱动 `just` 的复杂 recipe：`cov.ts` + `coverage_gate.ts`（覆盖率门禁）、`monitor.ts`、`rename.ts`、`cargo_invocation.ts`。
+`dev_scripts/*.ts`（Bun）驱动 `just` 的复杂 recipe：`cov.ts` + `coverage_gate.ts`（覆盖率门禁）、`monitor.ts`、`rename.ts`、`cargo_invocation.ts`、`bench.ts`（性能采集）。
 
 | recipe | 作用 |
 |---|---|
@@ -32,6 +32,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 | `just cov` | **日常验收**：四指标 + lcov 真值 plate + 生产文件完整性自检；`--fresh` 清 workspace 重算 |
 | `just install` | 装到真机：opt-level 3 构建后调 `pm3 install`（备份、原子换二进制、重装 unit、核对接管） |
 | `just monitor <kind>` | tail 服务日志；`crash` 匹配 panic 与致命信号，`business` 匹配 error 与 WARN/ERROR |
+| `just bench` | 性能采集：临时 home 起 daemon 实测冷启动/RSS/start/list 热路径，输出 markdown 表格 |
 | `just typecheck` | TS 严格检查，禁 `any` / 非空断言 / `ts-ignore` |
 | `just test-scripts` | dev_scripts 的 TS 单元测试 |
 | `just rename <name>` | 模板改名 |

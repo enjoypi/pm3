@@ -44,16 +44,34 @@ jobs:
         run: |
           strip target/release/pm3
           mkdir -p dist/stage
-          cp target/release/pm3 LICENSE dist/stage/
-          tar -czf "dist/pm3-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" -C dist/stage pm3 LICENSE
+          cp target/release/pm3 LICENSE config.yaml dist/stage/
+          tar -czf "dist/pm3-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" -C dist/stage pm3 LICENSE config.yaml
+          (cd dist && shasum -a 256 "pm3-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" > "pm3-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz.sha256")
 
       - uses: actions/upload-artifact@v4
         with:
           name: pm3-${{ matrix.target }}
-          path: dist/*.tar.gz
+          path: dist/*.tar.gz*
+
+  windows-e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: e2e
+        run: cargo nextest run --locked --workspace --release
+        timeout-minutes: 30
 
   release:
-    needs: build
+    needs: [build, windows-e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -64,14 +82,23 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.tar.gz
+          files: dist/*.tar.gz*
           generate_release_notes: true
           body: |
             ## 安装
 
-            1. 下载对应平台的 tar.gz 解开：`tar xzf pm3-<版本>-<平台>.tar.gz`
-            2. 把 `pm3` 放进 PATH（如 `~/bin`）
-            3. 跑 `pm3 install`：备份旧版、原子落位、注册开机自启（launchd / systemd user）
+            一行装（校验 sha256、落 `~/bin/pm3`、自动 `pm3 install` 注册开机自启）：
+
+            ```sh
+            curl -fsSL https://raw.githubusercontent.com/enjoypi/pm3/main/install.sh | sh
+            ```
+
+            手动安装：
+
+            1. 下载对应平台的 tar.gz 与同名 `.sha256`，校验：`shasum -a 256 -c pm3-<版本>-<平台>.tar.gz.sha256`（Linux 用 `sha256sum -c`）
+            2. 解开：`tar xzf pm3-<版本>-<平台>.tar.gz`（内含 `pm3`、`LICENSE`、`config.yaml`）
+            3. 首次安装：把 `pm3` 与 `config.yaml` 放同一目录后跑 `./pm3 --config ./config.yaml install`（默认配置会被落进 `~/.pm3/config.yaml`，二进制落 `~/bin/pm3`）
+            4. 升级：直接跑 `pm3 install`（读既有配置，备份旧版、原子落位、重装自启）
 
             macOS：二进制未签名，浏览器下载的首次运行前 `xattr -d com.apple.quarantine pm3`（curl 下载不带 quarantine 属性可跳过）。
 
