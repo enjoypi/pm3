@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
 pub const PATH_SEPARATOR: char = ':';
+#[cfg(windows)]
+pub const PATH_SEPARATOR: char = ';';
 pub const HOME_PLACEHOLDER: &str = "${HOME}";
 pub const SERVICE_CWD_NAME: &str = "PM3_SERVICE_CWD";
 pub const SERVICE_CWD_PLACEHOLDER: &str = "${PM3_SERVICE_CWD}";
@@ -46,7 +49,7 @@ pub fn fold_home(value: &str, home: Option<&str>) -> String {
     if suffix.is_empty() {
         return HOME_PLACEHOLDER.to_string();
     }
-    let Some(relative) = suffix.strip_prefix('/') else {
+    let Some(relative) = suffix.strip_prefix(['/', '\\']) else {
         return value.to_string();
     };
     format!("{HOME_PLACEHOLDER}/{relative}")

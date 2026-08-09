@@ -1,8 +1,10 @@
 mod actions;
 mod command;
+mod escape;
 mod launchd;
 mod plan;
 mod runner;
+mod schtasks;
 mod spec;
 mod systemd;
 

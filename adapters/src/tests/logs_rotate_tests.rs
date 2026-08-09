@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use super::*;
 
 fn logs_dir_with(files: &[(&str, usize)]) -> (tempfile::TempDir, String) {

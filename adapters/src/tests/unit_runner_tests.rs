@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::path::{Path, PathBuf};
 
 use super::*;
@@ -392,6 +393,17 @@ async fn launchd_never_asks_about_linger() {
 }
 
 #[tokio::test]
+async fn schtasks_never_asks_about_linger() {
+    let state = linger_state(
+        UnitKind::WinSchtasks,
+        &program_set(MISSING_PROGRAM),
+        TIMEOUT_MS,
+    )
+    .await;
+    assert_eq!(state, LingerState::Unknown);
+}
+
+#[tokio::test]
 async fn a_manager_that_never_answers_is_given_up_on() {
     let dir = tempfile::tempdir().expect("temp dir");
     let program = fake_program(dir.path(), "slow-systemctl", "sleep 30");
@@ -469,6 +481,16 @@ async fn a_refused_pid_query_means_nothing_is_supervised() {
     let pid = query_supervised_pid(&spec, &program_set(FALSE_PROGRAM), TIMEOUT_MS)
         .await
         .expect("a refused query is not an error");
+    assert_eq!(pid, None);
+}
+
+#[tokio::test]
+async fn a_schtasks_task_has_no_manager_pid_to_read() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = spec_for(UnitKind::WinSchtasks, dir.path());
+    let pid = query_supervised_pid(&spec, &program_set(TRUE_PROGRAM), TIMEOUT_MS)
+        .await
+        .expect("a successful query is not an error");
     assert_eq!(pid, None);
 }
 

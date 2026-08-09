@@ -196,3 +196,77 @@ fn an_install_overwrites_exactly_the_config_and_the_unit() {
     let targets = write_targets(&spec);
     assert_eq!(targets, [spec.config_path.clone(), spec.unit_path()]);
 }
+
+#[test]
+fn a_schtasks_install_writes_the_xml_and_wrapper_then_creates_and_runs() {
+    let steps = plan_for(UnitKind::WinSchtasks, true);
+    assert_eq!(
+        described(&steps),
+        [
+            "write /home/dev/.pm3/config.yaml",
+            "write /home/dev/.pm3/service/pm3-test.xml",
+            "write /home/dev/.pm3/service/pm3-test-daemon.cmd",
+            "run /Create /TN pm3-test /XML /home/dev/.pm3/service/pm3-test.xml /F",
+            "run /Run /TN pm3-test",
+        ]
+    );
+}
+
+#[test]
+fn a_schtasks_uninstall_stops_deletes_then_removes_both_files() {
+    let steps = plan_for(UnitKind::WinSchtasks, false);
+    assert_eq!(
+        described(&steps),
+        [
+            "try /End /TN pm3-test",
+            "try /Delete /TN pm3-test /F",
+            "remove /home/dev/.pm3/service/pm3-test.xml",
+            "remove /home/dev/.pm3/service/pm3-test-daemon.cmd",
+        ],
+        "a refused /End or /Delete must not strand the task files"
+    );
+}
+
+#[test]
+fn a_schtasks_install_carries_the_rendered_task_xml() {
+    let steps = plan_for(UnitKind::WinSchtasks, true);
+    assert!(
+        contents_of(&steps).contains("<LogonTrigger>"),
+        "got: {}",
+        contents_of(&steps)
+    );
+}
+
+#[test]
+fn schtasks_status_queries_the_task_listing() {
+    let spec = spec_for(UnitKind::WinSchtasks, Path::new("/home/dev"));
+    let command = status_command(&spec, &program_set(FAKE));
+    assert_eq!(
+        command.args,
+        ["/Query", "/TN", "pm3-test", "/V", "/FO", "LIST"]
+    );
+}
+
+#[test]
+fn schtasks_supervision_has_no_manager_pid_to_read() {
+    let spec = spec_for(UnitKind::WinSchtasks, Path::new("/home/dev"));
+    let command = supervised_pid_command(&spec, &program_set(FAKE));
+    assert_eq!(
+        command.args,
+        ["/Query", "/TN", "pm3-test", "/V", "/FO", "LIST"]
+    );
+}
+
+#[test]
+fn a_schtasks_install_also_overwrites_the_wrapper() {
+    let spec = spec_for(UnitKind::WinSchtasks, Path::new("/home/dev"));
+    let targets = write_targets(&spec);
+    assert_eq!(
+        targets,
+        [
+            spec.config_path.clone(),
+            spec.unit_path(),
+            spec.wrapper_path()
+        ]
+    );
+}

@@ -3,10 +3,12 @@ use std::path::PathBuf;
 use super::{
     command::{
         UnitCommand, UnitProgramSet, launchctl_list, launchctl_load, launchctl_unload,
-        loginctl_enable_linger, systemctl_daemon_reload, systemctl_disable_now,
-        systemctl_enable_now, systemctl_is_active, systemctl_show_main_pid,
+        loginctl_enable_linger, schtasks_create, schtasks_delete, schtasks_end, schtasks_query,
+        schtasks_run, systemctl_daemon_reload, systemctl_disable_now, systemctl_enable_now,
+        systemctl_is_active, systemctl_show_main_pid,
     },
     launchd::render_plist,
+    schtasks::{render_task_xml, render_wrapper},
     spec::{LingerState, UnitKind, UnitSpec},
     systemd::render_unit,
 };
@@ -30,6 +32,7 @@ pub fn render_unit_contents(spec: &UnitSpec) -> String {
     match spec.kind {
         UnitKind::Launchd => render_plist(spec),
         UnitKind::Systemd => render_unit(spec),
+        UnitKind::WinSchtasks => render_task_xml(spec),
     }
 }
 
@@ -57,6 +60,17 @@ pub fn install_plan(
             UnitStep::Run(launchctl_load(programs, &spec.unit_path())),
         ],
         UnitKind::Systemd => systemd_install_steps(spec, programs, settle, write, linger),
+        UnitKind::WinSchtasks => vec![
+            settle,
+            write,
+            UnitStep::Write {
+                dir: spec.unit_dir.clone(),
+                path: spec.wrapper_path(),
+                contents: render_wrapper(spec),
+            },
+            UnitStep::Run(schtasks_create(programs, &spec.label, &spec.unit_path())),
+            UnitStep::Run(schtasks_run(programs, &spec.label)),
+        ],
     }
 }
 
@@ -74,6 +88,14 @@ pub fn uninstall_plan(spec: &UnitSpec, programs: &UnitProgramSet) -> Vec<UnitSte
             UnitStep::TryRun(systemctl_disable_now(programs, &spec.unit_name())),
             remove,
             UnitStep::TryRun(systemctl_daemon_reload(programs)),
+        ],
+        UnitKind::WinSchtasks => vec![
+            UnitStep::TryRun(schtasks_end(programs, &spec.label)),
+            UnitStep::TryRun(schtasks_delete(programs, &spec.label)),
+            remove,
+            UnitStep::Remove {
+                path: spec.wrapper_path(),
+            },
         ],
     }
 }
@@ -106,6 +128,7 @@ pub fn status_command(spec: &UnitSpec, programs: &UnitProgramSet) -> UnitCommand
     match spec.kind {
         UnitKind::Launchd => launchctl_list(programs, &spec.label),
         UnitKind::Systemd => systemctl_is_active(programs, &spec.unit_name()),
+        UnitKind::WinSchtasks => schtasks_query(programs, &spec.label),
     }
 }
 
@@ -114,12 +137,17 @@ pub fn supervised_pid_command(spec: &UnitSpec, programs: &UnitProgramSet) -> Uni
     match spec.kind {
         UnitKind::Launchd => launchctl_list(programs, &spec.label),
         UnitKind::Systemd => systemctl_show_main_pid(programs, &spec.unit_name()),
+        UnitKind::WinSchtasks => schtasks_query(programs, &spec.label),
     }
 }
 
 #[must_use]
 pub fn write_targets(spec: &UnitSpec) -> Vec<PathBuf> {
-    vec![spec.config_path.clone(), spec.unit_path()]
+    let mut targets = vec![spec.config_path.clone(), spec.unit_path()];
+    if spec.kind == UnitKind::WinSchtasks {
+        targets.push(spec.wrapper_path());
+    }
+    targets
 }
 
 #[cfg(test)]

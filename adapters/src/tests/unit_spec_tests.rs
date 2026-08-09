@@ -51,6 +51,7 @@ fn the_daemon_args_carry_the_absolute_config_path() {
 fn each_service_kind_reports_its_own_name() {
     assert_eq!(UnitKind::Launchd.as_str(), "launchd");
     assert_eq!(UnitKind::Systemd.as_str(), "systemd");
+    assert_eq!(UnitKind::WinSchtasks.as_str(), "schtasks");
 }
 
 #[test]
@@ -103,6 +104,50 @@ fn systemd_reports_stopped_for_an_inactive_unit() {
 #[test]
 fn systemd_reports_stopped_for_empty_output() {
     assert!(!parse_run_state(UnitKind::Systemd, true, ""));
+}
+
+#[test]
+fn schtasks_units_live_next_to_the_runtime_state() {
+    let dir = unit_dir_of(UnitKind::WinSchtasks, Path::new("/home/dev"));
+    assert_eq!(dir, PathBuf::from("/home/dev/.pm3/service"));
+}
+
+#[test]
+fn a_schtasks_unit_is_an_xml_file_with_a_cmd_wrapper_beside_it() {
+    let spec = spec_for(UnitKind::WinSchtasks, Path::new("/home/dev"));
+    assert_eq!(spec.unit_name(), "pm3-test.xml");
+    assert_eq!(spec.wrapper_name(), "pm3-test-daemon.cmd");
+    assert_eq!(
+        spec.wrapper_path(),
+        PathBuf::from("/home/dev/.pm3/service/pm3-test-daemon.cmd")
+    );
+}
+
+#[test]
+fn schtasks_reports_running_when_the_listing_says_so() {
+    assert!(parse_run_state(
+        UnitKind::WinSchtasks,
+        true,
+        "Status: Running\r\n"
+    ));
+}
+
+#[test]
+fn schtasks_reports_stopped_for_a_ready_task() {
+    assert!(!parse_run_state(
+        UnitKind::WinSchtasks,
+        true,
+        "Status: Ready\r\n"
+    ));
+}
+
+#[test]
+fn schtasks_reports_stopped_when_the_query_failed() {
+    assert!(!parse_run_state(
+        UnitKind::WinSchtasks,
+        false,
+        "Status: Running\r\n"
+    ));
 }
 
 #[test]

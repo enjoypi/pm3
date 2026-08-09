@@ -446,6 +446,17 @@ fn validate_rejects_an_empty_loginctl_path() {
 }
 
 #[test]
+fn validate_rejects_an_empty_schtasks_path() {
+    let mut cfg = valid_config();
+    cfg.pm3.service.schtasks_path = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.service.schtasks_path"
+    );
+}
+
+#[test]
 fn validate_rejects_an_unknown_restart_condition() {
     let mut cfg = valid_config();
     cfg.pm3.service.restart_condition = "sometimes".to_string();

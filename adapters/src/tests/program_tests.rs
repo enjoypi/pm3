@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use super::*;
 
 const PROBE_TARGET: &str = "pm3-probe-target";
@@ -133,6 +134,14 @@ fn a_sibling_that_merely_shares_the_prefix_is_left_alone() {
     assert_eq!(
         fold_home("/home/developer/x", Some("/home/dev")),
         "/home/developer/x"
+    );
+}
+
+#[test]
+fn a_windows_style_path_under_the_home_folds_into_a_placeholder() {
+    assert_eq!(
+        fold_home("C:\\Users\\dev\\.pm3\\config.yaml", Some("C:\\Users\\dev")),
+        "${HOME}/.pm3\\config.yaml"
     );
 }
 

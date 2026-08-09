@@ -63,6 +63,7 @@ pm3:
     launchctl_path: "${PM3_LAUNCHCTL_PATH:-/bin/launchctl}"
     systemctl_path: "${PM3_SYSTEMCTL_PATH:-/usr/bin/systemctl}"
     loginctl_path: "${PM3_LOGINCTL_PATH:-/usr/bin/loginctl}"
+    schtasks_path: "${PM3_SCHTASKS_PATH:-schtasks}"
 
 telemetry:
   service_name: "pm3"

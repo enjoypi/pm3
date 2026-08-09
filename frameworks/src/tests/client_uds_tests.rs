@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
 
 use super::*;

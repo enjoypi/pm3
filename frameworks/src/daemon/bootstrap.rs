@@ -122,14 +122,17 @@ fn spawn_daemon(launch: &DaemonLaunch<'_>) -> Result<()> {
     let errors = log
         .try_clone()
         .expect("internal error: duplicating a freshly opened log handle is infallible");
-    Command::new(&launch.program)
+    let mut command = Command::new(&launch.program);
+    command
         .arg(DAEMON_SUBCOMMAND)
         .arg(CONFIG_FLAG)
         .arg(launch.config_path)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
-        .stderr(Stdio::from(errors))
-        .process_group(0)
+        .stderr(Stdio::from(errors));
+    #[cfg(unix)]
+    command.process_group(0);
+    command
         .spawn()
         .map(|_child| ())
         .map_err(|e| Error::DaemonSpawn {

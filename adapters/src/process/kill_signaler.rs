@@ -8,9 +8,13 @@ use usecases::{SignalError, SignalScope, Signaler};
 
 use crate::exit_status::{describe_refusal, exit_code_of};
 
+#[cfg(unix)]
 pub const KILL_PROGRAM: &str = "/bin/kill";
+#[cfg(windows)]
+pub const KILL_PROGRAM: &str = "taskkill";
 
 const FORCE_SIGNAL: &str = "KILL";
+#[cfg(unix)]
 const ARGUMENT_TERMINATOR: &str = "--";
 const LOWEST_SIGNALABLE_PID: u32 = 2;
 const UNSAFE_PID_REASON: &str = "pid is outside the safe range";
@@ -38,11 +42,9 @@ impl KillSignaler {
     }
 
     async fn signal(&self, signal: &str, target: &str, pid: u32) -> Result<(), SignalError> {
-        let flag = format!("-{signal}");
+        let arguments = signal_arguments(signal, target, pid);
         let started = Instant::now();
-        let call = Command::new(&self.program)
-            .args([flag.as_str(), ARGUMENT_TERMINATOR, target])
-            .output();
+        let call = Command::new(&self.program).args(&arguments).output();
         let output = timeout(Duration::from_millis(self.timeout_ms), call)
             .await
             .map_err(|_elapsed| self.stalled(pid))?
@@ -99,17 +101,40 @@ impl Signaler for KillSignaler {
                 reason: UNSAFE_PID_REASON.to_string(),
             });
         }
+        #[cfg(unix)]
         if scope.reaches_the_group() && self.signal(signal, &group_target(pid), pid).await.is_ok() {
             return Ok(());
         }
+        #[cfg(not(unix))]
+        let _ = scope;
         self.signal(signal, &pid.to_string(), pid).await
     }
+}
+
+#[cfg(unix)]
+fn signal_arguments(signal: &str, target: &str, _pid: u32) -> Vec<String> {
+    vec![
+        format!("-{signal}"),
+        ARGUMENT_TERMINATOR.to_string(),
+        target.to_string(),
+    ]
+}
+
+#[cfg(windows)]
+fn signal_arguments(_signal: &str, _target: &str, pid: u32) -> Vec<String> {
+    vec![
+        "/PID".to_string(),
+        pid.to_string(),
+        "/T".to_string(),
+        "/F".to_string(),
+    ]
 }
 
 fn is_signalable(pid: u32) -> bool {
     pid >= LOWEST_SIGNALABLE_PID && i32::try_from(pid).is_ok()
 }
 
+#[cfg(unix)]
 fn group_target(pid: u32) -> String {
     format!("-{pid}")
 }

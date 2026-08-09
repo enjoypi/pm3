@@ -2,8 +2,10 @@ use adapters::{HostSandbox, SandboxBackend, SandboxProgramSet};
 
 #[cfg(target_os = "macos")]
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Seatbelt];
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(unix, not(target_os = "macos")))]
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Bwrap];
+#[cfg(windows)]
+const PREFERRED_BACKENDS: [SandboxBackend; 0] = [];
 
 #[must_use]
 pub fn detect_host_backend(programs: &SandboxProgramSet, search_path: &str) -> Option<HostSandbox> {

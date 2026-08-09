@@ -35,6 +35,7 @@ pub fn valid_service_config() -> ServiceConfig {
         launchctl_path: "/bin/launchctl".to_string(),
         systemctl_path: "/usr/bin/systemctl".to_string(),
         loginctl_path: "/usr/bin/loginctl".to_string(),
+        schtasks_path: "schtasks".to_string(),
     }
 }
 

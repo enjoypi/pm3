@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::{cell::Cell, io, time::Duration};
 
 use super::*;

@@ -1,4 +1,6 @@
-use adapters::{NOTHING_INSTALLED, UnitProgramSet};
+#[cfg(unix)]
+use adapters::NOTHING_INSTALLED;
+use adapters::UnitProgramSet;
 
 use super::*;
 use crate::test_support::{
@@ -24,6 +26,7 @@ fn fixture(program: &str) -> Fixture {
         launchctl: program.to_string(),
         systemctl: program.to_string(),
         loginctl: program.to_string(),
+        schtasks: program.to_string(),
         runtime_dir: None,
         uid: None,
     };
@@ -339,6 +342,25 @@ async fn an_install_settles_the_config_into_the_pm3_home() {
 }
 
 #[tokio::test]
+async fn a_schtasks_install_writes_the_task_xml_and_the_wrapper() {
+    let fixture = fixture(TRUE_PROGRAM);
+    let home = home_of(&fixture);
+    let report = install_with(&fixture, UnitKind::WinSchtasks, &home, false)
+        .await
+        .expect("the install should succeed");
+    assert!(report.contains("installed"), "got: {report}");
+    let dir = fixture.dir.path().join(".pm3/service");
+    assert!(
+        dir.join(format!("{SERVICE_LABEL}.xml")).is_file(),
+        "the task xml should exist"
+    );
+    assert!(
+        dir.join(format!("{SERVICE_LABEL}-daemon.cmd")).is_file(),
+        "the wrapper should exist"
+    );
+}
+
+#[tokio::test]
 async fn an_install_points_the_unit_at_the_settled_config() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
@@ -439,6 +461,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
         launchctl: TRUE_PROGRAM.to_string(),
         systemctl: TRUE_PROGRAM.to_string(),
         loginctl: TRUE_PROGRAM.to_string(),
+        schtasks: TRUE_PROGRAM.to_string(),
         runtime_dir: None,
         uid: None,
     };

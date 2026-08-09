@@ -49,6 +49,7 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
     launchctl_path: "/bin/launchctl"
     systemctl_path: "/usr/bin/systemctl"
     loginctl_path: "/usr/bin/loginctl"
+    schtasks_path: "schtasks"
 "#
     )
 }

@@ -11,12 +11,12 @@
 | `main.rs` | 只调 `frameworks::cli`，无重复 mod 编译 |
 | `cli.rs` / `commands.rs` | clap 定义与子命令分发 |
 | `logs.rs` | `pm3 logs`：读侧聚合（`cfg_dir` 枚举、流选择、行前缀、follow），不经 daemon |
-| `daemon/` | `bootstrap` `actor`（事件循环：把事件交给 `adapters::Supervisor`，再把返回的 `SupervisionEffect` 逐条交给 `TaskBoard`）`timers`（`TaskBoard`：纯 `JoinHandle` 表，spawn/abort cron 定时器、待重启任务、强杀延时、退出监听、就绪探针、内存采样与日志切割 tick）`socket` `service` `ports` |
-| `client/uds.rs` | CLI 侧 Unix socket 客户端（`ask` / `ask_report`） |
+| `daemon/` | `bootstrap` `actor`（事件循环：把事件交给 `adapters::Supervisor`，再把返回的 `SupervisionEffect` 逐条交给 `TaskBoard`）`timers`（`TaskBoard`：纯 `JoinHandle` 表，spawn/abort cron 定时器、待重启任务、强杀延时、退出监听、就绪探针、内存采样与日志切割 tick）`socket`（unix 是 `OwnerOnlyListener`，Windows 是 `PipeListener` 命名管道 + `pm3.sock` 存在性标记文件，对外统一 `Pm3Listener` 别名）`service` `ports` |
+| `client/uds.rs` | CLI 侧 socket 客户端（`ask` / `ask_report`）；传输按平台分叉：unix 是 `UnixStream`，Windows 是命名管道（`connect_transport` 返回 `Box<dyn Transport>`，HTTP 编解码两平台共用） |
 | `server.rs` | `serve_listener`：接管已 bound 的 listener，避开 bind→drop→re-bind 的抢占窗口 |
 | `service.rs` | `pm3 service install/uninstall` |
 | `install.rs` | `pm3 install`：备份、原子换二进制、换代重装、接管等待、before/after 对比（编排放这里，判定纯函数在 `usecases::handover`，fs/管理器探测在 `adapters::install` 与 `adapters::unit`） |
-| `signal.rs` | SIGINT 吞掉、SIGTERM 落盘退出 |
+| `signal.rs` | SIGINT 吞掉、SIGTERM 落盘退出；Windows 同 API 双实现（CTRL_C 吞掉、CTRL_SHUTDOWN 落盘退出） |
 | `layout.rs` / `telemetry.rs` / `prompt.rs` / `sandbox_probe.rs` | 路径布局、日志、交互询问、沙箱可用性探测 |
 
 ## 本层规则
@@ -47,7 +47,7 @@
 
 ### e2e（`tests/`）
 
-每个 e2e 用独立 `PM3_HOME` tempdir。既有覆盖面：全生命周期 CLI 链路、沙盒真隔离（cwd 内可写 / cwd 外被拒 / 网络被拒）、崩溃熔断、依赖启动序与环检测、自动持久化与 `resurrect`、孤儿 socket 自愈、SIGINT 吞掉且 SIGTERM 退出。新增端到端行为时先看这里有没有现成场景可挂。
+每个 e2e 用独立 `PM3_HOME` tempdir。既有覆盖面：全生命周期 CLI 链路、沙盒真隔离（cwd 内可写 / cwd 外被拒 / 网络被拒）、崩溃熔断、依赖启动序与环检测、自动持久化与 `resurrect`、孤儿 socket 自愈、SIGINT 吞掉且 SIGTERM 退出。新增端到端行为时先看这里有没有现成场景可挂。平台门禁走文件第一行的 `#![cfg(unix)]` / `#![cfg(windows)]`（后者目前只有 `service_windows.rs`：dry-run 渲染 + 真 schtasks 注册/卸载），MUST NOT 动挂载点（clippy `tests_outside_test_module` 只认 `#[cfg(test)]`）
 
 ### 覆盖率（本层最容易踩）
 

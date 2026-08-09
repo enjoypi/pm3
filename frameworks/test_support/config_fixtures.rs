@@ -31,6 +31,7 @@ pub const BWRAP_PROGRAM: &str = "bwrap";
 pub const LAUNCHCTL_PATH: &str = "/bin/launchctl";
 pub const SYSTEMCTL_PATH: &str = "/usr/bin/systemctl";
 pub const LOGINCTL_PATH: &str = "/usr/bin/loginctl";
+pub const SCHTASKS_PATH: &str = "schtasks";
 
 pub fn pm3_config_with_home(home: &str) -> Pm3Config {
     Pm3Config {
@@ -80,6 +81,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
             launchctl_path: LAUNCHCTL_PATH.to_string(),
             systemctl_path: SYSTEMCTL_PATH.to_string(),
             loginctl_path: LOGINCTL_PATH.to_string(),
+            schtasks_path: SCHTASKS_PATH.to_string(),
         },
     }
 }
@@ -133,6 +135,7 @@ pub fn config_yaml(home: &str) -> String {
     launchctl_path: "{LAUNCHCTL_PATH}"
     systemctl_path: "{SYSTEMCTL_PATH}"
     loginctl_path: "{LOGINCTL_PATH}"
+    schtasks_path: "{SCHTASKS_PATH}"
 
 telemetry:
   service_name: "pm3"
@@ -148,6 +151,7 @@ pub fn write_config(dir: &Path, home: &str) -> PathBuf {
     path
 }
 
+#[cfg(unix)]
 pub fn write_config_with_cfg_dir(dir: &Path, home: &str, cfg_dir: &str) -> PathBuf {
     let path = dir.join("config.yaml");
     let yaml = config_yaml(home).replace(
@@ -158,6 +162,7 @@ pub fn write_config_with_cfg_dir(dir: &Path, home: &str, cfg_dir: &str) -> PathB
     path
 }
 
+#[cfg(unix)]
 pub fn write_impatient_config(dir: &Path, home: &str) -> PathBuf {
     let path = dir.join("config.yaml");
     let yaml = config_yaml(home).replace(

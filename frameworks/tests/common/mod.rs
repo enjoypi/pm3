@@ -261,7 +261,8 @@ fn service_yaml(wait_for_network: bool) -> String {
     wait_for_network: {wait_for_network}
     launchctl_path: "/bin/launchctl"
     systemctl_path: "/usr/bin/systemctl"
-    loginctl_path: "/usr/bin/loginctl""#
+    loginctl_path: "/usr/bin/loginctl"
+    schtasks_path: "schtasks""#
     )
 }
 

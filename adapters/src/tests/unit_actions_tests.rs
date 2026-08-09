@@ -88,6 +88,7 @@ async fn an_install_survives_a_refused_linger() {
         launchctl: TRUE_PROGRAM.to_string(),
         systemctl: TRUE_PROGRAM.to_string(),
         loginctl: FALSE_PROGRAM.to_string(),
+        schtasks: TRUE_PROGRAM.to_string(),
         runtime_dir: None,
         uid: Some(4242),
     };
@@ -113,6 +114,7 @@ async fn an_install_never_asks_a_lingering_user_for_permission() {
         launchctl: TRUE_PROGRAM.to_string(),
         systemctl: TRUE_PROGRAM.to_string(),
         loginctl,
+        schtasks: TRUE_PROGRAM.to_string(),
         runtime_dir: None,
         uid: Some(4242),
     };

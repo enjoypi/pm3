@@ -101,7 +101,7 @@ pub async fn linger_state(
     timeout_ms: u64,
 ) -> LingerState {
     match kind {
-        UnitKind::Launchd => LingerState::Unknown,
+        UnitKind::Launchd | UnitKind::WinSchtasks => LingerState::Unknown,
         UnitKind::Systemd => query_linger(programs, timeout_ms).await,
     }
 }
@@ -143,6 +143,7 @@ pub async fn query_supervised_pid(
     Ok(match spec.kind {
         UnitKind::Launchd => parse_launchd_pid(&captured.stdout),
         UnitKind::Systemd => parse_main_pid(&captured.stdout),
+        UnitKind::WinSchtasks => None,
     })
 }
 

@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::time::Duration;
 
 use adapters::resolve_paths;

@@ -11,7 +11,7 @@ use super::{
     events::DaemonEvent,
     ports::DaemonPorts,
     runner::run,
-    socket::{BindOutcome, OwnerOnlyListener, bind_uds},
+    socket::{BindOutcome, Pm3Listener, bind_uds},
 };
 use crate::{
     Error, Result,
@@ -74,7 +74,7 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
 async fn serve_supervised(
     specs: SpecSource,
     paths: &Pm3Paths,
-    listener: OwnerOnlyListener,
+    listener: Pm3Listener,
     shutdown: ShutdownFuture,
 ) -> Result<()> {
     let sandbox_programs = SandboxProgramSet::from_config(&specs.config.sandbox);

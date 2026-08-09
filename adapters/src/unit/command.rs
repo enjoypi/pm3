@@ -21,6 +21,7 @@ pub struct UnitProgramSet {
     pub launchctl: String,
     pub systemctl: String,
     pub loginctl: String,
+    pub schtasks: String,
     pub runtime_dir: Option<String>,
     pub uid: Option<u32>,
 }
@@ -36,6 +37,7 @@ impl UnitProgramSet {
             launchctl: service.launchctl_path.clone(),
             systemctl: service.systemctl_path.clone(),
             loginctl: service.loginctl_path.clone(),
+            schtasks: service.schtasks_path.clone(),
             runtime_dir: runtime_dir.map(ToString::to_string),
             uid,
         }
@@ -122,6 +124,44 @@ pub fn loginctl_show_linger(programs: &UnitProgramSet) -> Option<UnitCommand> {
             VALUE_FLAG,
         ],
     ))
+}
+
+#[must_use]
+pub fn schtasks_create(programs: &UnitProgramSet, task_name: &str, xml_path: &Path) -> UnitCommand {
+    command(
+        &programs.schtasks,
+        &[
+            "/Create",
+            "/TN",
+            task_name,
+            "/XML",
+            &xml_path.to_string_lossy(),
+            "/F",
+        ],
+    )
+}
+
+#[must_use]
+pub fn schtasks_run(programs: &UnitProgramSet, task_name: &str) -> UnitCommand {
+    command(&programs.schtasks, &["/Run", "/TN", task_name])
+}
+
+#[must_use]
+pub fn schtasks_end(programs: &UnitProgramSet, task_name: &str) -> UnitCommand {
+    command(&programs.schtasks, &["/End", "/TN", task_name])
+}
+
+#[must_use]
+pub fn schtasks_delete(programs: &UnitProgramSet, task_name: &str) -> UnitCommand {
+    command(&programs.schtasks, &["/Delete", "/TN", task_name, "/F"])
+}
+
+#[must_use]
+pub fn schtasks_query(programs: &UnitProgramSet, task_name: &str) -> UnitCommand {
+    command(
+        &programs.schtasks,
+        &["/Query", "/TN", task_name, "/V", "/FO", "LIST"],
+    )
 }
 
 fn user_scoped(programs: &UnitProgramSet, args: &[&str]) -> UnitCommand {

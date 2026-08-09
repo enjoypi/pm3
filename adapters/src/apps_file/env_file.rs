@@ -1,17 +1,18 @@
 use std::{
     collections::BTreeMap,
     io,
-    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     str::Chars,
-    time::Instant,
 };
+#[cfg(unix)]
+use std::{os::unix::fs::PermissionsExt as _, time::Instant};
 
 use thiserror::Error;
 use usecases::{SpecError, validate_app_name};
 
 pub const ENV_FILE_SUFFIX: &str = "env";
 
+#[cfg(unix)]
 const SECRET_FILE_MODE: u32 = 0o600;
 const COMMENT_PREFIX: char = '#';
 const PAIR_SEPARATOR: char = '=';
@@ -103,6 +104,7 @@ async fn read_optional(path: &Path, shown: &str) -> Result<Option<String>, EnvFi
     }
 }
 
+#[cfg(unix)]
 async fn secure_file(path: &Path, shown: &str) {
     if is_linked(path).await {
         log_spared_link(shown);
@@ -118,12 +120,19 @@ async fn secure_file(path: &Path, shown: &str) {
     }
 }
 
+#[cfg(not(unix))]
+#[expect(
+    clippy::unused_async,
+    reason = "NTFS ACLs are owner-only by default; the signature stays uniform"
+)]
+async fn secure_file(_path: &Path, _shown: &str) {}
+
+#[cfg(unix)]
 async fn is_linked(path: &Path) -> bool {
     tokio::fs::symlink_metadata(path)
         .await
         .is_ok_and(|entry| entry.file_type().is_symlink())
 }
-
 fn split_pair(
     path: &str,
     home: Option<&str>,
@@ -231,6 +240,7 @@ fn decode_hex(digits: &str) -> Option<char> {
     char::from_u32(u32::from_str_radix(digits, HEX_RADIX).ok()?)
 }
 
+#[cfg(unix)]
 fn log_secured(path: &str, duration_ms: u128) {
     tracing::debug!(
         feature = "service",
@@ -241,6 +251,7 @@ fn log_secured(path: &str, duration_ms: u128) {
     );
 }
 
+#[cfg(unix)]
 fn log_spared_link(path: &str) {
     tracing::warn!(
         feature = "service",
@@ -250,6 +261,7 @@ fn log_spared_link(path: &str) {
     );
 }
 
+#[cfg(unix)]
 fn log_stuck_permissions(path: &str, reason: &str) {
     tracing::warn!(
         feature = "service",

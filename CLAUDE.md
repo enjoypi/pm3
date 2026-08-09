@@ -27,6 +27,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 | `just build` | 编译 workspace |
 | `just fmt` | nightly rustfmt 格式化（只有 nightly 能重排 import） |
 | `just lint` | clippy 四组 lint 全开，任何 warning 即失败 |
+| `just check-windows` | Windows 交叉编译检查（check + clippy 到 x86_64-pc-windows-msvc，只编译不链接） |
 | `just test` | 裸 nextest，不含覆盖率门禁 |
 | `just cov` | **日常验收**：四指标 + lcov 真值 plate + 生产文件完整性自检；`--fresh` 清 workspace 重算 |
 | `just install` | 装到真机：opt-level 3 构建后调 `pm3 install`（备份、原子换二进制、重装 unit、核对接管） |
@@ -62,6 +63,17 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
   - **只有 `systemctl --user` 依赖 `XDG_RUNTIME_DIR`**（`loginctl` 走 system bus，不受影响——排查时别把两者混为一谈）：非登录会话（agent/CI shell）里它为空 → 走 systemctl 的调用失败，报文视 systemd 版本而异（`Failed to connect to bus: No medium found`，或 `Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined`）。**`just install` 与 `pm3 service *` 不再需要手工 export**：`host_runtime_dir()` 缺该变量时按 `/run/user/<uid>` 推导（uid 取 `/proc/self` 的属主，macOS 无 `/proc` 故为 `None`，launchd 也不需要），经 `UnitProgramSet.runtime_dir` 只注给 `systemctl --user` 那几条命令（`UnitCommand.env`）；`pm3 install` 查 `MainPID` 走的 `systemctl_show_main_pid` 同样经 `user_scoped` 注入。手工敲 systemctl 排查时仍要自己 export
   - `loginctl enable-linger` **不带用户名是合法的**（`enable-linger [USER...]`，省略即作用于调用者）：无授权时它只报 polkit `requires interactive authentication`、**不报缺参数** → 别以为是命令写错了去补用户名。它走 polkit 授权，polkit 被 mask 或无交互授权时必失败，故在 install plan 里是 `UnitStep::TryRun`（失败只 warn，输出末尾追加 `skipped: ...`），MUST NOT 改回 `Run`：unit 与 enable 都已生效，整体报 rv=1 会让运维以为没装上。**linger 已启用时这一步整个不进 plan**（`linger_state` 先查，`LingerState::Enabled` 即跳过）→ 常见情形下 `just install` 不碰 polkit、无需任何特殊权限。仍看到 `skipped:` 说明 linger 真没开，由有 sudo 的账号补一次（已实测成功），否则用户注销后 user manager 回收会连带停掉 daemon
   - 查 linger MUST 传 uid（`loginctl show-user <uid> -p Linger --value`）：**不带用户名时它输出空串且 rv=0**（`show-user` 省略参数指“当前会话的用户”，非登录会话没有会话）→ 按「非零退出才是查不到」判会把「已开 linger」误读成未开，白跑一次必失败的 `enable-linger`。故 `loginctl_show_linger` 在 uid 未知时返回 `None`，判定退回 `Unknown`
+
+### Windows（Task Scheduler + 命名管道）
+
+能力矩阵与降级清单见 `docs/windows.md`，这里只记跨层的坑。
+
+- 服务形态是当前用户 OnLogon 任务（免管理员）：unit 是 Task 2.0 XML，落在 `~/.pm3/service/<label>.xml`，经 `schtasks /Create /XML` 注册。**Task Scheduler XML 不支持环境变量** → `HOME`/`PATH`/`PM3_*` 由同目录的 `<label>-daemon.cmd` 包装脚本逐行 `set`（值里 `%` 转义成 `%%`），脚本末尾恒 `exit /b 1` —— 这是 restart 语义的关键：Task Scheduler 只在「失败」时重启（RestartOnFailure，最小间隔 1 分钟），恒报失败 ≈ `always`，代价是 `on-failure` 在 Windows 降级为 `always`
+- **tokio 在 Windows 没有 `UnixListener`**（std 有但只能阻塞，进不了 reactor）→ 传输在 Windows 是命名管道 `\\.\pipe\pm3-<DefaultHasher(socket 路径)>`（CLI 与 daemon 同二进制，哈希一致即可），而 `pm3.sock` 仍存在但只是**存在性标记文件**：`bind_uds` 建管道后写标记、`clear_runtime_files` 删标记，`wait_until_released` 与「stale socket 自愈」全部照旧走文件。MUST NOT 把标记文件当成真 socket 去 bind
+- Windows 上**不能覆写正在运行的 exe**（rename 上去报 AccessDenied，与 ETXTBSY 不同）→ `replace_binary` 先把旧 exe rename 成 `<destination>.retired`（运行中的 exe 可以改名、不能删不能盖），再把 `.incoming` rename 到位
+- `UnitKind::WinSchtasks` 变体、XML/wrapper 渲染器、schtasks 命令构造器 MUST NOT 加 `cfg(windows)`：纯逻辑跨平台编译，单测全在 Linux 跑（与「systemd 渲染器在 macOS 可测」同模式）；`#[cfg]` 只出现在宿主事实采集（uid/HOME/信号/权限位）与传输层。这样 `just cov` 门禁对 Windows 代码天然免疫
+- 信号/强杀的 Windows 对应：`/bin/kill` → `taskkill /PID <pid> /T /F`（/T 杀进程树 ≈ 进程组；TERM 与 KILL 无差别，优雅停机只有 daemon 自己的 CTRL_SHUTDOWN 落盘）；`.process_group(0)` 与 `peer_cred()` 只编译在 unix，socket 准入在 Windows 走 fail-open（与「读不出属主即放行」同设计）
+- 测试文件的平台门禁 MUST 用文件内第一行 `#![cfg(unix)]`，MUST NOT 把挂载点改成 `#[cfg(all(test, unix))]`：clippy 的 `tests_outside_test_module` 只认 `#[cfg(test)]` 的 mod，一改挂载点每个测试函数都会报错。e2e 同理（`frameworks/tests/*.rs` 全是 `#![cfg(unix)]`，Windows 侧用 `#![cfg(windows)]`）
 
 ### 资源上限（fork bomb 防线）
 

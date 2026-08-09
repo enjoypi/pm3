@@ -4,6 +4,7 @@ use crate::unit_specs::{program_set, program_set_for_user};
 const FAKE: &str = "/tmp/pm3-fake-manager";
 const UNIT_PATH: &str = "/home/dev/Library/LaunchAgents/pm3-test.plist";
 const UNIT_NAME: &str = "pm3-test.service";
+const XML_PATH: &str = "/home/dev/.pm3/service/pm3-test.xml";
 const OWNER_UID: u32 = 4242;
 const OWNER_RUNTIME_DIR: &str = "/run/user/4242";
 
@@ -26,6 +27,7 @@ fn service_config() -> crate::config::ServiceConfig {
         launchctl_path: "/opt/launchctl".to_string(),
         systemctl_path: "/opt/systemctl".to_string(),
         loginctl_path: "/opt/loginctl".to_string(),
+        schtasks_path: "/opt/schtasks".to_string(),
     }
 }
 
@@ -35,6 +37,7 @@ fn the_program_set_reads_every_manager_path_from_the_config() {
     assert_eq!(programs.launchctl, "/opt/launchctl");
     assert_eq!(programs.systemctl, "/opt/systemctl");
     assert_eq!(programs.loginctl, "/opt/loginctl");
+    assert_eq!(programs.schtasks, "/opt/schtasks");
 }
 
 #[test]
@@ -108,6 +111,44 @@ fn a_user_scoped_call_exports_the_runtime_directory() {
 fn a_user_scoped_call_without_a_known_session_exports_nothing() {
     let command = systemctl_daemon_reload(&programs());
     assert!(command.env.is_empty(), "got: {:?}", command.env);
+}
+
+#[test]
+fn creating_a_scheduled_task_points_at_the_rendered_xml() {
+    let command = schtasks_create(&programs(), "pm3-test", Path::new(XML_PATH));
+    assert_eq!(command.program, FAKE);
+    assert_eq!(
+        command.args,
+        ["/Create", "/TN", "pm3-test", "/XML", XML_PATH, "/F"]
+    );
+    assert!(command.env.is_empty(), "got: {:?}", command.env);
+}
+
+#[test]
+fn running_a_scheduled_task_starts_it_immediately() {
+    let command = schtasks_run(&programs(), "pm3-test");
+    assert_eq!(command.args, ["/Run", "/TN", "pm3-test"]);
+}
+
+#[test]
+fn ending_a_scheduled_task_stops_the_running_instance() {
+    let command = schtasks_end(&programs(), "pm3-test");
+    assert_eq!(command.args, ["/End", "/TN", "pm3-test"]);
+}
+
+#[test]
+fn deleting_a_scheduled_task_never_asks_for_confirmation() {
+    let command = schtasks_delete(&programs(), "pm3-test");
+    assert_eq!(command.args, ["/Delete", "/TN", "pm3-test", "/F"]);
+}
+
+#[test]
+fn querying_a_scheduled_task_asks_for_the_verbose_listing() {
+    let command = schtasks_query(&programs(), "pm3-test");
+    assert_eq!(
+        command.args,
+        ["/Query", "/TN", "pm3-test", "/V", "/FO", "LIST"]
+    );
 }
 
 #[test]

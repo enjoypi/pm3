@@ -19,7 +19,9 @@ const OWNER_ONLY_UMASK: u32 = 0o077;
 
 #[cfg(target_os = "macos")]
 pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::WinSchtasks;
+#[cfg(all(unix, not(target_os = "macos")))]
 pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Systemd;
 
 #[derive(Debug)]

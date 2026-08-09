@@ -25,6 +25,11 @@ fmt:
 lint *args:
     cargo clippy {{ cargo_locked }} {{ cargo_common_flags }} --no-deps "$@" -- -D warnings
 
+[doc("Windows 交叉编译检查：check + clippy（只编译不链接，msvc 链接器缺失不阻塞）")]
+check-windows:
+    cargo check {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc
+    cargo clippy {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc --no-deps -- -D warnings
+
 [doc("裸 nextest，不含覆盖率门禁；日常验收用 just cov；跑前跑后自动 reap 泄漏的 e2e daemon")]
 test *args:
     bun dev_scripts/reap.ts; cargo nextest run {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status

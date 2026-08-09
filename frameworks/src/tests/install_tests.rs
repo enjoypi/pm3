@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::{
     io,
     os::unix::fs::PermissionsExt as _,
@@ -28,6 +29,7 @@ fn fixture(dir: tempfile::TempDir, config_path: String, manager: &str) -> Fixtur
         launchctl: manager.to_string(),
         systemctl: manager.to_string(),
         loginctl: manager.to_string(),
+        schtasks: manager.to_string(),
         runtime_dir: None,
         uid: None,
     };
@@ -104,11 +106,13 @@ fn unit_file(fixture: &Fixture, kind: UnitKind) -> PathBuf {
     let dir = match kind {
         UnitKind::Launchd => fixture.home.join("Library/LaunchAgents"),
         UnitKind::Systemd => fixture.home.join(".config/systemd/user"),
+        UnitKind::WinSchtasks => fixture.home.join(".pm3/service"),
     };
     std::fs::create_dir_all(&dir).expect("prepare the unit dir");
     let suffix = match kind {
         UnitKind::Launchd => "plist",
         UnitKind::Systemd => "service",
+        UnitKind::WinSchtasks => "xml",
     };
     let path = dir.join(format!("pm3-fixture.{suffix}"));
     std::fs::write(&path, "old unit").expect("write the old unit");
@@ -152,6 +156,43 @@ fn stamp_dir(fixture: &Fixture) -> PathBuf {
 
 const HEALTHY_SYSTEMD: &str =
     "case \"$2\" in\n  is-active) echo active ;;\n  show) echo 4242 ;;\nesac\nexit 0";
+
+const HEALTHY_SCHTASKS: &str = "case \"$1\" in\n  /Query) echo 'Status: Running' ;;\nesac\nexit 0";
+
+#[tokio::test]
+async fn a_schtasks_install_treats_the_pid_file_as_the_supervised_pid() {
+    let fixture = systemd_fixture(HEALTHY_SCHTASKS);
+    let source = seed_source(&fixture);
+    seed_pid_file(&fixture);
+    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let lines = std::sync::Mutex::new(Vec::new());
+    let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
+
+    run_install(
+        &fixture.config_path,
+        Some(source),
+        &context(&fixture, UnitKind::WinSchtasks, None),
+        &emit,
+    )
+    .await
+    .expect("the install should succeed");
+    server.abort();
+
+    let service_dir = fixture.home.join(".pm3/service");
+    assert!(
+        service_dir.join("pm3-fixture.xml").is_file(),
+        "the task xml should exist"
+    );
+    assert!(
+        service_dir.join("pm3-fixture-daemon.cmd").is_file(),
+        "the wrapper should exist"
+    );
+    let output = lines.lock().expect("lock").join("\n");
+    assert!(
+        output.contains("service pm3-fixture (schtasks) is running"),
+        "got: {output}"
+    );
+}
 
 #[tokio::test]
 async fn a_first_install_swaps_the_binary_and_verifies_the_takeover() {

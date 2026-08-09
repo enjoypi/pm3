@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::path::Path;
 
 use usecases::{ReadScope, SandboxMode, SandboxPolicy};

@@ -1,7 +1,6 @@
-use std::{
-    os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
-};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 use crate::{UnitKind, UnitProgramSet, UnitSpec, unit::unit_dir_of};
 
@@ -47,6 +46,7 @@ pub fn program_set(program: &str) -> UnitProgramSet {
         launchctl: program.to_string(),
         systemctl: program.to_string(),
         loginctl: program.to_string(),
+        schtasks: program.to_string(),
         runtime_dir: None,
         uid: None,
     }
@@ -64,6 +64,7 @@ pub fn fake_program(dir: &Path, name: &str, script: &str) -> String {
     let path = dir.join(name);
     let body = format!("#!/bin/sh\n{script}\n");
     std::fs::write(&path, body).expect("internal error: the fake program directory is writable");
+    #[cfg(unix)]
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
         .expect("internal error: the fake program was just created");
     path.to_string_lossy().into_owned()

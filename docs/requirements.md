@@ -92,7 +92,7 @@ pm3 service             # 查看当前注册状态
 pm3 service install --dry-run   # 只打印将要写入的内容
 ```
 
-macOS 注册为 launchd 用户级 LaunchAgent，Linux 注册为 systemd user unit 并开启 linger（让服务在用户未登录时也能运行）。
+macOS 注册为 launchd 用户级 LaunchAgent，Linux 注册为 systemd user unit 并开启 linger（让服务在用户未登录时也能运行），Windows 注册为 Task Scheduler 当前用户的登录触发任务（免管理员；Windows 侧的能力差异见 `docs/windows.md`）。
 
 自启单元里还写着一道进程数上限：某个被托管的程序失控地反复自我复制时，它撞到的是这道墙，而不是把整台机器的进程表耗尽。上限是 pm3 加上它所有服务的总量，配置里可调。想再限住 CPU 就配一个百分比配额，这项只有 Linux 支持——launchd 那边能限的是累计 CPU 时间，用在常驻服务上等于到点就杀，所以不给。
 

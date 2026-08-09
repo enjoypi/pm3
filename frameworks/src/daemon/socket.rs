@@ -1,16 +1,34 @@
-use std::{io::Result as IoResult, os::unix::fs::PermissionsExt as _, path::Path};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
+#[cfg(windows)]
+use std::time::Duration;
+use std::{io::Result as IoResult, path::Path};
 
 use axum::serve::Listener;
 use thiserror::Error;
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions};
+#[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream, unix::SocketAddr};
 
+#[cfg(unix)]
 use crate::layout::owner_uid_of;
+#[cfg(windows)]
+use crate::layout::pipe_name_of;
 
+#[cfg(unix)]
 const OWNER_ONLY_SOCKET: u32 = 0o600;
+#[cfg(windows)]
+const PIPE_ACCEPT_RETRY_MS: u64 = 100;
+
+#[cfg(unix)]
+pub type Pm3Listener = OwnerOnlyListener;
+#[cfg(windows)]
+pub type Pm3Listener = PipeListener;
 
 #[derive(Debug)]
 pub enum BindOutcome {
-    Bound(OwnerOnlyListener),
+    Bound(Pm3Listener),
     AlreadyRunning,
 }
 
@@ -26,12 +44,83 @@ pub enum SocketError {
     Permissions { path: String, reason: String },
 }
 
+#[cfg(unix)]
 #[derive(Debug)]
 pub struct OwnerOnlyListener {
     inner: UnixListener,
     owner: Option<u32>,
 }
 
+#[cfg(windows)]
+#[derive(Debug)]
+pub struct PipeListener {
+    name: String,
+    pending: Option<NamedPipeServer>,
+}
+
+#[cfg(windows)]
+impl PipeListener {
+    const fn new(name: String, first: NamedPipeServer) -> Self {
+        Self {
+            name,
+            pending: Some(first),
+        }
+    }
+
+    async fn next_instance(&mut self) -> Option<NamedPipeServer> {
+        if let Some(pending) = self.pending.take() {
+            return Some(pending);
+        }
+        match ServerOptions::new().create(&self.name) {
+            Ok(server) => Some(server),
+            Err(error) => {
+                log_accept(&self.name, &error.to_string());
+                tokio::time::sleep(Duration::from_millis(PIPE_ACCEPT_RETRY_MS)).await;
+                None
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Listener for PipeListener {
+    type Io = NamedPipeServer;
+    type Addr = PipeAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            let Some(server) = self.next_instance().await else {
+                continue;
+            };
+            match server.connect().await {
+                Ok(()) => return (server, PipeAddr),
+                Err(error) => log_accept(&self.name, &error.to_string()),
+            }
+        }
+    }
+
+    fn local_addr(&self) -> IoResult<Self::Addr> {
+        Ok(PipeAddr)
+    }
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub struct PipeAddr;
+
+#[cfg(windows)]
+fn log_accept(name: &str, reason: &str) {
+    let pipe = name.to_string();
+    tracing::warn!(
+        feature = "server",
+        action = "accept",
+        pipe,
+        reason,
+        "pm3 daemon failed to accept a named pipe connection and will retry",
+    );
+}
+
+#[cfg(unix)]
 pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
     if path.exists() {
         if UnixStream::connect(path).await.is_ok() {
@@ -54,6 +143,55 @@ pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
         .map(|()| BindOutcome::Bound(OwnerOnlyListener::new(listener, owner)))
 }
 
+#[cfg(windows)]
+pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
+    let name = pipe_name_of(path);
+    match ServerOptions::new().first_pipe_instance(true).create(&name) {
+        Ok(server) => {
+            mark_bound(path).await;
+            Ok(BindOutcome::Bound(PipeListener::new(name, server)))
+        }
+        Err(_) if pipe_is_held(&name) => Ok(BindOutcome::AlreadyRunning),
+        Err(error) => Err(SocketError::Bind {
+            path: text(path),
+            reason: error.to_string(),
+        }),
+    }
+}
+
+#[cfg(windows)]
+fn pipe_is_held(name: &str) -> bool {
+    ClientOptions::new().open(name).is_ok()
+}
+
+#[cfg(windows)]
+async fn mark_bound(path: &Path) {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            log_marker(path, &error.to_string());
+            return;
+        }
+    }
+    if let Err(error) = adapters::write_private(path, "").await {
+        log_marker(path, &error.to_string());
+    }
+}
+
+#[cfg(windows)]
+fn log_marker(path: &Path, reason: &str) {
+    let socket = text(path);
+    tracing::warn!(
+        feature = "server",
+        action = "socket_marker",
+        socket,
+        reason,
+        "pm3 cannot maintain the socket marker file, so shutdown watchers may report early",
+    );
+}
+
+#[cfg(unix)]
 impl OwnerOnlyListener {
     #[must_use]
     pub const fn new(inner: UnixListener, owner: Option<u32>) -> Self {
@@ -61,6 +199,7 @@ impl OwnerOnlyListener {
     }
 }
 
+#[cfg(unix)]
 impl Listener for OwnerOnlyListener {
     type Io = UnixStream;
     type Addr = SocketAddr;
@@ -81,6 +220,7 @@ impl Listener for OwnerOnlyListener {
     }
 }
 
+#[cfg(unix)]
 async fn restrict_to_owner(path: &Path) -> Result<(), SocketError> {
     let permissions = std::fs::Permissions::from_mode(OWNER_ONLY_SOCKET);
     tokio::fs::set_permissions(path, permissions)
@@ -91,6 +231,7 @@ async fn restrict_to_owner(path: &Path) -> Result<(), SocketError> {
         })
 }
 
+#[cfg(unix)]
 fn socket_owner_of(path: &Path) -> Option<u32> {
     let owner = owner_uid_of(path);
     if owner.is_none() {
@@ -99,10 +240,12 @@ fn socket_owner_of(path: &Path) -> Option<u32> {
     owner
 }
 
+#[cfg(unix)]
 fn peer_uid_of(stream: &UnixStream) -> Option<u32> {
     stream.peer_cred().ok().map(|peer| peer.uid())
 }
 
+#[cfg(unix)]
 const fn admits(peer: Option<u32>, owner: Option<u32>) -> bool {
     let (Some(peer), Some(owner)) = (peer, owner) else {
         return true;
@@ -110,6 +253,7 @@ const fn admits(peer: Option<u32>, owner: Option<u32>) -> bool {
     peer == owner
 }
 
+#[cfg(unix)]
 fn log_unknown_owner(path: &Path) {
     let socket = text(path);
     tracing::warn!(
@@ -120,6 +264,7 @@ fn log_unknown_owner(path: &Path) {
     );
 }
 
+#[cfg(unix)]
 fn log_refused_peer(peer: Option<u32>, owner: Option<u32>) {
     tracing::warn!(
         feature = "server",

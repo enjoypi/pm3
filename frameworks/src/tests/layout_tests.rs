@@ -27,6 +27,7 @@ fn the_host_home_comes_from_the_environment() {
     assert_eq!(host_home(), std::env::var("HOME").ok());
 }
 
+#[cfg(unix)]
 #[test]
 fn a_readable_path_reports_the_uid_that_owns_it() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -39,6 +40,7 @@ fn a_path_this_platform_does_not_offer_reports_no_owner() {
     assert_eq!(owner_uid_of(Path::new("/nonexistent/pm3-owner")), None);
 }
 
+#[cfg(unix)]
 #[test]
 fn the_host_uid_is_known_wherever_this_process_can_read_about_itself() {
     assert_eq!(host_uid().is_some(), Path::new(OWN_PROCESS_DIR).exists());
@@ -93,6 +95,7 @@ async fn preparing_the_layout_creates_the_service_directory() {
     assert!(cfg_dir.is_dir());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn preparing_the_layout_keeps_the_service_directory_to_its_owner() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -147,6 +150,7 @@ async fn preparing_the_layout_reports_a_blocked_log_directory() {
     assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn preparing_the_layout_restricts_the_home_to_its_owner() {
     let dir = tempfile::tempdir().expect("temp dir");

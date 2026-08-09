@@ -65,7 +65,7 @@ pub fn expand_home(raw: &str, home_env: Option<&str>) -> Result<PathBuf, PathErr
         }
         return Ok(Path::new(home).join(trimmed));
     }
-    if raw.starts_with('/') {
+    if Path::new(raw).is_absolute() {
         return Ok(PathBuf::from(raw));
     }
     Err(PathError::NotAbsolute(raw.to_string()))

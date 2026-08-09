@@ -1,4 +1,4 @@
-use super::spec::UnitSpec;
+use super::{escape::escape_xml, spec::UnitSpec};
 use crate::config::RESTART_CONDITION_ON_FAILURE;
 
 const PLIST_HEADER: &str = concat!(
@@ -98,21 +98,6 @@ fn keep_alive_of(restart_condition: &str) -> &'static str {
         return KEEP_ALIVE_ON_FAILURE;
     }
     KEEP_ALIVE_ALWAYS
-}
-
-fn escape_xml(raw: &str) -> String {
-    let mut escaped = String::with_capacity(raw.len());
-    for character in raw.chars() {
-        match character {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&apos;"),
-            other => escaped.push(other),
-        }
-    }
-    escaped
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::{
     fs::{File, FileTimes},
     path::PathBuf,

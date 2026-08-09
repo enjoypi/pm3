@@ -7,9 +7,13 @@ const LAUNCHD_UNIT_DIR: &str = "Library/LaunchAgents";
 const LAUNCHD_UNIT_SUFFIX: &str = "plist";
 const SYSTEMD_UNIT_DIR: &str = ".config/systemd/user";
 const SYSTEMD_UNIT_SUFFIX: &str = "service";
+const SCHTASKS_UNIT_DIR: &str = ".pm3/service";
+const SCHTASKS_UNIT_SUFFIX: &str = "xml";
+const WRAPPER_SUFFIX: &str = "cmd";
 
 const LAUNCHD_PID_KEY: &str = "\"PID\"";
 const SYSTEMD_ACTIVE: &str = "active";
+const SCHTASKS_RUNNING: &str = "Running";
 const PM3_VARIABLE_PREFIX: &str = "PM3_";
 const LINGER_ENABLED: &str = "yes";
 const RUNTIME_DIR_ROOT: &str = "/run/user";
@@ -18,6 +22,7 @@ const RUNTIME_DIR_ROOT: &str = "/run/user";
 pub enum UnitKind {
     Launchd,
     Systemd,
+    WinSchtasks,
 }
 
 impl UnitKind {
@@ -26,6 +31,7 @@ impl UnitKind {
         match self {
             Self::Launchd => "launchd",
             Self::Systemd => "systemd",
+            Self::WinSchtasks => "schtasks",
         }
     }
 
@@ -34,6 +40,7 @@ impl UnitKind {
         match self {
             Self::Launchd => LAUNCHD_UNIT_DIR,
             Self::Systemd => SYSTEMD_UNIT_DIR,
+            Self::WinSchtasks => SCHTASKS_UNIT_DIR,
         }
     }
 
@@ -42,6 +49,7 @@ impl UnitKind {
         match self {
             Self::Launchd => LAUNCHD_UNIT_SUFFIX,
             Self::Systemd => SYSTEMD_UNIT_SUFFIX,
+            Self::WinSchtasks => SCHTASKS_UNIT_SUFFIX,
         }
     }
 }
@@ -102,6 +110,16 @@ impl UnitSpec {
     }
 
     #[must_use]
+    pub fn wrapper_name(&self) -> String {
+        format!("{}-daemon.{WRAPPER_SUFFIX}", self.label)
+    }
+
+    #[must_use]
+    pub fn wrapper_path(&self) -> PathBuf {
+        self.unit_dir.join(self.wrapper_name())
+    }
+
+    #[must_use]
     pub fn daemon_args(&self) -> [String; 3] {
         [
             DAEMON_SUBCOMMAND.to_string(),
@@ -147,6 +165,7 @@ pub fn parse_run_state(kind: UnitKind, exit_success: bool, stdout: &str) -> bool
     match kind {
         UnitKind::Launchd => exit_success && stdout.contains(LAUNCHD_PID_KEY),
         UnitKind::Systemd => stdout.trim() == SYSTEMD_ACTIVE,
+        UnitKind::WinSchtasks => exit_success && stdout.contains(SCHTASKS_RUNNING),
     }
 }
 

@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::{os::unix::fs::PermissionsExt as _, process::Stdio, time::Duration};
 
 use tempfile::TempDir;

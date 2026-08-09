@@ -15,7 +15,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 | `process/` | `tokio_launcher` `kill_signaler` `ps_probe`（`resource_usage` 走独立一条 `pid=,rss=,pcpu=`） `ready_probe`（宿主侧就绪探测） `sha256_fingerprinter` `system_clock` `watcher` |
 | `sandbox/` | `seatbelt`（macOS，含 `.sbpl`）/ `bwrap`（Linux）/ `wrapper` / `backend` |
 | `schedule/` | `cron_scheduler` + `random_expand`（OpenBSD `~` 展开） |
-| `unit/` | OS 服务单元：`spec.rs`（`UnitKind` / `unit_dir_of` / `parse_launchd_pid` / `parse_main_pid`）、`launchd` / `systemd` unit 渲染、`plan`（含 `write_targets`）`actions` `runner`（含 `query_supervised_pid` / `hand_back_to_manager`）`command` |
+| `unit/` | OS 服务单元：`spec.rs`（`UnitKind` / `unit_dir_of` / `parse_launchd_pid` / `parse_main_pid`）、`launchd` / `systemd` / `schtasks`（Windows Task Scheduler XML + `.cmd` 包装脚本）unit 渲染、`escape.rs`（两个 XML 渲染器共用一份转义表）、`plan`（含 `write_targets`）`actions` `runner`（含 `query_supervised_pid` / `hand_back_to_manager`）`command` |
 | `install/` | `pm3 install` 的 Gateway：`layout`（destination/备份根/stamp 纯函数）、`store`（`back_up` 0700/0600、`replace_binary` 的 `.incoming`+rename）、`InstallError` |
 | `service/` | pm3 服务文件 Gateway：`store`（读写 / `reconcile` / `ServiceUndo`）、`prepare`（`prepare_inline` / `split_apps_file`） |
 | 根文件 | `paths.rs` `program.rs` `startup.rs` `state.rs` `workspace.rs` |
@@ -55,7 +55,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 ### 服务管理器
 
 - unit 文件位置由 OS 约定在**本层**派生（`~/Library/LaunchAgents/{label}.plist` / `~/.config/systemd/user/{label}.service`），**不进配置**——单个配置项无法同时对两个平台正确；`$HOME` 由 `frameworks` 注入，测试传 tempdir 就不会碰真实 `~`。但**管理器二进制的路径进配置**（`ServiceProgramSet::from_config`，见根 `CLAUDE.md`「配置与路径」）：`ServiceProgramSet` 刻意没有 `Default` impl，唯一生产构造点是 `open_service_session`，测试仍可经 `ServiceContext.programs: Option<&_>` 注入替身
-- **两平台的「何时重启」语义靠 `restart_condition` 统一**：`always` → systemd `Restart=always` / launchd `KeepAlive=<true/>`；`on-failure` → systemd `Restart=on-failure` / launchd `KeepAlive=<dict><key>SuccessfulExit</key><false/></dict>`。此前 systemd 侧写死 `on-failure` 而 launchd 侧写死无条件 `KeepAlive`，同一份配置在两个平台上行为相反（macOS 正常退出会被拉起、Linux 不会）。默认值取 `always`（与 `restart.autorestart: true` 的意图一致），所以**从旧版升上来的 Linux 机器跑 `service install --force` 后重启行为会变**，要旧语义就把 `pm3.service.restart_condition` 设回 `on-failure`
+- **两平台的「何时重启」语义靠 `restart_condition` 统一**：`always` → systemd `Restart=always` / launchd `KeepAlive=<true/>`；`on-failure` → systemd `Restart=on-failure` / launchd `KeepAlive=<dict><key>SuccessfulExit</key><false/></dict>`。此前 systemd 侧写死 `on-failure` 而 launchd 侧写死无条件 `KeepAlive`，同一份配置在两个平台上行为相反（macOS 正常退出会被拉起、Linux 不会）。默认值取 `always`（与 `restart.autorestart: true` 的意图一致），所以**从旧版升上来的 Linux 机器跑 `service install --force` 后重启行为会变**，要旧语义就把 `pm3.service.restart_condition` 设回 `on-failure`。Windows（schtasks）不参与这张表：Task Scheduler 只有 RestartOnFailure，统一语义由 `.cmd` 包装脚本末尾的恒 `exit /b 1` 实现，`restart_condition` 两个取值在 Windows 上行为相同（见根 `CLAUDE.md`「Windows」节）
 - systemd 的转义表只剩 `escape_value` 一份，`quote_token` 委托它加一对引号 → 补转义规则只改 `escape_value`；MUST NOT 再复制一份（`ExecStart` 与 `Description`/`Environment` 曾各走一份，漏改一处就出现「参数被 systemd 二次解析、unit 装得上却起不来」的半修状态）
 - `UnitCommand.env` 只有 `user_scoped()` 会填（一条 `XDG_RUNTIME_DIR`，值来自 `UnitProgramSet.runtime_dir`）：`systemctl --user` 在非登录会话里没有它就连不上 user bus，而 launchctl 与 loginctl 走的都不是 user bus，故它们的命令 env 必须为空。新增 systemctl 子命令 MUST 经 `user_scoped`，别自己拼 `--user`
 - `install_plan` 接 `LingerState`：`Enabled` 时不生成 `enable-linger` 那步（它走 polkit，非交互会话必失败）。判定在 `runner::linger_state`，launchd 直接回 `Unknown`（不 fork loginctl）；`dry_run` 也会先查一次，所以假 loginctl 替身要按 `$1` 分派（`show-user` 回 `yes`/`no`，`enable-linger` 另算）

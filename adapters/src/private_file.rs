@@ -1,4 +1,6 @@
-use std::{io::Result, os::unix::fs::OpenOptionsExt as _, path::Path};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt as _;
+use std::{io::Result, path::Path};
 
 use tokio::{
     fs::{File, OpenOptions},
@@ -26,16 +28,18 @@ pub async fn append_private(path: &Path) -> Result<File> {
 }
 
 pub fn append_private_blocking(path: &Path) -> Result<std::fs::File> {
-    std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(OWNER_ONLY_FILE)
-        .open(path)
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    options.mode(OWNER_ONLY_FILE);
+    options.open(path)
 }
 
 fn private_options() -> OpenOptions {
     let mut options = OpenOptions::new();
-    options.create(true).mode(OWNER_ONLY_FILE);
+    options.create(true);
+    #[cfg(unix)]
+    options.mode(OWNER_ONLY_FILE);
     options
 }
 

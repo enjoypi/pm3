@@ -104,10 +104,11 @@ async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command
         .args(&spec.args)
         .current_dir(&spec.cwd)
         .env_clear()
-        .process_group(0)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout.into_std().await))
         .stderr(Stdio::from(stderr.into_std().await));
+    #[cfg(unix)]
+    command.process_group(0);
     for (key, value) in &spec.env {
         command.env(key, value);
     }

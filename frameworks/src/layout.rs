@@ -1,7 +1,6 @@
-use std::{
-    os::unix::fs::{MetadataExt as _, PermissionsExt as _},
-    path::{Path, PathBuf},
-};
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+use std::path::{Path, PathBuf};
 
 use adapters::{
     Pm3Config, Pm3Paths, expand_home, pm3_variables, resolve_paths, runtime_dir_of, write_private,
@@ -9,8 +8,10 @@ use adapters::{
 
 use crate::{Error, Result};
 
+#[cfg(unix)]
 const OWNER_ONLY_DIR: u32 = 0o700;
 const RUNTIME_DIR_VARIABLE: &str = "XDG_RUNTIME_DIR";
+#[cfg(unix)]
 const OWN_PROCESS_DIR: &str = "/proc/self";
 
 pub fn resolve_layout(pm3: &Pm3Config, home_env: Option<&str>) -> Result<Pm3Paths> {
@@ -47,6 +48,7 @@ async fn prepare_home(root: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 async fn restrict_to_owner(path: &Path) {
     let permissions = std::fs::Permissions::from_mode(OWNER_ONLY_DIR);
     if let Err(error) = tokio::fs::set_permissions(path, permissions).await {
@@ -54,6 +56,14 @@ async fn restrict_to_owner(path: &Path) {
     }
 }
 
+#[cfg(not(unix))]
+#[expect(
+    clippy::unused_async,
+    reason = "NTFS user directories are already per-user; the signature stays uniform"
+)]
+async fn restrict_to_owner(_path: &Path) {}
+
+#[cfg(unix)]
 fn log_stuck_permissions(path: &Path, reason: &str) {
     let path = path.to_string_lossy().into_owned();
     tracing::warn!(
@@ -63,6 +73,15 @@ fn log_stuck_permissions(path: &Path, reason: &str) {
         reason,
         "pm3 cannot keep a directory to its owner, so its contents stay readable by other users",
     );
+}
+
+#[cfg(windows)]
+#[must_use]
+pub fn pipe_name_of(socket: &Path) -> String {
+    use std::hash::{Hash, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    socket.hash(&mut hasher);
+    format!(r"\\.\pipe\pm3-{:016x}", hasher.finish())
 }
 
 pub async fn write_pid_file(paths: &Pm3Paths) -> Result<()> {
@@ -84,7 +103,27 @@ pub async fn clear_runtime_files(paths: &Pm3Paths) {
 
 #[must_use]
 pub fn host_home() -> Option<String> {
-    std::env::var("HOME").ok()
+    home_of(std::env::var("HOME").ok())
+}
+
+#[cfg(windows)]
+fn home_of(home: Option<String>) -> Option<String> {
+    home.or_else(host_profile_home)
+}
+
+#[cfg(not(windows))]
+const fn home_of(home: Option<String>) -> Option<String> {
+    home
+}
+
+#[cfg(windows)]
+fn host_profile_home() -> Option<String> {
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        return Some(profile);
+    }
+    let drive = std::env::var("HOMEDRIVE").ok()?;
+    let path = std::env::var("HOMEPATH").ok()?;
+    Some(format!("{drive}{path}"))
 }
 
 #[must_use]
@@ -107,14 +146,28 @@ pub fn host_pm3_env() -> Vec<(String, String)> {
     pm3_variables(std::env::vars().collect())
 }
 
+#[cfg(unix)]
 #[must_use]
 pub fn host_uid() -> Option<u32> {
     owner_uid_of(Path::new(OWN_PROCESS_DIR))
 }
 
+#[cfg(not(unix))]
+#[must_use]
+pub const fn host_uid() -> Option<u32> {
+    None
+}
+
+#[cfg(unix)]
 #[must_use]
 pub fn owner_uid_of(path: &Path) -> Option<u32> {
     std::fs::metadata(path).ok().map(|owner| owner.uid())
+}
+
+#[cfg(not(unix))]
+#[must_use]
+pub const fn owner_uid_of(_path: &Path) -> Option<u32> {
+    None
 }
 
 #[must_use]

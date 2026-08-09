@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use axum::{Router, routing::get};
 use tokio::{
     io::AsyncWriteExt as _,

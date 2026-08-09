@@ -1,13 +1,16 @@
-use std::{
-    os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
-};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 use super::InstallError;
 
+#[cfg(unix)]
 const DIRECTORY_MODE: u32 = 0o700;
+#[cfg(unix)]
 const FILE_MODE: u32 = 0o600;
 const INCOMING_SUFFIX: &str = ".incoming";
+#[cfg(windows)]
+const RETIRED_SUFFIX: &str = ".retired";
 
 pub async fn back_up(paths: &[PathBuf], root: &Path, stamp: &str) -> Result<PathBuf, InstallError> {
     let dir = root.join(stamp);
@@ -29,9 +32,35 @@ pub async fn replace_binary(source: &Path, destination: &Path) -> Result<(), Ins
     tokio::fs::copy(source, &staged)
         .await
         .map_err(|error| InstallError::replace_io(source, &error))?;
+    #[cfg(windows)]
+    retire_current(destination).await?;
     tokio::fs::rename(&staged, destination)
         .await
         .map_err(|error| InstallError::replace_io(destination, &error))
+}
+
+#[cfg(windows)]
+async fn retire_current(destination: &Path) -> Result<(), InstallError> {
+    let retired = retired_path(destination);
+    match tokio::fs::remove_file(&retired).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(InstallError::replace_io(&retired, &error)),
+    }
+    match tokio::fs::try_exists(destination).await {
+        Ok(true) => tokio::fs::rename(destination, &retired)
+            .await
+            .map_err(|error| InstallError::replace_io(destination, &error)),
+        Ok(false) => Ok(()),
+        Err(error) => Err(InstallError::replace_io(destination, &error)),
+    }
+}
+
+#[cfg(windows)]
+fn retired_path(destination: &Path) -> PathBuf {
+    let mut retired = destination.as_os_str().to_owned();
+    retired.push(RETIRED_SUFFIX);
+    PathBuf::from(retired)
 }
 
 async fn prepare_dir(path: &Path) -> Result<(), InstallError> {
@@ -57,16 +86,36 @@ async fn copy_into(path: &Path, dir: &Path) -> Result<(), InstallError> {
     restrict_file(&target).await
 }
 
+#[cfg(unix)]
 async fn restrict_dir(path: &Path) -> Result<(), InstallError> {
     tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(DIRECTORY_MODE))
         .await
         .map_err(|error| InstallError::backup_directory(path, &error))
 }
 
+#[cfg(not(unix))]
+#[expect(
+    clippy::unused_async,
+    reason = "NTFS user directories are already per-user; the signature stays uniform"
+)]
+async fn restrict_dir(_path: &Path) -> Result<(), InstallError> {
+    Ok(())
+}
+
+#[cfg(unix)]
 async fn restrict_file(path: &Path) -> Result<(), InstallError> {
     tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(FILE_MODE))
         .await
         .map_err(|error| InstallError::backup_io(path, &error))
+}
+
+#[cfg(not(unix))]
+#[expect(
+    clippy::unused_async,
+    reason = "NTFS user directories are already per-user; the signature stays uniform"
+)]
+async fn restrict_file(_path: &Path) -> Result<(), InstallError> {
+    Ok(())
 }
 
 fn staged_path(destination: &Path) -> PathBuf {

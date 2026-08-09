@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use std::{path::PathBuf, sync::Mutex, time::Duration};
 
 use adapters::{LogStream, Pm3Paths, resolve_paths};

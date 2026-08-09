@@ -183,6 +183,7 @@ pub struct ServiceConfig {
     pub launchctl_path: String,
     pub systemctl_path: String,
     pub loginctl_path: String,
+    pub schtasks_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -355,6 +356,7 @@ fn validate_programs(pm3: &Pm3Config) -> Result<(), ConfigError> {
     reject_empty("pm3.service.launchctl_path", &pm3.service.launchctl_path)?;
     reject_empty("pm3.service.systemctl_path", &pm3.service.systemctl_path)?;
     reject_empty("pm3.service.loginctl_path", &pm3.service.loginctl_path)?;
+    reject_empty("pm3.service.schtasks_path", &pm3.service.schtasks_path)?;
     if !VALID_RESTART_CONDITIONS.contains(&pm3.service.restart_condition.as_str()) {
         return Err(ConfigError::InvalidRestartCondition(
             pm3.service.restart_condition.clone(),

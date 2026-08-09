@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use super::*;
 
 const NAME: &str = "cloudflared";

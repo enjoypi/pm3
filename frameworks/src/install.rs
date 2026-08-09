@@ -147,7 +147,9 @@ async fn wait_for_takeover(
     emit: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<()> {
     let supervised = match session.spec.kind {
-        UnitKind::Systemd => wait_until_supervised(session, programs).await?,
+        UnitKind::Systemd | UnitKind::WinSchtasks => {
+            wait_until_supervised(session, programs).await?
+        }
         UnitKind::Launchd => {
             if wait_until_supervised(session, programs).await? {
                 true
@@ -191,12 +193,24 @@ async fn wait_until_supervised(
 
 async fn takeover_state(session: &ServiceSession, programs: &UnitProgramSet) -> Result<bool> {
     let status = query_status(&session.spec, programs, session.command_timeout_ms).await?;
-    let supervised =
-        query_supervised_pid(&session.spec, programs, session.command_timeout_ms).await?;
     let filed = read_pid_file(&session.paths).await;
+    let supervised = supervised_pid_of(session, programs, filed).await?;
     let client = UdsClient::new(session.paths.socket.clone(), session.request_timeout_ms);
     let healthy = client.daemon_is_healthy().await;
     Ok(takeover_satisfied(status, supervised, filed, healthy))
+}
+
+async fn supervised_pid_of(
+    session: &ServiceSession,
+    programs: &UnitProgramSet,
+    filed: Option<u32>,
+) -> Result<Option<u32>> {
+    match session.spec.kind {
+        UnitKind::WinSchtasks => Ok(filed),
+        UnitKind::Launchd | UnitKind::Systemd => {
+            Ok(query_supervised_pid(&session.spec, programs, session.command_timeout_ms).await?)
+        }
+    }
 }
 
 fn takeover_satisfied(

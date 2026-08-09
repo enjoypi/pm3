@@ -6,11 +6,17 @@ use std::{
 
 use adapters::{HEALTH_PATH, REQUEST_ID_HEADER};
 use thiserror::Error;
+#[cfg(unix)]
+use tokio::net::UnixStream;
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::ClientOptions;
 use tokio::{
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
-    net::UnixStream,
+    io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _},
     time::timeout,
 };
+
+#[cfg(windows)]
+use crate::layout::pipe_name_of;
 
 pub const OK_STATUS: u16 = 200;
 
@@ -98,19 +104,42 @@ impl UdsClient {
     }
 
     async fn talk(&self, request: &str) -> Result<String, ClientError> {
-        let mut stream =
-            UnixStream::connect(&self.socket)
-                .await
-                .map_err(|e| ClientError::Connect {
-                    path: text(&self.socket),
-                    reason: e.to_string(),
-                })?;
-        converse(&mut stream, request, &text(&self.socket)).await
+        let mut stream = connect_transport(&self.socket).await?;
+        converse(stream.as_mut(), request, &text(&self.socket)).await
     }
 }
 
+trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
+
+#[cfg(unix)]
+async fn connect_transport(socket: &Path) -> Result<Box<dyn Transport>, ClientError> {
+    UnixStream::connect(socket)
+        .await
+        .map(|stream| Box::new(stream) as Box<dyn Transport>)
+        .map_err(|e| ClientError::Connect {
+            path: text(socket),
+            reason: e.to_string(),
+        })
+}
+
+#[cfg(windows)]
+#[expect(
+    clippy::unused_async,
+    reason = "named pipe clients open synchronously; the unix twin awaits"
+)]
+async fn connect_transport(socket: &Path) -> Result<Box<dyn Transport>, ClientError> {
+    ClientOptions::new()
+        .open(pipe_name_of(socket))
+        .map(|stream| Box::new(stream) as Box<dyn Transport>)
+        .map_err(|e| ClientError::Connect {
+            path: text(socket),
+            reason: e.to_string(),
+        })
+}
+
 async fn converse(
-    stream: &mut UnixStream,
+    stream: &mut dyn Transport,
     request: &str,
     path: &str,
 ) -> Result<String, ClientError> {

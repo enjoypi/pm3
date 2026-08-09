@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use super::*;
 use crate::daemon_fixture::{Fixture, running_daemon, sleeper_apps_file, stop_daemon};
 
