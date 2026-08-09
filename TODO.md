@@ -24,4 +24,10 @@
   - crates.io 发布要求 `readme` 与 `license` 字段 ⇒ 与上一节联动
   - README 内容：1. pm3是什么，为什么要新做个 pm3，设计理念是什么；2. 安装方法；3. 使用方法；4. 和 pm2 相比有什么优劣；5. 和 docker/podman 相比有什么优劣；6. 性能测试数据
 
-## [ ] Windows Service
+## Windows 收尾
+
+PM3-59 已合入并发版（v1.11.0）：`pm3 service install/uninstall/status` 与 `pm3 install` 换代链在 Windows 走 Task Scheduler + 命名管道，能力矩阵见 `docs/windows.md`。剩余验收项：
+
+- [ ] Windows 真机验收：`service install --dry-run` 目检 → 注册/`/Query` → start/list/logs/stop → 注销重登自启 → `pm3 install` 换代 → uninstall 清场（`frameworks/tests/service_windows.rs` 已备好同路径 e2e）
+- [ ] CI 无 Windows runner：交叉编译只过了 `just check-windows`（check + clippy），运行时行为无自动化覆盖；考虑给 release.yml 加 windows-latest 跑 e2e
+- [ ] schtasks 非英文 locale 下 `/Query` 输出解析失效（状态恒报 not running），需要时换 PowerShell `Get-ScheduledTask` 的对象化输出
