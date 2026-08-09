@@ -31,7 +31,21 @@ pm3 install                                       # 之后的升级
 
 macOS：二进制未签名，浏览器下载的首次运行前 `xattr -d com.apple.quarantine pm3`（curl 下载不带该属性，可跳过）。
 
-**从源码装**（需要 Rust 工具链；**Windows 目前走这条路**，msvc 工具链）：
+**Windows**（PowerShell，不使用 .sh；产物是 `pm3-<版本>-x86_64-pc-windows-msvc.zip`，内含 `pm3.exe`、`LICENSE`、`config.yaml`）：
+
+```powershell
+$tag = (Invoke-RestMethod https://api.github.com/repos/enjoypi/pm3/releases/latest).tag_name
+$zip = "pm3-$tag-x86_64-pc-windows-msvc.zip"
+Invoke-WebRequest "https://github.com/enjoypi/pm3/releases/download/$tag/$zip" -OutFile $zip
+Invoke-WebRequest "https://github.com/enjoypi/pm3/releases/download/$tag/$zip.sha256" -OutFile "$zip.sha256"
+$expected = (Get-Content "$zip.sha256" -Raw).Split(' ')[0]
+if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw "sha256 校验失败" }
+Expand-Archive $zip -DestinationPath pm3
+.\pm3\pm3.exe --config .\pm3\config.yaml install   # 首次安装
+pm3 install                                        # 之后的升级
+```
+
+**从源码装**（任何平台，需要 Rust 工具链；Windows 用 msvc 工具链）：
 
 ```sh
 cargo install --git https://github.com/enjoypi/pm3 --bin pm3 --locked

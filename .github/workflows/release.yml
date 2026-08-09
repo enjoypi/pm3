@@ -116,7 +116,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.tar.gz*
+          files: |
+            dist/*.tar.gz*
+            dist/*.zip*
           generate_release_notes: true
           body: |
             ## 安装
@@ -135,6 +137,20 @@ jobs:
             4. 升级：直接跑 `pm3 install`（读既有配置，备份旧版、原子落位、重装自启）
 
             macOS：二进制未签名，浏览器下载的首次运行前 `xattr -d com.apple.quarantine pm3`（curl 下载不带 quarantine 属性可跳过）。
+
+            Windows（PowerShell，不使用 .sh）：
+
+            ```powershell
+            $tag = (Invoke-RestMethod https://api.github.com/repos/enjoypi/pm3/releases/latest).tag_name
+            $zip = "pm3-$tag-x86_64-pc-windows-msvc.zip"
+            Invoke-WebRequest "https://github.com/enjoypi/pm3/releases/download/$tag/$zip" -OutFile $zip
+            Invoke-WebRequest "https://github.com/enjoypi/pm3/releases/download/$tag/$zip.sha256" -OutFile "$zip.sha256"
+            $expected = (Get-Content "$zip.sha256" -Raw).Split(' ')[0]
+            if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw "sha256 校验失败" }
+            Expand-Archive $zip -DestinationPath pm3
+            .\pm3\pm3.exe --config .\pm3\config.yaml install   # 首次安装
+            pm3 install                                        # 之后的升级
+            ```
 
             ## 运行时依赖
 
