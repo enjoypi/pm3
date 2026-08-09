@@ -11,7 +11,7 @@ Interactor + Output Port（trait）。与外层交互只经 `ports/` 下的 trai
 | `supervision.rs` | 边界契约：`SupervisionRequest` / `SupervisionReply` / `SupervisionFailure` |
 | `supervisor_log.rs` | `Supervisor` 的业务日志（`log_*`），MUST 是 `pub`——私有模块内的 `pub(crate)` 触发 clippy `redundant_pub_crate` |
 | `timer_state.rs` | `TimerState`：定时器/待重启/generation 的**业务状态**，不持 `JoinHandle` |
-| `start.rs` | `start_apps` / `start_one`；`StartMode::{Register, Execute}` |
+| `start.rs` | `start_apps` / `start_one`；`StartMode::{Register, Execute}`；`settle_start`（CLI 侧 start 回复的回滚裁决：refused→Partial、unsaved→Unsaved、否则 Committed） |
 | `stop.rs` / `restart.rs` / `delete.rs` | 对应 CLI 动作；`persist_for_handover` 是 daemon 换代收尾（只落盘，不改状态） |
 | `resurrect.rs` | daemon 重启后逐服务比对指纹：adopt / evict / respawn |
 | `supervise.rs` | 子进程退出与熔断监督循环 |

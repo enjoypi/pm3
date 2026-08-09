@@ -364,6 +364,24 @@ pub fn refused_services(requested: &[String], outcomes: &[StartOutcome]) -> Vec<
         .collect()
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum StartSettlement {
+    Committed,
+    Partial { refused: Vec<String> },
+    Unsaved,
+}
+
+#[must_use]
+pub fn settle_start(refused: Vec<String>, unsaved: Option<&str>) -> StartSettlement {
+    if !refused.is_empty() {
+        return StartSettlement::Partial { refused };
+    }
+    if unsaved.is_some() {
+        return StartSettlement::Unsaved;
+    }
+    StartSettlement::Committed
+}
+
 #[cfg(test)]
 #[path = "tests/start_tests.rs"]
 mod tests;

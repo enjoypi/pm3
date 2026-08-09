@@ -3,9 +3,9 @@ use std::{io, path::PathBuf, time::Duration};
 use adapters::{
     APPS_PATH, AppConfig, DAEMON_NOT_RUNNING, InlineStart, KillSignaler, Pm3Paths, Reconciled,
     ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext, ServiceUndo, SignalScope,
-    Signaler as _, app_action_path, app_path, decode_reply, encode_signal_request,
+    Signaler as _, StartSettlement, app_action_path, app_path, decode_reply, encode_signal_request,
     encode_start_request, forget, load_and_parse_config, prepare_inline, render_daemon_gone,
-    render_daemon_stopped, split_apps_file, wait_until_released,
+    render_daemon_stopped, settle_start, split_apps_file, wait_until_released,
 };
 
 use crate::{
@@ -119,21 +119,21 @@ async fn finish_start(
         unsaved,
         views: _,
     } = reply;
-    if !refused.is_empty() {
-        undo.run_for(&refused).await;
-        return Err(Error::PartialStart {
-            refused: refused.join(", "),
-            report,
-        });
+    match settle_start(refused, unsaved.as_deref()) {
+        StartSettlement::Partial { refused } => {
+            undo.run_for(&refused).await;
+            Err(Error::PartialStart {
+                refused: refused.join(", "),
+                report,
+            })
+        }
+        StartSettlement::Unsaved => Err(Error::UnsavedStart { report }),
+        StartSettlement::Committed => Ok(StartReport {
+            response: report,
+            changed,
+            already_running,
+        }),
     }
-    if unsaved.is_some() {
-        return Err(Error::UnsavedStart { report });
-    }
-    Ok(StartReport {
-        response: report,
-        changed,
-        already_running,
-    })
 }
 
 pub async fn list_apps(config_path: &str, json: bool) -> Result<String> {

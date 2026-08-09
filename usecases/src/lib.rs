@@ -53,7 +53,10 @@ pub use self::{
     resurrect::resurrect,
     selector::AppSelector,
     signal::{SignalOutcome, signal_app},
-    start::{StartKind, StartOutcome, StartReport, refused_services, start_apps},
+    start::{
+        StartKind, StartOutcome, StartReport, StartSettlement, refused_services, settle_start,
+        start_apps,
+    },
     stop::{StopOutcome, persist_for_handover, stop_all_apps, stop_app},
     supervise::{ExitAction, handle_child_exit},
     supervision::{

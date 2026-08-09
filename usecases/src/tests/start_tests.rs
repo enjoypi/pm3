@@ -526,3 +526,26 @@ async fn a_service_whose_dependency_has_no_probe_starts_right_away() {
     );
     assert!(report.pending.is_empty());
 }
+
+#[test]
+fn a_reply_with_nothing_refused_or_unsaved_settles_as_committed() {
+    assert_eq!(settle_start(Vec::new(), None), StartSettlement::Committed);
+}
+
+#[test]
+fn refused_services_settle_as_partial_even_when_the_reply_is_unsaved() {
+    assert_eq!(
+        settle_start(vec!["web".to_string()], Some("dump write failed")),
+        StartSettlement::Partial {
+            refused: vec!["web".to_string()]
+        }
+    );
+}
+
+#[test]
+fn an_unsaved_reply_with_no_refusal_settles_as_unsaved() {
+    assert_eq!(
+        settle_start(Vec::new(), Some("dump write failed")),
+        StartSettlement::Unsaved
+    );
+}
