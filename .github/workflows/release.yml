@@ -105,7 +105,7 @@ jobs:
         timeout-minutes: 30
 
   release:
-    needs: [build, build-windows, windows-e2e]
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

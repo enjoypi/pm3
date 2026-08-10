@@ -10,6 +10,8 @@
 
 ## Windows 收尾
 
+- [ ] 修绿 windows-e2e 全量套件：release.yml 的 windows-e2e job 跑全 workspace nextest，v1.11.3 首发曝光失败（fixture 写死 `/bin/sh`、`/tmp` 等 unix 路径；fail-fast 掩盖完整失败面，需 `--no-fail-fast` 拿全清单后分批平台化 fixture，本机无 Windows 只能 CI 迭代）；修绿后把 `release.needs` 的 `windows-e2e` 加回（v1.11.3 为发版临时摘除）
+
 PM3-59 已合入并发版（v1.11.0）：`pm3 service install/uninstall/status` 与 `pm3 install` 换代链在 Windows 走 Task Scheduler + 命名管道，能力矩阵见 `docs/windows.md`。剩余验收项：
 
 - [ ] Windows 真机验收：`service install --dry-run` 目检 → 注册/`/Query` → start/list/logs/stop → 注销重登自启 → `pm3 install` 换代 → uninstall 清场（`frameworks/tests/service_windows.rs` 已备好同路径 e2e；release.yml 已有 windows-latest job 在 tag 时自动跑这份 e2e）
