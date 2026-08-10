@@ -169,8 +169,29 @@ pub async fn read_pid_file(paths: &Pm3Paths) -> Option<u32> {
 }
 
 pub async fn clear_runtime_files(paths: &Pm3Paths) {
-    tokio::fs::remove_file(&paths.pid_file).await.ok();
-    tokio::fs::remove_file(&paths.socket).await.ok();
+    remove_runtime_file(&paths.pid_file).await;
+    remove_runtime_file(&paths.socket).await;
+}
+
+pub(crate) async fn remove_runtime_file(path: &Path) {
+    let Err(error) = tokio::fs::remove_file(path).await else {
+        return;
+    };
+    if error.kind() == std::io::ErrorKind::NotFound {
+        return;
+    }
+    log_stuck_removal(path, &error.to_string());
+}
+
+fn log_stuck_removal(path: &Path, reason: &str) {
+    let path = path.to_string_lossy().into_owned();
+    tracing::warn!(
+        feature = "lifecycle",
+        action = "remove_runtime_file",
+        path,
+        reason,
+        "pm3 could not remove a runtime file, so shutdown watchers may misread the daemon state",
+    );
 }
 
 #[must_use]

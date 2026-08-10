@@ -49,7 +49,9 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
     let paths = resolve_layout(&config.pm3, home.as_deref())?;
     let cfg_dir = resolve_cfg_dir(&config.pm3, home.as_deref())?;
     ensure_layout(&paths, &cfg_dir).await?;
-    let BindOutcome::Bound(listener) = bind_uds(&paths.socket).await? else {
+    let BindOutcome::Bound(listener) =
+        bind_uds(&paths.socket, config.pm3.daemon_poll_interval_ms).await?
+    else {
         return Ok(());
     };
     write_pid_file(&paths).await?;

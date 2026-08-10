@@ -32,6 +32,7 @@ impl DaemonPorts {
     pub fn new(dump_file: PathBuf, specs: SpecSource, backend: Option<HostSandbox>) -> Self {
         let stop_signal = specs.config.stop_signal.clone();
         let command_timeout_ms = specs.config.command_timeout_ms;
+        let taskkill_path = specs.config.service.taskkill_path.clone();
         let poll_interval_ms = specs.config.daemon_poll_interval_ms;
         let minimal_read_roots = specs.config.sandbox.minimal_read_roots.clone();
         let search_path = specs.config.search_path.clone();
@@ -41,7 +42,11 @@ impl DaemonPorts {
         };
         Self {
             launcher: TokioProcessLauncher::default(),
-            signaler: KillSignaler::with_stop_signal(stop_signal, command_timeout_ms),
+            signaler: KillSignaler::with_stop_signal(
+                stop_signal,
+                command_timeout_ms,
+                &taskkill_path,
+            ),
             wrapper: SandboxCommandWrapper::new(backend, minimal_read_roots),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,

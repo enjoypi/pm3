@@ -1,18 +1,20 @@
 use crate::AppConfig;
 
 pub fn log_startup_banner(cfg: &AppConfig, version: &str, socket_path: &str) {
-    let service = &cfg.telemetry.service_name;
+    let service = cfg.telemetry.service_name.as_str();
     tracing::info!(
         target: "pm3::startup",
         feature = "lifecycle",
         action = "startup",
         result = "ok",
-        socket_path = %socket_path,
+        service,
+        version,
+        socket_path,
         home = %cfg.pm3.home,
         sandbox_mode = %cfg.pm3.sandbox.mode,
         sandbox_network = cfg.pm3.sandbox.network,
         log_level = %cfg.telemetry.log_level,
         log_format = %cfg.telemetry.log_format,
-        "{service} v{version}",
+        "pm3 daemon is up",
     );
 }

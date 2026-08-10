@@ -234,6 +234,18 @@ async fn clearing_runtime_files_tolerates_missing_files() {
     assert!(!dir.path().join("pm3.sock").exists());
 }
 
+#[tokio::test]
+async fn a_runtime_file_that_cannot_be_removed_only_warns() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(dir.path());
+    std::fs::create_dir(&paths.pid_file).expect("occupy the pid path");
+    clear_runtime_files(&paths).await;
+    assert!(
+        paths.pid_file.exists(),
+        "a removal failure must not stop the daemon from finishing its shutdown"
+    );
+}
+
 #[test]
 fn the_service_directory_comes_from_the_config() {
     let mut config = pm3_config_with_home("/srv/pm3");

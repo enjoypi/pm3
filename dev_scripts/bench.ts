@@ -160,6 +160,7 @@ export function configYaml(home: string): string {
     systemctl_path: "/usr/bin/systemctl"
     loginctl_path: "/usr/bin/loginctl"
     schtasks_path: "schtasks"
+    taskkill_path: "taskkill"
 
 telemetry:
   service_name: "pm3"

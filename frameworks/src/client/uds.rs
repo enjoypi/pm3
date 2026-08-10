@@ -73,8 +73,10 @@ impl UdsClient {
         let started = Instant::now();
         let raw = self
             .exchange(&http_request(method, path, body, &request_id))
-            .await?;
-        let reply = parse_http_response(&raw)?;
+            .await
+            .inspect_err(|error| log_failed_request(&request_id, method, path, started, error))?;
+        let reply = parse_http_response(&raw)
+            .inspect_err(|error| log_failed_request(&request_id, method, path, started, error))?;
         let duration_ms = started.elapsed().as_millis();
         tracing::debug!(
             feature = "client",
@@ -213,6 +215,27 @@ fn malformed(reason: &str) -> ClientError {
     ClientError::Malformed {
         reason: reason.to_string(),
     }
+}
+
+fn log_failed_request(
+    request_id: &str,
+    method: &str,
+    path: &str,
+    started: Instant,
+    error: &ClientError,
+) {
+    let duration_ms = started.elapsed().as_millis();
+    let reason = error.to_string();
+    tracing::debug!(
+        feature = "client",
+        request_id,
+        method,
+        path,
+        duration_ms,
+        reason,
+        action = "request",
+        "pm3 client could not get an answer from the daemon",
+    );
 }
 
 fn text(path: &Path) -> String {

@@ -136,7 +136,8 @@ pub fn validate_app_name(name: &str) -> Result<(), SpecError> {
         })
 }
 
-const fn is_name_letter(letter: char) -> bool {
+#[must_use]
+pub const fn is_name_letter(letter: char) -> bool {
     letter.is_ascii_alphanumeric() || matches!(letter, '-' | '_' | '.')
 }
 

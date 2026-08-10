@@ -32,6 +32,7 @@ pub const LAUNCHCTL_PATH: &str = "/bin/launchctl";
 pub const SYSTEMCTL_PATH: &str = "/usr/bin/systemctl";
 pub const LOGINCTL_PATH: &str = "/usr/bin/loginctl";
 pub const SCHTASKS_PATH: &str = "schtasks";
+pub const TASKKILL_PATH: &str = "taskkill";
 
 pub fn pm3_config_with_home(home: &str) -> Pm3Config {
     Pm3Config {
@@ -82,6 +83,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
             systemctl_path: SYSTEMCTL_PATH.to_string(),
             loginctl_path: LOGINCTL_PATH.to_string(),
             schtasks_path: SCHTASKS_PATH.to_string(),
+            taskkill_path: TASKKILL_PATH.to_string(),
         },
     }
 }
@@ -136,6 +138,7 @@ pub fn config_yaml(home: &str) -> String {
     systemctl_path: "{SYSTEMCTL_PATH}"
     loginctl_path: "{LOGINCTL_PATH}"
     schtasks_path: "{SCHTASKS_PATH}"
+    taskkill_path: "{TASKKILL_PATH}"
 
 telemetry:
   service_name: "pm3"

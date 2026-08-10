@@ -4,11 +4,9 @@ use tokio::{process::Command, time::timeout};
 
 use super::layout::parse_version_output;
 
-const VERSION_PROBE_MS: u64 = 2000;
-
-pub async fn binary_version(path: &Path) -> Option<String> {
+pub async fn binary_version(path: &Path, timeout_ms: u64) -> Option<String> {
     let probe = Command::new(path).arg("--version").output();
-    let output = timeout(Duration::from_millis(VERSION_PROBE_MS), probe)
+    let output = timeout(Duration::from_millis(timeout_ms), probe)
         .await
         .ok()?
         .ok()?;

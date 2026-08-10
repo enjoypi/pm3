@@ -28,6 +28,7 @@ fn service_config() -> crate::config::ServiceConfig {
         systemctl_path: "/opt/systemctl".to_string(),
         loginctl_path: "/opt/loginctl".to_string(),
         schtasks_path: "/opt/schtasks".to_string(),
+        taskkill_path: "/opt/taskkill".to_string(),
     }
 }
 

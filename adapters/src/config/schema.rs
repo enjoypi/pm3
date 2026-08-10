@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use usecases::{ReadScope, SandboxMode};
+use usecases::{ReadScope, SandboxMode, is_name_letter};
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -184,6 +184,7 @@ pub struct ServiceConfig {
     pub systemctl_path: String,
     pub loginctl_path: String,
     pub schtasks_path: String,
+    pub taskkill_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -357,6 +358,7 @@ fn validate_programs(pm3: &Pm3Config) -> Result<(), ConfigError> {
     reject_empty("pm3.service.systemctl_path", &pm3.service.systemctl_path)?;
     reject_empty("pm3.service.loginctl_path", &pm3.service.loginctl_path)?;
     reject_empty("pm3.service.schtasks_path", &pm3.service.schtasks_path)?;
+    reject_empty("pm3.service.taskkill_path", &pm3.service.taskkill_path)?;
     if !VALID_RESTART_CONDITIONS.contains(&pm3.service.restart_condition.as_str()) {
         return Err(ConfigError::InvalidRestartCondition(
             pm3.service.restart_condition.clone(),
@@ -384,17 +386,13 @@ fn validate_service_label(label: &str) -> Result<(), ConfigError> {
     }
     label
         .chars()
-        .find(|letter| !is_label_letter(*letter))
+        .find(|letter| !is_name_letter(*letter))
         .map_or(Ok(()), |character| {
             Err(ConfigError::UnsafeServiceLabel {
                 label: label.to_string(),
                 character,
             })
         })
-}
-
-const fn is_label_letter(letter: char) -> bool {
-    letter.is_ascii_alphanumeric() || matches!(letter, '-' | '_' | '.')
 }
 
 fn reject_line_break(field: &'static str, value: &str) -> Result<(), ConfigError> {

@@ -220,16 +220,25 @@ async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, Uni
         .args(&command.args)
         .envs(command.env.iter().map(|(name, value)| (name, value)))
         .output();
-    let output = timeout(Duration::from_millis(timeout_ms), call)
-        .await
-        .map_err(|_elapsed| UnitCommandError::Stalled {
-            program: command.program.clone(),
-            timeout_ms,
-        })?
-        .map_err(|error| UnitCommandError::Spawn {
-            program: command.program.clone(),
-            reason: error.to_string(),
-        })?;
+    let answered = timeout(Duration::from_millis(timeout_ms), call).await;
+    let output = match answered {
+        Err(_elapsed) => {
+            let reason = format!("did not answer within {timeout_ms} ms");
+            log_failed_command(&command.program, &reason, started);
+            return Err(UnitCommandError::Stalled {
+                program: command.program.clone(),
+                timeout_ms,
+            });
+        }
+        Ok(Err(error)) => {
+            log_failed_command(&command.program, &error.to_string(), started);
+            return Err(UnitCommandError::Spawn {
+                program: command.program.clone(),
+                reason: error.to_string(),
+            });
+        }
+        Ok(Ok(output)) => output,
+    };
     let captured = Captured::from_output(&output);
     let program = command.program.as_str();
     let code = captured.code;
@@ -243,6 +252,18 @@ async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, Uni
         "ran a service manager command"
     );
     Ok(captured)
+}
+
+fn log_failed_command(program: &str, reason: &str, started: Instant) {
+    let duration_ms = elapsed_ms(started);
+    tracing::debug!(
+        feature = "unit",
+        program,
+        reason,
+        duration_ms,
+        action = "service_command",
+        "a service manager command never produced an exit status"
+    );
 }
 
 fn elapsed_ms(started: Instant) -> u128 {

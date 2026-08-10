@@ -69,7 +69,11 @@ pub async fn run_install(
 
     let before = dump_snapshot(&session.paths.dump_file).await?;
     let root = backup_root(context.backups_env.as_deref(), &session.paths.root);
-    let stamp = backup_name(binary_version(&destination).await.as_deref());
+    let stamp = backup_name(
+        binary_version(&destination, session.command_timeout_ms)
+            .await
+            .as_deref(),
+    );
     let targets = write_targets(&session.spec);
     let backup = back_up(std::slice::from_ref(&destination), &root, &stamp).await?;
     replace_binary(&source, &destination).await?;

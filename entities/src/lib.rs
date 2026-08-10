@@ -5,8 +5,8 @@ pub use self::{
     process::{
         AppSpec, DependencyError, DependencyNode, MemoryVerdict, ProcessIdentity, ProcessRuntime,
         ProcessStatus, ReadyProbe, RestartDecision, RestartPolicy, RuntimeError, SignalNameError,
-        SpecError, VALID_SIGNALS, decide_memory_verdict, decide_restart, parse_memory_limit,
-        parse_signal_name, topo_sort, validate_app_name, validate_spec,
+        SpecError, VALID_SIGNALS, decide_memory_verdict, decide_restart, is_name_letter,
+        parse_memory_limit, parse_signal_name, topo_sort, validate_app_name, validate_spec,
     },
     sandbox::{
         PolicyError, ReadScope, SandboxMode, SandboxPolicy, covers_path, normalize_root,

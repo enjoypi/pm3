@@ -4,6 +4,7 @@ use std::time::Duration;
 use super::*;
 
 const ACCEPT_BUDGET: Duration = Duration::from_millis(200);
+const ACCEPT_RETRY_MS: u64 = 50;
 
 fn temp_dir() -> tempfile::TempDir {
     tempfile::tempdir().expect("temp dir")
@@ -12,7 +13,7 @@ fn temp_dir() -> tempfile::TempDir {
 #[tokio::test]
 async fn a_free_path_is_bound() {
     let dir = temp_dir();
-    let outcome = bind_uds(&dir.path().join("pm3.sock"))
+    let outcome = bind_uds(&dir.path().join("pm3.sock"), ACCEPT_RETRY_MS)
         .await
         .expect("should bind");
     assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
@@ -23,7 +24,9 @@ async fn a_live_socket_means_another_daemon_owns_it() {
     let dir = temp_dir();
     let path = dir.path().join("pm3.sock");
     let _held = UnixListener::bind(&path).expect("bind the first daemon");
-    let outcome = bind_uds(&path).await.expect("should detect the owner");
+    let outcome = bind_uds(&path, ACCEPT_RETRY_MS)
+        .await
+        .expect("should detect the owner");
     assert!(
         matches!(outcome, BindOutcome::AlreadyRunning),
         "got: {outcome:?}"
@@ -35,7 +38,9 @@ async fn a_stale_socket_file_is_replaced() {
     let dir = temp_dir();
     let path = dir.path().join("pm3.sock");
     std::fs::write(&path, "orphan").expect("seed a stale socket file");
-    let outcome = bind_uds(&path).await.expect("should self-heal");
+    let outcome = bind_uds(&path, ACCEPT_RETRY_MS)
+        .await
+        .expect("should self-heal");
     assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
 }
 
@@ -44,7 +49,10 @@ async fn a_socket_path_blocked_by_a_directory_is_reported() {
     let dir = temp_dir();
     let path = dir.path().join("pm3.sock");
     std::fs::create_dir(&path).expect("occupy the socket path");
-    let err = bind_uds(&path).await.unwrap_err().to_string();
+    let err = bind_uds(&path, ACCEPT_RETRY_MS)
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(
         err.contains("cannot remove the stale pm3 socket"),
         "got: {err}"
@@ -55,7 +63,7 @@ async fn a_socket_path_blocked_by_a_directory_is_reported() {
 async fn a_bound_socket_is_owner_only() {
     let dir = temp_dir();
     let path = dir.path().join("pm3.sock");
-    let outcome = bind_uds(&path).await.expect("should bind");
+    let outcome = bind_uds(&path, ACCEPT_RETRY_MS).await.expect("should bind");
     assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
     let mode = std::fs::metadata(&path)
         .expect("stat the socket")
@@ -79,7 +87,10 @@ async fn an_unrestrictable_socket_path_is_reported() {
 async fn an_unbindable_socket_path_is_reported() {
     let dir = temp_dir();
     let path = dir.path().join("absent").join("pm3.sock");
-    let err = bind_uds(&path).await.unwrap_err().to_string();
+    let err = bind_uds(&path, ACCEPT_RETRY_MS)
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("cannot bind the pm3 socket"), "got: {err}");
 }
 

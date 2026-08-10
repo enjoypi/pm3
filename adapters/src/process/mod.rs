@@ -7,7 +7,7 @@ mod tokio_launcher;
 mod watcher;
 
 pub use self::{
-    kill_signaler::{KILL_PROGRAM, KillSignaler},
+    kill_signaler::KillSignaler,
     ps_probe::{PS_PROGRAM, PsProcessProbe},
     ready_probe::HostReadyProber,
     sha256_fingerprinter::Sha256Fingerprinter,

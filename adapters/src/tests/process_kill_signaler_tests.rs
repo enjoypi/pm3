@@ -22,8 +22,14 @@ const DEATH_POLL_INTERVAL_MS: u64 = 20;
 const STALL_TIMEOUT_MS: u64 = 20;
 const SIGNAL_TIMEOUT_MS: u64 = 5000;
 
+const TASKKILL_PATH: &str = "taskkill";
+
 fn signaler() -> KillSignaler {
-    KillSignaler::with_stop_signal(STOP_SIGNAL_TERM.to_string(), SIGNAL_TIMEOUT_MS)
+    KillSignaler::with_stop_signal(
+        STOP_SIGNAL_TERM.to_string(),
+        SIGNAL_TIMEOUT_MS,
+        TASKKILL_PATH,
+    )
 }
 
 fn spawn_sleeper() -> Child {
@@ -125,7 +131,7 @@ async fn terminate_reaches_a_grandchild_through_the_process_group() {
 async fn terminate_honours_the_configured_stop_signal() {
     let mut child = spawn_sleeper();
     let pid = pid_of(&child);
-    KillSignaler::with_stop_signal("INT".to_string(), SIGNAL_TIMEOUT_MS)
+    KillSignaler::with_stop_signal("INT".to_string(), SIGNAL_TIMEOUT_MS, TASKKILL_PATH)
         .terminate(pid, SignalScope::ProcessGroup)
         .await
         .expect("should signal");

@@ -197,9 +197,13 @@ pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<Strin
     let Some(pid) = read_pid_file(&session.paths).await else {
         return report_gone_daemon(&client, &session.paths, stopped.as_deref()).await;
     };
-    KillSignaler::with_stop_signal(STOP_SIGNAL_TERM.to_string(), pm3.command_timeout_ms)
-        .terminate(pid, SignalScope::ProcessGroup)
-        .await?;
+    KillSignaler::with_stop_signal(
+        STOP_SIGNAL_TERM.to_string(),
+        pm3.command_timeout_ms,
+        &pm3.service.taskkill_path,
+    )
+    .terminate(pid, SignalScope::ProcessGroup)
+    .await?;
     let budget_ms = pm3.start_timeout_ms;
     if !wait_until_released(
         &session.paths.socket,

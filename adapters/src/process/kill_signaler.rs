@@ -10,8 +10,6 @@ use crate::exit_status::{describe_refusal, exit_code_of};
 
 #[cfg(unix)]
 pub const KILL_PROGRAM: &str = "/bin/kill";
-#[cfg(windows)]
-pub const KILL_PROGRAM: &str = "taskkill";
 
 const FORCE_SIGNAL: &str = "KILL";
 #[cfg(unix)]
@@ -37,8 +35,8 @@ impl KillSignaler {
     }
 
     #[must_use]
-    pub fn with_stop_signal(stop_signal: String, timeout_ms: u64) -> Self {
-        Self::new(KILL_PROGRAM.to_string(), stop_signal, timeout_ms)
+    pub fn with_stop_signal(stop_signal: String, timeout_ms: u64, taskkill_path: &str) -> Self {
+        Self::new(kill_program(taskkill_path), stop_signal, timeout_ms)
     }
 
     async fn signal(&self, signal: &str, target: &str, pid: u32) -> Result<(), SignalError> {
@@ -128,6 +126,16 @@ fn signal_arguments(_signal: &str, _target: &str, pid: u32) -> Vec<String> {
         "/T".to_string(),
         "/F".to_string(),
     ]
+}
+
+#[cfg(unix)]
+fn kill_program(_taskkill_path: &str) -> String {
+    KILL_PROGRAM.to_string()
+}
+
+#[cfg(windows)]
+fn kill_program(taskkill_path: &str) -> String {
+    taskkill_path.to_string()
 }
 
 fn is_signalable(pid: u32) -> bool {

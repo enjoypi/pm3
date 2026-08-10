@@ -18,8 +18,6 @@ use crate::layout::pipe_name_of;
 
 #[cfg(unix)]
 const OWNER_ONLY_SOCKET: u32 = 0o600;
-#[cfg(windows)]
-const PIPE_ACCEPT_RETRY_MS: u64 = 100;
 
 #[cfg(unix)]
 pub type Pm3Listener = OwnerOnlyListener;
@@ -56,14 +54,16 @@ pub struct OwnerOnlyListener {
 pub struct PipeListener {
     name: String,
     pending: Option<NamedPipeServer>,
+    accept_retry_ms: u64,
 }
 
 #[cfg(windows)]
 impl PipeListener {
-    const fn new(name: String, first: NamedPipeServer) -> Self {
+    const fn new(name: String, first: NamedPipeServer, accept_retry_ms: u64) -> Self {
         Self {
             name,
             pending: Some(first),
+            accept_retry_ms,
         }
     }
 
@@ -75,7 +75,7 @@ impl PipeListener {
             Ok(server) => Some(server),
             Err(error) => {
                 log_accept(&self.name, &error.to_string());
-                tokio::time::sleep(Duration::from_millis(PIPE_ACCEPT_RETRY_MS)).await;
+                tokio::time::sleep(Duration::from_millis(self.accept_retry_ms)).await;
                 None
             }
         }
@@ -121,7 +121,7 @@ fn log_accept(name: &str, reason: &str) {
 }
 
 #[cfg(unix)]
-pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
+pub async fn bind_uds(path: &Path, _accept_retry_ms: u64) -> Result<BindOutcome, SocketError> {
     if path.exists() {
         if UnixStream::connect(path).await.is_ok() {
             return Ok(BindOutcome::AlreadyRunning);
@@ -144,7 +144,7 @@ pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
 }
 
 #[cfg(windows)]
-pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
+pub async fn bind_uds(path: &Path, accept_retry_ms: u64) -> Result<BindOutcome, SocketError> {
     let secret = crate::layout::pipe_secret(path)
         .await
         .map_err(|e| SocketError::Bind {
@@ -155,7 +155,11 @@ pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
     match ServerOptions::new().first_pipe_instance(true).create(&name) {
         Ok(server) => {
             mark_bound(path).await;
-            Ok(BindOutcome::Bound(PipeListener::new(name, server)))
+            Ok(BindOutcome::Bound(PipeListener::new(
+                name,
+                server,
+                accept_retry_ms,
+            )))
         }
         Err(_) if pipe_is_held(&name) => Ok(BindOutcome::AlreadyRunning),
         Err(error) => Err(SocketError::Bind {

@@ -7,6 +7,9 @@ use std::{
 
 use super::*;
 
+const PROBE_TIMEOUT_MS: u64 = 5000;
+const SLOW_BINARY_TIMEOUT_MS: u64 = 50;
+
 fn fake_binary(dir: &Path, body: &str) -> PathBuf {
     let path = dir.join("old-pm3");
     std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write the fake binary");
@@ -18,27 +21,33 @@ fn fake_binary(dir: &Path, body: &str) -> PathBuf {
 async fn a_binary_that_prints_a_version_is_named_by_it() {
     let dir = tempfile::tempdir().expect("temp dir");
     let binary = fake_binary(dir.path(), "echo 'pm3 1.8.0'");
-    assert_eq!(binary_version(&binary).await, Some("1.8.0".to_string()));
+    assert_eq!(
+        binary_version(&binary, PROBE_TIMEOUT_MS).await,
+        Some("1.8.0".to_string())
+    );
 }
 
 #[tokio::test]
 async fn a_missing_binary_has_no_version() {
     let dir = tempfile::tempdir().expect("temp dir");
-    assert_eq!(binary_version(&dir.path().join("missing")).await, None);
+    assert_eq!(
+        binary_version(&dir.path().join("missing"), PROBE_TIMEOUT_MS).await,
+        None
+    );
 }
 
 #[tokio::test]
 async fn a_failing_binary_has_no_version() {
     let dir = tempfile::tempdir().expect("temp dir");
     let binary = fake_binary(dir.path(), "exit 1");
-    assert_eq!(binary_version(&binary).await, None);
+    assert_eq!(binary_version(&binary, PROBE_TIMEOUT_MS).await, None);
 }
 
 #[tokio::test]
 async fn a_binary_printing_garbage_has_no_version() {
     let dir = tempfile::tempdir().expect("temp dir");
     let binary = fake_binary(dir.path(), "echo 'not/a/version'");
-    assert_eq!(binary_version(&binary).await, None);
+    assert_eq!(binary_version(&binary, PROBE_TIMEOUT_MS).await, None);
 }
 
 #[tokio::test]
@@ -46,6 +55,6 @@ async fn a_slow_binary_times_out() {
     let dir = tempfile::tempdir().expect("temp dir");
     let binary = fake_binary(dir.path(), "sleep 3");
     let started = std::time::Instant::now();
-    assert_eq!(binary_version(&binary).await, None);
+    assert_eq!(binary_version(&binary, SLOW_BINARY_TIMEOUT_MS).await, None);
     assert!(started.elapsed() < Duration::from_secs(3));
 }

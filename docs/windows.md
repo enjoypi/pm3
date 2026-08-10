@@ -36,4 +36,5 @@ pm3 的 Windows 支持以「服务安装与换代链可用」为目标：daemon 
 ## 配置
 
 - `pm3.service.schtasks_path`（默认 `schtasks`，走 PATH）——管理器二进制路径，与其他平台的管理器路径同一约定
+- `pm3.service.taskkill_path`（默认 `taskkill`，走 PATH）——停止与强杀用的进程工具路径，unix 侧是硬约束的 `/bin/kill` 故无对应键
 - 环境变量注入：Task Scheduler XML 不支持环境变量，`HOME`/`PATH`/`PM3_*` 由包装脚本 `<label>-daemon.cmd` 逐行 `set`；值中的 `%` 会转义为 `%%`

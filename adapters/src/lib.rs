@@ -76,9 +76,8 @@ pub use self::{
     },
     private_file::{OWNER_ONLY_FILE, append_private, append_private_blocking, write_private},
     process::{
-        AdoptedWatch, HostReadyProber, KILL_PROGRAM, KillSignaler, PS_PROGRAM, PollCadence,
-        PsProcessProbe, Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit,
-        wait_until_released,
+        AdoptedWatch, HostReadyProber, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
+        Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
     },
     program::{
         HOME_PLACEHOLDER, SERVICE_CWD_NAME, SERVICE_CWD_PLACEHOLDER, fold_home, fold_service_cwd,

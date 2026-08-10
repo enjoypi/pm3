@@ -98,7 +98,7 @@ async fn lock_age(path: &Path) -> Option<Duration> {
 }
 
 async fn release_lock(path: &Path) {
-    tokio::fs::remove_file(path).await.ok();
+    crate::layout::remove_runtime_file(path).await;
 }
 
 fn log_abandoned_lock(path: &Path, stale_after_ms: u64) {

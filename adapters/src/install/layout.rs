@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use usecases::is_name_letter;
+
 use super::InstallError;
 
 const DEFAULT_DESTINATION: &str = "bin/pm3";
@@ -41,10 +43,7 @@ pub fn parse_version_output(stdout: &str) -> Option<&str> {
 }
 
 fn is_usable(version: &str) -> bool {
-    !version.is_empty()
-        && version
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    !version.is_empty() && version.chars().all(is_name_letter)
 }
 
 #[cfg(test)]
