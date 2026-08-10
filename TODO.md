@@ -6,7 +6,7 @@
 
 现状：README 已写三条安装路径——`install.sh` 一行装（curl|sh，sha256 校验后自动 `pm3 install`）、GitHub Releases 手动下载（产物带 `config.yaml` 与 `.sha256`）、`cargo install --git <url> --bin pm3 --locked`（已实测 virtual workspace 下 `--bin` 能定位）。**前提：仓库转 public**，私有状态下匿名下载全部 404。crates.io / Homebrew / cargo-binstall 已拍板不发布。
 
-- [ ] install.sh 真机验收：v1.11.2 已推送触发 release.yml（含 .sha256、config.yaml、Windows 产物与 windows e2e job；v1.11.1 缺 zip 应删除）；确认 release 产出后，`HOME=$(mktemp -d)` 跑 install.sh 验首装路径，再跑一次验升级路径（匿名下载仍需仓库转 public）
+- [ ] install.sh 真机验收：v1.11.3 已推送触发 release.yml（含 .sha256、config.yaml、Windows 产物与 windows e2e job；v1.11.1 缺 zip 应删除）；确认 release 产出后，`HOME=$(mktemp -d)` 跑 install.sh 验首装路径，再跑一次验升级路径（匿名下载仍需仓库转 public）
 
 ## Windows 收尾
 
