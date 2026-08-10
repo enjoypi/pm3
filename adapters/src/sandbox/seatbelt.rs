@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use usecases::{SandboxPolicy, WrappedCommand, normalize_root};
+use usecases::{SandboxPolicy, WrappedCommand, covers_path, normalize_root};
 
 const BASE_POLICY: &str = include_str!("seatbelt_base_policy.sbpl");
 const FULL_READ_POLICY: &str = include_str!("seatbelt_full_read_policy.sbpl");
@@ -52,22 +52,11 @@ pub fn seatbelt_profile(policy: &SandboxPolicy, program: &str) -> SeatbeltProfil
     let readable = readable_roots_of(policy, program);
     let writable = policy.granted_roots();
     let hidden = policy.hidden_paths();
-    let carveout = carveout_of(hidden.len());
     let mut profile = String::with_capacity(BASE_POLICY.len() + MINIMAL_READ_POLICY.len());
     profile.push_str(BASE_POLICY);
-    profile.push_str(&read_policy_of(policy, &carveout));
-    profile.push_str(&rules(
-        READ_ACTION,
-        READABLE_PARAMETER,
-        readable.len(),
-        &carveout,
-    ));
-    profile.push_str(&rules(
-        WRITE_ACTION,
-        WRITABLE_PARAMETER,
-        writable.len(),
-        &carveout,
-    ));
+    profile.push_str(&read_policy_of(policy, &hidden));
+    profile.push_str(&rules(READ_ACTION, READABLE_PARAMETER, &readable, &hidden));
+    profile.push_str(&rules(WRITE_ACTION, WRITABLE_PARAMETER, &writable, &hidden));
     if policy.network {
         profile.push_str(NETWORK_POLICY);
     }
@@ -93,34 +82,44 @@ fn readable_roots_of<'p>(policy: &'p SandboxPolicy, program: &'p str) -> Vec<&'p
         .collect()
 }
 
-fn read_policy_of(policy: &SandboxPolicy, carveout: &str) -> String {
+fn read_policy_of(policy: &SandboxPolicy, hidden: &[&str]) -> String {
     if policy.read.confines_reads() {
         return MINIMAL_READ_POLICY.to_string();
     }
+    let carveout = carveout_for(FILESYSTEM_ROOT, hidden);
     if carveout.is_empty() {
         return FULL_READ_POLICY.to_string();
     }
     format!("\n({READ_ACTION} (require-all (subpath \"{FILESYSTEM_ROOT}\"){carveout}))\n")
 }
 
-fn carveout_of(hidden: usize) -> String {
-    (0..hidden).fold(String::new(), |mut text, index| {
-        let _ = write!(
-            text,
-            " (require-not (subpath (param \"{HIDDEN_PARAMETER}_{index}\")))"
-        );
-        text
-    })
+fn carveout_for(granted: &str, hidden: &[&str]) -> String {
+    hidden
+        .iter()
+        .enumerate()
+        .fold(String::new(), |mut text, (index, root)| {
+            if covers_path(granted, root) {
+                let _ = write!(
+                    text,
+                    " (require-not (subpath (param \"{HIDDEN_PARAMETER}_{index}\")))"
+                );
+            }
+            text
+        })
 }
 
-fn rules(action: &str, parameter: &str, count: usize, carveout: &str) -> String {
-    (0..count).fold(String::new(), |mut text, index| {
-        let _ = writeln!(
-            text,
-            "\n({action} (require-all (subpath (param \"{parameter}_{index}\")){carveout}))"
-        );
-        text
-    })
+fn rules(action: &str, parameter: &str, granted: &[&str], hidden: &[&str]) -> String {
+    granted
+        .iter()
+        .enumerate()
+        .fold(String::new(), |mut text, (index, root)| {
+            let carveout = carveout_for(root, hidden);
+            let _ = writeln!(
+                text,
+                "\n({action} (require-all (subpath (param \"{parameter}_{index}\")){carveout}))"
+            );
+            text
+        })
 }
 
 fn named<'r>(

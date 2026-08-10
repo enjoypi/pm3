@@ -148,7 +148,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 | `unreadable_roots` | pm3 注入 `pm3.home` 与 `cfg_dir` | 否 |
 
 - **默认 `read: minimal`**：`--tmpfs /` 打底后只铺 `pm3.sandbox.minimal_read_roots` + 声明的 `readable_roots` + **程序自身的路径**（漏了最后一条 exec 直接 ENOENT）。服务报 EACCES 时先补 `readable_roots`，退路是该服务写 `read: full`
-- **`unreadable_roots` 与「可写根」的先后顺序是安全语义，不是风格**：bwrap 是 `--tmpfs <hidden>` → `--bind <granted>`（最浅的先）→ **再** `--tmpfs` 那些落在 granted 之下的 hidden（`nested_in`）；seatbelt 不能靠顺序，deny 会连带遮住嵌套其中的 cwd，所以每条 allow 都带 `(require-not (subpath (param "HIDDEN_i")))` 的 carveout（照抄 codex `seatbelt.rs:369-406`）
+- **`unreadable_roots` 与「可写根」的嵌套方向是安全语义，不是风格**：bwrap 是 `--tmpfs <hidden>` → `--bind <granted>`（最浅的先）→ **再** `--tmpfs` 那些落在 granted 之下的 hidden（`nested_in`）；seatbelt 无顺序语义，hidden 靠 carveout 实现，且 MUST 按 `(granted, hidden)` 配对生成——只有 `covers_path(granted, hidden)`（hidden 嵌套在 granted 之内，含相等）才给那条 allow 挂 `(require-not (subpath (param "HIDDEN_i")))`。无条件给每条 allow 挂全部 hidden 的 carveout 会把「granted 嵌套在 hidden 之内」的授权整条作废（`require-not` 命中祖先即整条规则不成立，`deny default` 兜底 ⇒ cwd 既不可读也不可写），而 cwd 默认就在 `pm3.home` 下——PM3-44 曾因此让所有服务一重启就 EPERM；反方向本就由 `deny default` 兜住，不需要 carveout
 - **任何可写根都 MUST NOT 覆盖 hidden root**（`validate_policy` 拒绝，含 `derived_roots`）：`cwd: <pm3.home>` 会把 socket 与全部 `.env` 一起交回给服务，两种后端都救不回来——测试 fixture 因此一律用 `<home>/work` 而非 `<home>` 当 cwd
 - seatbelt 的路径一律走 `-D KEY=值` 参数 + `(param "KEY")`，profile 文本里不出现任何用户路径：这消掉了 SBPL 注入面
 - `network: true` 只放行 IP（`(allow network-outbound (remote ip))`）：裸 `(allow network-outbound)` 连 unix socket 一起放行，macOS 上等于把 `pm3.sock` 交给服务。Linux 侧不靠这条——实测 `--ro-bind / /` 下 connect 直接 EACCES（只读挂载没有写权限），`--tmpfs` 遮盖后是 ENOENT

@@ -183,13 +183,63 @@ fn hidden_policy() -> SandboxPolicy {
 }
 
 #[test]
-fn a_hidden_root_is_carved_out_of_every_writable_rule() {
+fn a_workspace_inside_a_hidden_root_keeps_its_writable_rule() {
     let profile = profile_of(&hidden_policy());
+    assert!(
+        profile.contains("(subpath (param \"WRITABLE_0\"))"),
+        "the workspace grant must exist: {profile}"
+    );
+    assert!(
+        !profile.contains("(param \"WRITABLE_0\")) (require-not"),
+        "an ancestor hidden root must not void the nested workspace grant: {profile}"
+    );
+}
+
+#[test]
+fn a_hidden_root_inside_a_granted_root_is_carved_out() {
+    let nested = SandboxPolicy {
+        writable_roots: vec!["/srv".to_string()],
+        unreadable_roots: vec!["/srv/secrets".to_string()],
+        ..policy(SandboxMode::WorkspaceWrite, false, &[])
+    };
+    let profile = profile_of(&nested);
     assert!(
         profile.contains(
             "(subpath (param \"WRITABLE_0\")) (require-not (subpath (param \"HIDDEN_0\")))"
         ),
-        "a workspace inside the pm3 home must not hand the home back: {profile}"
+        "a granted root must not expose a hidden root nested inside it: {profile}"
+    );
+}
+
+#[test]
+fn a_readable_root_inside_a_hidden_root_keeps_its_read_rule() {
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        readable_roots: vec!["/home/me/.pm3/api".to_string()],
+        unreadable_roots: vec!["/home/me/.pm3".to_string()],
+        ..policy(SandboxMode::WorkspaceWrite, false, &[])
+    };
+    let profile = profile_of(&confined);
+    assert!(
+        !profile.contains("(param \"READABLE_0\")) (require-not"),
+        "an ancestor hidden root must not void the nested readable grant: {profile}"
+    );
+}
+
+#[test]
+fn a_granted_root_equal_to_a_hidden_root_stays_carved_out() {
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        readable_roots: vec!["/home/me/.pm3".to_string()],
+        unreadable_roots: vec!["/home/me/.pm3".to_string()],
+        ..policy(SandboxMode::WorkspaceWrite, false, &[])
+    };
+    let profile = profile_of(&confined);
+    assert!(
+        profile.contains(
+            "(subpath (param \"READABLE_0\")) (require-not (subpath (param \"HIDDEN_0\")))"
+        ),
+        "declaring the pm3 home itself readable must not open it: {profile}"
     );
 }
 
