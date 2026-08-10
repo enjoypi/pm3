@@ -245,6 +245,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
   - **靠 sleep 竞争切换外部状态的测试**（fake `ps` 先报 alive、测试 sleep 后再 mark_gone）：慢机器上第一轮探测就已落在切换之后，于是「轮询后仍有等待者」这类分支只在快机器上被走到 → MUST 让 **fake 程序自持调用计数**（`if [ -f "$0.asked" ]; then exit 1; fi` + `touch`），第一次答 alive、第二次答 gone，与机器速度无关
 - `cargo-llvm-cov` 忽略路径含 `tests/` 的文件；`test_helpers/` 与 `test_support/` **计入**门禁，helper 里的 `panic!` 会变成未覆盖行
 - 改动令行号位移后必须 `just cov --fresh`，否则残留旧实例化产生幽灵 `FNDA:0`
+- **幽灵实例化自救** — 症状：门禁报大面积欠覆盖（usecases/frameworks 几十文件各缺一半），且 lcov 里同一函数出现两组行号不同的 `FN:`（如 `view` 同时在 47 行与 30 行）；原因：`llvm-cov clean --workspace` **不删** `deps/` 里的陈旧测试二进制（实测残留一周前的），它们的 coverage map 以旧行号合并进报告；判据：`ls -lT target/llvm-cov-target/release/deps` 里二进制时间戳早于本次构建；修法：`rm -rf target/llvm-cov-target` 再 `just cov --fresh`
 - **全零自救** — 症状：所有文件 0%、`FNDA:0` 上千条；原因：二进制与 profraw 哈希错位（非 fresh 与手动 `cargo llvm-cov report` 交叉跑会触发）；修法：重跑 `just cov --fresh` 且中途不插任何其他 cargo 命令
 - **定位 region 缺口** — 症状：`just cov` 失败却一行文件明细都没打（lcov 不含 region 数据，`findFilesBelowFullCoverage` 自然无输出）
   修法：MUST 紧跟在一次 `just cov --fresh` 之后（中途不插其他 cargo 命令）跑 `cargo +nightly llvm-cov report --release --summary-only | awk 'NR>2 && $3+0>0'` 找文件，再 `--show-missing-lines`

@@ -2,8 +2,6 @@
 
 唯一任务清单，条目完成即删除。项目说明见 `docs/requirements.md`。
 
-- [ ] 在 macOS 上跑一次 `just lint` + `just cov --fresh` 复核：四处平台性缺口的修法（`layout.rs` 的 `owner_uid_of`、`ps_probe.rs` 的重探测试、`watcher.rs` 的自计数 fake ps、`private_file.rs` 的 `fill`）都是在 Linux 上验证的，两平台应同为 100%
-
 ## 发布与用户安装方案
 
 现状：README 已写三条安装路径——`install.sh` 一行装（curl|sh，sha256 校验后自动 `pm3 install`）、GitHub Releases 手动下载（产物带 `config.yaml` 与 `.sha256`）、`cargo install --git <url> --bin pm3 --locked`（已实测 virtual workspace 下 `--bin` 能定位）。**前提：仓库转 public**，私有状态下匿名下载全部 404。crates.io / Homebrew / cargo-binstall 已拍板不发布。

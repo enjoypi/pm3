@@ -73,10 +73,8 @@ async fn resolving_a_service_defaults_the_working_directory_to_the_pm3_home() {
         .resolve_service("web")
         .await
         .expect("the service should resolve");
-    let expected = fixture
-        .dir
-        .path()
-        .join("web")
+    let expected = std::fs::canonicalize(fixture.dir.path().join("web"))
+        .expect("canonicalize the workspace")
         .to_string_lossy()
         .into_owned();
     assert_eq!(spec.cwd, expected);

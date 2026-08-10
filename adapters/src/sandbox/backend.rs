@@ -51,8 +51,7 @@ impl SandboxBackend {
         programs: &SandboxProgramSet,
         search_path: Option<&str>,
     ) -> Option<HostSandbox> {
-        let program = resolve_executable(programs.program(self), search_path)?;
-        Some(HostSandbox {
+        resolve_executable(programs.program(self), search_path).map(|program| HostSandbox {
             backend: self,
             program: program.to_string_lossy().into_owned(),
         })

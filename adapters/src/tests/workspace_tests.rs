@@ -85,6 +85,19 @@ async fn a_writable_root_resolving_into_a_hidden_root_is_refused() {
 }
 
 #[tokio::test]
+async fn a_hidden_root_is_resolved_to_its_real_path() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (link, real) = linked_dir(dir.path());
+    let cwd = dir.path().join("web");
+    let mut spec = spec_at(&cwd.to_string_lossy(), Vec::new());
+    spec.sandbox.unreadable_roots = vec![link];
+    materialise_workspace(&mut spec)
+        .await
+        .expect("the workspace should materialise");
+    assert_eq!(spec.sandbox.unreadable_roots, vec![real]);
+}
+
+#[tokio::test]
 async fn a_missing_working_directory_is_created() {
     let dir = tempfile::tempdir().expect("temp dir");
     let cwd = dir.path().join("web");

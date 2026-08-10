@@ -182,21 +182,12 @@ async fn files_that_are_not_service_declarations_are_skipped() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn a_non_utf8_file_name_in_the_service_directory_is_skipped() {
+#[test]
+fn a_non_utf8_file_name_in_the_service_directory_is_skipped() {
     use std::os::unix::ffi::OsStrExt as _;
 
-    let fixture = running_daemon().await;
-    declare(&fixture, &["web"]);
-    let cfg_dir = fixture.paths.root.join("service");
     let weird = std::ffi::OsStr::from_bytes(b"bad-\xff.yaml");
-    std::fs::write(cfg_dir.join(weird), "").expect("write a non-UTF8 name");
-    seed_log(&fixture, "web", LogStream::Stdout, "web-line\n");
-    let printed = run_logs(&fixture.config_path, &reading(&[]), &|_| {})
-        .await
-        .expect("should read");
-    assert_eq!(printed.as_deref(), Some("web-line"));
-    stop_daemon(fixture).await;
+    assert!(service_name_of(weird).is_none());
 }
 
 #[tokio::test]

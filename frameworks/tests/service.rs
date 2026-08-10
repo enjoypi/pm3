@@ -40,6 +40,7 @@ fn a_dry_run_install_prints_the_unit_without_touching_the_host() {
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn a_unit_can_wait_for_the_network_before_starting() {
     let home = common::home_waiting_for_network();

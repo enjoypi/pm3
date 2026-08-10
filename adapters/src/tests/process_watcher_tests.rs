@@ -281,6 +281,11 @@ async fn an_adopted_process_is_polled_until_it_leaves() {
 }
 
 #[test]
+fn a_watch_without_an_identity_token_accepts_any_report() {
+    assert!(holds_the_same_process(42, None, "any liveliness token"));
+}
+
+#[test]
 fn the_poll_interval_doubles_until_it_reaches_its_ceiling() {
     let cadence = PollCadence {
         interval_ms: 50,

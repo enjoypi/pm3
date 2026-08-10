@@ -198,10 +198,11 @@ async fn wait_until_supervised(
 async fn takeover_state(session: &ServiceSession, programs: &UnitProgramSet) -> Result<bool> {
     let status = query_status(&session.spec, programs, session.command_timeout_ms).await?;
     let filed = read_pid_file(&session.paths).await;
-    let supervised = supervised_pid_of(session, programs, filed).await?;
     let client = UdsClient::new(session.paths.socket.clone(), session.request_timeout_ms);
     let healthy = client.daemon_is_healthy().await;
-    Ok(takeover_satisfied(status, supervised, filed, healthy))
+    supervised_pid_of(session, programs, filed)
+        .await
+        .map(|supervised| takeover_satisfied(status, supervised, filed, healthy))
 }
 
 async fn supervised_pid_of(
@@ -212,7 +213,9 @@ async fn supervised_pid_of(
     match session.spec.kind {
         UnitKind::WinSchtasks => Ok(filed),
         UnitKind::Launchd | UnitKind::Systemd => {
-            Ok(query_supervised_pid(&session.spec, programs, session.command_timeout_ms).await?)
+            query_supervised_pid(&session.spec, programs, session.command_timeout_ms)
+                .await
+                .map_err(Error::from)
         }
     }
 }

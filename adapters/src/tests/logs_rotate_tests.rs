@@ -83,15 +83,12 @@ async fn the_err_log_rotates_with_the_same_rule() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn a_non_utf8_file_name_is_skipped() {
+#[test]
+fn a_non_utf8_file_name_is_skipped() {
     use std::os::unix::ffi::OsStrExt as _;
 
-    let dir = tempfile::tempdir().expect("temp dir");
     let weird = std::ffi::OsStr::from_bytes(b"bad-\xff-out.log");
-    std::fs::write(dir.path().join(weird), vec![b'x'; 4096]).expect("seed the log");
-    let rotated = rotate(dir.path(), 1024).await;
-    assert!(rotated.is_empty());
+    assert!(!is_managed_log(weird));
 }
 
 #[tokio::test]

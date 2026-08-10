@@ -32,6 +32,9 @@ pub async fn materialise_workspace(spec: &mut AppSpec) -> Result<(), PolicyError
             spec.sandbox.derived_roots.push(real);
         }
     }
+    for root in &mut spec.sandbox.unreadable_roots {
+        *root = resolve_cached(root, &mut resolved).await;
+    }
     validate_policy(&spec.sandbox)
 }
 

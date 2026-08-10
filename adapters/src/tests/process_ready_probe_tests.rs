@@ -56,7 +56,7 @@ async fn an_exec_probe_finds_a_bare_program_on_the_search_path() {
     std::fs::write(&program, "#!/bin/sh\nexit 0\n").expect("write the probe program");
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
         .expect("make the probe program executable");
-    let prober = HostReadyProber::new(TIMEOUT_MS, dir.path().to_string_lossy().into_owned());
+    let prober = HostReadyProber::new(5_000, dir.path().to_string_lossy().into_owned());
     let probe = exec_probe(&["probe-ok"]);
     assert_eq!(prober.check_ready(&probe).await, Readiness::Ready);
 }

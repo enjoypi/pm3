@@ -13,9 +13,13 @@ use std::{
 };
 
 use self::common::{
-    PM3, SERVICE_LABEL, described_pid, home, impatient_home, sleeper_apps, stderr_of, stdout_of,
-    wait_for_listing,
+    PM3, SERVICE_LABEL, described_pid, home_with_timeout, impatient_home, sleeper_apps, stderr_of,
+    stdout_of, wait_for_listing,
 };
+
+fn patient_home() -> common::Home {
+    home_with_timeout("danger-full-access", true, "info", 30_000)
+}
 
 struct InstallFixture {
     home: common::Home,
@@ -23,6 +27,40 @@ struct InstallFixture {
     destination: PathBuf,
     backups: PathBuf,
 }
+
+#[cfg(target_os = "macos")]
+impl Drop for InstallFixture {
+    fn drop(&mut self) {
+        let uid = std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .expect("read the uid");
+        let uid = String::from_utf8_lossy(&uid.stdout).trim().to_string();
+        let _ = std::process::Command::new("launchctl")
+            .args(["bootout", &format!("gui/{uid}/{SERVICE_LABEL}")])
+            .output();
+    }
+}
+
+#[cfg(target_os = "macos")]
+const MANAGER_NAME: &str = "launchd";
+#[cfg(target_os = "linux")]
+const MANAGER_NAME: &str = "systemd";
+
+#[cfg(target_os = "macos")]
+fn unit_dir(fake_home: &Path) -> PathBuf {
+    fake_home.join("Library/LaunchAgents")
+}
+
+#[cfg(target_os = "linux")]
+fn unit_dir(fake_home: &Path) -> PathBuf {
+    fake_home.join(".config/systemd/user")
+}
+
+#[cfg(target_os = "macos")]
+const UNIT_EXTENSION: &str = "plist";
+#[cfg(target_os = "linux")]
+const UNIT_EXTENSION: &str = "service";
 
 fn fixture(home: common::Home, manager_body: &str) -> InstallFixture {
     let fake_home = home.dir.path().join("fake-home");
@@ -116,7 +154,7 @@ esac
 
 #[test]
 fn a_first_install_lands_the_binary_and_brings_the_daemon_under_supervision() {
-    let fixture = fixture(home(), SUPERVISING_MANAGER);
+    let fixture = fixture(patient_home(), SUPERVISING_MANAGER);
 
     let installed = install(&fixture);
     assert!(installed.status.success(), "{}", stderr_of(&installed));
@@ -127,7 +165,9 @@ fn a_first_install_lands_the_binary_and_brings_the_daemon_under_supervision() {
     let output = stdout_of(&installed);
     assert!(output.contains("backed up"), "got: {output}");
     assert!(
-        output.contains(&format!("service {SERVICE_LABEL} (systemd) is running")),
+        output.contains(&format!(
+            "service {SERVICE_LABEL} ({MANAGER_NAME}) is running"
+        )),
         "got: {output}"
     );
     assert!(
@@ -145,17 +185,17 @@ fn a_first_install_lands_the_binary_and_brings_the_daemon_under_supervision() {
 
 #[test]
 fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
-    let fixture = fixture(home(), SUPERVISING_MANAGER);
+    let fixture = fixture(patient_home(), SUPERVISING_MANAGER);
     std::fs::create_dir_all(fixture.destination.parent().expect("dest dir")).expect("mkdir dest");
     std::fs::write(&fixture.destination, "#!/bin/sh\necho 'pm3 1.7.1'\n")
         .expect("write the old binary");
     std::fs::set_permissions(&fixture.destination, std::fs::Permissions::from_mode(0o755))
         .expect("chmod the old binary");
     std::fs::write(fixture.home.root.join("config.yaml"), "old config").expect("seed config");
-    let unit_dir = fixture.fake_home.join(".config/systemd/user");
+    let unit_dir = unit_dir(&fixture.fake_home);
     std::fs::create_dir_all(&unit_dir).expect("mkdir unit dir");
     std::fs::write(
-        unit_dir.join(format!("{SERVICE_LABEL}.service")),
+        unit_dir.join(format!("{SERVICE_LABEL}.{UNIT_EXTENSION}")),
         "old unit",
     )
     .expect("seed unit");
@@ -193,7 +233,9 @@ fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
         "old config"
     );
     assert!(
-        stamp.join(format!("{SERVICE_LABEL}.service")).is_file(),
+        stamp
+            .join(format!("{SERVICE_LABEL}.{UNIT_EXTENSION}"))
+            .is_file(),
         "unit backup"
     );
 }
