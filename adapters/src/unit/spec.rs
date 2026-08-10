@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 pub const DAEMON_SUBCOMMAND: &str = "daemon";
 pub const CONFIG_FLAG: &str = "--config";
 
+pub(super) const HOME_VARIABLE: &str = "HOME";
+pub(super) const PATH_VARIABLE: &str = "PATH";
+
 const LAUNCHD_UNIT_DIR: &str = "Library/LaunchAgents";
 const LAUNCHD_UNIT_SUFFIX: &str = "plist";
 const SYSTEMD_UNIT_DIR: &str = ".config/systemd/user";

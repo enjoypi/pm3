@@ -94,37 +94,6 @@ impl PsProcessProbe {
         }
         Some(String::from_utf8_lossy(&output.stdout).into_owned())
     }
-
-    pub async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
-        if pids.is_empty() {
-            return HashMap::new();
-        }
-        let joined = join_pids(pids);
-        let started = Instant::now();
-        let call = Command::new(&self.program)
-            .args([WIDE_FLAG, FORMAT_FLAG, BATCH_FORMAT, PID_FLAG])
-            .arg(&joined)
-            .env(LOCALE_VARIABLE, FIXED_LOCALE)
-            .output();
-        let Ok(finished) = timeout(Duration::from_millis(self.timeout_ms), call).await else {
-            log_stalled_probe(&joined, self.timeout_ms);
-            return unreadable(pids);
-        };
-        let Ok(output) = finished else {
-            log_unusable_probe(&joined, &self.program);
-            return unreadable(pids);
-        };
-        let code = output.status.code();
-        if !output.status.success() && code != Some(NO_SUCH_PROCESS_CODE) {
-            log_refused_probe(&joined, code.unwrap_or(UNKNOWN_EXIT_CODE));
-            return unreadable(pids);
-        }
-        let listed = parse_report(&String::from_utf8_lossy(&output.stdout));
-        log_probe(&joined, listed.len(), started.elapsed().as_millis());
-        pids.iter()
-            .map(|pid| (*pid, seen_as(listed.get(pid))))
-            .collect()
-    }
 }
 
 fn seen_as(token: Option<&String>) -> Liveness {
@@ -200,6 +169,22 @@ impl ProcessProbe for PsProcessProbe {
             .await
             .remove(&pid)
             .unwrap_or(Liveness::Unreadable)
+    }
+
+    async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
+        if pids.is_empty() {
+            return HashMap::new();
+        }
+        let joined = join_pids(pids);
+        let started = Instant::now();
+        let Some(stdout) = self.ask_ps(BATCH_FORMAT, &joined).await else {
+            return unreadable(pids);
+        };
+        let listed = parse_report(&stdout);
+        log_probe(&joined, listed.len(), started.elapsed().as_millis());
+        pids.iter()
+            .map(|pid| (*pid, seen_as(listed.get(pid))))
+            .collect()
     }
 
     async fn resident_memory(&self, pids: &[u32]) -> BTreeMap<u32, u64> {

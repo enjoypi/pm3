@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use usecases::AppSpec;
+use usecases::{AppSpec, PolicyError, validate_policy};
 
 use crate::program::SERVICE_CWD_PLACEHOLDER;
 
-pub async fn materialise_workspace(spec: &mut AppSpec) {
+pub async fn materialise_workspace(spec: &mut AppSpec) -> Result<(), PolicyError> {
     let declared_cwd = spec.cwd.clone();
     if let Err(error) = tokio::fs::create_dir_all(&declared_cwd).await {
         let reason = error.to_string();
@@ -32,6 +32,7 @@ pub async fn materialise_workspace(spec: &mut AppSpec) {
             spec.sandbox.derived_roots.push(real);
         }
     }
+    validate_policy(&spec.sandbox)
 }
 
 async fn resolve_cached(path: &str, resolved: &mut BTreeMap<String, String>) -> String {

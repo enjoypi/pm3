@@ -77,11 +77,83 @@ fn log_stuck_permissions(path: &Path, reason: &str) {
 
 #[cfg(windows)]
 #[must_use]
-pub fn pipe_name_of(socket: &Path) -> String {
+pub fn pipe_name_of(socket: &Path, secret: &str) -> String {
     use std::hash::{Hash, Hasher as _};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     socket.hash(&mut hasher);
+    secret.hash(&mut hasher);
     format!(r"\\.\pipe\pm3-{:016x}", hasher.finish())
+}
+
+#[cfg(windows)]
+pub const PIPE_SECRET_FILE: &str = "pipe.secret";
+
+#[cfg(windows)]
+const PIPE_SECRET_LEN: usize = 32;
+
+#[cfg(windows)]
+#[must_use]
+pub fn is_pipe_secret(secret: &str) -> bool {
+    secret.len() == PIPE_SECRET_LEN && secret.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+#[cfg(windows)]
+#[must_use]
+pub fn generate_pipe_secret() -> String {
+    let mut rng = fastrand::Rng::new();
+    format!("{:016x}{:016x}", rng.u64(..), rng.u64(..))
+}
+
+#[cfg(windows)]
+pub async fn pipe_secret(socket: &Path) -> Result<String> {
+    let path = socket.with_file_name(PIPE_SECRET_FILE);
+    match read_pipe_secret(&path).await? {
+        Some(secret) => Ok(secret),
+        None => create_pipe_secret(&path).await,
+    }
+}
+
+#[cfg(windows)]
+async fn read_pipe_secret(path: &Path) -> Result<Option<String>> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(raw) => {
+            let secret = raw.trim();
+            if is_pipe_secret(secret) {
+                return Ok(Some(secret.to_string()));
+            }
+            tokio::fs::remove_file(path)
+                .await
+                .map_err(|error| layout_error(path, &error))?;
+            Ok(None)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(layout_error(path, &error)),
+    }
+}
+
+#[cfg(windows)]
+async fn create_pipe_secret(path: &Path) -> Result<String> {
+    let secret = generate_pipe_secret();
+    match create_secret_file(path, &secret).await {
+        Ok(()) => return Ok(secret),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(layout_error(path, &error)),
+    }
+    read_pipe_secret(path)
+        .await
+        .map(|winner| winner.unwrap_or(secret))
+}
+
+#[cfg(windows)]
+async fn create_secret_file(path: &Path, secret: &str) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt as _;
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .await?;
+    file.write_all(secret.as_bytes()).await?;
+    file.flush().await
 }
 
 pub async fn write_pid_file(paths: &Pm3Paths) -> Result<()> {

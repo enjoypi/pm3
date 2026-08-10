@@ -93,6 +93,10 @@ impl ProcessTable {
         Some(self.records.remove(index))
     }
 
+    pub fn restore(&mut self, record: ProcessRecord) {
+        self.records.push(record);
+    }
+
     #[must_use]
     pub fn dependency_nodes(&self) -> Vec<DependencyNode<'_>> {
         self.records

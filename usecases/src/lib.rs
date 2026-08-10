@@ -15,6 +15,7 @@ pub mod stop;
 pub mod supervise;
 pub mod supervision;
 pub mod supervisor;
+pub mod supervisor_handlers;
 pub mod supervisor_ready;
 pub mod table;
 pub mod timer_state;
@@ -27,7 +28,8 @@ pub use entities::{
     ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe, RestartDecision, RestartPolicy,
     RuntimeError, SandboxMode, SandboxPolicy, SignalNameError, SpecError, VALID_SIGNALS,
     covers_path, decide_memory_verdict, decide_restart, normalize_root, parse_memory_limit,
-    parse_signal_name, topo_sort, validate_app_name, validate_forbidden_roots, validate_spec,
+    parse_signal_name, topo_sort, validate_app_name, validate_forbidden_roots, validate_policy,
+    validate_spec,
 };
 use thiserror::Error;
 

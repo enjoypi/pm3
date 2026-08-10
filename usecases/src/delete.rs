@@ -26,8 +26,13 @@ pub async fn delete_app(
         .find_mut(selector)
         .expect("internal error: the same selector just located this record");
     let stopped = request_stop(record, ports).await?;
-    table.remove(selector);
-    save_table(table, ports).await?;
+    let removed = table
+        .remove(selector)
+        .expect("internal error: the same selector just located this record");
+    if let Err(error) = save_table(table, ports).await {
+        table.restore(removed);
+        return Err(error);
+    }
     Ok(DeleteOutcome {
         name: stopped.name,
         force_kill_pid: stopped.force_kill_pid,

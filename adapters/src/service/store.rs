@@ -82,7 +82,9 @@ impl UndoStep {
     async fn apply(&self) {
         let restored = match &self.restore {
             Restore::Remove => tokio::fs::remove_file(&self.path).await,
-            Restore::Replace(previous) => tokio::fs::write(&self.path, previous).await,
+            Restore::Replace(previous) => {
+                crate::private_file::write_private(&self.path, previous).await
+            }
         };
         match restored {
             Ok(()) => log_undo(&self.path),

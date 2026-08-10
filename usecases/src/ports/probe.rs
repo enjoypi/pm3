@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, future::Future};
+use std::{
+    collections::{BTreeMap, HashMap},
+    future::Future,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Liveness {
@@ -15,6 +18,7 @@ pub struct ResourceSample {
 
 pub trait ProcessProbe: Send + Sync {
     fn identity(&self, pid: u32) -> impl Future<Output = Liveness> + Send;
+    fn identities(&self, pids: &[u32]) -> impl Future<Output = HashMap<u32, Liveness>> + Send;
     fn wait_gone(&self, pid: u32, timeout_ms: u64) -> impl Future<Output = Liveness> + Send;
     fn resident_memory(&self, pids: &[u32]) -> impl Future<Output = BTreeMap<u32, u64>> + Send;
     fn resource_usage(

@@ -34,6 +34,7 @@ impl DaemonPorts {
         let command_timeout_ms = specs.config.command_timeout_ms;
         let poll_interval_ms = specs.config.daemon_poll_interval_ms;
         let minimal_read_roots = specs.config.sandbox.minimal_read_roots.clone();
+        let search_path = specs.config.search_path.clone();
         let cadence = PollCadence {
             interval_ms: specs.config.daemon_poll_interval_ms,
             max_interval_ms: specs.config.daemon_poll_max_interval_ms,
@@ -53,7 +54,7 @@ impl DaemonPorts {
             scheduler: CronScheduler,
             cadence,
             rotator: CopyTruncateRotator,
-            prober: HostReadyProber::new(command_timeout_ms),
+            prober: HostReadyProber::new(command_timeout_ms, search_path),
         }
     }
 
@@ -131,6 +132,10 @@ impl ProcessLauncher for DaemonPorts {
 impl ProcessProbe for DaemonPorts {
     async fn identity(&self, pid: u32) -> Liveness {
         self.probe.identity(pid).await
+    }
+
+    async fn identities(&self, pids: &[u32]) -> std::collections::HashMap<u32, Liveness> {
+        self.probe.identities(pids).await
     }
 
     async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {

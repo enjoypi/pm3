@@ -75,12 +75,11 @@ async fn claim_lock(path: &Path, stale_after_ms: u64) -> bool {
 }
 
 async fn take_lock(path: &Path) -> bool {
-    tokio::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(path)
-        .await
-        .is_ok()
+    let mut options = tokio::fs::OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    options.mode(adapters::OWNER_ONLY_FILE);
+    options.open(path).await.is_ok()
 }
 
 async fn is_abandoned(path: &Path, stale_after_ms: u64) -> bool {

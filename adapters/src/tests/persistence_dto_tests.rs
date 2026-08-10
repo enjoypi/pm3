@@ -111,11 +111,34 @@ fn decode_names_the_runtime_after_the_service() {
 }
 
 #[test]
-fn decode_clears_a_pending_restart_request() {
+fn decode_restores_a_pending_restart_request() {
     let mut record = sample_record("web");
     record.runtime.request_restart();
     let mut doc = encode_states(&[record], None);
     let restored = decoded(doc.services.pop().expect("one encoded service"));
+    assert!(restored.pending_restart);
+}
+
+#[test]
+fn decode_accepts_a_dump_written_before_pending_restart_existed() {
+    let doc = encode_states(&[sample_record("web")], None);
+    let yaml = serde_yaml2::to_string(&doc).expect("the dump document serializes");
+    let pruned = yaml
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("pending_restart:"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(pruned.len() < yaml.len(), "got: {yaml}");
+    let parsed: DumpDocument =
+        serde_yaml2::from_str(&pruned).expect("a dump without pending_restart still parses");
+    let restored = decode_state(
+        parsed
+            .services
+            .into_iter()
+            .next()
+            .expect("one encoded service"),
+    )
+    .expect("should decode one service");
     assert!(!restored.pending_restart);
 }
 

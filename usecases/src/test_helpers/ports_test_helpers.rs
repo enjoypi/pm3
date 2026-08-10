@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
@@ -23,6 +23,7 @@ pub const FAKE_FIRE_INTERVAL_MS: u64 = 60_000;
 pub const TEXT_DIGEST_PREFIX: &str = "text:";
 pub const FILE_DIGEST_PREFIX: &str = "file:";
 pub const LIVE_TOKEN_PREFIX: &str = "live:";
+pub const RECYCLED_TOKEN_PREFIX: &str = "recycled:";
 
 #[must_use]
 pub fn live_token(pid: u32) -> String {
@@ -40,6 +41,7 @@ struct FakeState {
     delivered: Vec<(String, u32)>,
     signal_failures: Vec<u32>,
     stubborn: Vec<u32>,
+    recycled_on_signal: Vec<u32>,
     waited: Vec<u32>,
     force_killed: Vec<u32>,
     signal_scopes: Vec<(u32, SignalScope)>,
@@ -100,6 +102,10 @@ impl FakePorts {
 
     pub fn make_stubborn(&self, pid: u32) {
         self.with_state(|state| state.stubborn.push(pid));
+    }
+
+    pub fn recycle_on_signal(&self, pid: u32) {
+        self.with_state(|state| state.recycled_on_signal.push(pid));
     }
 
     pub fn fail_load(&self) {
@@ -265,6 +271,12 @@ impl FakePorts {
             if !guard.stubborn.contains(&pid) {
                 guard.live.remove(&pid);
             }
+            if guard.recycled_on_signal.contains(&pid) {
+                guard
+                    .live
+                    .insert(pid, format!("{RECYCLED_TOKEN_PREFIX}{pid}"));
+            }
+            drop(guard);
         }
         Ok(())
     }
@@ -439,15 +451,28 @@ impl ProcessProbe for FakePorts {
     }
 
     async fn identity(&self, pid: u32) -> Liveness {
+        self.identities(&[pid])
+            .await
+            .remove(&pid)
+            .unwrap_or(Liveness::Unreadable)
+    }
+
+    async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
         self.read(|state| {
-            if state.probe_broken.contains(&pid) {
-                return Liveness::Unreadable;
-            }
-            state
-                .live
-                .get(&pid)
-                .cloned()
-                .map_or(Liveness::Gone, Liveness::Alive)
+            pids.iter()
+                .map(|pid| {
+                    let liveness = if state.probe_broken.contains(pid) {
+                        Liveness::Unreadable
+                    } else {
+                        state
+                            .live
+                            .get(pid)
+                            .cloned()
+                            .map_or(Liveness::Gone, Liveness::Alive)
+                    };
+                    (*pid, liveness)
+                })
+                .collect()
         })
     }
 

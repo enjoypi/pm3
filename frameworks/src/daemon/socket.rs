@@ -145,7 +145,13 @@ pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
 
 #[cfg(windows)]
 pub async fn bind_uds(path: &Path) -> Result<BindOutcome, SocketError> {
-    let name = pipe_name_of(path);
+    let secret = crate::layout::pipe_secret(path)
+        .await
+        .map_err(|e| SocketError::Bind {
+            path: text(path),
+            reason: e.to_string(),
+        })?;
+    let name = pipe_name_of(path, &secret);
     match ServerOptions::new().first_pipe_instance(true).create(&name) {
         Ok(server) => {
             mark_bound(path).await;

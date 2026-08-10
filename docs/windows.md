@@ -9,7 +9,7 @@ pm3 的 Windows 支持以「服务安装与换代链可用」为目标：daemon 
 | `pm3 service install/uninstall`（含 `--dry-run`/`--force`） | 渲染 Task 2.0 XML + `<label>-daemon.cmd` 包装脚本，落在 `~/.pm3/service/`，经 `schtasks /Create /TN <label> /XML <file> /F` 注册并立即 `/Run` |
 | `pm3 service`（状态） | `schtasks /Query /TN <label> /V /FO LIST`，输出含 `Running` 即视为运行中 |
 | `pm3 install`（备份换代） | 与 Unix 同一链路；Task Scheduler 无 MainPID 概念，接管判定以 `pm3.pid` 为管理器 pid 的替代 |
-| daemon / CLI 通信 | 命名管道 `\\.\pipe\pm3-<hash>`（hash 取自 socket 路径）；`pm3.sock` 仍存在但只是存在性标记文件，供「daemon 是否退净」判定 |
+| daemon / CLI 通信 | 命名管道 `\\.\pipe\pm3-<hash>`（hash 取自 socket 路径 + `<pm3.home>/pipe.secret`，其他用户读不到 secret 故无法预测管道名）；`pm3.sock` 仍存在但只是存在性标记文件，供「daemon 是否退净」判定 |
 | `pm3 start/stop/restart/delete/list/logs/kill` | 停止与强杀经 `taskkill /PID <pid> /T /F`（/T 杀进程树，等价进程组语义） |
 | 崩溃自愈 | 包装脚本恒以 `exit /b 1` 收尾，Task Scheduler 的 `RestartOnFailure` 必然触发 |
 
@@ -30,7 +30,7 @@ pm3 的 Windows 支持以「服务安装与换代链可用」为目标：daemon 
 | 能力 | 行为 |
 |---|---|
 | 沙箱（`sandbox.mode` 为 `read-only` / `workspace-write`） | 无 seatbelt/bwrap 对应物，启动报 `no sandbox backend`。Windows 上必须把 `pm3.sandbox.mode` 设为 `danger-full-access` |
-| peer 凭据校验 | 命名管道无 `SO_PEERCRED` 等价物且未实现 ACL 收紧，连接准入 fail-open（与 Unix 上「读不出属主即放行」同一设计） |
+| peer 凭据校验 | 命名管道无 `SO_PEERCRED` 等价物；管道名混入 `<pm3.home>/pipe.secret`（NTFS 用户目录内，0600 语义）使其他用户既无法预测管道名也无法抢注 |
 | `schtasks /Query` 的非英文输出 | 状态解析假定英文 locale；非英文系统上 `pm3 service` 恒报 `installed, not running` |
 
 ## 配置

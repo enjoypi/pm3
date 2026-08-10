@@ -16,7 +16,7 @@ use tokio::{
 };
 
 #[cfg(windows)]
-use crate::layout::pipe_name_of;
+use crate::layout::{pipe_name_of, pipe_secret};
 
 pub const OK_STATUS: u16 = 200;
 
@@ -124,13 +124,15 @@ async fn connect_transport(socket: &Path) -> Result<Box<dyn Transport>, ClientEr
 }
 
 #[cfg(windows)]
-#[expect(
-    clippy::unused_async,
-    reason = "named pipe clients open synchronously; the unix twin awaits"
-)]
 async fn connect_transport(socket: &Path) -> Result<Box<dyn Transport>, ClientError> {
+    let secret = pipe_secret(socket)
+        .await
+        .map_err(|e| ClientError::Connect {
+            path: text(socket),
+            reason: e.to_string(),
+        })?;
     ClientOptions::new()
-        .open(pipe_name_of(socket))
+        .open(pipe_name_of(socket, &secret))
         .map(|stream| Box::new(stream) as Box<dyn Transport>)
         .map_err(|e| ClientError::Connect {
             path: text(socket),

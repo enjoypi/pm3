@@ -1,7 +1,4 @@
-use super::spec::UnitSpec;
-
-const PATH_VARIABLE: &str = "PATH";
-const HOME_VARIABLE: &str = "HOME";
+use super::spec::{HOME_VARIABLE, PATH_VARIABLE, UnitSpec};
 
 #[must_use]
 pub fn render_unit(spec: &UnitSpec) -> String {

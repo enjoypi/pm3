@@ -285,3 +285,23 @@ async fn resolving_a_service_whose_name_escapes_the_config_directory_is_refused(
         .to_string();
     assert!(err.contains("cannot accept app name"), "got: {err}");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_writable_root_linking_into_a_hidden_root_fails_the_prepare() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let canonical = dir.path().canonicalize().expect("canonical temp dir");
+    let source = spec_source_in(&canonical);
+    let link = canonical.join("data");
+    std::os::unix::fs::symlink(&canonical, &link).expect("link into the pm3 home");
+    write_service_file(
+        &source,
+        "web",
+        &format!(
+            "name: \"web\"\nscript: \"/bin/sh\"\nsandbox:\n  writable_roots:\n    - \"{}\"\n",
+            link.display()
+        ),
+    );
+    let err = source.prepare("web").await.unwrap_err().to_string();
+    assert!(err.contains("keeps out of every sandbox"), "got: {err}");
+}

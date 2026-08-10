@@ -164,6 +164,21 @@ async fn a_pending_restart_flag_does_not_survive_a_daemon_restart() {
 }
 
 #[tokio::test]
+async fn a_restart_interrupted_mid_drain_is_finished_by_the_next_daemon() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.status = ProcessStatus::Stopping;
+    record.runtime.request_restart();
+    ports.seed_stored(vec![record]);
+    let table = resurrected(&ports).await;
+    assert_eq!(ports.terminated(), vec![SURVIVOR_PID]);
+    assert_eq!(ports.spawned_names(), vec!["api"]);
+    let stored = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(stored.runtime.status, ProcessStatus::Online);
+    assert!(!stored.runtime.pending_restart);
+}
+
+#[tokio::test]
 async fn a_read_failure_propagates() {
     let ports = FakePorts::new(1000);
     ports.fail_load();

@@ -10,10 +10,7 @@ use usecases::{
 };
 
 use super::dto::{DecodeError, DumpDocument, StateDto, decode_state, encode_states};
-use crate::{
-    apps_file::{AppsFileError, SpecSource},
-    workspace::materialise_workspace,
-};
+use crate::apps_file::{AppsFileError, SpecSource};
 
 const TMP_SUFFIX: &str = ".tmp";
 
@@ -35,23 +32,33 @@ impl YamlDumpStore {
     }
 
     async fn rejoin(&self, state: StateDto, contents: &mut DumpContents) {
-        let runtime = match decode_state(state) {
+        let runtime = match decode_state(state.clone()) {
             Ok(runtime) => runtime,
             Err(error) => {
                 warn_undecodable(&error);
+                contents.stranded.push(stranded_of(&state));
                 return;
             }
         };
         match self.specs.resolve_service(&runtime.name).await {
-            Ok(mut spec) => {
-                materialise_workspace(&mut spec).await;
-                contents.records.push(ProcessRecord { spec, runtime });
-            }
+            Ok(spec) => contents.records.push(ProcessRecord { spec, runtime }),
             Err(error) => {
                 warn_unusable(&runtime.name, &error);
                 contents.stranded.push(stranded_from(runtime));
             }
         }
+    }
+}
+
+fn stranded_of(state: &StateDto) -> StrandedProcess {
+    StrandedProcess {
+        name: state.name.clone(),
+        pid: state.runtime.pid,
+        token: state
+            .runtime
+            .identity
+            .as_ref()
+            .map(|identity| identity.token.clone()),
     }
 }
 

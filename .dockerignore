@@ -3,10 +3,7 @@
 !Cargo.toml
 !Cargo.lock
 
-!build_cfg_aliases.rs
 !config.yaml
-!migrations/
-!migrations/**
 
 !entities/
 !entities/**

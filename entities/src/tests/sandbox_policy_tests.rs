@@ -77,19 +77,6 @@ fn read_only_stays_confined() {
 }
 
 #[test]
-fn readable_paths_cover_declared_reads_and_every_writable_root() {
-    let policy = SandboxPolicy {
-        readable_roots: vec!["/opt/data".to_string()],
-        derived_roots: vec!["/home/me/.pm3/api".to_string()],
-        ..workspace_policy()
-    };
-    assert_eq!(
-        policy.readable_paths(),
-        vec!["/opt/data", "/srv/api", "/home/me/.pm3/api"]
-    );
-}
-
-#[test]
 fn hidden_paths_expose_the_unreadable_roots() {
     let policy = SandboxPolicy {
         unreadable_roots: vec!["/home/me/.config/pm3".to_string()],

@@ -152,7 +152,11 @@ async fn aggregation_skips_a_service_whose_log_path_is_blocked() {
     let fixture = running_daemon().await;
     declare(&fixture, &["web", "api"]);
     seed_log(&fixture, "web", LogStream::Stdout, "web-line\n");
-    let blocked = log_file(&fixture.paths, "api", LogStream::Stdout).expect("a safe name");
+    let blocked = log_path(
+        &fixture.paths.logs_dir.to_string_lossy(),
+        "api",
+        LogStream::Stdout,
+    );
     std::fs::create_dir_all(&blocked).expect("block the log path with a directory");
     let printed = run_logs(&fixture.config_path, &reading(&[]), &|_| {})
         .await
@@ -356,7 +360,11 @@ async fn reading_a_log_without_a_config_fails() {
 #[tokio::test]
 async fn following_a_log_path_that_is_not_a_file_fails() {
     let fixture = running_daemon().await;
-    let blocked = log_file(&fixture.paths, "blocked", LogStream::Stdout).expect("a safe name");
+    let blocked = log_path(
+        &fixture.paths.logs_dir.to_string_lossy(),
+        "blocked",
+        LogStream::Stdout,
+    );
     std::fs::create_dir_all(&blocked).expect("block the log path with a directory");
     let request = LogRequest {
         follow: true,
@@ -374,7 +382,11 @@ async fn opening_a_follower_fails_for_a_missing_log_in_strict_mode() {
     let targets = vec![LogTarget {
         name: "ghost".to_string(),
         stream: LogStream::Stdout,
-        path: log_file(&fixture.paths, "ghost", LogStream::Stdout).expect("a safe name"),
+        path: log_path(
+            &fixture.paths.logs_dir.to_string_lossy(),
+            "ghost",
+            LogStream::Stdout,
+        ),
         prefix: String::new(),
     }];
     let outcome = open_followers(&targets, true).await;
@@ -408,7 +420,11 @@ async fn follow_targets_propagates_the_open_failure() {
     let targets = vec![LogTarget {
         name: "ghost".to_string(),
         stream: LogStream::Stdout,
-        path: log_file(&fixture.paths, "ghost", LogStream::Stdout).expect("a safe name"),
+        path: log_path(
+            &fixture.paths.logs_dir.to_string_lossy(),
+            "ghost",
+            LogStream::Stdout,
+        ),
         prefix: String::new(),
     }];
     let outcome = follow_targets(&session, &targets, true, 1, &|_| {}).await;
@@ -439,9 +455,9 @@ async fn following_fails_when_the_log_turns_into_a_directory_mid_follow() {
 }
 
 #[tokio::test]
-async fn log_file_rejects_an_unsafe_name() {
+async fn reading_a_log_for_an_unsafe_name_fails() {
     let fixture = running_daemon().await;
-    let outcome = log_file(&fixture.paths, "../escape", LogStream::Stdout);
+    let outcome = run_logs(&fixture.config_path, &reading(&["../escape"]), &|_| {}).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
     stop_daemon(fixture).await;
 }

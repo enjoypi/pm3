@@ -1,4 +1,7 @@
-use super::{escape::escape_xml, spec::UnitSpec};
+use super::{
+    escape::escape_xml,
+    spec::{HOME_VARIABLE, PATH_VARIABLE, UnitSpec},
+};
 
 const TASK_HEADER: &str = concat!(
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
@@ -7,9 +10,6 @@ const TASK_HEADER: &str = concat!(
 
 const RESTART_MINIMUM_SECS: u64 = 60;
 const RESTART_COUNT: u64 = 999;
-
-const HOME_VARIABLE: &str = "HOME";
-const PATH_VARIABLE: &str = "PATH";
 
 #[must_use]
 pub fn render_task_xml(spec: &UnitSpec) -> String {

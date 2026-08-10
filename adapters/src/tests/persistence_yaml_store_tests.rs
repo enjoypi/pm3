@@ -27,12 +27,11 @@ fn store_at(root: &TempDir, path: PathBuf) -> YamlDumpStore {
 }
 
 async fn rejoined(fixture: &Fixture, name: &str) -> ProcessRecord {
-    let mut spec = fixture
+    let spec = fixture
         .source
         .resolve_service(name)
         .await
         .expect("the service file should resolve");
-    materialise_workspace(&mut spec).await;
     ProcessRecord {
         spec,
         runtime: sample_runtime(name),
@@ -262,6 +261,39 @@ async fn load_strands_an_idle_app_with_no_pid_to_sweep() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn load_strands_an_app_whose_writable_root_links_into_a_hidden_root() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let canonical = dir.path().canonicalize().expect("canonical temp dir");
+    let source = spec_source_in(&canonical);
+    let store = YamlDumpStore::new(canonical.join("dump.yaml"), source.clone());
+    let link = canonical.join("data");
+    std::os::unix::fs::symlink(&canonical, &link).expect("link into the pm3 home");
+    write_service_file(
+        &source,
+        "web",
+        &format!(
+            "name: \"web\"\nscript: \"/bin/sh\"\nsandbox:\n  writable_roots:\n    - \"{}\"\n",
+            link.display()
+        ),
+    );
+    store
+        .save(&[sample_record("web")], None)
+        .await
+        .expect("save");
+    let loaded = store.load().await.expect("load");
+    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(
+        loaded.stranded,
+        vec![StrandedProcess {
+            name: "web".to_string(),
+            pid: Some(SAMPLE_PID),
+            token: Some(SAMPLE_TOKEN.to_string()),
+        }]
+    );
+}
+
 #[tokio::test]
 async fn load_reports_a_broken_document() {
     let fixture = fixture();
@@ -273,21 +305,28 @@ async fn load_reports_a_broken_document() {
 }
 
 #[tokio::test]
-async fn load_skips_a_record_with_an_unknown_status() {
+async fn load_strands_a_record_with_an_unknown_status() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
     let yaml = saved_yaml(&fixture.store, &[sample_record("web")]).await;
     tokio::fs::write(fixture.store.path(), yaml.replace("online", "zombie"))
         .await
         .expect("write");
+    let loaded = fixture.store.load().await.expect("load");
+    assert!(loaded.records.is_empty(), "got: {loaded:?}");
     assert_eq!(
-        fixture.store.load().await.expect("load"),
-        DumpContents::default()
+        loaded.stranded,
+        vec![StrandedProcess {
+            name: "web".to_string(),
+            pid: Some(SAMPLE_PID),
+            token: Some(SAMPLE_TOKEN.to_string()),
+        }],
+        "an undecodable record must still be swept, not dropped"
     );
 }
 
 #[tokio::test]
-async fn load_skips_a_running_record_without_a_pid() {
+async fn load_strands_a_running_record_without_a_pid() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
     let yaml = saved_yaml(&fixture.store, &[sample_record("web")]).await;
@@ -297,9 +336,15 @@ async fn load_skips_a_running_record_without_a_pid() {
     tokio::fs::write(fixture.store.path(), broken)
         .await
         .expect("write");
+    let loaded = fixture.store.load().await.expect("load");
+    assert!(loaded.records.is_empty(), "got: {loaded:?}");
     assert_eq!(
-        fixture.store.load().await.expect("load"),
-        DumpContents::default()
+        loaded.stranded,
+        vec![StrandedProcess {
+            name: "web".to_string(),
+            pid: None,
+            token: Some(SAMPLE_TOKEN.to_string()),
+        }]
     );
 }
 

@@ -103,8 +103,8 @@ pub(crate) async fn request_stop(
         });
     };
 
-    record.runtime.mark_stopping();
     ports.terminate(pid, SignalScope::ProcessGroup).await?;
+    record.runtime.mark_stopping();
     log_stopping(&name, pid);
     Ok(StopOutcome {
         name,

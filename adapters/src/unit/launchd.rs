@@ -1,4 +1,7 @@
-use super::{escape::escape_xml, spec::UnitSpec};
+use super::{
+    escape::escape_xml,
+    spec::{HOME_VARIABLE, PATH_VARIABLE, UnitSpec},
+};
 use crate::config::RESTART_CONDITION_ON_FAILURE;
 
 const PLIST_HEADER: &str = concat!(
@@ -7,9 +10,6 @@ const PLIST_HEADER: &str = concat!(
     "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n",
     "<plist version=\"1.0\">\n"
 );
-
-const PATH_VARIABLE: &str = "PATH";
-const HOME_VARIABLE: &str = "HOME";
 
 const KEEP_ALIVE_ALWAYS: &str = "<true/>";
 const KEEP_ALIVE_ON_FAILURE: &str = concat!(

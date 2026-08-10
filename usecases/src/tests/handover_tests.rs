@@ -41,11 +41,19 @@ fn a_stopped_service_coming_back_online_is_restarted() {
 }
 
 #[test]
-fn a_service_still_without_a_pid_is_restarted() {
+fn a_service_still_without_a_pid_is_not_a_change() {
     let before = vec![row("api", None)];
     let after = vec![row("api", None)];
     let comparison = compare_handover(&before, &after);
-    assert_eq!(comparison.restarted, vec!["api".to_owned()]);
+    assert_eq!(comparison, HandoverComparison::default());
+}
+
+#[test]
+fn a_service_that_lost_its_pid_is_not_restarted() {
+    let before = vec![row("api", Some(10))];
+    let after = vec![row("api", None)];
+    let comparison = compare_handover(&before, &after);
+    assert_eq!(comparison, HandoverComparison::default());
 }
 
 #[test]

@@ -3,6 +3,25 @@ use entities::ProcessStatus;
 use super::*;
 
 #[tokio::test]
+async fn a_pid_recycled_while_draining_is_spared_the_force_kill() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.recycle_on_signal(SURVIVOR_PID);
+    resurrected(&ports).await;
+    assert!(
+        ports.force_killed().is_empty(),
+        "got: {:?}",
+        ports.force_killed()
+    );
+    assert_eq!(ports.spawned_names(), vec!["api"]);
+}
+
+#[tokio::test]
 async fn a_stale_survivor_is_stopped_before_its_replacement_starts() {
     let ports = FakePorts::new(1000);
     let mut record = survivor(&ports, "api");

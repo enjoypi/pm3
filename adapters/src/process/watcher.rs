@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path, sync::Arc, time::Duration};
 
 use tokio::sync::{Mutex, oneshot};
-use usecases::{ExitOutcome, Liveness};
+use usecases::{ExitOutcome, Liveness, ProcessProbe as _};
 
 use super::{ps_probe::PsProcessProbe, tokio_launcher::TokioProcessLauncher};
 
@@ -88,11 +88,6 @@ impl AdoptedWatch {
         gone.await.ok();
     }
 
-    #[must_use]
-    pub async fn is_idle(&self) -> bool {
-        !self.state.lock().await.polling
-    }
-
     async fn poll_until_all_gone(&self, probe: &PsProcessProbe, cadence: PollCadence) {
         let mut step_ms = cadence.interval_ms.max(1);
         while let Some(watched) = self.roster().await {
@@ -162,8 +157,8 @@ pub async fn wait_for_exit(
 fn still_running(pid: u32, token: Option<&str>, seen: Option<&Liveness>) -> bool {
     match seen {
         Some(Liveness::Alive(reported)) => holds_the_same_process(pid, token, reported),
-        Some(Liveness::Unreadable) => true,
-        Some(Liveness::Gone) | None => false,
+        Some(Liveness::Unreadable) | None => true,
+        Some(Liveness::Gone) => false,
     }
 }
 

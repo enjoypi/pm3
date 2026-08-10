@@ -1,5 +1,6 @@
 #![cfg(unix)]
 use std::{
+    collections::HashMap,
     fs,
     os::unix::fs::PermissionsExt as _,
     sync::{
@@ -8,6 +9,7 @@ use std::{
     },
 };
 
+use tokio::sync::oneshot;
 use usecases::{LaunchSpec, ProcessLauncher as _};
 
 use super::*;
@@ -109,6 +111,31 @@ fn launch_spec(dir: &tempfile::TempDir) -> LaunchSpec {
         stdout_path: dir.path().join("out.log").to_string_lossy().into_owned(),
         stderr_path: dir.path().join("err.log").to_string_lossy().into_owned(),
     }
+}
+
+#[tokio::test]
+async fn a_waiter_registered_after_the_snapshot_survives_the_release() {
+    let watch = AdoptedWatch::default();
+    let (departed, mut gone) = oneshot::channel();
+    watch.state.lock().await.watched.insert(
+        ADOPTED_PID,
+        Watched {
+            waiters: vec![Waiter {
+                token: Some(FIXTURE_TOKEN.to_string()),
+                departed,
+            }],
+        },
+    );
+    let seen = HashMap::new();
+    watch.release(&seen).await;
+    assert!(
+        watch.state.lock().await.watched.contains_key(&ADOPTED_PID),
+        "a pid the latest ps snapshot did not cover must stay under watch"
+    );
+    assert!(matches!(
+        gone.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    ));
 }
 
 #[tokio::test]
@@ -317,7 +344,7 @@ async fn the_shared_poller_stops_once_the_last_watched_process_leaves() {
     .await;
 
     for _attempt in 0..50 {
-        if fixture.watch.is_idle().await {
+        if !fixture.watch.state.lock().await.polling {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(POLL_MS)).await;

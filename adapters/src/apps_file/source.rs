@@ -47,6 +47,14 @@ impl SpecSource {
         spec.env = self
             .resolve_environment(&path.with_extension(ENV_FILE_SUFFIX), name)
             .await?;
+        crate::workspace::materialise_workspace(&mut spec)
+            .await
+            .map_err(|source| {
+                AppsFileError::from(SpecError::Sandbox {
+                    app: name.to_string(),
+                    source,
+                })
+            })?;
         Ok(spec)
     }
 
@@ -85,12 +93,9 @@ fn log_environment(app: &str, entries: usize) {
 
 impl SpecResolver for SpecSource {
     async fn prepare(&self, name: &str) -> Result<AppSpec, SpecResolveError> {
-        let mut spec = self
-            .resolve_service(name)
+        self.resolve_service(name)
             .await
-            .map_err(|error| resolve_failure(name, &error))?;
-        crate::workspace::materialise_workspace(&mut spec).await;
-        Ok(spec)
+            .map_err(|error| resolve_failure(name, &error))
     }
 }
 

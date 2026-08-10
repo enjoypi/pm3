@@ -1,8 +1,8 @@
 use std::{ffi::OsStr, path::Path, time::Duration};
 
 use adapters::{
-    LogFollower, LogStream, Pm3Config, Pm3Paths, SERVICE_FILE_SUFFIX, clear_log, log_path,
-    read_tail, validate_app_name,
+    LogFollower, LogStream, Pm3Config, SERVICE_FILE_SUFFIX, clear_log, log_path, read_tail,
+    validate_app_name,
 };
 
 use crate::{
@@ -59,11 +59,6 @@ pub async fn run_logs(
     emit(&tail);
     follow_targets(&session, &targets, strict, request.polls, emit).await?;
     Ok(None)
-}
-
-pub fn log_file(paths: &Pm3Paths, name: &str, stream: LogStream) -> Result<String> {
-    validate_app_name(name)?;
-    Ok(log_path(&paths.logs_dir.to_string_lossy(), name, stream))
 }
 
 fn resolve_targets(

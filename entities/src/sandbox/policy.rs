@@ -132,15 +132,6 @@ impl SandboxPolicy {
     }
 
     #[must_use]
-    pub fn readable_paths(&self) -> Vec<&str> {
-        self.readable_roots
-            .iter()
-            .map(String::as_str)
-            .chain(self.granted_roots())
-            .collect()
-    }
-
-    #[must_use]
     pub fn hidden_paths(&self) -> Vec<&str> {
         self.unreadable_roots.iter().map(String::as_str).collect()
     }

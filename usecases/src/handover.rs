@@ -23,7 +23,10 @@ pub fn compare_handover(
             Some(survivor) if survivor.pid.is_some() && survivor.pid == row.pid => {
                 comparison.adopted.push(row.name.clone());
             }
-            Some(_) => comparison.restarted.push(row.name.clone()),
+            Some(survivor) if survivor.pid.is_some() => {
+                comparison.restarted.push(row.name.clone());
+            }
+            Some(_) => {}
         }
     }
     comparison
