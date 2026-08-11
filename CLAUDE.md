@@ -156,6 +156,11 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - **任何可写根都 MUST NOT 覆盖 hidden root**（`validate_policy` 拒绝，含 `derived_roots`）：`cwd: <pm3.home>` 会把 socket 与全部 `.env` 一起交回给服务，两种后端都救不回来——测试 fixture 因此一律用 `<home>/work` 而非 `<home>` 当 cwd
 - seatbelt 的路径一律走 `-D KEY=值` 参数 + `(param "KEY")`，profile 文本里不出现任何用户路径：这消掉了 SBPL 注入面
 - `network: true` 只放行 IP（`(allow network-outbound (remote ip))`）：裸 `(allow network-outbound)` 连 unix socket 一起放行，macOS 上等于把 `pm3.sock` 交给服务。Linux 侧不靠这条——实测 `--ro-bind / /` 下 connect 直接 EACCES（只读挂载没有写权限），`--tmpfs` 遮盖后是 ENOENT
+- **seatbelt 只认真实路径**：`/etc`、`/var/run` 都是 symlink（→ `/private/etc`、`/private/var/run`），`subpath`/`literal` 写 `/etc/...`、`/var/run/...` 一律不匹配 ⇒ 路径 MUST 写 `/private/...` 形态（mDNSResponder 与 resolv.conf 都栽在这）
+- **`network: true` 的沙箱要能解析域名/读系统 DNS，必须放行两条独立链路**（漏任一：curl/cloudflared 报 `Could not resolve host`，或 mihomo 退回内置 `8.8.8.8` 解析不到内网域名→内网服务走 DIRECT 全挂）：
+  - `(allow network-outbound (literal "/private/var/run/mDNSResponder"))` + mach-lookup `com.apple.mDNSResponder`/`mDNSResponderHelper`——getaddrinfo 经 mDNSResponder（unix socket + mach port）解析
+  - `(allow file-read* file-test-existence (literal "/private/var/run/resolv.conf"))`——Go 解析器读 resolv.conf 拿系统 DNS（内网 nameserver）。注意与 mDNSResponder 是**两条路**：curl 走前者通时 mihomo（读文件）仍可能卡后者
+  - 验证法：`sandbox-exec -p "$(cat <拼接的profile>)"` 里 `cat /var/run/resolv.conf` 应读出内网 nameserver、`curl https://内网域名` 应 302、`nc -z -U ~/.pm3/pm3.sock` 仍 exit 1（pm3.sock 隔离不得削弱）
 - **bwrap MUST NOT 加 `--new-session`**（codex 加了，pm3 不能）：setsid 会让服务脱离 bwrap 的进程组，`kill -TERM -<pgid>` 打不到它，优雅停止退化成「杀 bwrap → pid namespace 塌掉 → 内核 SIGKILL」。TIOCSTI 面靠内核 `dev.tty.legacy_tiocsti=0`（Linux 6.2+ 默认）与「stdin 是 `Stdio::null()`」兜底
 - bwrap 的 namespace 里 cgroup 那条 MUST 写 `--unshare-cgroup-try` 而非 `--unshare-cgroup`：cgroup namespace 要内核 4.6+，硬形式在更老的内核上让 bwrap 直接退出 ⇒ 服务起不来。`user`/`pid`/`ipc`/`uts` 用硬形式（这四个到处都有）
 
