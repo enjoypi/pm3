@@ -111,10 +111,19 @@ impl Supervisor {
                 continue;
             };
             for waiter in waiters {
+                if self.still_waiting(&waiter) {
+                    continue;
+                }
                 self.launch_waiter(&waiter, &mut queue, ports, effects)
                     .await;
             }
         }
+    }
+
+    fn still_waiting(&self, name: &str) -> bool {
+        self.waiters
+            .values()
+            .any(|list| list.iter().any(|waiter| waiter == name))
     }
 
     async fn launch_waiter(
@@ -134,6 +143,9 @@ impl Supervisor {
         };
         self.watch(&outcome, effects);
         self.arm_timer(waiter, ports, effects);
+        if let Err(error) = save_table(&self.table, ports).await {
+            log_failure("start", waiter, &error);
+        }
         let online = self
             .table
             .find_by_name(waiter)
@@ -146,6 +158,7 @@ impl Supervisor {
     fn fail_downstream(&mut self, name: &str) {
         let mut dead = self.waiters.remove(name).unwrap_or_default();
         while let Some(doomed) = dead.pop() {
+            self.forget_waiter(&doomed);
             self.mark_errored_if_settled(&doomed);
             if let Some(downstream) = self.waiters.remove(&doomed) {
                 dead.extend(downstream);

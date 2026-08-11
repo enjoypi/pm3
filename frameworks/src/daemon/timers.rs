@@ -100,23 +100,21 @@ impl TaskBoard {
     }
 
     fn schedule_memory_sample(&mut self, delay_ms: u64) {
-        abort(self.memory_sample.take());
-        let events = self.events.clone();
-        let task = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-            events.send(DaemonEvent::SampleMemory).await.ok();
-        });
-        self.memory_sample = Some(task);
+        rearm_once(
+            &mut self.memory_sample,
+            delay_ms,
+            &self.events,
+            DaemonEvent::SampleMemory,
+        );
     }
 
     fn schedule_log_rotate(&mut self, delay_ms: u64) {
-        abort(self.log_rotate.take());
-        let events = self.events.clone();
-        let task = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-            events.send(DaemonEvent::RotateLogs).await.ok();
-        });
-        self.log_rotate = Some(task);
+        rearm_once(
+            &mut self.log_rotate,
+            delay_ms,
+            &self.events,
+            DaemonEvent::RotateLogs,
+        );
     }
 
     fn await_ready(
@@ -179,34 +177,16 @@ impl TaskBoard {
     }
 
     fn arm(&mut self, name: String, fire_at_ms: u64, delay_ms: u64) {
-        abort(self.fires.remove(&name));
-        let events = self.events.clone();
-        let fired = name.clone();
-        let task = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-            events
-                .send(DaemonEvent::Fire {
-                    name: fired,
-                    fire_at_ms,
-                })
-                .await
-                .ok();
-        });
-        self.fires.insert(name, task);
+        let fired = DaemonEvent::Fire {
+            name: name.clone(),
+            fire_at_ms,
+        };
+        rearm(&mut self.fires, name, delay_ms, &self.events, fired);
     }
 
     fn schedule_restart(&mut self, name: String, delay_ms: u64) {
-        abort(self.restarts.remove(&name));
-        let events = self.events.clone();
-        let restarted = name.clone();
-        let task = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-            events
-                .send(DaemonEvent::Restart { name: restarted })
-                .await
-                .ok();
-        });
-        self.restarts.insert(name, task);
+        let restarted = DaemonEvent::Restart { name: name.clone() };
+        rearm(&mut self.restarts, name, delay_ms, &self.events, restarted);
     }
 
     fn schedule_force_kill(
@@ -217,23 +197,47 @@ impl TaskBoard {
         token: Option<String>,
         delay_ms: u64,
     ) {
-        abort(self.force_kills.remove(&name));
-        let events = self.events.clone();
-        let doomed = name.clone();
-        let task = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-            events
-                .send(DaemonEvent::ForceKill {
-                    name: doomed,
-                    generation,
-                    pid,
-                    token,
-                })
-                .await
-                .ok();
-        });
-        self.force_kills.insert(name, task);
+        let doomed = DaemonEvent::ForceKill {
+            name: name.clone(),
+            generation,
+            pid,
+            token,
+        };
+        rearm(&mut self.force_kills, name, delay_ms, &self.events, doomed);
     }
+}
+
+fn rearm(
+    slot: &mut HashMap<String, JoinHandle<()>>,
+    name: String,
+    delay_ms: u64,
+    events: &mpsc::Sender<DaemonEvent>,
+    event: DaemonEvent,
+) {
+    abort(slot.remove(&name));
+    slot.insert(name, spawn_delayed(events, delay_ms, event));
+}
+
+fn rearm_once(
+    slot: &mut Option<JoinHandle<()>>,
+    delay_ms: u64,
+    events: &mpsc::Sender<DaemonEvent>,
+    event: DaemonEvent,
+) {
+    abort(slot.take());
+    *slot = Some(spawn_delayed(events, delay_ms, event));
+}
+
+fn spawn_delayed(
+    events: &mpsc::Sender<DaemonEvent>,
+    delay_ms: u64,
+    event: DaemonEvent,
+) -> JoinHandle<()> {
+    let sender = events.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        sender.send(event).await.ok();
+    })
 }
 
 fn abort(task: Option<JoinHandle<()>>) {

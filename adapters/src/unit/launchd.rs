@@ -1,7 +1,4 @@
-use super::{
-    escape::escape_xml,
-    spec::{HOME_VARIABLE, PATH_VARIABLE, UnitSpec},
-};
+use super::{escape::escape_xml, spec::UnitSpec};
 use crate::config::RESTART_CONDITION_ON_FAILURE;
 
 const PLIST_HEADER: &str = concat!(
@@ -30,10 +27,8 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     let label = escape_xml(&spec.label);
     let working_directory = escape_xml(&spec.working_directory.to_string_lossy());
     let log_path = escape_xml(&spec.log_path.to_string_lossy());
-    let search_path = escape_xml(&spec.search_path);
-    let home = escape_xml(&spec.home);
     let keep_alive = keep_alive_of(&spec.restart_condition);
-    let pm3_env = render_environment(&spec.pm3_env);
+    let environment = render_environment(&spec.environment_pairs());
     let umask = spec.umask;
     let max_tasks = spec.max_tasks;
     format!(
@@ -66,22 +61,18 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     <string>{log_path}</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>{HOME_VARIABLE}</key>
-        <string>{home}</string>
-        <key>{PATH_VARIABLE}</key>
-        <string>{search_path}</string>
-{pm3_env}    </dict>
+{environment}    </dict>
 </dict>
 </plist>
 "
     )
 }
 
-fn render_environment(vars: &[(String, String)]) -> String {
+fn render_environment(vars: &[(&str, &str)]) -> String {
     vars.iter().map(render_variable).collect()
 }
 
-fn render_variable(entry: &(String, String)) -> String {
+fn render_variable(entry: &(&str, &str)) -> String {
     let (name, value) = entry;
     let key = escape_xml(name);
     let text = escape_xml(value);

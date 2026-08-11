@@ -2,6 +2,86 @@ use entities::ProcessStatus;
 
 use super::*;
 
+fn stale_survivor(ports: &FakePorts, name: &str, pm_id: u32, pid: u32) -> ProcessRecord {
+    let mut record = stored_record(name, pm_id, ProcessStatus::Online);
+    record.runtime.mark_launched(pid, 1000);
+    record.runtime.identity = Some(ProcessIdentity {
+        token: live_token(pid),
+        launch_digest: "stale".to_string(),
+        binary_digest: format!("file:{}", record.spec.script),
+    });
+    ports.seed_live(pid, &live_token(pid));
+    record
+}
+
+#[tokio::test]
+async fn stale_survivors_are_evicted_together_before_any_waits() {
+    let ports = FakePorts::new(1000);
+    ports.seed_stored(vec![
+        stale_survivor(&ports, "api", 0, 7),
+        stale_survivor(&ports, "web", 1, 8),
+    ]);
+    ports.make_stubborn(7);
+    ports.make_stubborn(8);
+    ports.slow_waits();
+
+    resurrected(&ports).await;
+
+    let events = ports.events();
+    let second_signal = events
+        .iter()
+        .position(|event| event == "terminate:8")
+        .expect("the second survivor should be signalled");
+    let first_wait = events
+        .iter()
+        .position(|event| event == "wait:7")
+        .expect("the first survivor should be awaited");
+    assert!(
+        second_signal < first_wait,
+        "evictions must overlap instead of draining one survivor at a time: {events:?}"
+    );
+    assert_eq!(ports.spawned_names(), vec!["api", "web"]);
+}
+
+#[tokio::test]
+async fn a_pid_recycled_after_the_verdict_is_spared_the_signal() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.recycle_after_probe(SURVIVOR_PID);
+    resurrected(&ports).await;
+    assert!(
+        ports.terminated().is_empty(),
+        "got: {:?}",
+        ports.terminated()
+    );
+    assert!(ports.force_killed().is_empty());
+    assert_eq!(ports.spawned_names(), vec!["api"]);
+}
+
+#[tokio::test]
+async fn a_pid_gone_after_the_verdict_is_not_signalled() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.vanish_after_probe(SURVIVOR_PID);
+    resurrected(&ports).await;
+    assert!(
+        ports.terminated().is_empty(),
+        "got: {:?}",
+        ports.terminated()
+    );
+    assert_eq!(ports.spawned_names(), vec!["api"]);
+}
+
 #[tokio::test]
 async fn a_pid_recycled_while_draining_is_spared_the_force_kill() {
     let ports = FakePorts::new(1000);

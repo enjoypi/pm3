@@ -1,7 +1,4 @@
-use super::{
-    escape::escape_xml,
-    spec::{HOME_VARIABLE, PATH_VARIABLE, UnitSpec},
-};
+use super::{escape::escape_xml, spec::UnitSpec};
 
 const TASK_HEADER: &str = concat!(
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
@@ -57,9 +54,7 @@ pub fn render_task_xml(spec: &UnitSpec) -> String {
 #[must_use]
 pub fn render_wrapper(spec: &UnitSpec) -> String {
     let mut script = String::from("@echo off\r\n");
-    script.push_str(&render_assignment(HOME_VARIABLE, &spec.home));
-    script.push_str(&render_assignment(PATH_VARIABLE, &spec.search_path));
-    for (name, value) in &spec.pm3_env {
+    for (name, value) in spec.environment_pairs() {
         script.push_str(&render_assignment(name, value));
     }
     let program = spec.program.to_string_lossy();

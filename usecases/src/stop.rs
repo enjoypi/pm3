@@ -29,10 +29,7 @@ pub async fn stop_app(
     Ok(outcome)
 }
 
-pub async fn stop_all_apps(
-    table: &mut ProcessTable,
-    ports: &impl Ports,
-) -> Result<Vec<StopOutcome>> {
+pub async fn stop_all_apps(table: &mut ProcessTable, ports: &impl Ports) -> Vec<StopOutcome> {
     let order = dependency_order(table, log_unordered_shutdown);
     let mut stopped = Vec::with_capacity(order.len());
     for name in order.iter().rev() {
@@ -46,11 +43,27 @@ pub async fn stop_all_apps(
         }
         match request_stop(record, ports).await {
             Ok(outcome) => stopped.push(outcome),
-            Err(error) => log_refused_stop(name, &error),
+            Err(error) => {
+                record.runtime.mark_stopping();
+                log_refused_stop(name, &error);
+            }
         }
     }
-    save_table(table, ports).await?;
-    Ok(stopped)
+    if let Err(error) = save_table(table, ports).await {
+        log_unsaved_stop_all(stopped.len(), &error);
+    }
+    stopped
+}
+
+fn log_unsaved_stop_all(stopped: usize, error: &UsecaseError) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "lifecycle",
+        action = "stop_all",
+        stopped,
+        reason,
+        "pm3 cannot persist the process table after stopping every service, so a daemon restart may revive them",
+    );
 }
 
 fn log_unordered_shutdown(error: &UsecaseError) {

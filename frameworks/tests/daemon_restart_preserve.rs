@@ -14,7 +14,7 @@ use std::{
 
 use self::common::{
     Home, daemon_log, described_pid, detach_daemon, home, pm3, process_is_alive, shutdown_daemon,
-    stdout_of, verbose_home, wait_for_file, wait_for_log, write_apps,
+    stderr_of, stdout_of, verbose_home, wait_for_file, wait_for_log, write_apps,
 };
 
 const SERVICE: &str = "keeper";
@@ -223,7 +223,7 @@ fn killing_the_daemon_with_its_services_leaves_nothing_running() {
 }
 
 #[test]
-fn killing_with_services_reports_a_dump_it_cannot_write() {
+fn killing_with_services_tolerates_a_dump_it_cannot_write() {
     let home = home();
     start_sleeper(&home);
     let dump = home.root.join("dump.yaml");
@@ -233,9 +233,46 @@ fn killing_with_services_reports_a_dump_it_cannot_write() {
 
     let killed = pm3(&home, &["kill", "--with-services"]);
 
-    assert!(!killed.status.success(), "{}", stdout_of(&killed));
+    assert!(killed.status.success(), "{}", stdout_of(&killed));
     std::fs::remove_dir_all(&dump).expect("unblock the dump path");
-    shutdown_daemon(&home);
+}
+
+const IMPOSTOR_REFUSAL: &[u8] =
+    b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\noops";
+const HEALTH_PROBES: usize = 2;
+
+fn serve_health_then_refusal(socket: &Path) {
+    let listener = UnixListener::bind(socket).expect("bind the impostor daemon");
+    std::thread::spawn(move || {
+        let mut probes = HEALTH_PROBES;
+        while let Ok((mut stream, _addr)) = listener.accept() {
+            let mut sink = vec![0_u8; REQUEST_SINK];
+            let read = stream.read(&mut sink).unwrap_or_default();
+            sink.truncate(read);
+            let reply = if probes > 0 {
+                probes -= 1;
+                HEALTH_REPLY
+            } else {
+                IMPOSTOR_REFUSAL
+            };
+            stream.write_all(reply).ok();
+        }
+    });
+}
+
+#[test]
+fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
+    let home = home();
+    serve_health_then_refusal(&home.root.join("pm3.sock"));
+
+    let killed = pm3(&home, &["kill", "--with-services"]);
+
+    assert!(!killed.status.success(), "{}", stdout_of(&killed));
+    assert!(
+        stderr_of(&killed).contains("status 500"),
+        "got: {}",
+        stderr_of(&killed)
+    );
 }
 
 #[test]

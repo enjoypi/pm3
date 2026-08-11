@@ -113,6 +113,9 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - SIGTERM 只落盘退出、不停服务，彻底停机只有 `pm3 kill --with-services`
 - daemon 换代（shutdown）MUST NOT 把 `Stopping` 记录改写成 `Stopped`：`persist_for_handover` 只落盘、保留状态与 pid。改写会清掉 identity，让下一代 `resurrect` 的 `!is_settled()` 筛选整条跳过它 —— 既不 evict 也不监控，drain 未完的进程永久残留，随后一次 `start` 就起出第二份实例。对应地 `resurrect` 对 `Stopping` 记录走 `Verdict::Settle`：先 `evict` 掉幸存者再记 `Stopped`（把上一代没做完的 stop 做完），MUST NOT 让它走 `Adopt` —— 那会把运维明确停掉的服务重新拉回 `Online`
 - 所有强杀入口 MUST 共用一条带守卫的路径（`Supervisor::sweep_pid`：查 `tracked_pids` → `pid_was_recycled` 比对 token → `force_kill`，失败记 warn）。新增清扫入口 MUST 复用 `sweep_pid`，MUST NOT 在 `frameworks` 层自己调 `ports.force_kill`——裸发信号不校验 token，pid 复用后会打掉无关进程组（Linux 上尤其致命）
+- `stop_all` MUST NOT 因落盘失败而中断编排：`stop_all_apps` 返回 `Vec<StopOutcome>`（不是 `Result`），落盘失败只记 warn。半路 `?` 会跳过其后为每个 outcome 排 `schedule_force_kill` 的循环与 unswept 清扫 ⇒ 服务已 SIGTERM、内存已 `Stopping`，却没有任何强杀定时器，`kill_timeout_ms` 形同虚设
+- `stop_all` 里 `terminate` 失败 MUST 仍 `mark_stopping`：记录留在 `Online` 时，unswept 清扫照样为该 pid 排延时强杀，随后的退出事件会走 `classify_exit` → `decide_restart` 被当成崩溃自动重启（症状：`pm3 stop-all` 几分钟后服务自己回来了）
+- `on_force_kill` 的 generation 守卫 MUST 在**有 token 时**让路：`delete` 后同名 `start` 会 `bump` generation，把 delete 前排定的强杀判成 stale 丢弃 ⇒ 顽固旧进程与新实例双开且无补偿路径。有 token 时改由 `sweep_pid` 的 `pid_was_recycled` 守卫兜住（比 generation 更准）；无 token 才保留 generation 守卫（否则裸发信号会打到复用 pid）
 - `delete` MUST NOT 清掉服务的 generation：`current_generation` 对未知名字返回哨兵 `0` 而 `is_current(name, 0)` 恒为真 ⇒ generation 守卫形同虚设；同时真实退出事件带着 generation≥1 抵达 `on_exit` 会因不匹配而提前 return，`CancelForceKill` 永不发出 ⇒ 延时强杀必定走完 `kill_timeout_ms` 并可能打到复用 pid。generation 是全局单调计数，同名服务重建不会撞号，本就不需要清；`on_exit` 里改用「表里已无此记录」判定并记 debug
 - 「延迟重启」在途期间 MUST 可被 `stop`/`delete`/`stop_all` 取消：`schedule_restart` 持 `JoinHandle` 存进 `TimerBoard.restarts`，三条路径都 `cancel_restart`，`on_restart` 先 `claim_restart` 再执行（抢在 abort 之前入队的事件因此被丢弃）。只 spawn 一个裸 sleep task 会让 `restart_delay_ms` 窗口内被停掉的服务自行复活，且每次崩溃多留一个孤儿 task
 - 子进程环境默认为空（`tokio_launcher` 有 `env_clear()`），所以 spawn 前必须已解析出绝对路径
@@ -129,6 +132,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 - 运行期监控 MUST 把 dump 里的身份令牌传给 `wait_for_exit`：只判「pid 还在不在」会在 pid 复用后永远等下去，随后的 `stop` 会对复用 pid 发进程组信号误杀整组
 - 运行镜像 MUST 装 `procps`（`/bin/ps`）：缺了它每次 daemon 重启所有服务都被判「探测失败」而驱逐重启
 - `resurrect` 判定 respawn 且旧进程仍存活（token 已匹配）时 MUST 先 `terminate` 掉它，否则孤儿与新实例重复运行（症状：`just cov` 跑完残留 `pm3 __sleep`）
+- `evict_pid` MUST 在发信号**之前**再探一次 `identity(pid)` 并比对 token：verdict 用的是 `judge_all` 开头那一批 `identities()`，而各服务的驱逐（每个最多等满 `kill_timeout_ms`）会让排在后面的服务 token 严重过期 ⇒ 首次 `terminate(-pid)` 就可能打掉复用 pid 的无辜进程组（`wait_gone` 之后那道 `pid_was_recycled` 只兜得住后续 `force_kill`）。全部驱逐经 `evict_all` 用 `join_all` **并行**执行（原来逐服务串行，缺 `procps` 时 20 个服务要阻塞 ~32 秒，期间所有 CLI 命令挂起到超时）
 - **跨过一次主机重启，dump 里所有 pid 一律作废**（`PidTrust`）：boot 标识取 **pid 1 的 `lstart`**（`ports.identity(1)`，systemd/launchd 都在 boot 时启动），存 `dump.yaml` 顶层 `boot:`。这样不必引入新 Port、新外部程序或 `libc`——`ps` 本就是硬依赖。`PidTrust::Lost` 时 `judge` 直接 `Change::Rebooted` 且 `stale: None`，`surviving_pid` 提前返回 `None` ⇒ 全程不对陌生 pid 发信号。**两个 fail-safe 方向 MUST 保住**：dump 无 `boot`（旧版升级上来）或本机读不出 pid 1 都判 `Kept`，退回原有的 token 校验，MUST NOT 反过来「未知就作废」（那会让每次升级都 evict 全部服务）
 
 ### 沙箱模式
@@ -172,7 +176,9 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 
 ### 就绪探针
 
-- 带 `ready_probe` 的服务 spawn 后停留 `Launching`，`TaskBoard` 的探针 task 报 `Ready`/`ReadyTimeout` 事件才推进；adopt 来的进程直接 Online（显然已在服务），MUST NOT 重新等探针
+- 带 `ready_probe` 的服务 spawn 后停留 `Launching`，`TaskBoard` 的探针 task 报 `Ready`/`ReadyTimeout` 事件才推进；adopt 来的 `Online` 进程直接 Online（显然已在服务），MUST NOT 重新等探针。但**落盘状态是 `Launching` 且声明了探针的记录 MUST 保持 `Launching` 并重挂探针**（`adopt` 里判 `status != Launching || ready_probe.is_none()` 才 `mark_online`）：无条件 `mark_online` 会让「探针窗口内换代」的服务显示 online 而实际从未就绪，且 `await_ready_if_probing` 因状态已非 `Launching` 而跳过 ⇒ 探针永不执行、超时永不触发
+- 依赖就绪后拉起 waiter（`launch_waiter`）**成功路径也 MUST `save_table`**：只在失败路径落盘会留下「进程在跑但 dump 里是 settled」的空窗，此刻 daemon 被 SIGKILL 就是永久孤儿 + 下次 start 双开
+- 多个 `depends_on` MUST 全部登记：`DeferredStart.waiting_on` 是 `Vec<String>`（`waiting_dependencies` 收集所有未就绪依赖），`launch_waiter` 前先 `still_waiting` 复查其余依赖。只登记第一个依赖会让 C（依赖 A、B）在 B 仍 Launching 时上线，B 探针失败也不级联
 - 探针在**宿主机、沙箱外**执行（exec 探针经宿主 `search_path` 解析、tcp 探针测客户端视角可达性；沙箱内 `network: false` 的服务也能被探到）；探针命令 MUST NOT 进日志（凭据规则同 spawn 参数）
 - 就绪等待是异步的，所以 `start` 回复在探针出结果前已发出：`Launching` 与被依赖挂起的 `Deferred` 都 MUST 算正常 outcome、MUST NOT 进 `refused`（否则 CLI 会把服务文件回滚删掉）
 - 探针超时是终态：terminate + `ready_failed` 标记，随后的退出事件直接记 `Errored`，MUST NOT 走 `decide_restart`（不触发 autorestart）；等待中的依赖者级联标 `Errored`
@@ -182,6 +188,7 @@ pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 da
 ### 日志
 
 - 服务日志 fd 由子进程独占（daemon 以 O_APPEND 打开后 move 给子进程），rename 式 rotate 无效 ⇒ 写侧 rotate 只能 **copytruncate**（`adapters/src/logs/rotate.rs`，O_APPEND 下截断无稀疏洞），保留 1 代 `<name>-*.log.1`；`pm3.log_rotate_max_bytes` 默认 0 = 关闭。读侧 `LogFollower::resync` 对 truncate 与 rename+recreate 都已兼容
+- 读侧两条路径 MUST 受 `pm3.log_read_max_bytes`（默认 4 MiB）约束：`read_tail` 回扫到该预算即停（首行可能被切，故 `start > 0` 时丢弃缓冲区首个不完整行），`LogFollower.pending` 超限即整段作为一行释放。没有上限时，服务用 `\r` 刷进度条会让 `pm3 logs -f` 的内存无界增长，而对一个无换行的巨型日志执行 `pm3 logs` 会直接 OOM（rotate 只按字节切，不保证有换行）
 - `pm3 logs` 全程不经 daemon：裸 logs 从 `cfg_dir` 枚举服务文件名取 stem（排序、过滤 `.env` 与非 yaml），单服务输出逐字无前缀，聚合加 `name | ` 前缀，`--all` 双流用 `name [out] | ` / `name [err] | `；聚合模式缺日志文件跳过，单服务模式报错
 
 ### CLI ↔ daemon 协议

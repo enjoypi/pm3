@@ -52,7 +52,13 @@ pub async fn run_logs(
     let count = request
         .lines
         .unwrap_or_else(|| log_tail_lines(&session.config.pm3));
-    let tail = read_tails(&targets, count, strict).await?;
+    let tail = read_tails(
+        &targets,
+        count,
+        session.config.pm3.log_read_max_bytes,
+        strict,
+    )
+    .await?;
     if !request.follow {
         return Ok(Some(tail));
     }
@@ -146,10 +152,15 @@ fn log_tail_lines(pm3: &Pm3Config) -> usize {
     usize::try_from(pm3.log_tail_lines).unwrap_or(usize::MAX)
 }
 
-async fn read_tails(targets: &[LogTarget], count: usize, strict: bool) -> Result<String> {
+async fn read_tails(
+    targets: &[LogTarget],
+    count: usize,
+    max_bytes: u64,
+    strict: bool,
+) -> Result<String> {
     let mut output = String::new();
     for target in targets {
-        let lines = match read_tail(Path::new(&target.path), count).await {
+        let lines = match read_tail(Path::new(&target.path), count, max_bytes).await {
             Ok(lines) => lines,
             Err(error) if strict => return Err(error.into()),
             Err(error) => {
@@ -205,7 +216,8 @@ async fn follow_targets(
     emit: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<()> {
     let interval = Duration::from_millis(session.config.pm3.log_follow_interval_ms);
-    let mut followers = open_followers(targets, strict).await?;
+    let mut followers =
+        open_followers(targets, strict, session.config.pm3.log_read_max_bytes).await?;
     for _poll in 0..polls {
         for active in &mut followers {
             for line in active.follower.poll_appended().await? {
@@ -217,14 +229,18 @@ async fn follow_targets(
     Ok(())
 }
 
-async fn open_followers(targets: &[LogTarget], strict: bool) -> Result<Vec<ActiveFollower>> {
+async fn open_followers(
+    targets: &[LogTarget],
+    strict: bool,
+    max_pending_bytes: u64,
+) -> Result<Vec<ActiveFollower>> {
     let mut followers = Vec::new();
     for target in targets {
         let path = Path::new(&target.path);
         let opened = if strict {
-            Some(LogFollower::start_at_end(path).await?)
+            Some(LogFollower::start_at_end(path, max_pending_bytes).await?)
         } else {
-            LogFollower::start_at_end_if_exists(path).await?
+            LogFollower::start_at_end_if_exists(path, max_pending_bytes).await?
         };
         let Some(follower) = opened else {
             log_skipped_target(target, "the log file does not exist");

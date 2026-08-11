@@ -5,6 +5,8 @@ use tempfile::TempDir;
 use super::*;
 
 const THREE_LINES: &str = "first\nsecond\nthird\n";
+const MAX_READ: u64 = 4_194_304;
+const MAX_PENDING: u64 = 4_194_304;
 
 fn temp_log(content: &[u8]) -> (TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -63,20 +65,25 @@ fn tail_lines_keeps_an_unterminated_last_line() {
 #[tokio::test]
 async fn read_tail_reports_the_last_lines_of_a_log() {
     let (_dir, path) = temp_log(THREE_LINES.as_bytes());
-    let lines = read_tail(&path, 2).await.expect("should read");
+    let lines = read_tail(&path, 2, MAX_READ).await.expect("should read");
     assert_eq!(lines, vec!["second", "third"]);
 }
 
 #[tokio::test]
 async fn read_tail_reports_nothing_for_an_empty_log() {
     let (_dir, path) = temp_log(b"");
-    assert!(read_tail(&path, 5).await.expect("should read").is_empty());
+    assert!(
+        read_tail(&path, 5, MAX_READ)
+            .await
+            .expect("should read")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
 async fn read_tail_reports_a_missing_log() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let err = read_tail(&dir.path().join("absent.log"), 5)
+    let err = read_tail(&dir.path().join("absent.log"), 5, MAX_READ)
         .await
         .unwrap_err()
         .to_string();
@@ -86,7 +93,7 @@ async fn read_tail_reports_a_missing_log() {
 #[tokio::test]
 async fn following_skips_the_content_written_before_it_started() {
     let (_dir, path) = temp_log(THREE_LINES.as_bytes());
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     assert!(
@@ -101,7 +108,7 @@ async fn following_skips_the_content_written_before_it_started() {
 #[tokio::test]
 async fn following_reports_an_appended_line() {
     let (_dir, path) = temp_log(THREE_LINES.as_bytes());
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     append(&path, b"fourth\n").await;
@@ -112,7 +119,7 @@ async fn following_reports_an_appended_line() {
 #[tokio::test]
 async fn following_reports_appended_lines_in_order() {
     let (_dir, path) = temp_log(b"");
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     append(&path, b"one\ntwo\n").await;
@@ -123,7 +130,7 @@ async fn following_reports_appended_lines_in_order() {
 #[tokio::test]
 async fn following_withholds_a_line_without_its_newline() {
     let (_dir, path) = temp_log(b"");
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     append(&path, b"halfway").await;
@@ -139,7 +146,7 @@ async fn following_withholds_a_line_without_its_newline() {
 #[tokio::test]
 async fn following_releases_a_withheld_line_once_it_ends() {
     let (_dir, path) = temp_log(b"");
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     append(&path, b"halfway").await;
@@ -152,7 +159,7 @@ async fn following_releases_a_withheld_line_once_it_ends() {
 #[tokio::test]
 async fn following_reports_nothing_when_the_log_has_not_grown() {
     let (_dir, path) = temp_log(b"");
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     append(&path, b"one\n").await;
@@ -169,7 +176,7 @@ async fn following_reports_nothing_when_the_log_has_not_grown() {
 #[tokio::test]
 async fn following_reports_a_missing_log() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let err = LogFollower::start_at_end(&dir.path().join("absent.log"))
+    let err = LogFollower::start_at_end(&dir.path().join("absent.log"), MAX_PENDING)
         .await
         .unwrap_err()
         .to_string();
@@ -179,7 +186,10 @@ async fn following_reports_a_missing_log() {
 #[tokio::test]
 async fn read_tail_reports_a_log_path_it_cannot_read() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let err = read_tail(dir.path(), 5).await.unwrap_err().to_string();
+    let err = read_tail(dir.path(), 5, MAX_READ)
+        .await
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("cannot read log file"), "got: {err}");
 }
 
@@ -194,15 +204,46 @@ fn long_log() -> String {
 async fn read_tail_reads_only_the_tail_of_a_long_log() {
     let body = long_log();
     let (_dir, path) = temp_log(body.as_bytes());
-    let tail = read_tail(&path, 2).await.expect("should read");
+    let tail = read_tail(&path, 2, MAX_READ).await.expect("should read");
     assert_eq!(tail, vec!["line 19998", "line 19999"]);
+}
+
+#[tokio::test]
+async fn read_tail_reads_only_within_the_byte_budget() {
+    let (_dir, path) = temp_log(b"xx\nyy\nzz\n");
+    let tail = read_tail(&path, 10, 4).await.expect("should read");
+    assert_eq!(tail, vec!["zz"]);
+}
+
+#[tokio::test]
+async fn read_tail_bounds_a_line_that_never_ends() {
+    let body = vec![b'x'; 200_000];
+    let (_dir, path) = temp_log(&body);
+    let tail = read_tail(&path, 10, 1024).await.expect("should read");
+    assert_eq!(tail, vec!["x".repeat(1024)]);
+}
+
+#[tokio::test]
+async fn following_releases_an_overgrown_partial_line_instead_of_hoarding_it() {
+    let (_dir, path) = temp_log(b"");
+    let mut follower = LogFollower::start_at_end(&path, 4)
+        .await
+        .expect("should start");
+    append(&path, b"abcdefgh").await;
+    let overflow = follower.poll_appended().await.expect("should poll");
+    assert_eq!(overflow, vec!["abcdefgh"]);
+    append(&path, b"ij\n").await;
+    let lines = follower.poll_appended().await.expect("should poll");
+    assert_eq!(lines, vec!["ij"]);
 }
 
 #[tokio::test]
 async fn read_tail_reads_across_chunk_boundaries_when_it_must() {
     let body = long_log();
     let (_dir, path) = temp_log(body.as_bytes());
-    let tail = read_tail(&path, 20_000).await.expect("should read");
+    let tail = read_tail(&path, 20_000, MAX_READ)
+        .await
+        .expect("should read");
     assert_eq!(tail.len(), 20_000);
     assert_eq!(tail.first().map(String::as_str), Some("line 0"));
 }
@@ -210,7 +251,7 @@ async fn read_tail_reads_across_chunk_boundaries_when_it_must() {
 #[tokio::test]
 async fn following_replaces_undecodable_appended_bytes_instead_of_giving_up() {
     let (_dir, path) = temp_log(b"");
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     append(&path, &[0xff, 0xfe, b'\n']).await;
@@ -224,7 +265,7 @@ async fn following_replaces_undecodable_appended_bytes_instead_of_giving_up() {
 #[tokio::test]
 async fn following_keeps_a_multi_byte_character_split_across_two_polls() {
     let (_dir, path) = temp_log(b"");
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     let hanzi = "中".as_bytes();
@@ -244,7 +285,7 @@ async fn following_keeps_a_multi_byte_character_split_across_two_polls() {
 #[tokio::test]
 async fn following_reports_a_log_it_cannot_read() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let mut follower = LogFollower::start_at_end(dir.path())
+    let mut follower = LogFollower::start_at_end(dir.path(), MAX_PENDING)
         .await
         .expect("a directory opens like a file on linux");
     let err = follower.poll_appended().await.unwrap_err().to_string();
@@ -254,7 +295,7 @@ async fn following_reports_a_log_it_cannot_read() {
 #[tokio::test]
 async fn following_rereads_a_truncated_log_from_the_start() {
     let (_dir, path) = temp_log(THREE_LINES.as_bytes());
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     std::fs::write(&path, b"fresh\n").expect("truncate the log");
@@ -265,7 +306,7 @@ async fn following_rereads_a_truncated_log_from_the_start() {
 #[tokio::test]
 async fn following_drops_a_partial_line_when_the_log_is_truncated() {
     let (_dir, path) = temp_log(b"");
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     append(&path, b"halfway").await;
@@ -279,7 +320,7 @@ async fn following_drops_a_partial_line_when_the_log_is_truncated() {
 #[tokio::test]
 async fn following_switches_to_the_new_file_after_rotation() {
     let (_dir, path) = temp_log(THREE_LINES.as_bytes());
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     std::fs::rename(&path, path.with_extension("1")).expect("rotate the log");
@@ -292,7 +333,7 @@ async fn following_switches_to_the_new_file_after_rotation() {
 #[tokio::test]
 async fn following_keeps_waiting_when_the_log_is_renamed_away() {
     let (_dir, path) = temp_log(THREE_LINES.as_bytes());
-    let mut follower = LogFollower::start_at_end(&path)
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
     std::fs::rename(&path, path.with_extension("1")).expect("rename the log away");
@@ -309,7 +350,7 @@ async fn following_keeps_waiting_when_the_log_is_renamed_away() {
 async fn a_conditional_follow_reports_a_missing_log_as_absent() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let missing = dir.path().join("ghost-out.log");
-    let opened = LogFollower::start_at_end_if_exists(&missing)
+    let opened = LogFollower::start_at_end_if_exists(&missing, MAX_PENDING)
         .await
         .expect("a missing log is not an error");
     assert!(opened.is_none());
@@ -318,7 +359,7 @@ async fn a_conditional_follow_reports_a_missing_log_as_absent() {
 #[tokio::test]
 async fn a_conditional_follow_opens_an_existing_log() {
     let (_dir, path) = temp_log(THREE_LINES.as_bytes());
-    let opened = LogFollower::start_at_end_if_exists(&path)
+    let opened = LogFollower::start_at_end_if_exists(&path, MAX_PENDING)
         .await
         .expect("should open");
     assert!(opened.is_some());
@@ -329,7 +370,8 @@ async fn a_conditional_follow_still_fails_when_the_log_cannot_be_read() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let blocker = dir.path().join("blocker");
     std::fs::write(&blocker, b"file").expect("write the blocker");
-    let outcome = LogFollower::start_at_end_if_exists(&blocker.join("web-out.log")).await;
+    let outcome =
+        LogFollower::start_at_end_if_exists(&blocker.join("web-out.log"), MAX_PENDING).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
@@ -337,7 +379,7 @@ async fn a_conditional_follow_still_fails_when_the_log_cannot_be_read() {
 async fn a_strict_follow_still_reports_a_missing_log_as_an_error() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let missing = dir.path().join("ghost-out.log");
-    let err = LogFollower::start_at_end(&missing)
+    let err = LogFollower::start_at_end(&missing, MAX_PENDING)
         .await
         .unwrap_err()
         .to_string();
@@ -349,6 +391,6 @@ async fn a_strict_follow_fails_when_the_log_cannot_be_read() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let blocker = dir.path().join("blocker");
     std::fs::write(&blocker, b"file").expect("write the blocker");
-    let outcome = LogFollower::start_at_end(&blocker.join("web-out.log")).await;
+    let outcome = LogFollower::start_at_end(&blocker.join("web-out.log"), MAX_PENDING).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }

@@ -1,11 +1,7 @@
-use std::time::Duration;
-
-use tokio::{
-    process::Command,
-    time::{Instant, timeout},
-};
+use tokio::{process::Command, time::Instant};
 use usecases::{SignalError, SignalScope, Signaler};
 
+use super::timed::{CommandOutcome, capture_timed};
 use crate::exit_status::{describe_refusal, exit_code_of};
 
 #[cfg(unix)]
@@ -42,14 +38,18 @@ impl KillSignaler {
     async fn signal(&self, signal: &str, target: &str, pid: u32) -> Result<(), SignalError> {
         let arguments = signal_arguments(signal, target, pid);
         let started = Instant::now();
-        let call = Command::new(&self.program).args(&arguments).output();
-        let output = timeout(Duration::from_millis(self.timeout_ms), call)
-            .await
-            .map_err(|_elapsed| self.stalled(pid))?
-            .map_err(|e| SignalError::Delivery {
-                pid,
-                reason: e.to_string(),
-            })?;
+        let mut command = Command::new(&self.program);
+        command.args(&arguments);
+        let output = match capture_timed(command, self.timeout_ms).await {
+            CommandOutcome::Stalled => return Err(self.stalled(pid)),
+            CommandOutcome::SpawnFailed(error) => {
+                return Err(SignalError::Delivery {
+                    pid,
+                    reason: error.to_string(),
+                });
+            }
+            CommandOutcome::Finished(output) => output,
+        };
         let code = exit_code_of(&output.status);
         let duration_ms = started.elapsed().as_millis();
         tracing::debug!(

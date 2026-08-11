@@ -194,7 +194,7 @@ async fn deleting_an_unknown_app_carries_the_daemon_reason() {
 }
 
 #[tokio::test]
-async fn killing_with_services_reports_a_dump_it_cannot_write() {
+async fn stopping_all_tolerates_a_dump_it_cannot_write() {
     let fixture = running_daemon().await;
     let apps_file = sleeper_apps_file(&fixture);
     start_apps(&fixture.config_path, &apps_file, false)
@@ -205,12 +205,14 @@ async fn killing_with_services_reports_a_dump_it_cannot_write() {
     std::fs::write(fixture.paths.dump_file.join("occupied"), "state")
         .expect("fill the blocked dump path");
 
-    let err = kill_daemon(&fixture.config_path, true)
+    let session = prepared_session(&fixture.config_path)
         .await
-        .unwrap_err()
-        .to_string();
+        .expect("should open a session");
+    let report = ask_report(&session, "POST", SERVICES_STOP_ALL_PATH, None)
+        .await
+        .expect("a dump failure must not fail the stop-all request");
 
-    assert!(err.contains("status 500"), "got: {err}");
+    assert!(report.contains("web"), "got: {report}");
     std::fs::remove_dir_all(&fixture.paths.dump_file).expect("unblock the dump path");
     stop_daemon(fixture).await;
 }

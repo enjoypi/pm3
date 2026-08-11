@@ -1,4 +1,4 @@
-use super::spec::{HOME_VARIABLE, PATH_VARIABLE, UnitSpec};
+use super::spec::UnitSpec;
 
 #[must_use]
 pub fn render_unit(spec: &UnitSpec) -> String {
@@ -6,11 +6,9 @@ pub fn render_unit(spec: &UnitSpec) -> String {
     let exec_start = render_exec_start(spec);
     let working_directory = escape_value(&spec.working_directory.to_string_lossy());
     let log_path = escape_value(&spec.log_path.to_string_lossy());
-    let search_path = escape_value(&spec.search_path);
-    let home = escape_value(&spec.home);
     let restart_delay_secs = spec.restart_delay_secs;
     let restart = escape_value(&spec.restart_condition);
-    let pm3_env = render_environment(&spec.pm3_env);
+    let environment = render_environment(&spec.environment_pairs());
     let umask = format!("{:04o}", spec.umask);
     let max_tasks = spec.max_tasks;
     let cpu_quota = render_cpu_quota(spec.cpu_quota_percent);
@@ -30,9 +28,7 @@ KillMode=process
 UMask={umask}
 LimitCORE=0
 TasksMax={max_tasks}
-{cpu_quota}Environment=\"{HOME_VARIABLE}={home}\"
-Environment=\"{PATH_VARIABLE}={search_path}\"
-{pm3_env}StandardOutput=append:{log_path}
+{cpu_quota}{environment}StandardOutput=append:{log_path}
 StandardError=append:{log_path}
 
 [Install]
@@ -48,11 +44,11 @@ fn render_cpu_quota(percent: u64) -> String {
     format!("CPUQuota={percent}%\n")
 }
 
-fn render_environment(vars: &[(String, String)]) -> String {
+fn render_environment(vars: &[(&str, &str)]) -> String {
     vars.iter().map(render_variable).collect()
 }
 
-fn render_variable(entry: &(String, String)) -> String {
+fn render_variable(entry: &(&str, &str)) -> String {
     let (name, value) = entry;
     let key = escape_value(name);
     let text = escape_value(value);

@@ -112,6 +112,7 @@ impl Collected {
 }
 
 const REPLY_200: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+const REPLY_500: &[u8] = b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\n\r\noops";
 const REQUEST_SINK: usize = 1024;
 
 pub fn answer_only_the_health_probe(socket: PathBuf) -> JoinHandle<()> {
@@ -125,5 +126,19 @@ pub fn answer_only_the_health_probe(socket: PathBuf) -> JoinHandle<()> {
         stream.shutdown().await.ok();
         drop(listener);
         std::fs::remove_file(&socket).ok();
+    })
+}
+
+pub fn answer_health_then_refusal(socket: &std::path::Path) -> JoinHandle<()> {
+    let listener = tokio::net::UnixListener::bind(socket).expect("bind the answerer");
+    tokio::spawn(async move {
+        for reply in [REPLY_200, REPLY_200, REPLY_500] {
+            let (mut stream, _addr) = listener.accept().await.expect("accept a request");
+            let mut sink = vec![0_u8; REQUEST_SINK];
+            let read = stream.read(&mut sink).await.unwrap_or_default();
+            sink.truncate(read);
+            stream.write_all(reply).await.ok();
+            stream.shutdown().await.ok();
+        }
     })
 }

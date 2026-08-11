@@ -40,10 +40,12 @@ impl Supervisor {
         } = start_apps(&mut self.table, &specs, &self.logs_dir, ports).await;
         self.watch_all(&outcomes, effects);
         for deferred in pending {
-            self.waiters
-                .entry(deferred.waiting_on)
-                .or_default()
-                .push(deferred.name);
+            for dependency in &deferred.waiting_on {
+                self.waiters
+                    .entry(dependency.clone())
+                    .or_default()
+                    .push(deferred.name.clone());
+            }
         }
         for outcome in &outcomes {
             self.cancel_restart(&outcome.name, effects);
@@ -89,11 +91,8 @@ impl Supervisor {
                 return Err(error.into());
             }
         };
-        self.disarm(&outcome.name, effects);
-        self.cancel_restart(&outcome.name, effects);
-        self.cancel_ready(&outcome.name, effects);
         let token = self.identity_token(&outcome.name);
-        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
+        self.retire(&outcome.name, outcome.force_kill_pid, token, effects);
         Ok(SupervisionReply::Stopped { name: outcome.name })
     }
 
@@ -140,10 +139,7 @@ impl Supervisor {
                 return Err(error.into());
             }
         };
-        self.disarm(&outcome.name, effects);
-        self.cancel_restart(&outcome.name, effects);
-        self.cancel_ready(&outcome.name, effects);
-        self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
+        self.retire(&outcome.name, outcome.force_kill_pid, token, effects);
         Ok(SupervisionReply::Deleted { name: outcome.name })
     }
 
@@ -175,7 +171,7 @@ impl Supervisor {
         effects: &mut Vec<SupervisionEffect>,
     ) -> SupervisionOutcome {
         effects.extend(self.disarm_everything());
-        let stopped = stop_all_apps(&mut self.table, ports).await?;
+        let stopped = stop_all_apps(&mut self.table, ports).await;
         let mut names = Vec::with_capacity(stopped.len());
         let mut covered = Vec::with_capacity(stopped.len());
         for outcome in &stopped {
@@ -206,9 +202,19 @@ impl Supervisor {
             .expect("internal error: a draining record always holds its pid");
         let name = record.runtime.name.clone();
         let token = identity_token_of(&self.table, selector);
-        self.disarm(&name, effects);
-        self.cancel_restart(&name, effects);
-        self.cancel_ready(&name, effects);
-        self.schedule_force_kill(&name, Some(pid), token, effects);
+        self.retire(&name, Some(pid), token, effects);
+    }
+
+    fn retire(
+        &mut self,
+        name: &str,
+        force_kill_pid: Option<u32>,
+        token: Option<String>,
+        effects: &mut Vec<SupervisionEffect>,
+    ) {
+        self.disarm(name, effects);
+        self.cancel_restart(name, effects);
+        self.cancel_ready(name, effects);
+        self.schedule_force_kill(name, force_kill_pid, token, effects);
     }
 }

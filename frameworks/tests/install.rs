@@ -12,9 +12,11 @@ use std::{
     process::Output,
 };
 
+#[cfg(target_os = "linux")]
+use self::common::impatient_home;
 use self::common::{
-    PM3, SERVICE_LABEL, described_pid, home_with_timeout, impatient_home, sleeper_apps, stderr_of,
-    stdout_of, wait_for_listing,
+    PM3, SERVICE_LABEL, described_pid, home_with_timeout, sleeper_apps, stderr_of, stdout_of,
+    wait_for_listing,
 };
 
 fn patient_home() -> common::Home {
@@ -240,6 +242,7 @@ fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn a_takeover_that_never_happens_fails_and_points_at_the_backup() {
     let silent_manager = r#"case "$2" in

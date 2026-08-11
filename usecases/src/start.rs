@@ -33,7 +33,7 @@ pub struct StartOutcome {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeferredStart {
     pub name: String,
-    pub waiting_on: String,
+    pub waiting_on: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -59,11 +59,6 @@ impl StartKind {
     #[must_use]
     pub const fn needs_watching(self) -> bool {
         matches!(self, Self::Spawned | Self::Adopted)
-    }
-
-    #[must_use]
-    pub const fn needs_timer(self) -> bool {
-        matches!(self, Self::Spawned | Self::Adopted | Self::Scheduled)
     }
 }
 
@@ -100,7 +95,8 @@ pub async fn start_apps(
         .map(|spec| (spec.name.as_str(), spec))
         .collect();
     for name in &order {
-        if let Some(waiting_on) = waiting_dependency(by_name[name.as_str()], &waiting) {
+        let waiting_on = waiting_dependencies(by_name[name.as_str()], &waiting);
+        if !waiting_on.is_empty() {
             defer_one(table, name, waiting_on, &mut report, &mut waiting);
             continue;
         }
@@ -128,17 +124,18 @@ pub async fn start_apps(
     report
 }
 
-fn waiting_dependency(spec: &AppSpec, waiting: &HashSet<String>) -> Option<String> {
+fn waiting_dependencies(spec: &AppSpec, waiting: &HashSet<String>) -> Vec<String> {
     spec.depends_on
         .iter()
-        .find(|dependency| waiting.contains(*dependency))
+        .filter(|dependency| waiting.contains(*dependency))
         .cloned()
+        .collect()
 }
 
 fn defer_one(
     table: &ProcessTable,
     name: &str,
-    waiting_on: String,
+    waiting_on: Vec<String>,
     report: &mut StartReport,
     waiting: &mut HashSet<String>,
 ) {

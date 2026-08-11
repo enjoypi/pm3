@@ -5,14 +5,16 @@ use std::{
 
 use tokio::{
     process::Command,
-    time::{Instant, sleep, timeout},
+    time::{Instant, sleep},
 };
 use usecases::{Liveness, ProcessProbe, ResourceSample};
+
+use super::timed::{CommandOutcome, capture_timed};
+use crate::exit_status::UNKNOWN_EXIT_CODE;
 
 pub const PS_PROGRAM: &str = "/bin/ps";
 
 const NO_SUCH_PROCESS_CODE: i32 = 1;
-const UNKNOWN_EXIT_CODE: i32 = -1;
 const WIDE_FLAG: &str = "-ww";
 const FORMAT_FLAG: &str = "-o";
 const BATCH_FORMAT: &str = "pid=,lstart=";
@@ -74,18 +76,21 @@ impl PsProcessProbe {
     }
 
     async fn ask_ps(&self, format: &str, joined: &str) -> Option<String> {
-        let call = Command::new(&self.program)
+        let mut command = Command::new(&self.program);
+        command
             .args([WIDE_FLAG, FORMAT_FLAG, format, PID_FLAG])
             .arg(joined)
-            .env(LOCALE_VARIABLE, FIXED_LOCALE)
-            .output();
-        let Ok(finished) = timeout(Duration::from_millis(self.timeout_ms), call).await else {
-            log_stalled_probe(joined, self.timeout_ms);
-            return None;
-        };
-        let Ok(output) = finished else {
-            log_unusable_probe(joined, &self.program);
-            return None;
+            .env(LOCALE_VARIABLE, FIXED_LOCALE);
+        let output = match capture_timed(command, self.timeout_ms).await {
+            CommandOutcome::Stalled => {
+                log_stalled_probe(joined, self.timeout_ms);
+                return None;
+            }
+            CommandOutcome::SpawnFailed(_) => {
+                log_unusable_probe(joined, &self.program);
+                return None;
+            }
+            CommandOutcome::Finished(output) => output,
         };
         let code = output.status.code();
         if !output.status.success() && code != Some(NO_SUCH_PROCESS_CODE) {

@@ -1,35 +1,19 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use entities::ProcessStatus;
 use futures_util::future::join_all;
+use judge::{Change, Verdict, judge_all, surviving_pid};
 
 use crate::{
     FingerprintError, Liveness, Ports, Result, SignalScope, StrandedProcess, UsecaseError,
-    fingerprint::{pid_was_recycled, render_identity},
+    fingerprint::pid_was_recycled,
     persist::save_table,
     record::ProcessRecord,
     start::{StartKind, StartOutcome, start_one},
     table::{ProcessTable, dependency_order},
 };
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum Verdict {
-    Adopt,
-    Settle { stale: Option<u32> },
-    Respawn { change: Change, stale: Option<u32> },
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum Change {
-    Unknown,
-    Gone,
-    Unreadable,
-    Reused,
-    Launch,
-    Binary,
-    Rebooted,
-    Restart,
-}
+mod judge;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum PidTrust {
@@ -62,40 +46,18 @@ pub async fn resurrect(
 
     let order = dependency_order(table, log_unordered_recovery);
     let mut outcomes = Vec::with_capacity(verdicts.len());
-    for name in order {
-        let Some((verdict, expected)) = verdicts.get(&name) else {
+    evict_all(&order, &verdicts, kill_timeout_ms, ports).await;
+    for name in &order {
+        let Some((verdict, _expected)) = verdicts.get(name) else {
             continue;
         };
         match verdict {
-            Verdict::Adopt => outcomes.push(adopt(table, &name, ports).await),
-            Verdict::Settle { stale } => {
-                log_settle(&name);
-                evict(
-                    &name,
-                    *stale,
-                    expected.as_deref(),
-                    SignalScope::ProcessGroup,
-                    kill_timeout_ms,
-                    ports,
-                )
-                .await;
-            }
-            Verdict::Respawn { change, stale } => {
-                log_respawn(&name, *change);
-                evict(
-                    &name,
-                    *stale,
-                    expected.as_deref(),
-                    change.eviction_scope(),
-                    kill_timeout_ms,
-                    ports,
-                )
-                .await;
-                match start_one(table, &name, logs_dir, ports).await {
-                    Ok(outcome) => outcomes.push(outcome),
-                    Err(error) => log_recovery_failure("respawn", &name, &error),
-                }
-            }
+            Verdict::Adopt => outcomes.push(adopt(table, name, ports).await),
+            Verdict::Settle { .. } => {}
+            Verdict::Respawn { .. } => match start_one(table, name, logs_dir, ports).await {
+                Ok(outcome) => outcomes.push(outcome),
+                Err(error) => log_recovery_failure("respawn", name, &error),
+            },
         }
     }
     if let Err(error) = save_table(table, ports).await {
@@ -104,36 +66,63 @@ pub async fn resurrect(
     Ok(outcomes)
 }
 
-fn log_unordered_recovery(error: &UsecaseError) {
-    log_recovery_failure("order", "-", error);
+struct Eviction<'a> {
+    name: &'a str,
+    stale: Option<u32>,
+    expected: Option<&'a str>,
+    scope: SignalScope,
 }
 
-async fn judge_all(
-    stored: &[ProcessRecord],
-    trust: PidTrust,
+async fn evict_all(
+    order: &[String],
+    verdicts: &BTreeMap<String, (Verdict, Option<String>)>,
+    kill_timeout_ms: u64,
     ports: &impl Ports,
-) -> BTreeMap<String, (Verdict, Option<String>)> {
-    let pending: Vec<&ProcessRecord> = stored
+) {
+    let plans: Vec<Eviction<'_>> = order
         .iter()
-        .filter(|record| was_supposed_to_run(record))
+        .filter_map(|name| eviction_plan(name, verdicts.get(name)?))
         .collect();
-    let pids: Vec<u32> = pending
-        .iter()
-        .filter_map(|record| record.runtime.pid)
-        .collect();
-    let observed = ports.identities(&pids).await;
-    let verdicts = join_all(
-        pending
-            .iter()
-            .map(|record| judge(record, trust, &observed, ports))
-            .collect::<Vec<_>>(),
-    )
+    join_all(plans.iter().map(|plan| {
+        evict(
+            plan.name,
+            plan.stale,
+            plan.expected,
+            plan.scope,
+            kill_timeout_ms,
+            ports,
+        )
+    }))
     .await;
-    pending
-        .into_iter()
-        .map(|record| record.runtime.name.clone())
-        .zip(verdicts)
-        .collect()
+}
+
+fn eviction_plan<'a>(name: &'a str, judged: &'a (Verdict, Option<String>)) -> Option<Eviction<'a>> {
+    let (verdict, expected) = judged;
+    match verdict {
+        Verdict::Adopt => None,
+        Verdict::Settle { stale } => {
+            log_settle(name);
+            Some(Eviction {
+                name,
+                stale: *stale,
+                expected: expected.as_deref(),
+                scope: SignalScope::ProcessGroup,
+            })
+        }
+        Verdict::Respawn { change, stale } => {
+            log_respawn(name, *change);
+            Some(Eviction {
+                name,
+                stale: *stale,
+                expected: expected.as_deref(),
+                scope: change.eviction_scope(),
+            })
+        }
+    }
+}
+
+fn log_unordered_recovery(error: &UsecaseError) {
+    log_recovery_failure("order", "-", error);
 }
 
 async fn sweep_stranded(
@@ -167,111 +156,6 @@ async fn sweep_stranded(
     }
 }
 
-async fn judge(
-    record: &ProcessRecord,
-    trust: PidTrust,
-    observed: &HashMap<u32, Liveness>,
-    ports: &impl Ports,
-) -> (Verdict, Option<String>) {
-    let expected = record
-        .runtime
-        .identity
-        .as_ref()
-        .map(|identity| identity.token.clone());
-    let verdict = judge_verdict(record, trust, observed, ports).await;
-    (verdict, expected)
-}
-
-async fn judge_verdict(
-    record: &ProcessRecord,
-    trust: PidTrust,
-    observed: &HashMap<u32, Liveness>,
-    ports: &impl Ports,
-) -> Verdict {
-    if record.runtime.status.is_shutting_down() {
-        let stale = surviving_pid(
-            &record.runtime.name,
-            record.runtime.pid,
-            record
-                .runtime
-                .identity
-                .as_ref()
-                .map(|identity| identity.token.as_str()),
-            trust,
-            observed,
-        );
-        if record.runtime.pending_restart {
-            return Verdict::Respawn {
-                change: Change::Restart,
-                stale,
-            };
-        }
-        return Verdict::Settle { stale };
-    }
-    if trust == PidTrust::Lost {
-        return respawn(Change::Rebooted, None);
-    }
-    let (Some(pid), Some(identity)) = (record.runtime.pid, record.runtime.identity.as_ref()) else {
-        let unverified = surviving_pid(
-            &record.runtime.name,
-            record.runtime.pid,
-            None,
-            trust,
-            observed,
-        );
-        return respawn(Change::Unknown, unverified);
-    };
-    let token = match observed.get(&pid).cloned().unwrap_or(Liveness::Unreadable) {
-        Liveness::Alive(token) => token,
-        Liveness::Gone => return respawn(Change::Gone, None),
-        Liveness::Unreadable => return respawn(Change::Unreadable, Some(pid)),
-    };
-    if token != identity.token {
-        return respawn(Change::Reused, None);
-    }
-    if ports.digest(&render_identity(&record.spec)) != identity.launch_digest {
-        return respawn(Change::Launch, Some(pid));
-    }
-    let binary = match ports.file_digest(&record.spec.script).await {
-        Ok(binary) => binary,
-        Err(error) => {
-            log_unverifiable_binary(&record.runtime.name, &error);
-            return Verdict::Adopt;
-        }
-    };
-    if binary != identity.binary_digest {
-        return respawn(Change::Binary, Some(pid));
-    }
-    Verdict::Adopt
-}
-
-const fn respawn(change: Change, stale: Option<u32>) -> Verdict {
-    Verdict::Respawn { change, stale }
-}
-
-fn surviving_pid(
-    app: &str,
-    pid: Option<u32>,
-    expected: Option<&str>,
-    trust: PidTrust,
-    observed: &HashMap<u32, Liveness>,
-) -> Option<u32> {
-    let pid = pid?;
-    if trust == PidTrust::Lost {
-        log_rebooted_pid(app, pid);
-        return None;
-    }
-    let liveness = observed.get(&pid).unwrap_or(&Liveness::Unreadable);
-    if matches!(liveness, Liveness::Gone) {
-        return None;
-    }
-    if pid_was_recycled(liveness, expected) {
-        log_spared_evict(app, pid);
-        return None;
-    }
-    Some(pid)
-}
-
 async fn evict(
     name: &str,
     stale: Option<u32>,
@@ -296,6 +180,14 @@ async fn evict_pid(
 ) {
     if !scope.reaches_the_group() {
         log_unverified_evict(name, pid);
+    }
+    let fresh = ports.identity(pid).await;
+    if matches!(fresh, Liveness::Gone) {
+        return;
+    }
+    if pid_was_recycled(&fresh, expected) {
+        log_spared_evict(name, pid);
+        return;
     }
     let refused = ports
         .terminate(pid, scope)
@@ -324,7 +216,9 @@ async fn adopt(table: &mut ProcessTable, name: &str, ports: &impl Ports) -> Star
         let record = table
             .find_by_name_mut(name)
             .expect("internal error: the topological order only names records the table holds");
-        record.runtime.mark_online();
+        if record.runtime.status != ProcessStatus::Launching || record.spec.ready_probe.is_none() {
+            record.runtime.mark_online();
+        }
         let pid = record
             .runtime
             .pid
@@ -339,10 +233,6 @@ async fn adopt(table: &mut ProcessTable, name: &str, ports: &impl Ports) -> Star
         pid: Some(pid),
         kind: StartKind::Adopted,
     }
-}
-
-const fn was_supposed_to_run(record: &ProcessRecord) -> bool {
-    !record.runtime.status.is_settled()
 }
 
 fn forget_unless_adopted(
@@ -501,33 +391,6 @@ fn log_respawn(app: &str, change: Change) {
         reason,
         "pm3 cannot reclaim a service, so it starts a fresh one",
     );
-}
-
-impl Change {
-    const fn eviction_scope(self) -> SignalScope {
-        match self {
-            Self::Unknown | Self::Unreadable => SignalScope::SinglePid,
-            Self::Gone
-            | Self::Reused
-            | Self::Launch
-            | Self::Binary
-            | Self::Rebooted
-            | Self::Restart => SignalScope::ProcessGroup,
-        }
-    }
-
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Unknown => "unknown",
-            Self::Gone => "gone",
-            Self::Unreadable => "unreadable",
-            Self::Reused => "reused",
-            Self::Launch => "launch",
-            Self::Binary => "binary",
-            Self::Rebooted => "rebooted",
-            Self::Restart => "restart",
-        }
-    }
 }
 
 impl PidTrust {

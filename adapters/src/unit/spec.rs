@@ -130,6 +130,19 @@ impl UnitSpec {
             self.config_path.to_string_lossy().into_owned(),
         ]
     }
+
+    #[must_use]
+    pub fn environment_pairs(&self) -> Vec<(&str, &str)> {
+        let mut pairs = Vec::with_capacity(self.pm3_env.len() + 2);
+        pairs.push((HOME_VARIABLE, self.home.as_str()));
+        pairs.push((PATH_VARIABLE, self.search_path.as_str()));
+        pairs.extend(
+            self.pm3_env
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str())),
+        );
+        pairs
+    }
 }
 
 #[must_use]

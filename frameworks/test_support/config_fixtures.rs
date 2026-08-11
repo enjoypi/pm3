@@ -50,6 +50,7 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         memory_poll_interval_ms: MEMORY_POLL_INTERVAL_MS,
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         log_tail_lines: LOG_TAIL_LINES,
+        log_read_max_bytes: 4_194_304,
         log_rotate_max_bytes: 0,
         log_rotate_interval_ms: 60000,
         ready_timeout_ms: 30000,
@@ -105,6 +106,7 @@ pub fn config_yaml(home: &str) -> String {
   memory_poll_interval_ms: {MEMORY_POLL_INTERVAL_MS}
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   log_tail_lines: {LOG_TAIL_LINES}
+  log_read_max_bytes: 4194304
   log_rotate_max_bytes: 0
   log_rotate_interval_ms: 60000
   ready_timeout_ms: 30000

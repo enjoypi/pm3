@@ -12,7 +12,7 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
 | `logs/` | `pm3 logs` 的 `tail_lines` / `read_tail` / `LogFollower`（`-f` 跟随）；`rotate.rs` 是 copytruncate 写侧切割 |
 | `persistence/` | `dump.yaml` 的 `yaml_store` 与 DTO |
 | `presenter/` | `list` 表格、`describe`、reply 文案、`json`（`--json` 输出）；`fields.rs` 是单字段格式化 |
-| `process/` | `tokio_launcher` `kill_signaler` `ps_probe`（`resource_usage` 走独立一条 `pid=,rss=,pcpu=`） `ready_probe`（宿主侧就绪探测） `sha256_fingerprinter` `system_clock` `watcher` |
+| `process/` | `tokio_launcher` `kill_signaler` `ps_probe`（`resource_usage` 走独立一条 `pid=,rss=,pcpu=`） `ready_probe`（宿主侧就绪探测） `sha256_fingerprinter` `system_clock` `watcher` `timed`（`capture_timed`：外部命令 + 超时的唯一骨架，三态 `CommandOutcome::{Stalled, SpawnFailed, Finished}`，`kill_signaler` / `ps_probe` / `unit::runner` 共用，各自只写自己的日志与错误映射） |
 | `sandbox/` | `seatbelt`（macOS，含 `.sbpl`）/ `bwrap`（Linux）/ `wrapper` / `backend` |
 | `schedule/` | `cron_scheduler` + `random_expand`（OpenBSD `~` 展开） |
 | `unit/` | OS 服务单元：`spec.rs`（`UnitKind` / `unit_dir_of` / `parse_launchd_pid` / `parse_main_pid`）、`launchd` / `systemd` / `schtasks`（Windows Task Scheduler XML + `.cmd` 包装脚本）unit 渲染、`escape.rs`（两个 XML 渲染器共用一份转义表）、`plan`（含 `write_targets`）`actions` `runner`（含 `query_supervised_pid` / `hand_back_to_manager`）`command` |

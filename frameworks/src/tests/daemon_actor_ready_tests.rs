@@ -151,7 +151,7 @@ async fn stopping_a_service_mid_probe_cancels_the_watch() {
 }
 
 #[tokio::test]
-async fn a_resurrected_probe_service_is_adopted_without_rewaiting() {
+async fn a_resurrected_probe_service_rewaits_readiness_before_going_online() {
     let mut origin = harness();
     probing_service(&origin, "web", "  exec:\n    - \"/usr/bin/true\"", 5000);
     start(&mut origin, &["web"]).await;
@@ -165,6 +165,10 @@ async fn a_resurrected_probe_service_is_adopted_without_rewaiting() {
 
     revived.daemon.resurrect_saved_apps().await;
 
+    assert_eq!(status_of(&mut revived, "web").await, "launching");
+    let event = next_event(&mut revived.events).await;
+    assert!(matches!(event, DaemonEvent::Ready { .. }), "got: {event:?}");
+    revived.daemon.apply(event).await;
     assert_eq!(status_of(&mut revived, "web").await, "online");
 }
 

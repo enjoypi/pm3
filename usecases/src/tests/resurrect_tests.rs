@@ -3,6 +3,7 @@ use entities::{ProcessIdentity, ProcessRuntime, ProcessStatus};
 use super::*;
 use crate::{
     AppSelector, UsecaseError,
+    fingerprint::render_identity,
     ports::Fingerprinter as _,
     ports_test_helpers::{FakePorts, LOGS_DIR, live_token, spec, spec_with_deps},
 };
@@ -50,6 +51,35 @@ fn revived_pid(table: &ProcessTable) -> u32 {
         .runtime
         .pid
         .expect("a revived service holds a pid")
+}
+
+fn probing_survivor(ports: &FakePorts, name: &str) -> ProcessRecord {
+    let mut record = stored_record(name, 0, ProcessStatus::Launching);
+    record.spec = crate::ports_test_helpers::spec_probed(name);
+    record.runtime.identity = Some(expected_identity(ports, &record));
+    ports.seed_live(SURVIVOR_PID, &live_token(SURVIVOR_PID));
+    record
+}
+
+#[tokio::test]
+async fn a_survivor_that_was_still_probing_keeps_waiting_for_readiness() {
+    let ports = FakePorts::new(1000);
+    ports.seed_stored(vec![probing_survivor(&ports, "api")]);
+    let table = resurrected(&ports).await;
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Launching);
+    assert_eq!(record.runtime.pid, Some(SURVIVOR_PID));
+}
+
+#[tokio::test]
+async fn a_probing_record_without_a_probe_adopts_as_online() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.status = ProcessStatus::Launching;
+    ports.seed_stored(vec![record]);
+    let table = resurrected(&ports).await;
+    let stored = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(stored.runtime.status, ProcessStatus::Online);
 }
 
 #[tokio::test]

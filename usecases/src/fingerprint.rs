@@ -8,8 +8,10 @@ const CWD_LABEL: &str = "cwd";
 const ARG_LABEL: &str = "arg";
 const ENV_LABEL: &str = "env";
 const SANDBOX_LABEL: &str = "sandbox";
+const READ_LABEL: &str = "read";
 const NETWORK_LABEL: &str = "network";
 const ROOT_LABEL: &str = "root";
+const READABLE_ROOT_LABEL: &str = "readable_root";
 const NETWORK_ALLOWED: &str = "allowed";
 const NETWORK_DENIED: &str = "denied";
 
@@ -40,6 +42,7 @@ pub fn render_identity(spec: &AppSpec) -> String {
         field(PROGRAM_LABEL, script),
         field(CWD_LABEL, cwd),
         field(SANDBOX_LABEL, sandbox.mode.as_str()),
+        field(READ_LABEL, sandbox.read.as_str()),
         field(NETWORK_LABEL, network_label(sandbox.network)),
     ]
     .concat();
@@ -54,10 +57,19 @@ pub fn render_identity(spec: &AppSpec) -> String {
             text.push_str(&field(ROOT_LABEL, root));
             text
         });
-    sorted_env(env).iter().fold(with_roots, |mut text, entry| {
-        text.push_str(&field(ENV_LABEL, &entry_line(entry)));
-        text
-    })
+    let with_readable = sandbox
+        .readable_roots
+        .iter()
+        .fold(with_roots, |mut text, root| {
+            text.push_str(&field(READABLE_ROOT_LABEL, root));
+            text
+        });
+    sorted_env(env)
+        .iter()
+        .fold(with_readable, |mut text, entry| {
+            text.push_str(&field(ENV_LABEL, &entry_line(entry)));
+            text
+        })
 }
 
 #[must_use]

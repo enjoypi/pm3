@@ -46,9 +46,7 @@ async fn a_broken_dependency_graph_still_stops_every_service() {
     .await;
     table.remove(&AppSelector::Name("api".to_string()));
 
-    let stopped = stop_all_apps(&mut table, &ports)
-        .await
-        .expect("an unorderable table must not silently stop nothing");
+    let stopped = stop_all_apps(&mut table, &ports).await;
 
     assert_eq!(stopped_names(&stopped), vec!["web".to_string()]);
 }
@@ -66,9 +64,7 @@ async fn a_broken_dependency_graph_still_signals_the_survivors() {
     .await;
     table.remove(&AppSelector::Name("api".to_string()));
 
-    stop_all_apps(&mut table, &ports)
-        .await
-        .expect("an unorderable table must not silently stop nothing");
+    stop_all_apps(&mut table, &ports).await;
 
     assert_eq!(ports.terminated(), vec![101]);
 }
@@ -222,9 +218,7 @@ async fn stopping_everything_walks_dependents_before_dependencies() {
     let mut table = ProcessTable::new();
     let specs = [spec_with_deps("web", &["api"]), spec("api")];
     start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
-    let stopped = stop_all_apps(&mut table, &ports)
-        .await
-        .expect("stop all should succeed");
+    let stopped = stop_all_apps(&mut table, &ports).await;
     assert_eq!(
         stopped_names(&stopped),
         vec!["web".to_string(), "api".to_string()]
@@ -238,9 +232,7 @@ async fn stopping_everything_persists_the_table_once() {
     let specs = [spec_with_deps("web", &["api"]), spec("api")];
     start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
     let saves_after_start = ports.save_count();
-    stop_all_apps(&mut table, &ports)
-        .await
-        .expect("stop all should succeed");
+    stop_all_apps(&mut table, &ports).await;
     assert_eq!(ports.save_count(), saves_after_start + 1);
 }
 
@@ -249,9 +241,7 @@ async fn stopping_everything_reports_nothing_when_all_apps_are_settled() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     table.upsert(spec("api"), 1000);
-    let stopped = stop_all_apps(&mut table, &ports)
-        .await
-        .expect("stop all should succeed");
+    let stopped = stop_all_apps(&mut table, &ports).await;
     assert!(stopped.is_empty());
 }
 
@@ -262,20 +252,42 @@ async fn stopping_everything_keeps_going_when_one_signal_is_refused() {
     let specs = [spec_with_deps("web", &["api"]), spec("api")];
     start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
     ports.fail_signal_for(100);
-    let stopped = stop_all_apps(&mut table, &ports)
-        .await
-        .expect("stop all should succeed");
+    let stopped = stop_all_apps(&mut table, &ports).await;
     assert_eq!(stopped_names(&stopped), vec!["web".to_string()]);
     assert_eq!(ports.terminated(), vec![101]);
 }
 
 #[tokio::test]
-async fn a_persistence_failure_while_stopping_everything_propagates() {
+async fn a_refused_signal_still_marks_the_service_stopping_so_its_exit_is_not_a_crash() {
+    let ports = FakePorts::new(1000);
+    let mut table = started_table(&ports).await;
+    ports.fail_signal_for(100);
+
+    stop_all_apps(&mut table, &ports).await;
+
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Stopping);
+    let exit = ExitOutcome::Signalled;
+    let action = handle_child_exit(&mut table, "api", exit, &ports)
+        .await
+        .expect("exit handled");
+    assert_eq!(
+        action,
+        ExitAction::Settled {
+            status: ProcessStatus::Stopped,
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_persistence_failure_while_stopping_everything_still_reports_the_stopped() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
     ports.fail_save();
-    let err = stop_all_apps(&mut table, &ports).await.unwrap_err();
-    assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
+    let stopped = stop_all_apps(&mut table, &ports).await;
+    assert_eq!(stopped_names(&stopped), vec!["api".to_string()]);
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(record.runtime.status, ProcessStatus::Stopping);
 }
 
 #[tokio::test]
@@ -336,9 +348,7 @@ async fn stopping_everything_cancels_a_queued_restart() {
         .await
         .expect("restart should succeed");
 
-    stop_all_apps(&mut table, &ports)
-        .await
-        .expect("stop all should succeed");
+    stop_all_apps(&mut table, &ports).await;
 
     let record = table.find(&AppSelector::Id(0)).expect("record present");
     assert!(!record.runtime.pending_restart);

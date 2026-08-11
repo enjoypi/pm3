@@ -42,6 +42,9 @@ pub enum ConfigError {
     #[error("cannot accept pm3.log_tail_lines {0}: must be >= 1")]
     InvalidLogTailLines(u64),
 
+    #[error("cannot accept pm3.log_read_max_bytes {0}: must be >= 1")]
+    InvalidLogReadMaxBytes(u64),
+
     #[error("cannot accept pm3.log_rotate_interval_ms {0}: must be >= 1")]
     InvalidLogRotateInterval(u64),
 
@@ -141,6 +144,8 @@ pub struct Pm3Config {
     pub memory_poll_interval_ms: u64,
     pub log_follow_interval_ms: u64,
     pub log_tail_lines: u64,
+    #[serde(default = "default_log_read_max_bytes")]
+    pub log_read_max_bytes: u64,
     pub log_rotate_max_bytes: u64,
     pub log_rotate_interval_ms: u64,
     pub ready_timeout_ms: u64,
@@ -192,6 +197,12 @@ pub struct TelemetryConfig {
     pub service_name: String,
     pub log_level: String,
     pub log_format: String,
+}
+
+pub const DEFAULT_LOG_READ_MAX_BYTES: u64 = 4 * 1024 * 1024;
+
+const fn default_log_read_max_bytes() -> u64 {
+    DEFAULT_LOG_READ_MAX_BYTES
 }
 
 pub const LOG_FORMAT_JSON: &str = "json";
@@ -272,6 +283,9 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
     }
     if pm3.log_tail_lines < 1 {
         return Err(ConfigError::InvalidLogTailLines(pm3.log_tail_lines));
+    }
+    if pm3.log_read_max_bytes < 1 {
+        return Err(ConfigError::InvalidLogReadMaxBytes(pm3.log_read_max_bytes));
     }
     if pm3.log_rotate_interval_ms < 1 {
         return Err(ConfigError::InvalidLogRotateInterval(

@@ -1,14 +1,10 @@
 use std::{
     path::{Path, PathBuf},
     process::Output,
-    time::Duration,
 };
 
 use thiserror::Error;
-use tokio::{
-    process::Command,
-    time::{Instant, timeout},
-};
+use tokio::{process::Command, time::Instant};
 
 use super::{
     command::{UnitCommand, UnitProgramSet, launchctl_kickstart, loginctl_show_linger},
@@ -18,7 +14,10 @@ use super::{
         parse_main_pid, parse_run_state,
     },
 };
-use crate::exit_status::{describe_refusal, exit_code_of};
+use crate::{
+    exit_status::{describe_refusal, exit_code_of},
+    process::{CommandOutcome, capture_timed},
+};
 
 #[derive(Debug, Error)]
 pub enum UnitCommandError {
@@ -216,13 +215,12 @@ async fn run_command(command: &UnitCommand, timeout_ms: u64) -> Result<(), UnitC
 
 async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, UnitCommandError> {
     let started = Instant::now();
-    let call = Command::new(&command.program)
+    let mut built = Command::new(&command.program);
+    built
         .args(&command.args)
-        .envs(command.env.iter().map(|(name, value)| (name, value)))
-        .output();
-    let answered = timeout(Duration::from_millis(timeout_ms), call).await;
-    let output = match answered {
-        Err(_elapsed) => {
+        .envs(command.env.iter().map(|(name, value)| (name, value)));
+    let output = match capture_timed(built, timeout_ms).await {
+        CommandOutcome::Stalled => {
             let reason = format!("did not answer within {timeout_ms} ms");
             log_failed_command(&command.program, &reason, started);
             return Err(UnitCommandError::Stalled {
@@ -230,14 +228,14 @@ async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, Uni
                 timeout_ms,
             });
         }
-        Ok(Err(error)) => {
+        CommandOutcome::SpawnFailed(error) => {
             log_failed_command(&command.program, &error.to_string(), started);
             return Err(UnitCommandError::Spawn {
                 program: command.program.clone(),
                 reason: error.to_string(),
             });
         }
-        Ok(Ok(output)) => output,
+        CommandOutcome::Finished(output) => output,
     };
     let captured = Captured::from_output(&output);
     let program = command.program.as_str();

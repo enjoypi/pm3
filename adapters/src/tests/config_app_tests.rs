@@ -61,6 +61,20 @@ fn load_and_parse_config_reports_a_missing_file() {
 }
 
 #[test]
+fn parse_config_defaults_the_log_read_budget_for_a_config_written_before_it_existed() {
+    let older = valid_yaml().replace("  log_read_max_bytes: 4194304\n", "");
+    assert!(!older.contains("log_read_max_bytes"), "got: {older}");
+
+    let cfg = parse_config(&older).expect("an older config must still start the daemon");
+
+    assert_eq!(
+        cfg.pm3.log_read_max_bytes,
+        crate::config::schema::DEFAULT_LOG_READ_MAX_BYTES
+    );
+    assert!(validate_config(&cfg).is_ok());
+}
+
+#[test]
 fn parse_config_reads_every_pm3_setting() {
     let cfg = parse_config(&valid_yaml()).expect("should parse");
     assert_eq!(cfg.pm3.home, HOME);

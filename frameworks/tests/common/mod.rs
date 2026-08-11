@@ -210,6 +210,7 @@ pub fn config_yaml(
   memory_poll_interval_ms: {memory_poll_interval_ms}
   log_follow_interval_ms: 200
   log_tail_lines: 20
+  log_read_max_bytes: 4194304
   log_rotate_max_bytes: {log_rotate_max_bytes}
   log_rotate_interval_ms: {log_rotate_interval_ms}
   ready_timeout_ms: 30000

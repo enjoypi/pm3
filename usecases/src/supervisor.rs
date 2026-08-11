@@ -258,7 +258,7 @@ impl Supervisor {
         token: Option<&str>,
         ports: &impl Ports,
     ) {
-        if !self.timers.is_current(name, generation) {
+        if token.is_none() && !self.timers.is_current(name, generation) {
             return;
         }
         if !ports.tracked_pids().await.contains(&pid) {

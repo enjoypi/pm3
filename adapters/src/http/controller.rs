@@ -47,12 +47,7 @@ pub async fn describe(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(
-        &handle,
-        &headers,
-        SupervisionRequest::Describe(selector(&raw)),
-    )
-    .await
+    dispatch_selector(&handle, &headers, &raw, SupervisionRequest::Describe).await
 }
 
 pub async fn stop(
@@ -60,7 +55,7 @@ pub async fn stop(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(&handle, &headers, SupervisionRequest::Stop(selector(&raw))).await
+    dispatch_selector(&handle, &headers, &raw, SupervisionRequest::Stop).await
 }
 
 pub async fn restart(
@@ -68,12 +63,7 @@ pub async fn restart(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(
-        &handle,
-        &headers,
-        SupervisionRequest::Restart(selector(&raw)),
-    )
-    .await
+    dispatch_selector(&handle, &headers, &raw, SupervisionRequest::Restart).await
 }
 
 pub async fn delete(
@@ -81,12 +71,7 @@ pub async fn delete(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(
-        &handle,
-        &headers,
-        SupervisionRequest::Delete(selector(&raw)),
-    )
-    .await
+    dispatch_selector(&handle, &headers, &raw, SupervisionRequest::Delete).await
 }
 
 pub async fn reset(
@@ -94,7 +79,7 @@ pub async fn reset(
     headers: HeaderMap,
     Path(raw): Path<String>,
 ) -> Response {
-    dispatch(&handle, &headers, SupervisionRequest::Reset(selector(&raw))).await
+    dispatch_selector(&handle, &headers, &raw, SupervisionRequest::Reset).await
 }
 
 pub async fn signal(
@@ -116,6 +101,15 @@ pub async fn stop_all(State(handle): State<DaemonHandle>, headers: HeaderMap) ->
 
 fn selector(raw: &str) -> AppSelector {
     AppSelector::parse(raw)
+}
+
+async fn dispatch_selector(
+    handle: &DaemonHandle,
+    headers: &HeaderMap,
+    raw: &str,
+    request: fn(AppSelector) -> SupervisionRequest,
+) -> Response {
+    dispatch(handle, headers, request(selector(raw))).await
 }
 
 async fn dispatch(

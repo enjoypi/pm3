@@ -230,6 +230,34 @@ fn a_pid_that_is_gone_is_never_judged_recycled() {
 }
 
 #[test]
+fn a_different_read_scope_renders_differently() {
+    let confined = with_sandbox(SandboxPolicy {
+        read: ReadScope::Full,
+        ..spec().sandbox
+    });
+    assert_ne!(render_identity(&spec()), render_identity(&confined));
+}
+
+#[test]
+fn a_declared_readable_root_renders_differently() {
+    let widened = with_sandbox(SandboxPolicy {
+        readable_roots: vec!["/usr/local/share".to_string()],
+        ..spec().sandbox
+    });
+    assert_ne!(render_identity(&spec()), render_identity(&widened));
+}
+
+#[test]
+fn a_readable_root_cannot_pose_as_a_writable_root() {
+    let readable = with_sandbox(SandboxPolicy {
+        writable_roots: Vec::new(),
+        readable_roots: vec!["/srv/api/state".to_string()],
+        ..spec().sandbox
+    });
+    assert_ne!(render_identity(&spec()), render_identity(&readable));
+}
+
+#[test]
 fn the_ready_probe_leaves_the_identity_unchanged() {
     let reprobed = AppSpec {
         ready_probe: Some(ReadyProbe::Tcp {

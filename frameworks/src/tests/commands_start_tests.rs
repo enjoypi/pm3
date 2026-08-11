@@ -203,6 +203,23 @@ async fn killing_a_daemon_whose_pid_file_vanished_reports_the_loss() {
 }
 
 #[tokio::test]
+async fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
+    let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
+    let answering = crate::daemon_fixture::answer_health_then_refusal(&home.join("pm3.sock"));
+
+    let err = kill_daemon(config.to_str().expect("path"), true)
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("status 500"), "got: {err}");
+    answering.await.expect("join the answerer");
+}
+
+#[tokio::test]
 async fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");

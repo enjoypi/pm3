@@ -26,10 +26,9 @@ pub use usecases::{
     ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness, ReadyProbe,
     ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
     ServiceSnapshot, SignalError, SignalScope, Signaler, SpecError, SpecResolveError, StartKind,
-    StartOutcome, StartReport, StartSettlement, StrandedProcess, SupervisionEffect,
-    SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand,
-    compare_handover, delete_app, describe_app, describe_handover, list_apps, log_path, log_paths,
-    settle_start, start_apps, validate_app_name,
+    StartOutcome, StartSettlement, StrandedProcess, SupervisionEffect, SupervisionOutcome,
+    SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand, compare_handover,
+    describe_handover, log_path, settle_start, validate_app_name,
 };
 
 pub use self::{

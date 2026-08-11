@@ -26,6 +26,7 @@ pub struct LogFollower {
     file: File,
     offset: u64,
     pending: Vec<u8>,
+    max_pending_bytes: u64,
 }
 
 #[must_use]
@@ -35,14 +36,19 @@ pub fn tail_lines(content: &str, count: usize) -> Vec<&str> {
     tail
 }
 
-pub async fn read_tail(path: &Path, count: usize) -> Result<Vec<String>, LogReadError> {
+pub async fn read_tail(
+    path: &Path,
+    count: usize,
+    max_bytes: u64,
+) -> Result<Vec<String>, LogReadError> {
     let mut file = File::open(path)
         .await
         .map_err(|e| read_error(path, &e.to_string()))?;
     let mut start = seek_to_end(&mut file).await;
     let mut buffer = Vec::new();
-    while start > 0 && line_breaks(&buffer) <= count {
-        let step = TAIL_CHUNK_BYTES.min(start);
+    while start > 0 && line_breaks(&buffer) <= count && (buffer.len() as u64) < max_bytes {
+        let budget = max_bytes.saturating_sub(buffer.len() as u64);
+        let step = TAIL_CHUNK_BYTES.min(start).min(budget);
         start -= step;
         let mut chunk = read_chunk_at(&mut file, start, step)
             .await
@@ -51,7 +57,13 @@ pub async fn read_tail(path: &Path, count: usize) -> Result<Vec<String>, LogRead
         buffer = chunk;
     }
     let text = String::from_utf8_lossy(&buffer);
-    Ok(tail_lines(&text, count)
+    let window = if start > 0 {
+        text.split_once('\n')
+            .map_or_else(|| text.as_ref(), |(_partial, rest)| rest)
+    } else {
+        text.as_ref()
+    };
+    Ok(tail_lines(window, count)
         .into_iter()
         .map(str::to_string)
         .collect())
@@ -80,12 +92,15 @@ fn line_breaks(buffer: &[u8]) -> usize {
 }
 
 impl LogFollower {
-    pub async fn start_at_end(path: &Path) -> Result<Self, LogReadError> {
-        let follower = Self::start_at_end_if_exists(path).await?;
+    pub async fn start_at_end(path: &Path, max_pending_bytes: u64) -> Result<Self, LogReadError> {
+        let follower = Self::start_at_end_if_exists(path, max_pending_bytes).await?;
         follower.ok_or_else(|| read_error(path, "the log file does not exist"))
     }
 
-    pub async fn start_at_end_if_exists(path: &Path) -> Result<Option<Self>, LogReadError> {
+    pub async fn start_at_end_if_exists(
+        path: &Path,
+        max_pending_bytes: u64,
+    ) -> Result<Option<Self>, LogReadError> {
         let mut file = match File::open(path).await {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -97,6 +112,7 @@ impl LogFollower {
             file,
             offset,
             pending: Vec::new(),
+            max_pending_bytes,
         }))
     }
 
@@ -154,6 +170,10 @@ impl LogFollower {
             let mut line = mem::replace(&mut self.pending, rest);
             line.pop();
             lines.push(String::from_utf8_lossy(&line).into_owned());
+        }
+        if self.pending.len() as u64 > self.max_pending_bytes {
+            let overflow = mem::take(&mut self.pending);
+            lines.push(String::from_utf8_lossy(&overflow).into_owned());
         }
         lines
     }

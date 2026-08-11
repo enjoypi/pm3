@@ -52,6 +52,41 @@ fn status_of(supervisor: &Supervisor, name: &str) -> ProcessStatus {
 }
 
 #[tokio::test]
+async fn a_reclaimed_survivor_still_probing_awaits_readiness_again() {
+    let mut supervisor = supervisor();
+    let ports = FakePorts::new(0);
+    let spec = spec_probed("web");
+    let mut runtime = entities::ProcessRuntime::new(0, "web".to_string(), 1000);
+    runtime.mark_launched(7, 1000);
+    runtime.status = ProcessStatus::Launching;
+    runtime.identity = Some(entities::ProcessIdentity {
+        token: crate::ports_test_helpers::live_token(7),
+        launch_digest: crate::ports::Fingerprinter::digest(
+            &ports,
+            &crate::fingerprint::render_identity(&spec),
+        ),
+        binary_digest: format!(
+            "{}{}",
+            crate::ports_test_helpers::FILE_DIGEST_PREFIX,
+            spec.script
+        ),
+    });
+    let record = crate::record::ProcessRecord { spec, runtime };
+    ports.seed_live(7, &crate::ports_test_helpers::live_token(7));
+    ports.seed_stored(vec![record]);
+
+    let effects = supervisor.resurrect_saved(&ports).await;
+
+    assert!(
+        effects.iter().any(
+            |candidate| matches!(candidate, SupervisionEffect::AwaitReady { name, .. } if name == "web")
+        ),
+        "got: {effects:?}"
+    );
+    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Launching);
+}
+
+#[tokio::test]
 async fn a_probe_passing_marks_the_service_online() {
     let mut supervisor = supervisor();
     let ports = FakePorts::new(0);
@@ -197,16 +232,7 @@ async fn start_batch(
     ports: &FakePorts,
     specs: &[entities::AppSpec],
 ) -> u64 {
-    let report = start_apps(&mut supervisor.table, specs, LOGS_DIR, ports).await;
-    let mut effects = Vec::new();
-    supervisor.watch_all(&report.outcomes, &mut effects);
-    for deferred in report.pending {
-        supervisor
-            .waiters
-            .entry(deferred.waiting_on)
-            .or_default()
-            .push(deferred.name);
-    }
+    let effects = start_batch_effects(supervisor, ports, specs).await;
     let armed = effects
         .iter()
         .find(|candidate| matches!(candidate, SupervisionEffect::AwaitReady { .. }))
@@ -214,227 +240,41 @@ async fn start_batch(
     generation_of(armed)
 }
 
-#[tokio::test]
-async fn a_timeout_cascades_to_the_waiting_dependencies() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let specs = vec![
-        spec_probed("db"),
-        spec_with_deps("web", &["db"]),
-        spec_with_deps("api", &["web"]),
-    ];
-    let generation = start_batch(&mut supervisor, &ports, &specs).await;
-
-    supervisor
-        .on_ready_timeout("db", generation, "not ready", &ports)
-        .await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Errored);
-    assert_eq!(status_of(&supervisor, "api"), ProcessStatus::Errored);
-}
-
-#[tokio::test]
-async fn a_timeout_with_a_waiter_that_already_started_keeps_it_running() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let effect = start_probed(&mut supervisor, &ports, "db").await;
-    let generation = generation_of(&effect);
-    let specs = vec![spec("web")];
-    start_apps(&mut supervisor.table, &specs, LOGS_DIR, &ports).await;
-    supervisor
-        .waiters
-        .insert("db".to_string(), vec!["web".to_string()]);
-
-    supervisor
-        .on_ready_timeout("db", generation, "not ready", &ports)
-        .await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Online);
-}
-
-#[tokio::test]
-async fn a_timeout_still_cascades_when_the_terminate_fails() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let specs = vec![spec_probed("db"), spec_with_deps("web", &["db"])];
-    let generation = start_batch(&mut supervisor, &ports, &specs).await;
-    let pid = supervisor
-        .table
-        .find_by_name("db")
-        .and_then(|record| record.runtime.pid)
-        .expect("db should be running");
-    ports.fail_signal_for(pid);
-
-    supervisor
-        .on_ready_timeout("db", generation, "not ready", &ports)
-        .await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Errored);
-}
-
-#[tokio::test]
-async fn a_waiter_that_fails_to_launch_is_marked_errored_and_cascades() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let specs = vec![
-        spec_probed("db"),
-        spec_with_deps("web", &["db"]),
-        spec_with_deps("api", &["web"]),
-    ];
-    let generation = start_batch(&mut supervisor, &ports, &specs).await;
-    ports.fail_spawn_for("web");
-
-    supervisor.on_ready("db", generation, &ports).await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Errored);
-    assert_eq!(status_of(&supervisor, "api"), ProcessStatus::Errored);
-}
-
-#[tokio::test]
-async fn stopping_a_probe_in_flight_cancels_it_and_drops_its_waiters() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let specs = vec![
-        spec_probed("db"),
-        spec_with_deps("web", &["db"]),
-        spec_with_deps("api", &["db"]),
-    ];
-    start_batch(&mut supervisor, &ports, &specs).await;
-
+async fn start_batch_effects(
+    supervisor: &mut Supervisor,
+    ports: &FakePorts,
+    specs: &[entities::AppSpec],
+) -> Vec<SupervisionEffect> {
+    let report = start_apps(&mut supervisor.table, specs, LOGS_DIR, ports).await;
     let mut effects = Vec::new();
-    supervisor.cancel_ready("web", &mut effects);
-
-    assert!(effects.iter().any(
-        |candidate| matches!(candidate, SupervisionEffect::CancelReady { name } if name == "web")
-    ));
-    let remaining = supervisor
-        .waiters
-        .get("db")
-        .expect("api should still be waiting");
-    assert_eq!(remaining, &vec!["api".to_string()]);
+    supervisor.watch_all(&report.outcomes, &mut effects);
+    for deferred in report.pending {
+        for dependency in &deferred.waiting_on {
+            supervisor
+                .waiters
+                .entry(dependency.clone())
+                .or_default()
+                .push(deferred.name.clone());
+        }
+    }
+    effects
 }
 
-#[tokio::test]
-async fn stopping_a_dependency_fails_its_waiters() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let specs = vec![spec_probed("db"), spec_with_deps("web", &["db"])];
-    start_batch(&mut supervisor, &ports, &specs).await;
-
-    let mut effects = Vec::new();
-    supervisor.cancel_ready("db", &mut effects);
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Errored);
-}
-
-#[tokio::test]
-async fn an_adopted_service_with_a_probe_does_not_await_readiness() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let effect = start_probed(&mut supervisor, &ports, "web").await;
-    let generation = generation_of(&effect);
-    supervisor.on_ready("web", generation, &ports).await;
-
-    let outcome = crate::start::StartOutcome {
-        pm_id: 0,
-        name: "web".to_string(),
-        pid: Some(42),
-        kind: StartKind::Adopted,
+fn generation_for(effects: &[SupervisionEffect], name: &str) -> u64 {
+    let effect = effects
+        .iter()
+        .find(|candidate| {
+            matches!(
+                candidate,
+                SupervisionEffect::AwaitReady { name: service, .. } if service == name
+            )
+        })
+        .expect("the service should arm a readiness watch");
+    let SupervisionEffect::AwaitReady { generation, .. } = effect else {
+        panic!("the service should arm a readiness watch")
     };
-    let mut effects = Vec::new();
-    supervisor.watch(&outcome, &mut effects);
-
-    assert!(
-        !effects
-            .iter()
-            .any(|candidate| matches!(candidate, SupervisionEffect::AwaitReady { .. })),
-        "an adopted process is already serving"
-    );
+    *generation
 }
 
-#[tokio::test]
-async fn a_ready_transition_reports_a_save_failure() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let effect = start_probed(&mut supervisor, &ports, "web").await;
-    let generation = generation_of(&effect);
-    ports.fail_save();
-
-    supervisor.on_ready("web", generation, &ports).await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Online);
-}
-
-#[tokio::test]
-async fn a_timeout_reports_a_save_failure() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let effect = start_probed(&mut supervisor, &ports, "web").await;
-    let generation = generation_of(&effect);
-    ports.fail_save();
-
-    supervisor
-        .on_ready_timeout("web", generation, "not ready", &ports)
-        .await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Stopping);
-}
-
-#[tokio::test]
-async fn a_failed_probe_settlement_reports_a_save_failure() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let effect = start_probed(&mut supervisor, &ports, "web").await;
-    let generation = generation_of(&effect);
-    supervisor
-        .on_ready_timeout("web", generation, "not ready", &ports)
-        .await;
-    ports.fail_save();
-
-    supervisor
-        .on_exit(
-            "web",
-            generation,
-            crate::ports::ExitOutcome::Code(143),
-            &ports,
-        )
-        .await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Errored);
-}
-
-#[tokio::test]
-async fn a_waiter_launch_failure_reports_a_save_failure() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let specs = vec![spec_probed("db"), spec_with_deps("web", &["db"])];
-    let generation = start_batch(&mut supervisor, &ports, &specs).await;
-    ports.fail_spawn_for("web");
-    ports.fail_save();
-
-    supervisor.on_ready("db", generation, &ports).await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Errored);
-}
-
-#[tokio::test]
-async fn a_waiter_with_its_own_probe_keeps_the_chain_waiting() {
-    let mut supervisor = supervisor();
-    let ports = FakePorts::new(0);
-    let specs = vec![
-        spec_probed("db"),
-        entities::AppSpec {
-            ready_probe: Some(entities::ReadyProbe::Exec {
-                command: vec!["/usr/bin/true".to_string()],
-            }),
-            ..spec_with_deps("web", &["db"])
-        },
-        spec_with_deps("api", &["web"]),
-    ];
-    let generation = start_batch(&mut supervisor, &ports, &specs).await;
-
-    supervisor.on_ready("db", generation, &ports).await;
-
-    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Launching);
-    assert_eq!(status_of(&supervisor, "api"), ProcessStatus::Stopped);
-}
+#[path = "supervisor_ready_cascade_tests.rs"]
+mod cascade;

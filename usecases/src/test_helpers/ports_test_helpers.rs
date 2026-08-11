@@ -42,7 +42,12 @@ struct FakeState {
     signal_failures: Vec<u32>,
     stubborn: Vec<u32>,
     recycled_on_signal: Vec<u32>,
+    recycled_after_probe: Vec<u32>,
+    vanished_after_probe: Vec<u32>,
+    probed: BTreeSet<u32>,
     waited: Vec<u32>,
+    events: Vec<String>,
+    slow_wait: bool,
     force_killed: Vec<u32>,
     signal_scopes: Vec<(u32, SignalScope)>,
     force_failures: Vec<u32>,
@@ -106,6 +111,18 @@ impl FakePorts {
 
     pub fn recycle_on_signal(&self, pid: u32) {
         self.with_state(|state| state.recycled_on_signal.push(pid));
+    }
+
+    pub fn recycle_after_probe(&self, pid: u32) {
+        self.with_state(|state| state.recycled_after_probe.push(pid));
+    }
+
+    pub fn vanish_after_probe(&self, pid: u32) {
+        self.with_state(|state| state.vanished_after_probe.push(pid));
+    }
+
+    pub fn slow_waits(&self) {
+        self.with_state(|state| state.slow_wait = true);
     }
 
     pub fn fail_load(&self) {
@@ -205,6 +222,11 @@ impl FakePorts {
     }
 
     #[must_use]
+    pub fn events(&self) -> Vec<String> {
+        self.read(|state| state.events.clone())
+    }
+
+    #[must_use]
     pub fn force_killed(&self) -> Vec<u32> {
         self.read(|state| state.force_killed.clone())
     }
@@ -261,6 +283,7 @@ impl FakePorts {
         {
             let mut guard = self.locked();
             guard.signal_scopes.push((pid, scope));
+            guard.events.push(format!("terminate:{pid}"));
             if guard.signal_failures.contains(&pid) {
                 return Err(SignalError::Delivery {
                     pid,
@@ -352,178 +375,6 @@ impl FakePorts {
     }
 }
 
-impl ProcessLauncher for FakePorts {
-    async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
-        self.record_spawn(spec)
-    }
-
-    async fn adopt(&self, pid: u32) {
-        self.with_state(|state| {
-            state.adopted.push(pid);
-            state.tracked.insert(pid);
-        });
-    }
-
-    async fn tracked_pids(&self) -> Vec<u32> {
-        self.read(|state| state.tracked.iter().copied().collect())
-    }
-}
-
-impl Signaler for FakePorts {
-    async fn terminate(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
-        self.record_signal(pid, scope)
-    }
-
-    async fn force_kill(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
-        self.record_force_kill(pid, scope)
-    }
-
-    async fn deliver(&self, signal: &str, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
-        self.record_deliver(signal, pid, scope)
-    }
-}
-
-impl CommandWrapper for FakePorts {
-    fn wrap(
-        &self,
-        app: &str,
-        policy: &SandboxPolicy,
-        program: &str,
-        args: &[String],
-    ) -> Result<WrappedCommand, SandboxError> {
-        if self.read(|state| state.wrap_failures.iter().any(|name| name == app)) {
-            return Err(SandboxError::NoBackend {
-                app: app.to_string(),
-            });
-        }
-        if policy.mode.is_unconfined() {
-            return Ok(WrappedCommand {
-                program: program.to_string(),
-                args: args.to_vec(),
-            });
-        }
-        let mut wrapped_args = vec![program.to_string()];
-        wrapped_args.extend_from_slice(args);
-        Ok(WrappedCommand {
-            program: SANDBOX_PREFIX.to_string(),
-            args: wrapped_args,
-        })
-    }
-}
-
-impl DumpStore for FakePorts {
-    async fn load(&self) -> Result<DumpContents, DumpError> {
-        self.read_stored()
-    }
-
-    async fn save(&self, records: &[ProcessRecord], boot: Option<&str>) -> Result<(), DumpError> {
-        self.record_save(records, boot)
-    }
-}
-
-impl LogRotator for FakePorts {
-    async fn rotate_logs(
-        &self,
-        _logs_dir: &str,
-        _max_bytes: u64,
-    ) -> Result<Vec<RotatedLog>, LogRotateError> {
-        Ok(Vec::new())
-    }
-}
-
-impl ReadyProber for FakePorts {
-    async fn check_ready(&self, _probe: &ReadyProbe) -> Readiness {
-        Readiness::Ready
-    }
-}
-
-impl ProcessProbe for FakePorts {
-    async fn resident_memory(&self, _pids: &[u32]) -> BTreeMap<u32, u64> {
-        BTreeMap::new()
-    }
-
-    async fn resource_usage(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
-        self.read(|state| {
-            pids.iter()
-                .filter_map(|pid| state.resources.get(pid).map(|sample| (*pid, *sample)))
-                .collect()
-        })
-    }
-
-    async fn identity(&self, pid: u32) -> Liveness {
-        self.identities(&[pid])
-            .await
-            .remove(&pid)
-            .unwrap_or(Liveness::Unreadable)
-    }
-
-    async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
-        self.read(|state| {
-            pids.iter()
-                .map(|pid| {
-                    let liveness = if state.probe_broken.contains(pid) {
-                        Liveness::Unreadable
-                    } else {
-                        state
-                            .live
-                            .get(pid)
-                            .cloned()
-                            .map_or(Liveness::Gone, Liveness::Alive)
-                    };
-                    (*pid, liveness)
-                })
-                .collect()
-        })
-    }
-
-    async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
-        let _ = timeout_ms;
-        self.with_state(|state| state.waited.push(pid));
-        self.identity(pid).await
-    }
-}
-
-impl Fingerprinter for FakePorts {
-    fn digest(&self, text: &str) -> String {
-        format!("{TEXT_DIGEST_PREFIX}{text}")
-    }
-
-    async fn file_digest(&self, path: &str) -> Result<String, FingerprintError> {
-        let digest = {
-            let guard = self.locked();
-            if guard.digest_failures.iter().any(|failed| failed == path) {
-                return Err(FingerprintError::Read {
-                    path: path.to_string(),
-                    reason: "injected digest failure".to_string(),
-                });
-            }
-            guard
-                .file_digests
-                .get(path)
-                .cloned()
-                .unwrap_or_else(|| format!("{FILE_DIGEST_PREFIX}{path}"))
-        };
-        Ok(digest)
-    }
-}
-
-impl Ports for FakePorts {}
-
-impl Clock for FakePorts {
-    fn now_ms(&self) -> u64 {
-        self.read(|state| state.now_ms)
-    }
-}
-
-impl Scheduler for FakePorts {
-    fn next_fire_ms(&self, cron: &str, after_ms: u64) -> Option<u64> {
-        if cron == UNSCHEDULABLE_CRON {
-            return None;
-        }
-        Some(after_ms.saturating_add(FAKE_FIRE_INTERVAL_MS))
-    }
-}
-
 #[must_use]
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
@@ -574,3 +425,6 @@ pub fn spec_probed(name: &str) -> AppSpec {
 }
 
 pub const LOGS_DIR: &str = "/fake/logs";
+
+#[path = "ports_fake_impls_test_helpers.rs"]
+mod impls;
