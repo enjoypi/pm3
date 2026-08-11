@@ -10,6 +10,7 @@ use std::{
     os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     process::Output,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 #[cfg(target_os = "linux")]
@@ -19,12 +20,23 @@ use self::common::{
     wait_for_listing,
 };
 
+static NEXT_LABEL: AtomicU64 = AtomicU64::new(0);
+
+fn unique_label() -> String {
+    format!(
+        "pm3-e2e-install-{}-{}",
+        std::process::id(),
+        NEXT_LABEL.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
 fn patient_home() -> common::Home {
     home_with_timeout("danger-full-access", true, "info", 30_000)
 }
 
 struct InstallFixture {
     home: common::Home,
+    label: String,
     fake_home: PathBuf,
     destination: PathBuf,
     backups: PathBuf,
@@ -39,7 +51,7 @@ impl Drop for InstallFixture {
             .expect("read the uid");
         let uid = String::from_utf8_lossy(&uid.stdout).trim().to_string();
         let _ = std::process::Command::new("launchctl")
-            .args(["bootout", &format!("gui/{uid}/{SERVICE_LABEL}")])
+            .args(["bootout", &format!("gui/{uid}/{}", self.label)])
             .output();
     }
 }
@@ -65,6 +77,8 @@ const UNIT_EXTENSION: &str = "plist";
 const UNIT_EXTENSION: &str = "service";
 
 fn fixture(home: common::Home, manager_body: &str) -> InstallFixture {
+    let label = unique_label();
+    patch_label(&home, &label);
     let fake_home = home.dir.path().join("fake-home");
     std::fs::create_dir_all(&fake_home).expect("prepare the fake home");
     let destination = home.dir.path().join("dest/pm3");
@@ -73,10 +87,21 @@ fn fixture(home: common::Home, manager_body: &str) -> InstallFixture {
     patch_manager_path(&home, &manager);
     InstallFixture {
         home,
+        label,
         fake_home,
         destination,
         backups,
     }
+}
+
+fn patch_label(home: &common::Home, label: &str) {
+    let yaml = std::fs::read_to_string(&home.config).expect("read the config");
+    let patched = yaml.replace(
+        &format!("label: \"{SERVICE_LABEL}\""),
+        &format!("label: \"{label}\""),
+    );
+    assert!(patched.contains(label), "the config carries the unique label");
+    std::fs::write(&home.config, patched).expect("patch the config");
 }
 
 fn write_manager(home: &common::Home, destination: &Path, body: &str) -> PathBuf {
@@ -168,7 +193,8 @@ fn a_first_install_lands_the_binary_and_brings_the_daemon_under_supervision() {
     assert!(output.contains("backed up"), "got: {output}");
     assert!(
         output.contains(&format!(
-            "service {SERVICE_LABEL} ({MANAGER_NAME}) is running"
+            "service {} ({MANAGER_NAME}) is running",
+            fixture.label
         )),
         "got: {output}"
     );
@@ -197,7 +223,7 @@ fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
     let unit_dir = unit_dir(&fixture.fake_home);
     std::fs::create_dir_all(&unit_dir).expect("mkdir unit dir");
     std::fs::write(
-        unit_dir.join(format!("{SERVICE_LABEL}.{UNIT_EXTENSION}")),
+        unit_dir.join(format!("{}.{UNIT_EXTENSION}", fixture.label)),
         "old unit",
     )
     .expect("seed unit");
@@ -236,7 +262,7 @@ fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
     );
     assert!(
         stamp
-            .join(format!("{SERVICE_LABEL}.{UNIT_EXTENSION}"))
+            .join(format!("{}.{UNIT_EXTENSION}", fixture.label))
             .is_file(),
         "unit backup"
     );
