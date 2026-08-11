@@ -1,9 +1,15 @@
 (allow network-outbound (remote ip))
 (allow network-inbound (local ip))
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))
 (allow system-socket)
+
+(allow file-read* file-test-existence
+  (literal "/private/var/run/resolv.conf"))
 
 (allow mach-lookup
   (global-name "com.apple.bsd.dirhelper")
+  (global-name "com.apple.mDNSResponder")
+  (global-name "com.apple.mDNSResponderHelper")
   (global-name "com.apple.system.opendirectoryd.membership")
   (global-name "com.apple.SecurityServer")
   (global-name "com.apple.networkd")

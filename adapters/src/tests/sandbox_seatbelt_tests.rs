@@ -113,11 +113,32 @@ fn enabling_the_network_appends_the_network_rules() {
 }
 
 #[test]
+fn the_network_rules_allow_the_system_resolver() {
+    let profile = profile_of(&policy(SandboxMode::WorkspaceWrite, true, &[]));
+    assert!(
+        profile.contains("com.apple.mDNSResponder"),
+        "some clients reach mDNSResponder over mach: {profile}"
+    );
+    assert!(
+        profile.contains("(allow network-outbound (literal \"/private/var/run/mDNSResponder\"))"),
+        "getaddrinfo resolves through the mDNSResponder unix socket and must be reachable: {profile}"
+    );
+    assert!(
+        profile.contains("(literal \"/private/var/run/resolv.conf\")"),
+        "clients read the system DNS config from resolv.conf and must be able to: {profile}"
+    );
+}
+
+#[test]
 fn enabling_the_network_still_refuses_unix_sockets() {
     let profile = profile_of(&policy(SandboxMode::WorkspaceWrite, true, &[]));
     assert!(
         !profile.contains("(allow network-outbound)\n"),
         "an unqualified rule would reach the pm3 control socket: {profile}"
+    );
+    assert!(
+        !profile.contains("(allow network-outbound (remote unix-socket))"),
+        "unix sockets must stay closed except for the mDNSResponder literal: {profile}"
     );
 }
 
