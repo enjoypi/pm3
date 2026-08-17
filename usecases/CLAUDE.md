@@ -35,3 +35,20 @@ Interactor + Output Port（trait）。与外层交互只经 `ports/` 下的 trai
 - `start_one` / `resurrect` 涉及身份指纹的采集时机与旧进程驱逐，规则见根 `CLAUDE.md` 的「身份指纹与接管」，改这两个文件前先读
 - `Supervisor` MUST NOT 自己 spawn/abort task：需要副作用就 push 一个 `SupervisionEffect`，由 `frameworks` 的 `TaskBoard` 执行。本层不认识 tokio，`TimerState` 只存业务状态、`JoinHandle` 全在外层——两边字段一一对应，加一种效果要同步改 `SupervisionEffect` 枚举与 `TaskBoard::apply` 的 match
 - 新增 Port 方法后 MUST 给 `test_helpers/ports_test_helpers.rs` 的 fake 补实现**并配单测**：fake 计入覆盖率门禁，只加不测就是未覆盖行
+
+## 停止与强杀
+
+- `stop_all_apps` 返回 `Vec<StopOutcome>`（不是 `Result`），落盘失败只记 warn：半路 `?` 会跳过其后为每个 outcome 排 `schedule_force_kill` 的循环与 unswept 清扫 ⇒ 服务已 SIGTERM、内存已 `Stopping`，却没有任何强杀定时器，`kill_timeout_ms` 形同虚设
+- `stop_all` 里 `terminate` 失败 MUST 仍 `mark_stopping`：记录留在 `Online` 时，unswept 清扫照样为该 pid 排延时强杀，随后的退出事件会走 `classify_exit` → `decide_restart` 被当成崩溃自动重启（症状：`pm3 stop-all` 几分钟后服务自己回来了）
+- `on_force_kill` 的 generation 守卫 MUST 在**有 token 时**让路：`delete` 后同名 `start` 会 `bump` generation，把 delete 前排定的强杀判成 stale 丢弃 ⇒ 顽固旧进程与新实例双开且无补偿路径。有 token 时改由 `sweep_pid` 的 `pid_was_recycled` 守卫兜住（比 generation 更准）；无 token 才保留 generation 守卫（否则裸发信号会打到复用 pid）
+- `delete` MUST NOT 清掉服务的 generation：`current_generation` 对未知名字返回哨兵 `0` 而 `is_current(name, 0)` 恒为真 ⇒ generation 守卫形同虚设；同时真实退出事件带着 generation≥1 抵达 `on_exit` 会因不匹配而提前 return，`CancelForceKill` 永不发出 ⇒ 延时强杀必定走完 `kill_timeout_ms` 并可能打到复用 pid。generation 是全局单调计数，同名服务重建不会撞号，本就不需要清；`on_exit` 里改用「表里已无此记录」判定并记 debug
+- `schedule_restart` 的 `JoinHandle` 存进 `TimerBoard.restarts`，`stop`/`delete`/`stop_all` 三条路径都 `cancel_restart`，`on_restart` 先 `claim_restart` 再执行（抢在 abort 之前入队的事件因此被丢弃）：只 spawn 一个裸 sleep task 会让被停掉的服务自行复活，且每次崩溃多留一个孤儿 task
+
+## 就绪探针
+
+语义与终态规则在根 `CLAUDE.md`「就绪探针」，这里是本层的三处实现约束：
+
+- **落盘状态是 `Launching` 且声明了探针的记录 MUST 保持 `Launching` 并重挂探针**（`adopt` 里判 `status != Launching || ready_probe.is_none()` 才 `mark_online`）：无条件 `mark_online` 会让「探针窗口内换代」的服务显示 online 而实际从未就绪，且 `await_ready_if_probing` 因状态已非 `Launching` 而跳过 ⇒ 探针永不执行、超时永不触发
+- 依赖就绪后拉起 waiter（`launch_waiter`）**成功路径也 MUST `save_table`**：只在失败路径落盘会留下「进程在跑但 dump 里是 settled」的空窗，此刻 daemon 被 SIGKILL 就是永久孤儿 + 下次 start 双开
+- 多个 `depends_on` MUST 全部登记：`DeferredStart.waiting_on` 是 `Vec<String>`（`waiting_dependencies` 收集所有未就绪依赖），`launch_waiter` 前先 `still_waiting` 复查其余依赖。只登记第一个依赖会让 C（依赖 A、B）在 B 仍 Launching 时上线，B 探针失败也不级联
+- `stop`/`delete`/`stop_all` MUST 走 `cancel_ready`（中止探针 task + 从 waiters 摘除 + 级联取消），否则依赖就绪后会把用户已停掉的 Deferred 服务拉起来
