@@ -168,6 +168,79 @@ fn each_writable_root_becomes_a_parameterised_subpath_rule() {
 }
 
 #[test]
+fn every_writable_root_lets_the_program_stat_its_ancestors() {
+    let confined = policy(SandboxMode::WorkspaceWrite, false, &["/srv/api"]);
+    let profile = profile_of(&confined);
+    assert!(
+        profile.contains("(allow file-read-metadata (path-ancestors (param \"WRITABLE_0\")))"),
+        "opening a file by absolute path stats every ancestor directory: {profile}"
+    );
+}
+
+#[test]
+fn every_readable_root_lets_the_program_stat_its_ancestors() {
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        readable_roots: vec!["/opt/data".to_string()],
+        ..policy(SandboxMode::WorkspaceWrite, false, &[])
+    };
+    let profile = profile_of(&confined);
+    assert!(
+        profile.contains("(allow file-read-metadata (path-ancestors (param \"READABLE_0\")))"),
+        "opening a file by absolute path stats every ancestor directory: {profile}"
+    );
+}
+
+#[test]
+fn the_profile_opens_the_gpu_user_clients() {
+    let profile = profile_of(&policy(SandboxMode::WorkspaceWrite, false, &[]));
+    for class in [
+        "AGXDeviceUserClient",
+        "IOGPUDeviceUserClient",
+        "IOSurfaceRootUserClient",
+    ] {
+        assert!(
+            profile.contains(class),
+            "metal cannot create a device without {class}: {profile}"
+        );
+    }
+}
+
+#[test]
+fn the_profile_reaches_the_metal_shader_compiler() {
+    let profile = profile_of(&policy(SandboxMode::WorkspaceWrite, false, &[]));
+    assert!(
+        profile.contains("com.apple.MTLCompilerService"),
+        "a device without a precompiled library compiles shaders on the fly: {profile}"
+    );
+    assert!(
+        profile.contains("(sysctl-name \"hw.cpusubfamily\")"),
+        "the metal backend reads the cpu subfamily: {profile}"
+    );
+}
+
+#[test]
+fn a_minimal_read_scope_exposes_the_gpu_driver_bundles() {
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        ..policy(SandboxMode::WorkspaceWrite, false, &[])
+    };
+    let profile = profile_of(&confined);
+    assert!(
+        profile.contains("(subpath \"/System/Library/Extensions\")"),
+        "the gpu driver bundle lives there: {profile}"
+    );
+    assert!(
+        profile.contains("(subpath \"/System/Library/CoreServices\")"),
+        "the metal stack reads the SystemVersion bundle: {profile}"
+    );
+    assert!(
+        profile.contains("(path-ancestors \"/System/Library\")"),
+        "reaching those subpaths stats their ancestors: {profile}"
+    );
+}
+
+#[test]
 fn no_path_is_ever_interpolated_into_the_profile_text() {
     let confined = policy(SandboxMode::WorkspaceWrite, false, &["/srv/api"]);
     let profile = profile_of(&confined);

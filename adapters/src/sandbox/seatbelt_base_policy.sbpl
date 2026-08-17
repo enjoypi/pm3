@@ -22,6 +22,7 @@
   (sysctl-name "hw.cpufrequency")
   (sysctl-name "hw.cpufrequency_compat")
   (sysctl-name "hw.cputype")
+  (sysctl-name "hw.cpusubfamily")
   (sysctl-name "hw.l1dcachesize_compat")
   (sysctl-name "hw.l1icachesize_compat")
   (sysctl-name "hw.l2cachesize_compat")
@@ -66,9 +67,13 @@
   (sysctl-name "kern.grade_cputype"))
 
 (allow iokit-open
-  (iokit-registry-entry-class "RootDomainUserClient"))
+  (iokit-registry-entry-class "RootDomainUserClient")
+  (iokit-registry-entry-class "AGXDeviceUserClient")
+  (iokit-registry-entry-class "IOGPUDeviceUserClient")
+  (iokit-registry-entry-class "IOSurfaceRootUserClient"))
 
 (allow mach-lookup
+  (global-name "com.apple.MTLCompilerService")
   (global-name "com.apple.system.opendirectoryd.libinfo")
   (global-name "com.apple.PowerManagement.control")
   (global-name "com.apple.cfprefsd.daemon")

@@ -14,6 +14,7 @@ const READABLE_PARAMETER: &str = "READABLE";
 const WRITABLE_PARAMETER: &str = "WRITABLE";
 const HIDDEN_PARAMETER: &str = "HIDDEN";
 const READ_ACTION: &str = "allow file-read* file-test-existence";
+const ANCESTOR_ACTION: &str = "allow file-read-metadata";
 const WRITE_ACTION: &str = "allow file-read* file-test-existence file-write*";
 const FILESYSTEM_ROOT: &str = "/";
 
@@ -117,6 +118,10 @@ fn rules(action: &str, parameter: &str, granted: &[&str], hidden: &[&str]) -> St
             let _ = writeln!(
                 text,
                 "\n({action} (require-all (subpath (param \"{parameter}_{index}\")){carveout}))"
+            );
+            let _ = writeln!(
+                text,
+                "({ANCESTOR_ACTION} (path-ancestors (param \"{parameter}_{index}\")))"
             );
             text
         })
