@@ -220,6 +220,15 @@ fn the_profile_reaches_the_metal_shader_compiler() {
 }
 
 #[test]
+fn the_profile_reaches_the_filesystem_event_stream() {
+    let profile = profile_of(&policy(SandboxMode::WorkspaceWrite, false, &[]));
+    assert!(
+        profile.contains("com.apple.FSEvents"),
+        "a recursive watch without FSEvents falls back to one descriptor per directory: {profile}"
+    );
+}
+
+#[test]
 fn a_minimal_read_scope_exposes_the_gpu_driver_bundles() {
     let confined = SandboxPolicy {
         read: ReadScope::Minimal,

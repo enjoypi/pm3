@@ -57,6 +57,8 @@ Controller / Presenter / Gateway / DTO 全在这层。不放业务规则判断�
   - `(allow file-read* file-test-existence (literal "/private/var/run/resolv.conf"))`——Go 解析器读 resolv.conf 拿系统 DNS（内网 nameserver）。与 mDNSResponder 是**两条路**：curl 走前者通时 mihomo（读文件）仍可能卡后者
   - 验证法：`sandbox-exec -p "$(cat <拼接的profile>)"` 里 `cat /var/run/resolv.conf` 应读出内网 nameserver、`curl https://内网域名` 应 302、`nc -z -U ~/.pm3/pm3.sock` 仍 exit 1（pm3.sock 隔离不得削弱）
 - **用 Metal/GPU 的服务（llama.cpp 之类）**：base policy 放行 iokit `AGXDeviceUserClient`/`IOGPUDeviceUserClient`/`IOSurfaceRootUserClient` + mach-lookup `com.apple.MTLCompilerService` + sysctl `hw.cpusubfamily`，minimal read 放 `/System/Library/Extensions`（GPU driver bundle）、`/System/Library/CoreServices` 与 `path-ancestors "/System/Library"`。缺 iokit 报 `ggml_metal_init: picking default device: (null)`，缺编译服务报 `does not have a precompiled Metal library` 后仍 `failed to create llama_context`。实测**不需要** `com.apple.windowserver.active`，别为省事放它
+- **递归 `fs.watch` 的服务（Node/前端 dev server）MUST 有 mach-lookup `com.apple.FSEvents`**：libuv 在 macOS 走 FSEvents，被拒后**静默回退**到 kqueue 逐目录开 fd，扫过 `node_modules` 就 `EMFILE: too many open files, watch` 并崩掉整个进程。症状极具误导性——报的是 fd 耗尽，抬 `ulimit -n` 只把爆点推后（实测 65536 仍炸），而沙箱外同一份代码完全正常。**只 deny 一次**（初始化失败即全程回退），在 `log stream` 里极易被 GPU/日志类噪声淹没
+- 服务报 `Operation not permitted` 时先看它调的外部程序是不是 perl 脚本：macOS 无 `sha256sum`，`shasum` 是 `/usr/bin/perl` 脚本，minimal read 下 `/System/Library/Perl/*/CORE/libperl.dylib` 不可读 → dyld 直接失败，而调用方常把它当「命令输出为空」处理（症状：`sha256 mismatch: expected <值>, got `，末尾空）
 - 查「沙箱到底拒了什么」用 `log stream --style compact --predicate 'eventMessage CONTAINS "deny"'`（另起后台再跑被测程序）：SBPL 的 `(trace "<file>")` 在现代 macOS 不产出文件，别在它上面浪费时间
 
 #### bwrap（Linux）

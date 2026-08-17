@@ -73,6 +73,7 @@
   (iokit-registry-entry-class "IOSurfaceRootUserClient"))
 
 (allow mach-lookup
+  (global-name "com.apple.FSEvents")
   (global-name "com.apple.MTLCompilerService")
   (global-name "com.apple.system.opendirectoryd.libinfo")
   (global-name "com.apple.PowerManagement.control")
