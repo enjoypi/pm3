@@ -12,6 +12,7 @@ const FORCE_SIGNAL: &str = "KILL";
 const ARGUMENT_TERMINATOR: &str = "--";
 const LOWEST_SIGNALABLE_PID: u32 = 2;
 const UNSAFE_PID_REASON: &str = "pid is outside the safe range";
+const SIGNAL_ACTION: &str = "signal";
 
 #[derive(Clone, Debug)]
 pub struct KillSignaler {
@@ -41,17 +42,23 @@ impl KillSignaler {
         let mut command = Command::new(&self.program);
         command.args(&arguments);
         let output = match capture_timed(command, self.timeout_ms).await {
-            CommandOutcome::Stalled => return Err(self.stalled(pid)),
+            CommandOutcome::Stalled => {
+                let refusal = self.stalled(pid);
+                log_undelivered_signal(pid, signal, target, elapsed_ms(started), &refusal);
+                return Err(refusal);
+            }
             CommandOutcome::SpawnFailed(error) => {
-                return Err(SignalError::Delivery {
+                let refusal = SignalError::Delivery {
                     pid,
                     reason: error.to_string(),
-                });
+                };
+                log_undelivered_signal(pid, signal, target, elapsed_ms(started), &refusal);
+                return Err(refusal);
             }
             CommandOutcome::Finished(output) => output,
         };
         let code = exit_code_of(&output.status);
-        let duration_ms = started.elapsed().as_millis();
+        let duration_ms = elapsed_ms(started);
         tracing::debug!(
             feature = "supervisor",
             pid,
@@ -59,7 +66,7 @@ impl KillSignaler {
             target,
             code,
             duration_ms,
-            action = "signal",
+            action = SIGNAL_ACTION,
             "delivered a signal to a managed process"
         );
         if output.status.success() {
@@ -136,6 +143,30 @@ fn kill_program(_taskkill_path: &str) -> String {
 #[cfg(windows)]
 fn kill_program(taskkill_path: &str) -> String {
     taskkill_path.to_string()
+}
+
+fn elapsed_ms(started: Instant) -> u128 {
+    started.elapsed().as_millis()
+}
+
+fn log_undelivered_signal(
+    pid: u32,
+    signal: &str,
+    target: &str,
+    duration_ms: u128,
+    refusal: &SignalError,
+) {
+    let reason = refusal.to_string();
+    tracing::warn!(
+        feature = "supervisor",
+        pid,
+        signal,
+        target,
+        duration_ms,
+        reason,
+        action = SIGNAL_ACTION,
+        "pm3 never delivered a signal, so the process may outlive its service"
+    );
 }
 
 fn is_signalable(pid: u32) -> bool {

@@ -116,7 +116,7 @@ async fn secure_file(path: &Path, shown: &str) {
     let duration_ms = started.elapsed().as_millis();
     match tightened {
         Ok(()) => log_secured(shown, duration_ms),
-        Err(error) => log_stuck_permissions(shown, &error.to_string()),
+        Err(error) => log_stuck_permissions(shown, &error.to_string(), duration_ms),
     }
 }
 
@@ -262,12 +262,13 @@ fn log_spared_link(path: &str) {
 }
 
 #[cfg(unix)]
-fn log_stuck_permissions(path: &str, reason: &str) {
+fn log_stuck_permissions(path: &str, reason: &str, duration_ms: u128) {
     tracing::warn!(
         feature = "service",
         action = "secure_env_file",
         path,
         reason,
+        duration_ms,
         "pm3 cannot tighten an environment file, so its values stay readable by other users",
     );
 }

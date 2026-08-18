@@ -7,6 +7,7 @@ use tokio::{
     fs::File,
     process::{Child, Command},
     sync::Mutex,
+    time::Instant,
 };
 use usecases::{ExitOutcome, LaunchError, LaunchSpec, LaunchedProcess, ProcessLauncher};
 
@@ -61,6 +62,7 @@ impl ProcessLauncher for TokioProcessLauncher {
     async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
         let stdout = open_for_append(&spec.name, &spec.stdout_path).await?;
         let stderr = open_for_append(&spec.name, &spec.stderr_path).await?;
+        let started = Instant::now();
         let child = build_command(spec, stdout, stderr)
             .await
             .spawn()
@@ -76,11 +78,13 @@ impl ProcessLauncher for TokioProcessLauncher {
             tracked.live.insert(pid);
             tracked.children.insert(pid, child);
         }
+        let duration_ms = started.elapsed().as_millis();
         tracing::debug!(
             feature = "supervisor",
             app = spec.name,
             pid,
             program = spec.program,
+            duration_ms,
             action = "spawn",
             "child process launched"
         );

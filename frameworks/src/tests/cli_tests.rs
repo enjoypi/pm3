@@ -404,7 +404,10 @@ fn list_takes_no_argument() {
 fn logs_stream_by_default() {
     let cli = parse(&["pm3", "logs", "web"]);
     let Commands::Logs(args) = &cli.command else {
-        panic!("logs should parse into its own arguments: {:?}", cli.command)
+        panic!(
+            "logs should parse into its own arguments: {:?}",
+            cli.command
+        )
     };
     assert_eq!(args.names, ["web".to_string()]);
     assert!(args.lines.is_none());

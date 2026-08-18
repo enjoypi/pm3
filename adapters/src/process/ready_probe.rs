@@ -5,6 +5,10 @@ use usecases::{Readiness, ReadyProbe, ReadyProber};
 
 use crate::program::resolve_executable;
 
+const EXEC_KIND: &str = "exec";
+const TCP_KIND: &str = "tcp";
+const PROBE_ACTION: &str = "probe_ready";
+
 #[derive(Debug)]
 pub struct HostReadyProber {
     attempt_timeout_ms: u64,
@@ -38,10 +42,14 @@ impl HostReadyProber {
             .spawn();
         let mut child = match spawned {
             Ok(child) => child,
-            Err(error) => return Readiness::Failed(error.to_string()),
+            Err(error) => {
+                let reason = error.to_string();
+                log_unusable_probe(EXEC_KIND, started.elapsed().as_millis(), &reason);
+                return Readiness::Failed(reason);
+            }
         };
         let result = timeout(budget, child.wait()).await;
-        log_probe("exec", started.elapsed().as_millis());
+        log_probe(EXEC_KIND, started.elapsed().as_millis());
         if matches!(result, Ok(Ok(status)) if status.success()) {
             Readiness::Ready
         } else {
@@ -63,7 +71,7 @@ impl ReadyProber for HostReadyProber {
 async fn check_tcp(host: &str, port: u16, budget: Duration) -> Readiness {
     let started = std::time::Instant::now();
     let result = timeout(budget, tokio::net::TcpStream::connect((host, port))).await;
-    log_probe("tcp", started.elapsed().as_millis());
+    log_probe(TCP_KIND, started.elapsed().as_millis());
     if matches!(result, Ok(Ok(_stream))) {
         Readiness::Ready
     } else {
@@ -74,10 +82,21 @@ async fn check_tcp(host: &str, port: u16, budget: Duration) -> Readiness {
 fn log_probe(kind: &str, duration_ms: u128) {
     tracing::debug!(
         feature = "supervisor",
-        action = "probe_ready",
+        action = PROBE_ACTION,
         kind,
         duration_ms,
         "pm3 checked whether a service is ready",
+    );
+}
+
+fn log_unusable_probe(kind: &str, duration_ms: u128, reason: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = PROBE_ACTION,
+        kind,
+        duration_ms,
+        reason,
+        "pm3 cannot run the ready probe command, so the service can never report ready",
     );
 }
 

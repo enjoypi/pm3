@@ -22,6 +22,7 @@ const SAMPLE_FORMAT: &str = "pid=,pgid=,rss=,pcpu=";
 const PID_SEPARATOR: &str = ",";
 const PID_FLAG: &str = "-p";
 const EVERY_PROCESS_FLAG: &str = "-A";
+const IDENTITY_ACTION: &str = "probe";
 const MEMORY_ACTION: &str = "probe_memory";
 const RESOURCE_ACTION: &str = "probe_resources";
 const EMPTY_SAMPLE: ResourceSample = ResourceSample {
@@ -75,46 +76,53 @@ impl PsProcessProbe {
         }
         let joined = join_pids(pids);
         let started = Instant::now();
-        let Some(stdout) = self.ask_every_process(SAMPLE_FORMAT, &joined).await else {
+        let Some(stdout) = self.ask_every_process(SAMPLE_FORMAT, &joined, action).await else {
             return BTreeMap::new();
         };
         let sampled = group_totals_for(&parse_group_rows(&stdout), pids);
-        log_sample_probe(action, &joined, sampled.len(), started.elapsed().as_millis());
+        log_sample_probe(
+            action,
+            &joined,
+            sampled.len(),
+            started.elapsed().as_millis(),
+        );
         sampled
     }
 
-    async fn ask_every_process(&self, format: &str, label: &str) -> Option<String> {
+    async fn ask_every_process(&self, format: &str, label: &str, action: &str) -> Option<String> {
         let mut command = Command::new(&self.program);
         command
             .args([WIDE_FLAG, EVERY_PROCESS_FLAG, FORMAT_FLAG, format])
             .env(LOCALE_VARIABLE, FIXED_LOCALE);
-        self.read_ps(command, label).await
+        self.read_ps(command, label, action).await
     }
 
-    async fn ask_ps(&self, format: &str, joined: &str) -> Option<String> {
+    async fn ask_ps(&self, format: &str, joined: &str, action: &str) -> Option<String> {
         let mut command = Command::new(&self.program);
         command
             .args([WIDE_FLAG, FORMAT_FLAG, format, PID_FLAG])
             .arg(joined)
             .env(LOCALE_VARIABLE, FIXED_LOCALE);
-        self.read_ps(command, joined).await
+        self.read_ps(command, joined, action).await
     }
 
-    async fn read_ps(&self, command: Command, joined: &str) -> Option<String> {
+    async fn read_ps(&self, command: Command, joined: &str, action: &str) -> Option<String> {
+        let started = Instant::now();
         let output = match capture_timed(command, self.timeout_ms).await {
             CommandOutcome::Stalled => {
-                log_stalled_probe(joined, self.timeout_ms);
+                log_stalled_probe(joined, self.timeout_ms, elapsed_ms(started), action);
                 return None;
             }
             CommandOutcome::SpawnFailed(_) => {
-                log_unusable_probe(joined, &self.program);
+                log_unusable_probe(joined, &self.program, elapsed_ms(started), action);
                 return None;
             }
             CommandOutcome::Finished(output) => output,
         };
         let code = output.status.code();
         if !output.status.success() && code != Some(NO_SUCH_PROCESS_CODE) {
-            log_refused_probe(joined, code.unwrap_or(UNKNOWN_EXIT_CODE));
+            let refusal = code.unwrap_or(UNKNOWN_EXIT_CODE);
+            log_refused_probe(joined, refusal, elapsed_ms(started), action);
             return None;
         }
         Some(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -224,7 +232,7 @@ impl ProcessProbe for PsProcessProbe {
         }
         let joined = join_pids(pids);
         let started = Instant::now();
-        let Some(stdout) = self.ask_ps(BATCH_FORMAT, &joined).await else {
+        let Some(stdout) = self.ask_ps(BATCH_FORMAT, &joined, IDENTITY_ACTION).await else {
             return unreadable(pids);
         };
         let listed = parse_report(&stdout);
@@ -260,13 +268,17 @@ impl ProcessProbe for PsProcessProbe {
     }
 }
 
+fn elapsed_ms(started: Instant) -> u128 {
+    started.elapsed().as_millis()
+}
+
 fn log_probe(pids: &str, alive: usize, duration_ms: u128) {
     tracing::debug!(
         feature = "supervisor",
         pids,
         alive,
         duration_ms,
-        action = "probe",
+        action = IDENTITY_ACTION,
         "probed the managed processes"
     );
 }
@@ -282,32 +294,35 @@ fn log_sample_probe(action: &str, pids: &str, sampled: usize, duration_ms: u128)
     );
 }
 
-fn log_stalled_probe(pids: &str, timeout_ms: u64) {
+fn log_stalled_probe(pids: &str, timeout_ms: u64, duration_ms: u128, action: &str) {
     tracing::warn!(
         feature = "supervisor",
         pids,
         timeout_ms,
-        action = "probe",
+        duration_ms,
+        action,
         "pm3 gave up probing because ps did not answer",
     );
 }
 
-fn log_unusable_probe(pids: &str, program: &str) {
+fn log_unusable_probe(pids: &str, program: &str, duration_ms: u128, action: &str) {
     tracing::warn!(
         feature = "supervisor",
         pids,
         program,
-        action = "probe",
+        duration_ms,
+        action,
         "pm3 cannot run ps, so it cannot tell whether a process is still alive",
     );
 }
 
-fn log_refused_probe(pids: &str, code: i32) {
+fn log_refused_probe(pids: &str, code: i32, duration_ms: u128, action: &str) {
     tracing::warn!(
         feature = "supervisor",
         pids,
         code,
-        action = "probe",
+        duration_ms,
+        action,
         "ps refused to report, so pm3 cannot tell whether a process is still alive",
     );
 }
