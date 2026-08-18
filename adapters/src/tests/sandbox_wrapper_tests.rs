@@ -30,6 +30,7 @@ fn policy(mode: SandboxMode, writable_roots: &[&str]) -> SandboxPolicy {
         network: false,
         writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
         readable_roots: Vec::new(),
+        derived_readable_roots: Vec::new(),
         derived_roots: Vec::new(),
         unreadable_roots: Vec::new(),
     }

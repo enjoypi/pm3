@@ -98,27 +98,33 @@ async fn restarting_an_unknown_selector_reports_not_found() {
 }
 
 #[tokio::test]
-async fn a_persistence_failure_while_restarting_a_stopped_app_propagates() {
+async fn a_persistence_failure_while_restarting_a_stopped_app_still_reports_the_spawn() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     table.upsert(spec("api"), 1000);
     ports.fail_save();
-    let err = restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+    let outcome = restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
         .await
-        .unwrap_err();
-    assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
+        .expect("a spawned process must be reported even when the dump cannot be written");
+    let RestartOutcome::Started(started) = outcome else {
+        panic!("a settled app is restarted by spawning it: {outcome:?}");
+    };
+    assert!(started.pid.is_some());
 }
 
 #[tokio::test]
-async fn a_persistence_failure_while_restarting_a_running_app_propagates() {
+async fn a_persistence_failure_while_restarting_a_running_app_still_reports_the_force_kill_pid() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
     ports.fail_save();
-    let err = restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+    let outcome = restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
         .await
-        .unwrap_err();
-    assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
+        .expect("a terminated process must be reported even when the dump cannot be written");
+    let RestartOutcome::AwaitingExit { force_kill_pid, .. } = outcome else {
+        panic!("a running app is restarted by stopping it first: {outcome:?}");
+    };
+    assert!(force_kill_pid.is_some());
 }
 
 #[tokio::test]

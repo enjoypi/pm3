@@ -85,6 +85,7 @@ async fn an_unconfined_app_runs_without_a_sandbox_wrapper() {
             network: true,
             writable_roots: Vec::new(),
             readable_roots: Vec::new(),
+            derived_readable_roots: Vec::new(),
             derived_roots: Vec::new(),
             unreadable_roots: Vec::new(),
         },

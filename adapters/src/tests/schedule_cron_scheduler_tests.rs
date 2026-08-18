@@ -1,5 +1,12 @@
 use super::*;
 
+#[test]
+fn every_draw_of_a_stepped_weekday_range_stays_parseable() {
+    for _attempt in 0..64 {
+        validate_cron("nightly", "0 4 * * 5~7/3").expect("croner accepts sunday written as seven");
+    }
+}
+
 const MINUTE_MS: u64 = 60_000;
 const SOME_INSTANT_MS: u64 = 1_700_000_000_000;
 

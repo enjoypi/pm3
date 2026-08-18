@@ -272,9 +272,11 @@ impl Supervisor {
         for outcome in &stopped {
             names.push(outcome.name.clone());
             covered.extend(outcome.force_kill_pid);
-            self.cancel_ready(&outcome.name, effects);
             let token = self.identity_token(&outcome.name);
             self.schedule_force_kill(&outcome.name, outcome.force_kill_pid, token, effects);
+        }
+        for name in self.table.names_in_table_order() {
+            self.cancel_ready(&name, effects);
         }
         let tracked = ports.tracked_pids().await;
         for pid in unswept_pids(&tracked, &covered) {

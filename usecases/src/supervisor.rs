@@ -164,12 +164,14 @@ impl Supervisor {
             }
             return effects;
         }
-        match handle_child_exit(&mut self.table, name, outcome, ports).await {
-            Ok(ExitAction::RestartAfter { delay_ms }) => {
+        let action = handle_child_exit(&mut self.table, name, outcome, ports)
+            .await
+            .expect("internal error: the exit guard checked the record");
+        match action {
+            ExitAction::RestartAfter { delay_ms } => {
                 effects.push(self.queue_restart(name, delay_ms));
             }
-            Ok(ExitAction::Settled { status }) => log_settled(name, status),
-            Err(error) => log_failure("exit", name, &error),
+            ExitAction::Settled { status } => log_settled(name, status),
         }
         effects
     }

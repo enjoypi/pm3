@@ -12,6 +12,7 @@ fn policy(mode: SandboxMode, network: bool, writable_roots: &[&str]) -> SandboxP
         network,
         writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
         readable_roots: Vec::new(),
+        derived_readable_roots: Vec::new(),
         derived_roots: Vec::new(),
         unreadable_roots: Vec::new(),
     }
@@ -347,15 +348,63 @@ fn a_granted_root_equal_to_a_hidden_root_stays_carved_out() {
 }
 
 #[test]
-fn a_hidden_root_is_carved_out_of_the_whole_disk_read_rule() {
+fn a_hidden_root_is_denied_after_the_whole_disk_read_rule() {
     let profile = profile_of(&hidden_policy());
+    let read = profile
+        .find("(allow file-read*)")
+        .expect("read: full grants the whole disk");
+    let deny = profile
+        .find("(deny file-read* file-test-existence file-write* (subpath (param \"HIDDEN_0\")))")
+        .unwrap_or_else(|| panic!("the hidden root must be denied: {profile}"));
     assert!(
-        !profile.contains("(allow file-read*)\n"),
-        "the blanket read rule must carry the carveout: {profile}"
+        read < deny,
+        "seatbelt keeps the last matching rule: {profile}"
     );
+}
+
+#[test]
+fn a_minimal_read_scope_also_denies_the_hidden_roots() {
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        ..hidden_policy()
+    };
+    let profile = profile_of(&confined);
     assert!(
-        profile.contains("(subpath \"/\") (require-not (subpath (param \"HIDDEN_0\")))"),
-        "got: {profile}"
+        profile.contains(
+            "(deny file-read* file-test-existence file-write* (subpath (param \"HIDDEN_0\")))"
+        ),
+        "the static minimal profile grants /etc, so the hidden roots need their own deny: {profile}"
+    );
+}
+
+#[test]
+fn the_hidden_deny_comes_before_the_granted_roots() {
+    let profile = profile_of(&hidden_policy());
+    let deny = profile
+        .find("(deny file-read* file-test-existence file-write*")
+        .expect("a hidden root is denied");
+    let grant = profile
+        .find("(subpath (param \"WRITABLE_0\"))")
+        .expect("the workspace is granted");
+    assert!(
+        deny < grant,
+        "a workspace nested inside a hidden root must be re-granted afterwards: {profile}"
+    );
+}
+
+#[test]
+fn a_derived_readable_path_is_granted_next_to_the_declared_one() {
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        readable_roots: vec!["/tmp/models".to_string()],
+        derived_readable_roots: vec!["/private/tmp/models".to_string()],
+        ..policy(SandboxMode::WorkspaceWrite, false, &[])
+    };
+    let parameters = parameters_of(&confined);
+    assert!(
+        parameters.contains(&("READABLE_0".to_string(), "/tmp/models".to_string()))
+            && parameters.contains(&("READABLE_1".to_string(), "/private/tmp/models".to_string())),
+        "seatbelt subpath only matches real paths: {parameters:?}"
     );
 }
 

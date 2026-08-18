@@ -327,6 +327,7 @@ fn resolve_sandbox(
         network,
         writable_roots,
         readable_roots,
+        derived_readable_roots: Vec::new(),
         derived_roots: default_writable_roots(defaults, mode, cwd),
         unreadable_roots: pm3_owned_roots(defaults),
     })

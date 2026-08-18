@@ -42,23 +42,37 @@ fn a_path_this_platform_does_not_offer_reports_no_owner() {
 
 #[cfg(unix)]
 #[test]
-fn the_host_uid_is_known_wherever_this_process_can_read_about_itself() {
-    assert_eq!(host_uid().is_some(), Path::new(OWN_PROCESS_DIR).exists());
+fn the_host_uid_is_unknown_without_a_home_or_a_process_directory() {
+    assert_eq!(
+        host_uid(Some("/nonexistent/pm3-home")).is_some(),
+        Path::new(OWN_PROCESS_DIR).exists()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn the_host_uid_falls_back_to_the_owner_of_the_home_directory() {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let home = tempfile::tempdir().expect("temp dir");
+    let uid = host_uid(home.path().to_str()).expect("this platform always reports an owner");
+    let own = std::fs::metadata(home.path()).expect("a directory pm3 just made is readable");
+    assert_eq!(uid, own.uid());
 }
 
 #[test]
 fn the_host_runtime_directory_follows_the_environment_and_the_owner() {
     let declared = std::env::var(RUNTIME_DIR_VARIABLE).ok();
     assert_eq!(
-        host_runtime_dir(),
-        runtime_dir_of(declared.as_deref(), host_uid())
+        host_runtime_dir(None),
+        runtime_dir_of(declared.as_deref(), host_uid(None))
     );
 }
 
 #[cfg(target_os = "linux")]
 #[test]
 fn the_host_uid_owns_this_very_process() {
-    let uid = host_uid().expect("a unix process always has an owner");
+    let uid = host_uid(None).expect("a unix process always has an owner");
     let own = std::fs::metadata(OWN_PROCESS_DIR).expect("a unix process can read about itself");
     assert_eq!(uid, own.uid());
 }
@@ -66,7 +80,7 @@ fn the_host_uid_owns_this_very_process() {
 #[cfg(target_os = "linux")]
 #[test]
 fn the_host_runtime_directory_is_known_even_without_a_login_session() {
-    let dir = host_runtime_dir().expect("a unix process always has an owner");
+    let dir = host_runtime_dir(None).expect("a unix process always has an owner");
     assert!(
         !dir.is_empty(),
         "systemctl --user needs a runtime directory"

@@ -340,6 +340,49 @@ fn control_characters_in_arguments_survive_a_round_trip() {
     assert_eq!(reparsed.args, entry.args);
 }
 
+#[tokio::test]
+async fn a_dollar_sign_in_an_argument_survives_loading_the_service_file() {
+    let args = ["--format".to_string(), "${LEVEL}: $MSG".to_string()];
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("mihomo-rule.yaml");
+    let mut asked = request(&[]);
+    asked.args = &args;
+    let entry = inline_entry(&asked);
+    std::fs::write(&path, encode_service_file(&entry)).expect("write the config file");
+    let loaded = load_service_file(&path.to_string_lossy())
+        .await
+        .expect("an argument pm3 wrote itself must load back");
+    assert_eq!(loaded.args, args);
+}
+
+#[tokio::test]
+async fn a_home_placeholder_inside_an_argument_still_expands() {
+    let home = std::env::var("HOME").expect("tests always run with HOME");
+    let args = [format!("{home}/data"), "$LITERAL".to_string()];
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("mihomo-rule.yaml");
+    let mut asked = request(&[]);
+    asked.args = &args;
+    asked.home = Some(home.as_str());
+    let entry = inline_entry(&asked);
+    let yaml = encode_service_file(&entry);
+    assert!(yaml.contains("${HOME}/data"), "got: {yaml}");
+    std::fs::write(&path, &yaml).expect("write the config file");
+    let loaded = load_service_file(&path.to_string_lossy())
+        .await
+        .expect("the config file should load");
+    assert_eq!(loaded.args, args);
+}
+
+#[test]
+fn a_service_cwd_placeholder_is_not_escaped_away() {
+    let args = ["${PM3_SERVICE_CWD}/db".to_string()];
+    let mut asked = request(&[]);
+    asked.args = &args;
+    let yaml = encode_service_file(&inline_entry(&asked));
+    assert!(yaml.contains("${PM3_SERVICE_CWD}/db"), "got: {yaml}");
+}
+
 #[test]
 fn an_argument_with_a_newline_is_encoded_on_a_single_line() {
     let args = ["line one\nline two".to_string()];

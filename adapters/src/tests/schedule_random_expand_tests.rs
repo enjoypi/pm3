@@ -277,3 +277,14 @@ fn a_stepped_weekday_range_keeps_its_ceiling() {
     let field = weekday_of("0 0 * * 0~7/3", 5);
     assert!(field.ends_with("-7/3"), "got: {field}");
 }
+
+#[test]
+fn a_stepped_weekday_range_never_folds_its_offset_back_to_zero() {
+    for seed in 0..64 {
+        let field = weekday_of("0 0 * * 5~7/3", seed);
+        assert!(
+            matches!(field.as_str(), "5-7/3" | "6-7/3" | "7-7/3"),
+            "folding the offset would widen the range to three days: {field}"
+        );
+    }
+}

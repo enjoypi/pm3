@@ -22,6 +22,7 @@ pub struct SandboxPolicy {
     pub network: bool,
     pub writable_roots: Vec<String>,
     pub readable_roots: Vec<String>,
+    pub derived_readable_roots: Vec<String>,
     pub derived_roots: Vec<String>,
     pub unreadable_roots: Vec<String>,
 }
@@ -127,6 +128,15 @@ impl SandboxPolicy {
         self.writable_roots
             .iter()
             .chain(self.derived_roots.iter())
+            .map(String::as_str)
+            .collect()
+    }
+
+    #[must_use]
+    pub fn readable_grants(&self) -> Vec<&str> {
+        self.readable_roots
+            .iter()
+            .chain(self.derived_readable_roots.iter())
             .map(String::as_str)
             .collect()
     }

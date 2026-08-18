@@ -16,7 +16,7 @@ const HIDDEN_PARAMETER: &str = "HIDDEN";
 const READ_ACTION: &str = "allow file-read* file-test-existence";
 const ANCESTOR_ACTION: &str = "allow file-read-metadata";
 const WRITE_ACTION: &str = "allow file-read* file-test-existence file-write*";
-const FILESYSTEM_ROOT: &str = "/";
+const HIDE_ACTION: &str = "deny file-read* file-test-existence file-write*";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SeatbeltProfile {
@@ -55,7 +55,8 @@ pub fn seatbelt_profile(policy: &SandboxPolicy, program: &str) -> SeatbeltProfil
     let hidden = policy.hidden_paths();
     let mut profile = String::with_capacity(BASE_POLICY.len() + MINIMAL_READ_POLICY.len());
     profile.push_str(BASE_POLICY);
-    profile.push_str(&read_policy_of(policy, &hidden));
+    profile.push_str(read_policy_of(policy));
+    profile.push_str(&hidden_denies(&hidden));
     profile.push_str(&rules(READ_ACTION, READABLE_PARAMETER, &readable, &hidden));
     profile.push_str(&rules(WRITE_ACTION, WRITABLE_PARAMETER, &writable, &hidden));
     if policy.network {
@@ -75,23 +76,27 @@ fn readable_roots_of<'p>(policy: &'p SandboxPolicy, program: &'p str) -> Vec<&'p
     if !policy.read.confines_reads() {
         return Vec::new();
     }
-    policy
-        .readable_roots
-        .iter()
-        .map(String::as_str)
-        .chain([program])
-        .collect()
+    let mut roots = policy.readable_grants();
+    roots.push(program);
+    roots
 }
 
-fn read_policy_of(policy: &SandboxPolicy, hidden: &[&str]) -> String {
+const fn read_policy_of(policy: &SandboxPolicy) -> &'static str {
     if policy.read.confines_reads() {
-        return MINIMAL_READ_POLICY.to_string();
+        MINIMAL_READ_POLICY
+    } else {
+        FULL_READ_POLICY
     }
-    let carveout = carveout_for(FILESYSTEM_ROOT, hidden);
-    if carveout.is_empty() {
-        return FULL_READ_POLICY.to_string();
-    }
-    format!("\n({READ_ACTION} (require-all (subpath \"{FILESYSTEM_ROOT}\"){carveout}))\n")
+}
+
+fn hidden_denies(hidden: &[&str]) -> String {
+    (0..hidden.len()).fold(String::new(), |mut text, index| {
+        let _ = writeln!(
+            text,
+            "\n({HIDE_ACTION} (subpath (param \"{HIDDEN_PARAMETER}_{index}\")))"
+        );
+        text
+    })
 }
 
 fn carveout_for(granted: &str, hidden: &[&str]) -> String {

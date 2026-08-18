@@ -3,7 +3,7 @@ use entities::ProcessStatus;
 use crate::{
     Ports, SignalScope,
     persist::save_table,
-    start::start_one,
+    start::{StartKind, register_one},
     supervision::SupervisionEffect,
     supervisor::Supervisor,
     supervisor_log::{log_failure, log_probe_ready, log_ready_timeout, log_waiter_cancelled},
@@ -133,7 +133,7 @@ impl Supervisor {
         ports: &impl Ports,
         effects: &mut Vec<SupervisionEffect>,
     ) {
-        let Ok(outcome) = start_one(&mut self.table, waiter, &self.logs_dir, ports).await else {
+        let Ok(outcome) = register_one(&mut self.table, waiter, &self.logs_dir, ports).await else {
             self.mark_errored_if_settled(waiter);
             self.fail_downstream(waiter);
             if let Err(error) = save_table(&self.table, ports).await {
@@ -146,13 +146,18 @@ impl Supervisor {
         if let Err(error) = save_table(&self.table, ports).await {
             log_failure("start", waiter, &error);
         }
-        let online = self
-            .table
-            .find_by_name(waiter)
-            .is_some_and(|record| record.runtime.status == ProcessStatus::Online);
-        if online {
+        if self.releases_waiters(waiter, outcome.kind) {
             queue.push(waiter.to_string());
         }
+    }
+
+    fn releases_waiters(&self, name: &str, kind: StartKind) -> bool {
+        if kind == StartKind::Scheduled {
+            return true;
+        }
+        self.table
+            .find_by_name(name)
+            .is_some_and(|record| record.runtime.status == ProcessStatus::Online)
     }
 
     fn fail_downstream(&mut self, name: &str) {

@@ -93,10 +93,10 @@ async fn serve_supervised(
     let body_limit_bytes = specs.config.request_body_limit_bytes;
     let mut daemon = Daemon::new(specs, ports, events.clone());
     daemon.resurrect_saved_apps().await;
-    events.send(DaemonEvent::SampleMemory).await.ok();
-    events.send(DaemonEvent::RotateLogs).await.ok();
 
     let supervisor = tokio::spawn(run(daemon, command_queue, event_queue));
+    events.send(DaemonEvent::SampleMemory).await.ok();
+    events.send(DaemonEvent::RotateLogs).await.ok();
     let served = serve_listener(
         listener,
         router(DaemonHandle::new(commands.clone()), body_limit_bytes),

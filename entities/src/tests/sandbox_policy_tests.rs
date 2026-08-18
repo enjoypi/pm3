@@ -7,6 +7,7 @@ fn workspace_policy() -> SandboxPolicy {
         network: false,
         writable_roots: vec!["/srv/api".to_string()],
         readable_roots: Vec::new(),
+        derived_readable_roots: Vec::new(),
         derived_roots: Vec::new(),
         unreadable_roots: Vec::new(),
     }
@@ -77,6 +78,19 @@ fn read_only_stays_confined() {
 }
 
 #[test]
+fn readable_grants_add_the_derived_paths_to_the_declared_ones() {
+    let policy = SandboxPolicy {
+        readable_roots: vec!["/tmp/models".to_string()],
+        derived_readable_roots: vec!["/private/tmp/models".to_string()],
+        ..workspace_policy()
+    };
+    assert_eq!(
+        policy.readable_grants(),
+        vec!["/tmp/models", "/private/tmp/models"]
+    );
+}
+
+#[test]
 fn hidden_paths_expose_the_unreadable_roots() {
     let policy = SandboxPolicy {
         unreadable_roots: vec!["/home/me/.config/pm3".to_string()],
@@ -98,6 +112,7 @@ fn validate_accepts_read_only_without_writable_roots() {
         network: false,
         writable_roots: Vec::new(),
         readable_roots: Vec::new(),
+        derived_readable_roots: Vec::new(),
         derived_roots: Vec::new(),
         unreadable_roots: Vec::new(),
     };

@@ -38,13 +38,14 @@ pub struct InstallContext {
 }
 
 pub async fn run(config_path: &str, source: Option<PathBuf>) -> Result<()> {
+    let home = host_home();
     let context = InstallContext {
-        home_env: host_home(),
         destination_env: host_install_destination(),
         backups_env: host_install_backups(),
         pm3_env: host_pm3_env(),
-        runtime_dir: host_runtime_dir(),
-        uid: host_uid(),
+        runtime_dir: host_runtime_dir(home.as_deref()),
+        uid: host_uid(home.as_deref()),
+        home_env: home,
         current_exe: std::env::current_exe(),
         kind: HOST_SERVICE_KIND,
         programs: None,

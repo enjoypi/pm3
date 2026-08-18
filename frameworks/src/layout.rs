@@ -241,13 +241,14 @@ pub fn host_pm3_env() -> Vec<(String, String)> {
 
 #[cfg(unix)]
 #[must_use]
-pub fn host_uid() -> Option<u32> {
-    owner_uid_of(Path::new(OWN_PROCESS_DIR))
+pub fn host_uid(home_env: Option<&str>) -> Option<u32> {
+    let home = home_env.map(Path::new).and_then(owner_uid_of);
+    owner_uid_of(Path::new(OWN_PROCESS_DIR)).or(home)
 }
 
 #[cfg(not(unix))]
 #[must_use]
-pub const fn host_uid() -> Option<u32> {
+pub const fn host_uid(_home_env: Option<&str>) -> Option<u32> {
     None
 }
 
@@ -264,9 +265,9 @@ pub const fn owner_uid_of(_path: &Path) -> Option<u32> {
 }
 
 #[must_use]
-pub fn host_runtime_dir() -> Option<String> {
+pub fn host_runtime_dir(home_env: Option<&str>) -> Option<String> {
     let declared = std::env::var(RUNTIME_DIR_VARIABLE).ok();
-    runtime_dir_of(declared.as_deref(), host_uid())
+    runtime_dir_of(declared.as_deref(), host_uid(home_env))
 }
 
 fn layout_error(path: &Path, source: &std::io::Error) -> Error {

@@ -69,10 +69,10 @@ fn push_read_layer(
         return;
     }
     push_pair(sandbox_args, TMPFS, FILESYSTEM_ROOT);
-    let declared = minimal_read_roots
-        .iter()
-        .chain(policy.readable_roots.iter());
-    for root in declared {
+    for root in minimal_read_roots {
+        push_bind(sandbox_args, READ_ONLY_BIND_TRY, normalize_root(root));
+    }
+    for root in policy.readable_grants() {
         push_bind(sandbox_args, READ_ONLY_BIND_TRY, normalize_root(root));
     }
     push_bind(sandbox_args, READ_ONLY_BIND_TRY, program);

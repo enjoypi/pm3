@@ -121,9 +121,38 @@ fn log_accept(name: &str, reason: &str) {
 }
 
 #[cfg(unix)]
+async fn socket_is_held(path: &Path) -> Result<bool, SocketError> {
+    if !is_socket(path) {
+        return Ok(false);
+    }
+    match UnixStream::connect(path).await {
+        Ok(_live) => Ok(true),
+        Err(error) if vacated(&error) => Ok(false),
+        Err(error) => Err(SocketError::Bind {
+            path: text(path),
+            reason: error.to_string(),
+        }),
+    }
+}
+
+#[cfg(unix)]
+fn is_socket(path: &Path) -> bool {
+    use std::os::unix::fs::FileTypeExt as _;
+    std::fs::metadata(path).is_ok_and(|found| found.file_type().is_socket())
+}
+
+#[cfg(unix)]
+fn vacated(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+    )
+}
+
+#[cfg(unix)]
 pub async fn bind_uds(path: &Path, _accept_retry_ms: u64) -> Result<BindOutcome, SocketError> {
     if path.exists() {
-        if UnixStream::connect(path).await.is_ok() {
+        if socket_is_held(path).await? {
             return Ok(BindOutcome::AlreadyRunning);
         }
         tokio::fs::remove_file(path)

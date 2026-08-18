@@ -16,6 +16,7 @@ fn policy(network: bool, writable_roots: &[&str]) -> SandboxPolicy {
         network,
         writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
         readable_roots: Vec::new(),
+        derived_readable_roots: Vec::new(),
         derived_roots: Vec::new(),
         unreadable_roots: Vec::new(),
     }
@@ -135,6 +136,21 @@ fn a_minimal_read_scope_lays_the_declared_readable_roots_back_in() {
     };
     let args = argv_for(&confined);
     assert!(args.contains(&"/opt/data".to_string()), "got: {args:?}");
+}
+
+#[test]
+fn a_minimal_read_scope_also_lays_the_derived_readable_paths_back_in() {
+    let confined = SandboxPolicy {
+        read: ReadScope::Minimal,
+        readable_roots: vec!["/tmp/models".to_string()],
+        derived_readable_roots: vec!["/private/tmp/models".to_string()],
+        ..policy(false, &[])
+    };
+    let args = argv_for(&confined);
+    assert!(
+        args.contains(&"/private/tmp/models".to_string()),
+        "got: {args:?}"
+    );
 }
 
 #[test]

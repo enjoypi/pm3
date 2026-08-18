@@ -240,6 +240,15 @@ pub(crate) async fn start_one(
     launch(table, name, logs_dir, ports, StartMode::Fire).await
 }
 
+pub(crate) async fn register_one(
+    table: &mut ProcessTable,
+    name: &str,
+    logs_dir: &str,
+    ports: &impl Ports,
+) -> Result<StartOutcome> {
+    launch(table, name, logs_dir, ports, StartMode::Register).await
+}
+
 async fn launch(
     table: &mut ProcessTable,
     name: &str,

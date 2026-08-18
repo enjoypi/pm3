@@ -164,3 +164,32 @@ async fn a_bound_listener_reports_the_address_it_answers_on() {
 fn a_socket_whose_owner_cannot_be_read_leaves_the_owner_unknown() {
     assert_eq!(socket_owner_of(Path::new("/nonexistent/pm3.sock")), None);
 }
+
+#[tokio::test]
+async fn a_socket_nobody_listens_on_is_replaced() {
+    let dir = temp_dir();
+    let path = dir.path().join("pm3.sock");
+    drop(UnixListener::bind(&path).expect("bind then abandon the socket"));
+    let outcome = bind_uds(&path, ACCEPT_RETRY_MS)
+        .await
+        .expect("should self-heal");
+    assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
+}
+
+#[tokio::test]
+async fn a_socket_pm3_cannot_even_reach_is_never_unlinked() {
+    let dir = temp_dir();
+    let path = dir.path().join("pm3.sock");
+    let _held = UnixListener::bind(&path).expect("bind the first daemon");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o0))
+        .expect("seal the socket against this very process");
+    let err = bind_uds(&path, ACCEPT_RETRY_MS)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot bind the pm3 socket"), "got: {err}");
+    assert!(
+        path.exists(),
+        "unlinking a socket a live daemon still serves would run two supervisors"
+    );
+}

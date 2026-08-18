@@ -29,6 +29,7 @@ fn spec() -> AppSpec {
             network: false,
             writable_roots: vec!["/srv/api/state".to_string()],
             readable_roots: Vec::new(),
+            derived_readable_roots: Vec::new(),
             derived_roots: vec!["/srv/pm3/logs".to_string()],
             unreadable_roots: Vec::new(),
         },

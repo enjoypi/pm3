@@ -4,7 +4,7 @@ use super::{
     file::{AppEntry, ReadyProbeEntry, SandboxEntry},
     roots::dedup_roots,
 };
-use crate::program::{fold_home, fold_service_cwd};
+use crate::program::{HOME_PLACEHOLDER, SERVICE_CWD_PLACEHOLDER, fold_home, fold_service_cwd};
 
 const REMOVED_PREFIX: char = '-';
 const ADDED_PREFIX: char = '+';
@@ -128,9 +128,9 @@ pub fn diff_lines(old: &str, new: &str) -> Vec<String> {
 
 fn encode_entry(entry: &AppEntry) -> String {
     let mut text = scalar("name", &quote(&entry.name));
-    text.push_str(&scalar("script", &quote(&entry.script)));
-    text.push_str(&optional_text("cwd", entry.cwd.as_deref()));
-    text.push_str(&sequence("", "args", &entry.args));
+    text.push_str(&scalar("script", &quote_placeheld(&entry.script)));
+    text.push_str(&placeheld_text("cwd", entry.cwd.as_deref()));
+    text.push_str(&placeheld_sequence("", "args", &entry.args));
     text.push_str(&sequence("", "depends_on", &entry.depends_on));
     text.push_str(&optional("autorestart", entry.autorestart));
     text.push_str(&optional("min_uptime_ms", entry.min_uptime_ms));
@@ -182,8 +182,16 @@ fn encode_sandbox(sandbox: Option<&SandboxEntry>) -> String {
     if let Some(network) = section.network {
         text.push_str(&nested("network", &network.to_string()));
     }
-    text.push_str(&sequence(NESTED_INDENT, "writable_roots", writable));
-    text.push_str(&sequence(NESTED_INDENT, "readable_roots", readable));
+    text.push_str(&placeheld_sequence(
+        NESTED_INDENT,
+        "writable_roots",
+        writable,
+    ));
+    text.push_str(&placeheld_sequence(
+        NESTED_INDENT,
+        "readable_roots",
+        readable,
+    ));
     if text.is_empty() {
         return text;
     }
@@ -202,18 +210,35 @@ fn optional_text(key: &str, value: Option<&str>) -> String {
     value.map_or_else(String::new, |shown| scalar(key, &quote(shown)))
 }
 
+fn placeheld_text(key: &str, value: Option<&str>) -> String {
+    value.map_or_else(String::new, |shown| scalar(key, &quote_placeheld(shown)))
+}
+
 fn optional<T: std::fmt::Display>(key: &str, value: Option<T>) -> String {
     value.map_or_else(String::new, |shown| scalar(key, &shown.to_string()))
 }
 
 fn sequence(indent: &str, key: &str, values: &[String]) -> String {
+    write_sequence(indent, key, values, quote)
+}
+
+fn placeheld_sequence(indent: &str, key: &str, values: &[String]) -> String {
+    write_sequence(indent, key, values, quote_placeheld)
+}
+
+fn write_sequence(
+    indent: &str,
+    key: &str,
+    values: &[String],
+    quoted: fn(&str) -> String,
+) -> String {
     if values.is_empty() {
         return String::new();
     }
     values
         .iter()
         .fold(format!("{indent}{key}:\n"), |mut text, value| {
-            let _ = writeln!(text, "{indent}  - {}", quote(value));
+            let _ = writeln!(text, "{indent}  - {}", quoted(value));
             text
         })
 }
@@ -229,7 +254,33 @@ fn number_sequence(key: &str, values: &[i32]) -> String {
 }
 
 fn quote(raw: &str) -> String {
-    let mut escaped = String::with_capacity(raw.len() + 2);
+    format!("\"{}\"", escape_body(raw))
+}
+
+fn quote_placeheld(raw: &str) -> String {
+    let mut text = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some((head, placeholder, tail)) = next_placeholder(rest) {
+        text.push_str(&escape_body(head));
+        text.push_str(placeholder);
+        rest = tail;
+    }
+    text.push_str(&escape_body(rest));
+    format!("\"{text}\"")
+}
+
+fn next_placeholder(rest: &str) -> Option<(&str, &'static str, &str)> {
+    [HOME_PLACEHOLDER, SERVICE_CWD_PLACEHOLDER]
+        .into_iter()
+        .filter_map(|placeholder| {
+            rest.split_once(placeholder)
+                .map(|(head, tail)| (head, placeholder, tail))
+        })
+        .min_by_key(|(head, _placeholder, _tail)| head.len())
+}
+
+fn escape_body(raw: &str) -> String {
+    let mut escaped = String::with_capacity(raw.len());
     for ch in raw.chars() {
         match ch {
             '\\' => escaped.push_str("\\\\"),
@@ -237,11 +288,12 @@ fn quote(raw: &str) -> String {
             '\n' => escaped.push_str("\\n"),
             '\r' => escaped.push_str("\\r"),
             '\t' => escaped.push_str("\\t"),
+            '$' => push_hex_escape(&mut escaped, ch),
             ch if ch.is_control() => push_hex_escape(&mut escaped, ch),
             ch => escaped.push(ch),
         }
     }
-    format!("\"{escaped}\"")
+    escaped
 }
 
 fn push_hex_escape(escaped: &mut String, ch: char) {

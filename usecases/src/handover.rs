@@ -18,18 +18,35 @@ pub fn compare_handover(
 ) -> HandoverComparison {
     let mut comparison = HandoverComparison::default();
     for row in before {
-        match after.iter().find(|candidate| candidate.name == row.name) {
-            None => comparison.lost.push(row.name.clone()),
-            Some(survivor) if survivor.pid.is_some() && survivor.pid == row.pid => {
-                comparison.adopted.push(row.name.clone());
-            }
-            Some(survivor) if survivor.pid.is_some() => {
-                comparison.restarted.push(row.name.clone());
-            }
-            Some(_) => {}
+        let survivor = after.iter().find(|candidate| candidate.name == row.name);
+        match classify_handover(row.pid, survivor) {
+            HandoverChange::Adopted => comparison.adopted.push(row.name.clone()),
+            HandoverChange::Restarted => comparison.restarted.push(row.name.clone()),
+            HandoverChange::Lost => comparison.lost.push(row.name.clone()),
+            HandoverChange::Idle => {}
         }
     }
     comparison
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum HandoverChange {
+    Adopted,
+    Restarted,
+    Lost,
+    Idle,
+}
+
+const fn classify_handover(before: Option<u32>, after: Option<&ServiceSnapshot>) -> HandoverChange {
+    let Some(survivor) = after else {
+        return HandoverChange::Lost;
+    };
+    match (before, survivor.pid) {
+        (Some(had), Some(has)) if had == has => HandoverChange::Adopted,
+        (_, Some(_)) => HandoverChange::Restarted,
+        (Some(_), None) => HandoverChange::Lost,
+        (None, None) => HandoverChange::Idle,
+    }
 }
 
 #[must_use]

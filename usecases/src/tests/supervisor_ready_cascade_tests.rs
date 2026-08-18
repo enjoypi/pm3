@@ -300,3 +300,44 @@ async fn a_waiter_with_its_own_probe_keeps_the_chain_waiting() {
     assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Launching);
     assert_eq!(status_of(&supervisor, "api"), ProcessStatus::Stopped);
 }
+
+#[tokio::test]
+async fn a_scheduled_waiter_is_armed_instead_of_executed() {
+    let mut supervisor = supervisor();
+    let ports = FakePorts::new(0);
+    let specs = vec![spec_probed("db"), scheduled_waiter("job", &["db"])];
+    let generation = start_batch(&mut supervisor, &ports, &specs).await;
+
+    supervisor.on_ready("db", generation, &ports).await;
+
+    assert!(
+        !ports.spawned_names().contains(&"job".to_string()),
+        "a cron job must wait for its schedule: {:?}",
+        ports.spawned_names()
+    );
+    assert_eq!(status_of(&supervisor, "job"), ProcessStatus::Stopped);
+}
+
+#[tokio::test]
+async fn a_scheduled_waiter_still_releases_its_own_waiters() {
+    let mut supervisor = supervisor();
+    let ports = FakePorts::new(0);
+    let specs = vec![
+        spec_probed("db"),
+        scheduled_waiter("job", &["db"]),
+        spec_with_deps("web", &["job"]),
+    ];
+    let generation = start_batch(&mut supervisor, &ports, &specs).await;
+
+    supervisor.on_ready("db", generation, &ports).await;
+
+    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Online);
+}
+
+fn scheduled_waiter(name: &str, depends_on: &[&str]) -> entities::AppSpec {
+    entities::AppSpec {
+        schedule: Some("0 3 * * *".to_string()),
+        autorestart: false,
+        ..spec_with_deps(name, depends_on)
+    }
+}

@@ -43,6 +43,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
             network: false,
             writable_roots: vec!["/srv/web".to_string()],
             readable_roots: Vec::new(),
+            derived_readable_roots: Vec::new(),
             derived_roots: Vec::new(),
             unreadable_roots: Vec::new(),
         },

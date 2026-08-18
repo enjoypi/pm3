@@ -297,3 +297,50 @@ async fn a_start_the_daemon_could_not_record_fails_without_rolling_the_service_f
         "a service that is running must keep its service file"
     );
 }
+
+const REFUSED_START_REPLY: &[u8] =
+    b"HTTP/1.1 400 Bad Request\r\nContent-Length: 21\r\n\r\ncannot start anything";
+const NO_REPLY: &[u8] = b"";
+
+fn started_service_file(dir: &std::path::Path) -> PathBuf {
+    dir.join("home").join("service").join("web.yaml")
+}
+
+async fn start_one_app(dir: &std::path::Path, replies: &'static [&'static [u8]]) -> String {
+    let home = dir.join("home");
+    std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
+    let config = crate::test_support::write_config(dir, &home.to_string_lossy());
+    let apps_file =
+        crate::test_support::write_apps_file(dir, "apps:\n  - name: web\n    script: /bin/sh\n");
+    vanishing_daemon(home.join("pm3.sock"), replies);
+    start_apps(
+        config.to_str().expect("path"),
+        apps_file.to_str().expect("path"),
+        false,
+    )
+    .await
+    .unwrap_err()
+    .to_string()
+}
+
+#[tokio::test]
+async fn a_start_the_daemon_refused_outright_rolls_the_service_file_back() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let err = start_one_app(dir.path(), &[HEALTH_REPLY, REFUSED_START_REPLY]).await;
+    assert!(err.contains("cannot start anything"), "got: {err}");
+    assert!(
+        !started_service_file(dir.path()).exists(),
+        "a service the daemon never started must not leave a file behind"
+    );
+}
+
+#[tokio::test]
+async fn a_start_whose_outcome_is_unknown_keeps_the_service_file() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let err = start_one_app(dir.path(), &[HEALTH_REPLY, NO_REPLY]).await;
+    assert!(err.contains("answered nothing"), "got: {err}");
+    assert!(
+        started_service_file(dir.path()).exists(),
+        "rolling back a start the daemon may have committed strands the running service"
+    );
+}

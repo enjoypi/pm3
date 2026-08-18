@@ -207,3 +207,41 @@ async fn a_refused_stop_signal_arms_no_force_kill() {
         .expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Online);
 }
+
+#[tokio::test]
+async fn stopping_everything_drops_a_waiter_whose_dependency_never_became_ready() {
+    let ports = FakePorts::new(1000);
+    let mut supervisor = supervisor();
+    let specs = vec![
+        crate::ports_test_helpers::spec_probed("db"),
+        crate::ports_test_helpers::spec_with_deps("web", &["db"]),
+    ];
+    let report = start_apps(&mut supervisor.table, &specs, LOGS_DIR, &ports).await;
+    for deferred in report.pending {
+        for dependency in &deferred.waiting_on {
+            supervisor
+                .waiters
+                .entry(dependency.clone())
+                .or_default()
+                .push(deferred.name.clone());
+        }
+    }
+    supervisor
+        .table
+        .find_by_name_mut("db")
+        .expect("db should be in the table")
+        .runtime
+        .mark_exited(entities::ProcessStatus::Errored);
+
+    let mut effects = Vec::new();
+    supervisor
+        .stop_all(&ports, &mut effects)
+        .await
+        .expect("stopping everything should be accepted");
+
+    assert!(
+        supervisor.waiters.is_empty(),
+        "a stopped service must not be revived when its dependency becomes ready: {:?}",
+        supervisor.waiters
+    );
+}

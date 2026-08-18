@@ -16,6 +16,7 @@ fn unconfined_policy() -> SandboxPolicy {
         network: true,
         writable_roots: Vec::new(),
         readable_roots: Vec::new(),
+        derived_readable_roots: Vec::new(),
         derived_roots: Vec::new(),
         unreadable_roots: Vec::new(),
     }

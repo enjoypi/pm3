@@ -18,8 +18,21 @@ pub async fn handle_child_exit(
 ) -> Result<ExitAction> {
     let now_ms = ports.now_ms();
     let action = classify_exit(table, name, outcome, now_ms)?;
-    save_table(table, ports).await?;
+    if let Err(error) = save_table(table, ports).await {
+        log_unsaved_exit(name, &error);
+    }
     Ok(action)
+}
+
+fn log_unsaved_exit(app: &str, error: &UsecaseError) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "supervisor",
+        action = "exit",
+        app,
+        reason,
+        "pm3 cannot persist the process table after a child exited, so a daemon restart may misjudge this service",
+    );
 }
 
 pub async fn settle_failed_probe(

@@ -11,6 +11,8 @@ use tokio::{
 };
 use usecases::{ExitOutcome, LaunchError, LaunchSpec, LaunchedProcess, ProcessLauncher};
 
+use crate::exit_status::exit_outcome_of;
+
 #[derive(Debug, Default)]
 pub struct TokioProcessLauncher {
     tracked: Mutex<Tracked>,
@@ -37,9 +39,7 @@ impl TokioProcessLauncher {
         let outcome = child
             .wait()
             .await
-            .ok()
-            .and_then(|status| status.code())
-            .map_or(ExitOutcome::Signalled, ExitOutcome::Code);
+            .map_or(ExitOutcome::Unobserved, exit_outcome_of);
         {
             self.tracked.lock().await.live.remove(&pid);
         }

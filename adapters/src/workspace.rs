@@ -32,10 +32,27 @@ pub async fn materialise_workspace(spec: &mut AppSpec) -> Result<(), PolicyError
             spec.sandbox.derived_roots.push(real);
         }
     }
+    derive_readable_paths(spec, &mut resolved).await;
     for root in &mut spec.sandbox.unreadable_roots {
         *root = resolve_cached(root, &mut resolved).await;
     }
     validate_policy(&spec.sandbox)
+}
+
+async fn derive_readable_paths(spec: &mut AppSpec, resolved: &mut BTreeMap<String, String>) {
+    let declared: Vec<String> = spec
+        .sandbox
+        .readable_roots
+        .iter()
+        .cloned()
+        .chain(std::iter::once(spec.script.clone()))
+        .collect();
+    for root in &declared {
+        let real = resolve_cached(root, resolved).await;
+        if &real != root && !spec.sandbox.derived_readable_roots.contains(&real) {
+            spec.sandbox.derived_readable_roots.push(real);
+        }
+    }
 }
 
 async fn resolve_cached(path: &str, resolved: &mut BTreeMap<String, String>) -> String {

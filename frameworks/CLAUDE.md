@@ -24,6 +24,8 @@
 ### daemon orchestration
 
 - No business decisions in this layer: `Daemon` only does "receive event → ask `Supervisor` → dispatch effects"; new behavior goes in `usecases/supervisor.rs`; this layer only adds one spawn/abort line in `TaskBoard::apply`
+- **"The socket is stale" MUST be proven, not assumed**: `bind_uds` unlinks only when the path is not a socket at all, or `connect` reports `ConnectionRefused`/`NotFound`. Treating every `connect` error as stale (EMFILE — the PM3-81 shape — EACCES, EINTR) unlinks a socket a live daemon still serves and lets a second daemon bind the new one: two supervisors writing one `dump.yaml`
+- **`host_uid` MUST NOT rely on `/proc/self` alone**: macOS has no `/proc`, so it always reported `None` there and `launchctl_kickstart` (which needs `gui/<uid>/<label>`) silently did nothing — the documented launchd self-rescue was dead on the only platform with launchd. It now falls back to the owner of `$HOME`; a linux-gated test cannot catch this class, so assert it on a path both platforms have
 - This layer MUST NOT signal processes itself: teardown sweeps go through `Supervisor::force_kill_survivors`, sharing `sweep_pid`'s identity guard with `on_force_kill` (rules in root "Processes and signals")
 - One effect MUST have exactly one executor: `WatchExit`'s spawn also lives in `TaskBoard`; don't let `Daemon::run` intercept it early — that would make the corresponding `TaskBoard` match arm permanently unreachable and uncoverable (unreachable branches should be rewritten away, not masked with tests)
 
@@ -41,6 +43,7 @@ Service names come from enumerating `cfg_dir` filenames and taking stems (sorted
 
 ### Service files and rollback
 
+- **Rolling back on a transport error MUST be limited to errors that prove the request never landed** (`request_never_landed`: connect failure, no daemon, and the daemon's own non-200 refusal): a `Stalled`/`Silent`/`Receive` failure means the daemon may have started and persisted the services, and deleting their service files makes the next handover's `resolve_service` fail ⇒ `stranded` ⇒ `sweep_stranded` evicts every running service. Those cases keep the files and log warn (`log_undecided_start`)
 - When `start` is refused by the daemon, the already-written `cfg_dir/<name>.yaml` MUST be rolled back (`adapters::ServiceUndo` records the prior state: didn't exist → delete; existed → write back). But on partial daemon success, only the services in `ReplyDto.refused` MUST be rolled back (`undo.run_for`) — a running service must not lose its service file; see root `CLAUDE.md` "CLI ↔ daemon protocol"
 - Writing to disk MUST NOT be moved after `ask` — the service file must already exist when the daemon persists `dump.yaml`
 - Writing `~/.pm3/config.yaml` (the one `pm3 startup` writes) and writing `cfg_dir/<name>.yaml` share the same `adapters::reconcile`: identical content passes silently, different content prints a diff and refuses, `--force` overwrites. Any new "write config" path MUST go through it; don't start a second mechanism

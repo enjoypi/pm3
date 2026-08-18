@@ -124,7 +124,7 @@ async fn dispatch(
     log_request(&request_id, action, &target);
     let outcome = handle.send(request).await;
     let (status, body) = render(outcome);
-    log_response(&request_id, action, &target, status.as_u16(), &body.report);
+    log_response(&request_id, action, &target, status, &body.report);
     match status {
         StatusCode::OK => (status, Json(body)).into_response(),
         refused => (refused, body.report).into_response(),
@@ -173,16 +173,27 @@ fn log_request(request_id: &str, action: &str, req: &str) {
     );
 }
 
-fn log_response(request_id: &str, action: &str, req: &str, status: u16, resp: &str) {
+fn log_response(request_id: &str, action: &str, req: &str, status: StatusCode, report: &str) {
+    let code = status.as_u16();
+    let resp_bytes = report.len();
+    let resp = refusal_text(status, report);
     tracing::debug!(
         feature = "api",
         request_id,
         action,
         req,
-        status,
+        status = code,
+        resp_bytes,
         resp,
         "the pm3 daemon answered a request",
     );
+}
+
+fn refusal_text(status: StatusCode, report: &str) -> &str {
+    if status == StatusCode::OK {
+        return "";
+    }
+    report
 }
 
 fn envelope(reply: &SupervisionReply) -> ReplyDto {

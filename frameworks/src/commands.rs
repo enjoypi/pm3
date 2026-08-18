@@ -10,7 +10,7 @@ use adapters::{
 
 use crate::{
     Error, Result,
-    client::{OK_STATUS, UdsClient},
+    client::{ClientError, OK_STATUS, UdsClient},
     daemon::{DaemonLaunch, ensure_daemon_running},
     layout::{
         canonicalize, ensure_layout, host_home, read_pid_file, resolve_cfg_dir, resolve_layout,
@@ -107,7 +107,11 @@ async fn finish_start(
     let reply = match asked {
         Ok(reply) => reply,
         Err(error) => {
-            undo.run().await;
+            if request_never_landed(&error) {
+                undo.run().await;
+            } else {
+                log_undecided_start(&error);
+            }
             return Err(error);
         }
     };
@@ -135,6 +139,27 @@ async fn finish_start(
             already_running,
         }),
     }
+}
+
+const fn request_never_landed(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Client(ClientError::Connect { .. })
+            | Error::ServiceProgram { .. }
+            | Error::DaemonSpawn { .. }
+            | Error::DaemonUnready { .. }
+            | Error::Refused { .. }
+    )
+}
+
+fn log_undecided_start(error: &Error) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "client",
+        action = "start",
+        reason,
+        "pm3 cannot tell whether the daemon started these services, so it keeps their service files",
+    );
 }
 
 pub async fn list_apps(config_path: &str, json: bool) -> Result<String> {

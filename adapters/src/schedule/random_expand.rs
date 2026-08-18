@@ -55,8 +55,7 @@ fn expand_field(
     let Some(step) = step else {
         return Ok(normalise_weekday(rng.u32(low..=high), weekday).to_string());
     };
-    let offset = low.saturating_add(rng.u32(0..step));
-    let offset = normalise_weekday(offset.min(high), weekday);
+    let offset = low.saturating_add(rng.u32(0..step)).min(high);
     Ok(format!("{offset}-{high}/{step}"))
 }
 

@@ -36,6 +36,7 @@ fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
             network: false,
             writable_roots,
             readable_roots: Vec::new(),
+            derived_readable_roots: Vec::new(),
             derived_roots: Vec::new(),
             unreadable_roots: Vec::new(),
         },
@@ -158,6 +159,67 @@ async fn the_real_path_of_a_declared_writable_root_is_granted_as_well() {
         "got: {:?}",
         spec.sandbox.granted_roots()
     );
+}
+
+#[tokio::test]
+async fn the_real_path_of_a_declared_readable_root_is_granted_as_well() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (link, real) = linked_dir(dir.path());
+    let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
+    spec.sandbox.readable_roots = vec![link.clone()];
+    materialise_workspace(&mut spec)
+        .await
+        .expect("materialise should succeed");
+    assert_eq!(spec.sandbox.readable_roots, vec![link]);
+    assert!(
+        spec.sandbox.readable_grants().contains(&real.as_str()),
+        "got: {:?}",
+        spec.sandbox.readable_grants()
+    );
+}
+
+#[tokio::test]
+async fn the_real_path_of_the_program_is_granted_readable() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (link, real) = linked_dir(dir.path());
+    let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
+    spec.script = link;
+    materialise_workspace(&mut spec)
+        .await
+        .expect("materialise should succeed");
+    assert!(
+        spec.sandbox.derived_readable_roots.contains(&real),
+        "an exec through a symlink needs the real path readable: {:?}",
+        spec.sandbox.derived_readable_roots
+    );
+}
+
+#[tokio::test]
+async fn a_readable_root_that_needs_no_resolving_is_not_granted_twice() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (_link, real) = linked_dir(dir.path());
+    let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
+    spec.sandbox.readable_roots = vec![real.clone()];
+    materialise_workspace(&mut spec)
+        .await
+        .expect("materialise should succeed");
+    assert!(
+        spec.sandbox.derived_readable_roots.is_empty(),
+        "got: {:?}",
+        spec.sandbox.derived_readable_roots
+    );
+}
+
+#[tokio::test]
+async fn two_readable_roots_resolving_alike_are_granted_once() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (link, real) = linked_dir(dir.path());
+    let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
+    spec.sandbox.readable_roots = vec![link.clone(), link];
+    materialise_workspace(&mut spec)
+        .await
+        .expect("materialise should succeed");
+    assert_eq!(spec.sandbox.derived_readable_roots, vec![real]);
 }
 
 #[tokio::test]

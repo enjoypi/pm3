@@ -201,14 +201,17 @@ async fn an_exit_for_an_unknown_app_reports_not_found() {
 }
 
 #[tokio::test]
-async fn a_persistence_failure_propagates() {
+async fn a_persistence_failure_still_reports_the_decided_action() {
     let ports = FakePorts::new(1000);
     let mut table = running_table(&ports, spec("api")).await;
     ports.fail_save();
-    let err = handle_child_exit(&mut table, "api", CRASH, &ports)
+    let action = handle_child_exit(&mut table, "api", CRASH, &ports)
         .await
-        .unwrap_err();
-    assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
+        .expect("a decided restart must survive a dump that cannot be written");
+    assert!(
+        matches!(action, ExitAction::RestartAfter { .. }),
+        "got: {action:?}"
+    );
 }
 
 #[tokio::test]

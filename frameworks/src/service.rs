@@ -61,8 +61,8 @@ pub async fn run_service(config_path: &str, action: &ServiceAction) -> Result<St
         kind: HOST_SERVICE_KIND,
         home_env: home.as_deref(),
         pm3_env: host_pm3_env(),
-        runtime_dir: host_runtime_dir(),
-        uid: host_uid(),
+        runtime_dir: host_runtime_dir(home.as_deref()),
+        uid: host_uid(home.as_deref()),
         binary: std::env::current_exe(),
     };
     dispatch_service(config_path, action, &context).await
