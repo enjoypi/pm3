@@ -119,8 +119,9 @@ impl LogFollower {
     pub async fn poll_appended(&mut self) -> Result<Vec<String>, LogReadError> {
         self.resync().await;
         let mut chunk = Vec::new();
-        let read = self
-            .file
+        let budget = self.max_pending_bytes.max(1);
+        let read = (&mut self.file)
+            .take(budget)
             .read_to_end(&mut chunk)
             .await
             .map_err(|e| read_error(&self.path, &e.to_string()))?;

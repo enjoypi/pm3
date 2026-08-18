@@ -1,4 +1,4 @@
-use std::{process::Stdio, time::Duration};
+use std::{io::ErrorKind, process::Stdio, time::Duration};
 
 use tokio::{process::Command, time::timeout};
 use usecases::{Readiness, ReadyProbe, ReadyProber};
@@ -45,7 +45,7 @@ impl HostReadyProber {
             Err(error) => {
                 let reason = error.to_string();
                 log_unusable_probe(EXEC_KIND, started.elapsed().as_millis(), &reason);
-                return Readiness::Failed(reason);
+                return spawn_verdict(error.kind(), reason);
             }
         };
         let result = timeout(budget, child.wait()).await;
@@ -77,6 +77,16 @@ async fn check_tcp(host: &str, port: u16, budget: Duration) -> Readiness {
     } else {
         Readiness::Pending
     }
+}
+
+fn spawn_verdict(kind: ErrorKind, reason: String) -> Readiness {
+    if matches!(
+        kind,
+        ErrorKind::WouldBlock | ErrorKind::Interrupted | ErrorKind::OutOfMemory
+    ) {
+        return Readiness::Pending;
+    }
+    Readiness::Failed(reason)
 }
 
 fn log_probe(kind: &str, duration_ms: u128) {

@@ -56,10 +56,12 @@ pub async fn ensure_daemon_running(launch: &DaemonLaunch<'_>) -> Result<()> {
     if !claim_lock(&launch.paths.lock_file, launch.budget_ms()).await {
         return wait_until_ready(&client, launch).await;
     }
-    let spawned = spawn_daemon(launch);
+    let settled = match spawn_daemon(launch) {
+        Ok(()) => wait_until_ready(&client, launch).await,
+        Err(error) => Err(error),
+    };
     release_lock(&launch.paths.lock_file).await;
-    spawned?;
-    wait_until_ready(&client, launch).await
+    settled
 }
 
 async fn claim_lock(path: &Path, stale_after_ms: u64) -> bool {

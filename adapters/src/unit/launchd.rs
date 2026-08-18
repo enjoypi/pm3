@@ -31,6 +31,7 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     let environment = render_environment(&spec.environment_pairs());
     let umask = spec.umask;
     let max_tasks = spec.max_tasks;
+    let restart_delay_secs = spec.restart_delay_secs;
     format!(
         "{PLIST_HEADER}<dict>
     <key>Label</key>
@@ -44,6 +45,8 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     <true/>
     <key>KeepAlive</key>
     {keep_alive}
+    <key>ThrottleInterval</key>
+    <integer>{restart_delay_secs}</integer>
     <key>AbandonProcessGroup</key>
     <true/>
     <key>ProcessType</key>

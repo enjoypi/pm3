@@ -28,8 +28,8 @@ pub use entities::{
     ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe, RestartDecision, RestartPolicy,
     RuntimeError, SandboxMode, SandboxPolicy, SignalNameError, SpecError, VALID_SIGNALS,
     covers_path, decide_memory_verdict, decide_restart, is_name_letter, normalize_root,
-    parse_memory_limit, parse_signal_name, topo_sort, validate_app_name, validate_forbidden_roots,
-    validate_policy, validate_spec,
+    parse_memory_limit, parse_signal_name, root_is_forbidden, topo_sort, validate_app_name,
+    validate_forbidden_roots, validate_policy, validate_spec,
 };
 use thiserror::Error;
 

@@ -33,8 +33,8 @@ pub async fn restart_app(
         return Ok(RestartOutcome::Started(started));
     }
 
-    record.runtime.request_restart();
     let stopped = request_stop(record, ports).await?;
+    record.runtime.request_restart();
     persist_restart(table, &stopped.name, ports).await;
     Ok(RestartOutcome::AwaitingExit {
         name: stopped.name,

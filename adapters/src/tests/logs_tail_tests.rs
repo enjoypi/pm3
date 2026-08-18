@@ -230,7 +230,8 @@ async fn following_releases_an_overgrown_partial_line_instead_of_hoarding_it() {
         .await
         .expect("should start");
     append(&path, b"abcdefgh").await;
-    let overflow = follower.poll_appended().await.expect("should poll");
+    follower.poll_appended().await.expect("first poll");
+    let overflow = follower.poll_appended().await.expect("second poll");
     assert_eq!(overflow, vec!["abcdefgh"]);
     append(&path, b"ij\n").await;
     let lines = follower.poll_appended().await.expect("should poll");
@@ -393,4 +394,24 @@ async fn a_strict_follow_fails_when_the_log_cannot_be_read() {
     std::fs::write(&blocker, b"file").expect("write the blocker");
     let outcome = LogFollower::start_at_end(&blocker.join("web-out.log"), MAX_PENDING).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
+async fn following_reads_no_more_than_the_budget_per_poll() {
+    let (_dir, path) = temp_log(b"");
+    let mut follower = LogFollower::start_at_end(&path, 4)
+        .await
+        .expect("should start");
+    append(&path, b"abcd\nefgh\nij\n").await;
+    let mut seen: Vec<String> = Vec::new();
+    let mut polls = 0;
+    while seen.len() < 3 && polls < 20 {
+        seen.extend(follower.poll_appended().await.expect("should poll"));
+        polls += 1;
+    }
+    assert_eq!(seen, vec!["abcd", "efgh", "ij"], "no line may be lost");
+    assert!(
+        polls > 1,
+        "a four byte budget must not swallow thirteen bytes in one read"
+    );
 }

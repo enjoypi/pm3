@@ -68,6 +68,26 @@ fn the_plist_tells_launchd_to_leave_the_service_process_group_alone() {
 }
 
 #[test]
+fn the_plist_carries_the_configured_restart_delay() {
+    assert!(
+        rendered().contains("<key>ThrottleInterval</key>\n    <integer>2</integer>"),
+        "launchd otherwise throttles restarts at its own 10 second default: {}",
+        rendered()
+    );
+}
+
+#[test]
+fn the_plist_takes_the_restart_delay_from_the_spec() {
+    let mut spec = spec_for(UnitKind::Launchd, Path::new("/home/dev"));
+    spec.restart_delay_secs = 9;
+    assert!(
+        render_plist(&spec).contains("<key>ThrottleInterval</key>\n    <integer>9</integer>"),
+        "got: {}",
+        render_plist(&spec)
+    );
+}
+
+#[test]
 fn the_plist_keeps_every_file_the_daemon_writes_to_its_owner() {
     assert!(
         rendered().contains("<key>Umask</key>\n    <integer>63</integer>"),

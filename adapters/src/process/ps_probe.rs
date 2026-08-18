@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     time::Duration,
 };
 
@@ -129,8 +129,14 @@ impl PsProcessProbe {
     }
 }
 
-fn seen_as(token: Option<&String>) -> Liveness {
-    token.map_or(Liveness::Gone, |seen| Liveness::Alive(seen.clone()))
+fn seen_as(report: &PsReport, pid: u32) -> Liveness {
+    if let Some(token) = report.tokens.get(&pid) {
+        return Liveness::Alive(token.clone());
+    }
+    if report.garbled || report.tokenless.contains(&pid) {
+        return Liveness::Unreadable;
+    }
+    Liveness::Gone
 }
 
 fn unreadable(pids: &[u32]) -> HashMap<u32, Liveness> {
@@ -204,18 +210,41 @@ fn parse_tenths(raw: &str) -> Option<u32> {
     Some(whole.saturating_mul(10).saturating_add(tenths))
 }
 
-fn parse_report(stdout: &str) -> HashMap<u32, String> {
-    stdout
-        .lines()
-        .filter_map(|line| {
-            let (pid, token) = line.trim_start().split_once(' ')?;
-            let token = token.trim();
-            if token.is_empty() {
-                return None;
+#[derive(Debug, Default)]
+struct PsReport {
+    tokens: HashMap<u32, String>,
+    tokenless: HashSet<u32>,
+    garbled: bool,
+}
+
+fn parse_report(stdout: &str) -> PsReport {
+    let mut report = PsReport::default();
+    for line in stdout.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match parse_row(trimmed) {
+            Some((pid, Some(token))) => {
+                report.tokens.insert(pid, token);
             }
-            Some((pid.parse::<u32>().ok()?, token.to_string()))
-        })
-        .collect()
+            Some((pid, None)) => {
+                report.tokenless.insert(pid);
+            }
+            None => report.garbled = true,
+        }
+    }
+    report
+}
+
+fn parse_row(line: &str) -> Option<(u32, Option<String>)> {
+    let (pid, token) = line.split_once(' ')?;
+    let pid = pid.parse::<u32>().ok()?;
+    let token = token.trim();
+    if token.is_empty() {
+        return Some((pid, None));
+    }
+    Some((pid, Some(token.to_string())))
 }
 
 impl ProcessProbe for PsProcessProbe {
@@ -236,9 +265,9 @@ impl ProcessProbe for PsProcessProbe {
             return unreadable(pids);
         };
         let listed = parse_report(&stdout);
-        log_probe(&joined, listed.len(), started.elapsed().as_millis());
+        log_probe(&joined, listed.tokens.len(), started.elapsed().as_millis());
         pids.iter()
-            .map(|pid| (*pid, seen_as(listed.get(pid))))
+            .map(|pid| (*pid, seen_as(&listed, *pid)))
             .collect()
     }
 

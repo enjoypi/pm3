@@ -99,6 +99,8 @@ describe("definesImplementationItems", () => {
     ["fn free()", "fn free() {}"],
     ["pub fn", "pub fn exported() {}"],
     ["pub(crate) fn", "pub(crate) fn scoped() {}"],
+    ["pub(super) fn", "pub(super) fn nested() {}"],
+    ["pub(in path) fn", "pub(in crate::logs) fn inner() {}"],
     ["async fn main", "#[tokio::main]\nasync fn main() {}"],
     ["pub async fn", "pub async fn ctrl_c_signal() {}"],
     ["pub(crate) async fn", "pub(crate) async fn probe() {}"],

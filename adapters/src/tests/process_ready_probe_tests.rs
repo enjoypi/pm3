@@ -119,3 +119,24 @@ async fn a_tcp_probe_stays_pending_when_the_port_refuses() {
     };
     assert_eq!(prober.check_ready(&probe).await, Readiness::Pending);
 }
+
+#[test]
+fn a_probe_the_host_was_too_busy_to_spawn_stays_pending() {
+    for kind in [
+        ErrorKind::WouldBlock,
+        ErrorKind::Interrupted,
+        ErrorKind::OutOfMemory,
+    ] {
+        assert_eq!(
+            spawn_verdict(kind, "resource exhausted".to_string()),
+            Readiness::Pending,
+            "a host that momentarily cannot fork must not fail the probe for good: {kind:?}"
+        );
+    }
+}
+
+#[test]
+fn a_probe_command_that_can_never_run_fails_fast() {
+    let outcome = spawn_verdict(ErrorKind::PermissionDenied, "denied".to_string());
+    assert_eq!(outcome, Readiness::Failed("denied".to_string()));
+}

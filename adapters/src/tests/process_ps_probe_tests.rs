@@ -109,7 +109,7 @@ async fn wait_gone_stops_polling_when_the_budget_is_already_spent() {
 
 #[tokio::test]
 async fn the_exit_code_ps_uses_for_an_unmatched_pid_reads_as_gone() {
-    let (_dir, probe) = probe_with("echo 'Tue Jul 28 14:06:28 2026'; exit 1");
+    let (_dir, probe) = probe_with("exit 1");
     assert_eq!(probe.identity(1).await, Liveness::Gone);
 }
 
@@ -204,9 +204,23 @@ async fn a_missing_ps_leaves_every_batched_pid_unreadable() {
 }
 
 #[tokio::test]
-async fn a_batch_line_without_a_numeric_pid_is_ignored() {
+async fn a_batch_line_of_a_single_word_leaves_every_pid_unreadable() {
+    let (_dir, probe) = probe_with("echo 'garbled'");
+    assert_eq!(
+        probe.identities(&[7]).await.get(&7),
+        Some(&Liveness::Unreadable),
+        "a row with no start time column at all cannot be attributed either"
+    );
+}
+
+#[tokio::test]
+async fn a_batch_line_without_a_numeric_pid_leaves_every_pid_unreadable() {
     let (_dir, probe) = probe_with("echo 'header Tue Jul 28 14:06:28 2026'");
-    assert_eq!(probe.identities(&[7]).await.get(&7), Some(&Liveness::Gone));
+    assert_eq!(
+        probe.identities(&[7]).await.get(&7),
+        Some(&Liveness::Unreadable),
+        "a row pm3 cannot attribute must never read as a dead process"
+    );
 }
 
 #[test]
@@ -220,9 +234,15 @@ fn an_unreadable_probe_carries_no_token() {
 }
 
 #[tokio::test]
-async fn a_batch_line_without_a_start_time_is_ignored() {
+async fn a_batch_line_without_a_start_time_reads_as_unreadable() {
     let (_dir, probe) = probe_with("echo '7    '");
-    assert_eq!(probe.identities(&[7]).await.get(&7), Some(&Liveness::Gone));
+    let seen = probe.identities(&[7, 8]).await;
+    assert_eq!(seen.get(&7), Some(&Liveness::Unreadable));
+    assert_eq!(
+        seen.get(&8),
+        Some(&Liveness::Gone),
+        "a pid ps did not list at all is still gone"
+    );
 }
 
 #[tokio::test]

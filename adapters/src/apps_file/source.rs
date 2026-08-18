@@ -47,14 +47,17 @@ impl SpecSource {
         spec.env = self
             .resolve_environment(&path.with_extension(ENV_FILE_SUFFIX), name)
             .await?;
-        crate::workspace::materialise_workspace(&mut spec)
-            .await
-            .map_err(|source| {
-                AppsFileError::from(SpecError::Sandbox {
-                    app: name.to_string(),
-                    source,
-                })
-            })?;
+        crate::workspace::materialise_workspace(
+            &mut spec,
+            &self.config.sandbox.forbidden_writable_roots,
+        )
+        .await
+        .map_err(|source| {
+            AppsFileError::from(SpecError::Sandbox {
+                app: name.to_string(),
+                source,
+            })
+        })?;
         Ok(spec)
     }
 

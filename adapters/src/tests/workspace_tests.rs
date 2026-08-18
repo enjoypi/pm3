@@ -5,6 +5,8 @@ use usecases::{PolicyError, ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
 
+const NOTHING_FORBIDDEN: &[String] = &[];
+
 fn spec_with_args(cwd: &str, args: &[&str]) -> AppSpec {
     AppSpec {
         args: args.iter().map(|arg| (*arg).to_string()).collect(),
@@ -76,7 +78,7 @@ async fn a_writable_root_resolving_into_a_hidden_root_is_refused() {
             .to_string_lossy()
             .into_owned(),
     ];
-    let error = materialise_workspace(&mut spec)
+    let error = materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect_err("a symlink resolving into a hidden root must be refused");
     assert!(
@@ -92,7 +94,7 @@ async fn a_hidden_root_is_resolved_to_its_real_path() {
     let cwd = dir.path().join("web");
     let mut spec = spec_at(&cwd.to_string_lossy(), Vec::new());
     spec.sandbox.unreadable_roots = vec![link];
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("the workspace should materialise");
     assert_eq!(spec.sandbox.unreadable_roots, vec![real]);
@@ -103,7 +105,7 @@ async fn a_missing_working_directory_is_created() {
     let dir = tempfile::tempdir().expect("temp dir");
     let cwd = dir.path().join("web");
     let mut spec = spec_at(&cwd.to_string_lossy(), Vec::new());
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert!(cwd.is_dir(), "the working directory should exist");
@@ -115,7 +117,7 @@ async fn a_working_directory_blocked_by_a_file_is_left_unresolved() {
     let blocked = dir.path().join("web");
     std::fs::write(&blocked, "occupied").expect("occupy the working directory path");
     let mut spec = spec_at(&blocked.to_string_lossy(), Vec::new());
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert!(
@@ -129,7 +131,7 @@ async fn the_working_directory_is_resolved_to_its_real_path() {
     let dir = tempfile::tempdir().expect("temp dir");
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_at(&link, Vec::new());
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.cwd, real);
@@ -140,7 +142,7 @@ async fn a_declared_writable_root_keeps_the_text_the_operator_wrote() {
     let dir = tempfile::tempdir().expect("temp dir");
     let (link, _real) = linked_dir(dir.path());
     let mut spec = spec_at(&link, vec![link.clone()]);
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.sandbox.writable_roots, vec![link]);
@@ -151,7 +153,7 @@ async fn the_real_path_of_a_declared_writable_root_is_granted_as_well() {
     let dir = tempfile::tempdir().expect("temp dir");
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_at(&link, vec![link.clone()]);
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert!(
@@ -167,7 +169,7 @@ async fn the_real_path_of_a_declared_readable_root_is_granted_as_well() {
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
     spec.sandbox.readable_roots = vec![link.clone()];
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.sandbox.readable_roots, vec![link]);
@@ -184,7 +186,7 @@ async fn the_real_path_of_the_program_is_granted_readable() {
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
     spec.script = link;
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert!(
@@ -200,7 +202,7 @@ async fn a_readable_root_that_needs_no_resolving_is_not_granted_twice() {
     let (_link, real) = linked_dir(dir.path());
     let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
     spec.sandbox.readable_roots = vec![real.clone()];
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert!(
@@ -216,7 +218,7 @@ async fn two_readable_roots_resolving_alike_are_granted_once() {
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_at(dir.path().to_str().expect("utf-8 temp dir"), Vec::new());
     spec.sandbox.readable_roots = vec![link.clone(), link];
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.sandbox.derived_readable_roots, vec![real]);
@@ -228,7 +230,7 @@ async fn a_writable_root_pm3_already_derived_is_not_granted_twice() {
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_at(&link, vec![link.clone()]);
     spec.sandbox.derived_roots = vec![link.clone()];
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     let repeats = spec
@@ -245,7 +247,7 @@ async fn a_writable_root_that_already_reads_as_its_real_path_is_not_granted_twic
     let dir = tempfile::tempdir().expect("temp dir");
     let (_link, real) = linked_dir(dir.path());
     let mut spec = spec_at(&real, vec![real.clone()]);
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     let granted = spec.sandbox.granted_roots();
@@ -260,7 +262,7 @@ async fn a_placeholder_argument_becomes_the_working_directory() {
         &dir.path().to_string_lossy(),
         &["-d", SERVICE_CWD_PLACEHOLDER],
     );
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.args, vec!["-d".to_string(), spec.cwd.clone()]);
@@ -273,7 +275,7 @@ async fn a_placeholder_keeps_the_rest_of_the_argument() {
         &dir.path().to_string_lossy(),
         &["${PM3_SERVICE_CWD}/data.db"],
     );
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.args, vec![format!("{}/data.db", spec.cwd)]);
@@ -286,7 +288,7 @@ async fn every_placeholder_argument_is_expanded() {
         &dir.path().to_string_lossy(),
         &[SERVICE_CWD_PLACEHOLDER, SERVICE_CWD_PLACEHOLDER],
     );
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.args, vec![spec.cwd.clone(), spec.cwd.clone()]);
@@ -296,7 +298,7 @@ async fn every_placeholder_argument_is_expanded() {
 async fn an_argument_without_the_placeholder_is_left_alone() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut spec = spec_with_args(&dir.path().to_string_lossy(), &["--port=8080"]);
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.args, vec!["--port=8080".to_string()]);
@@ -307,7 +309,7 @@ async fn a_placeholder_expands_to_the_real_path_not_the_symlink() {
     let dir = tempfile::tempdir().expect("temp dir");
     let (link, real) = linked_dir(dir.path());
     let mut spec = spec_with_args(&link, &[SERVICE_CWD_PLACEHOLDER]);
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.args, vec![real]);
@@ -318,7 +320,7 @@ async fn a_script_shaped_like_the_placeholder_is_left_alone() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut spec = spec_with_args(&dir.path().to_string_lossy(), &[]);
     spec.script = SERVICE_CWD_PLACEHOLDER.to_string();
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.script, SERVICE_CWD_PLACEHOLDER);
@@ -329,8 +331,42 @@ async fn an_unresolvable_writable_root_is_left_alone() {
     let dir = tempfile::tempdir().expect("temp dir");
     let absent = "/nonexistent/pm3-root".to_string();
     let mut spec = spec_at(&dir.path().to_string_lossy(), vec![absent.clone()]);
-    materialise_workspace(&mut spec)
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
         .await
         .expect("materialise should succeed");
     assert_eq!(spec.sandbox.writable_roots, vec![absent]);
+}
+
+#[tokio::test]
+async fn a_writable_root_resolving_onto_a_forbidden_root_is_refused() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let (link, real) = linked_dir(dir.path());
+    let cwd = dir.path().join("web");
+    let mut spec = spec_at(&cwd.to_string_lossy(), vec![link]);
+    let forbidden = vec![real];
+    let error = materialise_workspace(&mut spec, &forbidden)
+        .await
+        .expect_err("a symlink onto a forbidden root must be refused");
+    assert!(
+        matches!(error, PolicyError::ForbiddenWritableRoot(_)),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_missing_declared_writable_root_is_created() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("data");
+    let cwd = dir.path().join("web");
+    let mut spec = spec_at(
+        &cwd.to_string_lossy(),
+        vec![root.to_string_lossy().into_owned()],
+    );
+    materialise_workspace(&mut spec, NOTHING_FORBIDDEN)
+        .await
+        .expect("materialise should succeed");
+    assert!(
+        root.is_dir(),
+        "bwrap binds writable roots hard, so the source has to exist"
+    );
 }

@@ -9,7 +9,7 @@ const productionSourceRoots = [
 const testFileSuffixes = ["_tests.rs", "_test_helpers.rs"];
 const zeroHitEntry = /^(DA|BRDA):.*,0$/u;
 const implementationItem =
-  /^(impl[ <]|(?:pub(?:\(crate\))? )?(?:async |const |unsafe |extern )*fn )/mu;
+  /^(impl[ <]|(?:pub(?:\([^)]*\))? )?(?:async |const |unsafe |extern )*fn )/mu;
 const sourceFilePrefix = "SF:";
 const recordTerminator = "end_of_record";
 const lcovCounter = /^(LF|LH|FNF|FNH|BRF|BRH):(\d+)$/u;

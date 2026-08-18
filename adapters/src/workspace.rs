@@ -1,22 +1,15 @@
 use std::collections::BTreeMap;
 
-use usecases::{AppSpec, PolicyError, validate_policy};
+use usecases::{AppSpec, PolicyError, root_is_forbidden, validate_policy};
 
 use crate::program::SERVICE_CWD_PLACEHOLDER;
 
-pub async fn materialise_workspace(spec: &mut AppSpec) -> Result<(), PolicyError> {
+pub async fn materialise_workspace(
+    spec: &mut AppSpec,
+    forbidden_writable_roots: &[String],
+) -> Result<(), PolicyError> {
     let declared_cwd = spec.cwd.clone();
-    if let Err(error) = tokio::fs::create_dir_all(&declared_cwd).await {
-        let reason = error.to_string();
-        let path = declared_cwd.as_str();
-        tracing::warn!(
-            feature = "lifecycle",
-            path,
-            reason,
-            action = "workspace",
-            "cannot create the working directory"
-        );
-    }
+    ensure_directory(&declared_cwd).await;
     spec.cwd = real_path(&declared_cwd).await;
     for arg in &mut spec.args {
         *arg = expand_service_cwd(arg, &spec.cwd);
@@ -27,7 +20,11 @@ pub async fn materialise_workspace(spec: &mut AppSpec) -> Result<(), PolicyError
     }
     let declared = spec.sandbox.writable_roots.clone();
     for root in &declared {
+        ensure_directory(root).await;
         let real = resolve_cached(root, &mut resolved).await;
+        if root_is_forbidden(forbidden_writable_roots, &real) {
+            return Err(PolicyError::ForbiddenWritableRoot(root.clone()));
+        }
         if &real != root && !spec.sandbox.derived_roots.contains(&real) {
             spec.sandbox.derived_roots.push(real);
         }
@@ -37,6 +34,20 @@ pub async fn materialise_workspace(spec: &mut AppSpec) -> Result<(), PolicyError
         *root = resolve_cached(root, &mut resolved).await;
     }
     validate_policy(&spec.sandbox)
+}
+
+async fn ensure_directory(path: &str) {
+    let Err(error) = tokio::fs::create_dir_all(path).await else {
+        return;
+    };
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "lifecycle",
+        path,
+        reason,
+        action = "workspace",
+        "cannot create a directory the sandbox has to grant"
+    );
 }
 
 async fn derive_readable_paths(spec: &mut AppSpec, resolved: &mut BTreeMap<String, String>) {

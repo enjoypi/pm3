@@ -216,3 +216,23 @@ async fn a_held_lock_makes_the_caller_wait_instead_of_spawning() {
     );
     drop(fixture.dir);
 }
+
+#[tokio::test]
+async fn the_spawn_lock_is_held_until_the_daemon_answers() {
+    let fixture = fixture();
+    let launching = launch(&fixture, NEVER_BINDS);
+    let observing = async {
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        fixture.paths.lock_file.exists()
+    };
+    let (settled, held) = tokio::join!(ensure_daemon_running(&launching), observing);
+    assert!(
+        held,
+        "a second CLI must find the lock taken while the daemon is still coming up"
+    );
+    settled.expect_err("this daemon never binds");
+    assert!(
+        !fixture.paths.lock_file.exists(),
+        "the lock must not outlive the attempt"
+    );
+}

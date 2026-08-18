@@ -1,4 +1,4 @@
-use entities::ProcessStatus;
+use entities::{AppSpec, ProcessStatus};
 
 use super::*;
 use crate::{
@@ -137,6 +137,30 @@ async fn a_signal_failure_while_restarting_propagates() {
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::Signal(_)), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_signal_failure_while_restarting_leaves_no_pending_restart_behind() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let once = AppSpec {
+        autorestart: false,
+        ..spec("api")
+    };
+    start_apps(&mut table, &[once], LOGS_DIR, &ports).await;
+    ports.fail_signal_for(100);
+    restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+        .await
+        .expect_err("the signal was refused");
+    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    assert!(
+        !record.runtime.pending_restart,
+        "a restart nobody could start must not revive a service that never asked for it"
+    );
+    assert!(
+        !record.runtime.status.is_shutting_down(),
+        "a refused signal leaves the process running, so the record must not read as draining"
+    );
 }
 
 #[tokio::test]

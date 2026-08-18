@@ -11,6 +11,6 @@ pub use self::{
     },
     sandbox::{
         PolicyError, ReadScope, SandboxMode, SandboxPolicy, covers_path, normalize_root,
-        validate_forbidden_roots, validate_policy,
+        root_is_forbidden, validate_forbidden_roots, validate_policy,
     },
 };

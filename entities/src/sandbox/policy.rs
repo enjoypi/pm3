@@ -178,14 +178,17 @@ pub fn validate_forbidden_roots(
     policy
         .writable_roots
         .iter()
-        .find(|root| {
-            forbidden
-                .iter()
-                .any(|denied| normalize_root(denied) == normalize_root(root))
-        })
+        .find(|root| root_is_forbidden(forbidden, root))
         .map_or(Ok(()), |root| {
             Err(PolicyError::ForbiddenWritableRoot(root.clone()))
         })
+}
+
+#[must_use]
+pub fn root_is_forbidden(forbidden: &[String], root: &str) -> bool {
+    forbidden
+        .iter()
+        .any(|denied| normalize_root(denied) == normalize_root(root))
 }
 
 fn validate_hidden_roots_stay_hidden(policy: &SandboxPolicy) -> Result<(), PolicyError> {
