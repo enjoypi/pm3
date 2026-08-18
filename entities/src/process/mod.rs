@@ -14,6 +14,8 @@ pub use self::{
     restart::{RestartDecision, RestartPolicy, decide_restart},
     runtime::{ProcessIdentity, ProcessRuntime, RuntimeError},
     signal::{SignalNameError, VALID_SIGNALS, parse_signal_name},
-    spec::{AppSpec, SpecError, is_name_letter, validate_app_name, validate_spec},
+    spec::{
+        AppSpec, RESERVED_ALL_SELECTOR, SpecError, is_name_letter, validate_app_name, validate_spec,
+    },
     status::ProcessStatus,
 };

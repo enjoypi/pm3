@@ -41,6 +41,11 @@ fn a_pm_id_addresses_a_route_without_a_name_check() {
 }
 
 #[test]
+fn the_every_app_selector_addresses_its_own_route() {
+    assert_eq!(app_path("all").expect("should address"), "/apps/all");
+}
+
+#[test]
 fn an_unsafe_name_cannot_address_a_route() {
     let err = app_path("../../.bashrc").unwrap_err().to_string();
     assert!(err.contains("../../.bashrc"), "got: {err}");

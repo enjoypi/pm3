@@ -306,7 +306,7 @@ async function collect(): Promise<BenchReport> {
     const loadedRssKib = await daemonRssKib(home);
     const children = await childrenRssKib(bin, config);
     const listSamples = await hotListSamples(bin, config);
-    await pm3(bin, config, ["kill"]);
+    await pm3(bin, config, ["shutdown"]);
     await waitSocketGone(home);
     const reclaim = await pm3(bin, config, ["list"]);
     return {
@@ -323,7 +323,7 @@ async function collect(): Promise<BenchReport> {
       listMs: summarize(listSamples),
     };
   } finally {
-    await pm3(bin, config, ["kill", "--with-services"]).catch(() => undefined);
+    await pm3(bin, config, ["shutdown", "--with-services"]).catch(() => undefined);
     await waitSocketGone(home).catch(() => undefined);
     await rm(home, { recursive: true, force: true });
   }

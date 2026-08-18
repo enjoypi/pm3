@@ -24,7 +24,7 @@ fn pm3_as_user(home: &Home, args: &[&str]) -> Output {
 #[test]
 fn a_dry_run_install_prints_the_task_xml_and_the_wrapper() {
     let home = home();
-    let planned = pm3_as_user(&home, &["service", "install", "--dry-run"]);
+    let planned = pm3_as_user(&home, &["startup", "--dry-run"]);
     assert!(planned.status.success(), "{}", stdout_of(&planned));
     let printed = stdout_of(&planned);
     assert!(printed.contains("<LogonTrigger>"), "{printed}");
@@ -40,7 +40,7 @@ fn a_dry_run_install_prints_the_task_xml_and_the_wrapper() {
 #[test]
 fn a_service_install_registers_the_task_and_uninstall_removes_it() {
     let home = home();
-    let installed = pm3_as_user(&home, &["service", "install"]);
+    let installed = pm3_as_user(&home, &["startup"]);
     assert!(installed.status.success(), "{}", stdout_of(&installed));
 
     let registered = std::process::Command::new("schtasks")
@@ -53,14 +53,14 @@ fn a_service_install_registers_the_task_and_uninstall_removes_it() {
         String::from_utf8_lossy(&registered.stderr)
     );
 
-    let running = pm3_as_user(&home, &["service"]);
+    let running = pm3_as_user(&home, &["startup", "--status"]);
     assert!(
         stdout_of(&running).contains("running"),
         "{}",
         stdout_of(&running)
     );
 
-    let uninstalled = pm3_as_user(&home, &["service", "uninstall"]);
+    let uninstalled = pm3_as_user(&home, &["unstartup"]);
     assert!(uninstalled.status.success(), "{}", stdout_of(&uninstalled));
     let gone = std::process::Command::new("schtasks")
         .args(["/Query", "/TN", SERVICE_LABEL])

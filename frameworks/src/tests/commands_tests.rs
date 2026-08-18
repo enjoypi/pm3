@@ -254,6 +254,27 @@ async fn deleting_a_started_app_confirms_it() {
 }
 
 #[tokio::test]
+async fn deleting_every_app_forgets_every_service_file() {
+    let fixture = running_daemon().await;
+    let apps_file = sleeper_apps_file(&fixture);
+    start_apps(&fixture.config_path, &apps_file, false)
+        .await
+        .expect("should start");
+    let deleted = delete_app(&fixture.config_path, "all")
+        .await
+        .expect("should delete every app");
+    assert_eq!(deleted, "deleted web");
+    let cfg_dir = fixture.paths.root.join("service");
+    let remaining = std::fs::read_dir(&cfg_dir)
+        .expect("cfg dir")
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".yaml"))
+        .count();
+    assert_eq!(remaining, 0, "every service file should be forgotten");
+    stop_daemon(fixture).await;
+}
+
+#[tokio::test]
 async fn a_refused_request_carries_the_daemon_reason() {
     let fixture = running_daemon().await;
     let err = describe_app(&fixture.config_path, "ghost", false)

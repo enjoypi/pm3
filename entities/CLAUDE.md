@@ -1,20 +1,20 @@
-# entities — 企业级业务规则
+# entities — enterprise business rules
 
-无 I/O、无 async、无框架依赖（`serde`/`thiserror` 的 derive 除外）。
+No I/O, no async, no framework dependencies (except the `serde`/`thiserror` derives).
 
-## 文件地图
+## File map
 
-| 文件 | 内容 |
+| File | Contents |
 |---|---|
-| `process/spec.rs` | `AppSpec` 与 `validate_spec` |
-| `process/status.rs` | `ProcessStatus` 状态机（`is_running` / `is_settled`） |
-| `process/restart.rs` | 重启策略与熔断计数 |
-| `process/runtime.rs` | 运行态字段（pid、身份令牌、重启次数） |
-| `process/depgraph.rs` | 依赖启动序与环检测 |
-| `sandbox/policy.rs` | `SandboxPolicy`：`writable_roots` / `derived_roots` / `granted_roots()` |
+| `process/spec.rs` | `AppSpec` and `validate_spec` |
+| `process/status.rs` | `ProcessStatus` state machine (`is_running` / `is_settled`) |
+| `process/restart.rs` | restart policy and breaker counting |
+| `process/runtime.rs` | runtime fields (pid, identity token, restart count) |
+| `process/depgraph.rs` | dependency startup ordering and cycle detection |
+| `sandbox/policy.rs` | `SandboxPolicy`: `writable_roots` / `derived_roots` / `granted_roots()` |
 
-## 本层规则
+## Layer rules
 
-- 熔断判定是 `unstable_restarts >= max_restarts`（对齐 pm2 `God.js`），MUST NOT 改回 `>`
-- `ProcessStatus` 新增变体时 `is_running()` 与 `is_settled()` 都要重新审：两者不是互补关系，`Stopping` 同时不满足二者
-- `SandboxPolicy` 的 `writable_roots` / `derived_roots` 之分是「daemon 换代不误判 respawn」的地基，改动前先读根 `CLAUDE.md` 的「身份指纹与接管」；加字段的波及范围见根「改动波及清单」
+- The breaker condition is `unstable_restarts >= max_restarts` (aligned with pm2 `God.js`); MUST NOT change it back to `>`
+- When a new variant is added to `ProcessStatus`, re-audit both `is_running()` and `is_settled()`: they are not complementary — `Stopping` satisfies neither
+- The `writable_roots` / `derived_roots` split in `SandboxPolicy` is the foundation of "daemon handover must not misjudge respawn"; before changing it, read the root `CLAUDE.md` section "Identity fingerprints and reclaim"; the blast radius of adding a field is in the root "Change ripple checklist"

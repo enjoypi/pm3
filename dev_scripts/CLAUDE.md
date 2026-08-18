@@ -1,62 +1,62 @@
-# dev_scripts — 门禁与开发脚本
+# dev_scripts — gates and development scripts
 
-`just` 的复杂 recipe 都由这里的 Bun/TypeScript 驱动：`cov.ts` + `coverage_gate.ts`（覆盖率门禁）、`reap.ts`（收残留）、`monitor.ts`、`rename.ts`、`cargo_invocation.ts`、`bench.ts`。
+`just`'s complex recipes are all driven by the Bun/TypeScript here: `cov.ts` + `coverage_gate.ts` (coverage gate), `reap.ts` (leftover reaping), `monitor.ts`, `rename.ts`, `cargo_invocation.ts`, `bench.ts`.
 
-**跑 `just cov` / 排查覆盖率门禁前先读本文件。** region 级的修法（怎么让某一行可被覆盖）在根 `CLAUDE.md` 的「覆盖率 region 纪律」。
+**Read this file before running `just cov` or troubleshooting the coverage gate.** Region-level fixes (how to make a specific line coverable) are in root `CLAUDE.md` "Coverage region discipline".
 
-## TS 本身
+## TypeScript itself
 
-- `just typecheck` / `just test-scripts` 前先 `bun install --frozen-lockfile`
-- `Bun.env.X` 触发 TS4111 → 写 `Bun.env["X"]`；`Bun.spawn` 不收 `readonly string[]` → 传 `[...command]`
-- `just typecheck` 禁 `any` / 非空断言 / `ts-ignore`
-- 改 `adapters/` 的目录结构、重命名类型、或把常量下沉进 `config.yaml` 后 MUST 跑 `just test-scripts`：`tests/rust_contract.test.ts` 靠**字符串路径**读 Rust 源码来守「TS 常量与 Rust 常量一致」，路径失效后 `sourceOf` 对缺失文件返回空串、只报「no longer declared the way this guard reads it」而不说文件已搬走；常量下沉进 `config.yaml` 后守卫要改读配置的 `:-` 默认值
+- Run `bun install --frozen-lockfile` before `just typecheck` / `just test-scripts`
+- `Bun.env.X` triggers TS4111 → write `Bun.env["X"]`; `Bun.spawn` does not accept `readonly string[]` → pass `[...command]`
+- `just typecheck` bans `any` / non-null assertions / `ts-ignore`
+- After changing the directory layout of `adapters/`, renaming types, or sinking constants into `config.yaml`, you MUST run `just test-scripts`: `tests/rust_contract.test.ts` reads Rust sources by **string paths** to guard "TS constants match Rust constants"; once a path goes stale, `sourceOf` returns an empty string for the missing file and only reports "no longer declared the way this guard reads it" without saying the file moved; after constants sink into `config.yaml` the guard must read the config's `:-` default values instead
 
-## 门禁运行（`just cov`，四指标 100%）
+## Gate operation (`just cov`, four metrics at 100%)
 
-- 顺序 MUST 是 `just lint` → `just cov`：`cov` 只跑 nextest 不跑 clippy，`#[expect]` 失效这类问题它看不见；反过来 `cov` 又能暴露 `lint` 漏报的 test target `unused_imports`（clippy 增量缓存可能不重编测试目标）→ 两个都要跑
-- `cargo-llvm-cov` 忽略路径含 `tests/` 的文件；`test_helpers/` 与 `test_support/` **计入**门禁，helper 里的 `panic!` 会变成未覆盖行
-- 改动令行号位移后必须 `just cov --fresh`，否则残留旧实例化产生幽灵 `FNDA:0`
-- 门禁在 macOS 与 Linux 都应 100% → 新出现的平台差异一律是本次改动引入的，两类根因：
-  - **读系统路径的薄包装**（`/proc/self` 之于 `host_uid`）：MUST 抽出接 `&Path` 参数的 inner fn（`owner_uid_of`），生产包装传常量、测试传 tempdir 与不存在的路径，两条臂在哪个平台都可达
-  - **靠 sleep 竞争切换外部状态的测试**（fake `ps` 先报 alive、测试 sleep 后再 mark_gone）：慢机器上第一轮探测就已落在切换之后，于是「轮询后仍有等待者」这类分支只在快机器上被走到 → MUST 让 **fake 程序自持调用计数**（`if [ -f "$0.asked" ]; then exit 1; fi` + `touch`），第一次答 alive、第二次答 gone，与机器速度无关
+- The order MUST be `just lint` → `just cov`: `cov` runs only nextest, not clippy, so it cannot see problems like stale `#[expect]`; conversely `cov` can expose test-target `unused_imports` that `lint` misses (clippy's incremental cache may not recompile test targets) → run both
+- `cargo-llvm-cov` ignores files whose path contains `tests/`; `test_helpers/` and `test_support/` **count** toward the gate — a `panic!` in a helper becomes an uncovered line
+- After a change shifts line numbers you must `just cov --fresh`, otherwise leftover stale instantiations produce phantom `FNDA:0`
+- The gate must be 100% on both macOS and Linux → any new platform difference is introduced by the current change, with two root-cause classes:
+  - **Thin wrappers reading system paths** (`/proc/self` for `host_uid`): MUST extract an inner fn taking a `&Path` parameter (`owner_uid_of`); the production wrapper passes the constant, tests pass a tempdir and a nonexistent path — both arms reachable on either platform
+  - **Tests that flip external state via sleep races** (fake `ps` reports alive first, the test sleeps, then marks gone): on a slow machine the first probe already lands after the flip, so branches like "waiters remain after polling" are only exercised on fast machines → MUST make the **fake program self-track its call count** (`if [ -f "$0.asked" ]; then exit 1; fi` + `touch`), answering alive the first time and gone the second, independent of machine speed
 
-## 四类自救
+## Four self-rescue classes
 
-| 症状 | 原因 | 修法 |
+| Symptom | Cause | Fix |
 |---|---|---|
-| 大面积欠覆盖，lcov 里同一函数出现两组行号不同的 `FN:` | `llvm-cov clean --workspace` **不删** `deps/` 里的陈旧测试二进制，它们的 coverage map 以旧行号合并进报告（判据：`ls -lT target/llvm-cov-target/release/deps` 里二进制时间戳早于本次构建） | `rm -rf target/llvm-cov-target` 再 `just cov --fresh` |
-| 所有文件 0%、`FNDA:0` 上千条 | 二进制与 profraw 哈希错位（非 fresh 与手动 `cargo llvm-cov report` 交叉跑会触发） | 重跑 `just cov --fresh`，中途不插任何其他 cargo 命令 |
-| 门禁失败却一行文件明细都没打 | 缺口是 region 而 lcov 不含 region 数据，`findFilesBelowFullCoverage` 自然无输出 | 见下「定位 region 缺口」 |
-| lcov 明细逐条全绿而门禁仍报 `lines 382/383` | `DA:` 是**按源码行合并**后写的（多实例化取并集），门禁读的 `LF/LH/BRF/BRH` 是 llvm-cov 按函数实例化组统计后相加、组内取 `max`——两份实例化各覆盖一半，`max(1/2,1/2)=1/2` 就报缺失。**解析 lcov 永远查不出来**（`DA` 条数天然少于 `LF`，全仓库每个文件都如此，不是异常信号） | 见下「按实例化定位」 |
+| Broad under-coverage; the same function appears in lcov as two `FN:` groups with different line numbers | `llvm-cov clean --workspace` does **not** delete stale test binaries in `deps/`; their coverage maps merge into the report at the old line numbers (criterion: in `ls -lT target/llvm-cov-target/release/deps` the binary timestamps predate this build) | `rm -rf target/llvm-cov-target` then `just cov --fresh` |
+| All files 0%, thousands of `FNDA:0` | binary/profraw hash mismatch (triggered by crossing non-fresh runs with manual `cargo llvm-cov report`) | re-run `just cov --fresh` with no other cargo commands interleaved |
+| Gate fails but not a single per-file detail is printed | the gap is regions and lcov carries no region data, so `findFilesBelowFullCoverage` naturally prints nothing | see "Locating region gaps" below |
+| lcov details all green line by line yet the gate still reports `lines 382/383` | `DA:` is written **merged by source line** (union over instantiations), while the `LF/LH/BRF/BRH` the gate reads are summed from llvm-cov's per-function-instantiation-group statistics with `max` taken inside each group — two instantiations each covering half gives `max(1/2,1/2)=1/2` and reports missing. **Parsing lcov will never find it** (the `DA` count is naturally smaller than `LF`; this holds for every file in the repo and is not an anomaly signal) | see "Locating by instantiation" below |
 
-### 定位 region 缺口
+### Locating region gaps
 
-MUST 紧跟在一次 `just cov --fresh` 之后（中途不插其他 cargo 命令）跑：
+MUST run immediately after a `just cov --fresh` (with no other cargo commands in between):
 
 ```sh
 cargo +nightly llvm-cov report --release --summary-only | awk 'NR>2 && $3+0>0'
 ```
 
-拿到文件后再 `--show-missing-lines`。三种结果：
+With the file in hand, add `--show-missing-lines`. Three outcomes:
 
-- 无输出且 lines 也缺 → 缺口在 bin 副本（lib+bin 双编译，region 按实例化计数）：补 e2e 走真实 binary，或让分支只存在于一处
-- 无输出而 lines 100% → 缺的是 `?`/短路的纯 region，重点怀疑新加的 `?`
-- 查完回到 `--fresh`
+- No output and lines also missing → the gap is in the bin copy (lib+bin double compilation; regions counted per instantiation): add an e2e that drives the real binary, or make the branch exist in only one place
+- No output and lines at 100% → the missing part is a pure `?`/short-circuit region; prime suspect is a newly added `?`
+- When done, return to `--fresh`
 
-### 按实例化定位
+### Locating by instantiation
 
 ```sh
 cargo +nightly llvm-cov report --release --offline --json --output-path <f>
 ```
 
-取 `data[0].functions[]` 里 `filenames` 含目标文件的项：
+Take the entries in `data[0].functions[]` whose `filenames` include the target file:
 
-- **按 crate 副本分组**：按名字里的 `Cs<hash>_` 分组 → 每组内对 `regions[]`（`[行起,列起,行止,列止,count,fileId,…]`）逐行取 `max(count)` → 哪一组为 0 就得让**那份副本**也走到。`frameworks` 至少有三份副本同时被计量：lib test、`pm3` bin、以及**每个 `frameworks/tests/*.rs` e2e 二进制各链一份 lib**（lib 侧缺补单测，bin/e2e 侧缺补 `frameworks/tests/` 用例）
-- **找分支缺口**：逐实例化找 `branches[]` 里 `b[4]==0 || b[5]==0` 的项——同一 `line:col` 出现两条、一条只有 true 一条只有 false，就是它
+- **Group by crate copy**: group by the `Cs<hash>_` in the name → within each group take `max(count)` per line over `regions[]` (`[lineStart,colStart,lineEnd,colEnd,count,fileId,…]`) → whichever group is 0 means **that copy** must also be exercised. `frameworks` has at least three copies counted simultaneously: the lib test, the `pm3` bin, and **each `frameworks/tests/*.rs` e2e binary links its own copy of the lib** (if the lib side is short, add unit tests; if the bin/e2e side is short, add cases under `frameworks/tests/`)
+- **Finding branch gaps**: per instantiation, look in `branches[]` for entries with `b[4]==0 || b[5]==0` — when the same `line:col` appears twice, one carrying only true and the other only false, that's it
 
-## 残留清理
+## Leftover cleanup
 
-- **自动 reap**：`just test` 与 `just cov` 跑前跑后各执行一次 `reap.ts`，收走泄漏的 e2e daemon（连带子孙进程 TERM→KILL、删 fixture 临时目录）。三守卫全中才收：`ppid == 1`（在跑测试的 daemon 父进程是测试进程，不动）+ 二进制在 `<repo>/target/` 下（真机 `~/bin/pm3` 不动）+（config 已消失或含 `pm3-e2e-never-installed`/`pm3-fixture` 指纹）（手工 mktemp 的 home 不动）
-- 只有 `just` 本身被 Ctrl-C 杀掉时才需要手工排查。排查真机状态前先清一遍，否则 `pgrep`/端口结果会误导；子进程自 `process_group(0)` 起不再随测试进程组被连带清理
-- 列残留 MUST 用 `pgrep -x pm3` 再逐个 `ps -o pid=,args= -p <pid>` 核对：`pgrep -f` 会把发起它的 shell 一起匹配进来。泄漏的 e2e daemon 特征是 `ppid=1` + `--config` 指向已不存在的 tempdir（macOS `/var/folders/...`、Linux `/tmp/.tmp*`），真机那份指向 `~/.pm3/config.yaml`，别杀错
-- **nextest 中断残留**：flake 触发取消剩余测试 → `TempDir` 的 Drop 跑不到，`$TMPDIR` 留下 e2e fixture 目录（`config.yaml` + `home/{logs,service,pm3.sock}`）。定位用 `rg -l --hidden 'pm3-e2e-never-installed|pm3-fixture' "$TMPDIR" -g config.yaml`——`rg` 默认跳过隐藏目录而这些正是 `.tmp*`，漏 `--hidden` 会得到假阴性；按 label 指纹而非目录名匹配，才不会误删真机配置
+- **Automatic reap**: `just test` and `just cov` each run `reap.ts` once before and once after, sweeping leaked e2e daemons (TERM→KILL including descendants, deleting fixture tempdirs). It reaps only when all three guards hit: `ppid == 1` (a daemon of a running test has the test process as parent — untouched) + binary under `<repo>/target/` (real-machine `~/bin/pm3` untouched) + (config gone or containing the `pm3-e2e-never-installed`/`pm3-fixture` fingerprint) (manually mktemp'd homes untouched)
+- Manual inspection is only needed when `just` itself is Ctrl-C killed. Clean up before inspecting real-machine state, otherwise `pgrep`/port results will mislead; child processes are no longer cleaned up with the test's process group once `process_group(0)` applies
+- Listing leftovers MUST use `pgrep -x pm3` and then verify each with `ps -o pid=,args= -p <pid>`: `pgrep -f` also matches the shell that launched it. The signature of a leaked e2e daemon is `ppid=1` + `--config` pointing to a no-longer-existing tempdir (macOS `/var/folders/...`, Linux `/tmp/.tmp*`); the real-machine one points to `~/.pm3/config.yaml` — don't kill the wrong one
+- **nextest-interrupt leftovers**: a flake cancels the remaining tests → `TempDir`'s Drop never runs, leaving e2e fixture directories under `$TMPDIR` (`config.yaml` + `home/{logs,service,pm3.sock}`). Locate them with `rg -l --hidden 'pm3-e2e-never-installed|pm3-fixture' "$TMPDIR" -g config.yaml` — `rg` skips hidden directories by default and these are exactly `.tmp*`, so omitting `--hidden` yields false negatives; match by the label fingerprint rather than the directory name so you don't delete the real-machine config

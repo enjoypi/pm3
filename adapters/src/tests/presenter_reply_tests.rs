@@ -159,6 +159,78 @@ fn a_stop_all_reply_with_nothing_to_stop_says_so() {
 }
 
 #[test]
+fn batch_replies_list_the_apps_they_touched() {
+    let cases = [
+        (
+            SupervisionReply::RestartedAll {
+                names: vec!["web".to_string(), "db".to_string()],
+            },
+            "restarted web, db",
+        ),
+        (
+            SupervisionReply::DeletedAll {
+                names: vec!["web".to_string()],
+            },
+            "deleted web",
+        ),
+        (
+            SupervisionReply::ResetAll {
+                names: vec!["db".to_string()],
+            },
+            "reset db",
+        ),
+    ];
+    for (reply, expected) in cases {
+        assert_eq!(render_reply(&reply), expected);
+    }
+}
+
+#[test]
+fn batch_replies_with_nothing_to_do_say_so() {
+    let cases = [
+        (
+            SupervisionReply::RestartedAll { names: Vec::new() },
+            "no apps to restart",
+        ),
+        (
+            SupervisionReply::DeletedAll { names: Vec::new() },
+            "no apps to delete",
+        ),
+        (
+            SupervisionReply::ResetAll { names: Vec::new() },
+            "no apps to reset",
+        ),
+    ];
+    for (reply, expected) in cases {
+        assert_eq!(render_reply(&reply), expected);
+    }
+}
+
+#[test]
+fn batch_replies_have_no_single_affected_service() {
+    let reply = SupervisionReply::DeletedAll {
+        names: vec!["web".to_string()],
+    };
+    assert_eq!(affected_service(&reply), None);
+}
+
+#[test]
+fn a_delete_all_reply_exposes_the_deleted_names() {
+    let reply = SupervisionReply::DeletedAll {
+        names: vec!["web".to_string(), "db".to_string()],
+    };
+    assert_eq!(deleted_names(&reply), ["web", "db"]);
+}
+
+#[test]
+fn other_replies_expose_no_deleted_names() {
+    let reply = SupervisionReply::Deleted {
+        name: "web".to_string(),
+    };
+    assert!(deleted_names(&reply).is_empty());
+}
+
+#[test]
 fn a_scheduled_registration_reads_as_scheduled() {
     let outcome = StartOutcome {
         pm_id: 3,

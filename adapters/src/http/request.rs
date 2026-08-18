@@ -48,7 +48,7 @@ pub fn app_action_path(selector: &str, action: &str) -> Result<String, SpecError
 
 fn addressable(selector: &str) -> Result<&str, SpecError> {
     match AppSelector::parse(selector) {
-        AppSelector::Id(_) => Ok(selector),
+        AppSelector::All | AppSelector::Id(_) => Ok(selector),
         AppSelector::Name(name) => validate_app_name(&name).map(|()| selector),
     }
 }

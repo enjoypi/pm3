@@ -46,6 +46,12 @@ fn validate_rejects_a_name_that_would_escape_the_service_directory() {
 }
 
 #[test]
+fn validate_rejects_the_reserved_every_app_selector() {
+    let err = validate_app_name("all").unwrap_err();
+    assert_eq!(err, SpecError::ReservedName("all".to_string()));
+}
+
+#[test]
 fn validate_rejects_a_hidden_name() {
     let err = validate_app_name(".hidden").unwrap_err();
     assert_eq!(err, SpecError::DottedName(".hidden".to_string()));
@@ -263,6 +269,7 @@ fn every_spec_error_renders_a_message() {
         SpecError::EmptyName,
         SpecError::NumericName("3".to_string()),
         SpecError::DottedName(".api".to_string()),
+        SpecError::ReservedName("all".to_string()),
         SpecError::UnsafeName {
             name: "my app".to_string(),
             character: ' ',

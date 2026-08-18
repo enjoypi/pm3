@@ -100,7 +100,10 @@ fn patch_label(home: &common::Home, label: &str) {
         &format!("label: \"{SERVICE_LABEL}\""),
         &format!("label: \"{label}\""),
     );
-    assert!(patched.contains(label), "the config carries the unique label");
+    assert!(
+        patched.contains(label),
+        "the config carries the unique label"
+    );
     std::fs::write(&home.config, patched).expect("patch the config");
 }
 

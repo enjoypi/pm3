@@ -31,6 +31,9 @@ pub struct ReplyDto {
     pub unsaved: Option<String>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deleted: Vec<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub views: Vec<ProcessViewDto>,
 }
 

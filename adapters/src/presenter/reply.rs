@@ -35,8 +35,19 @@ pub fn affected_service(reply: &SupervisionReply) -> Option<String> {
         }
         | Dr::Listed(_)
         | Dr::Described(_)
-        | Dr::StoppedAll { names: _ } => None,
+        | Dr::StoppedAll { names: _ }
+        | Dr::RestartedAll { names: _ }
+        | Dr::DeletedAll { names: _ }
+        | Dr::ResetAll { names: _ } => None,
     }
+}
+
+#[must_use]
+pub fn deleted_names(reply: &SupervisionReply) -> Vec<String> {
+    let SupervisionReply::DeletedAll { names } = reply else {
+        return Vec::new();
+    };
+    names.clone()
 }
 
 #[must_use]
@@ -102,7 +113,18 @@ pub fn render_reply(reply: &SupervisionReply) -> String {
         SupervisionReply::Reset { name } => format!("reset {name}"),
         SupervisionReply::Signalled { name, signal } => format!("sent {signal} to {name}"),
         SupervisionReply::StoppedAll { names } => render_stopped_all(names),
+        SupervisionReply::RestartedAll { names } => render_batch("restarted", "restart", names),
+        SupervisionReply::DeletedAll { names } => render_batch("deleted", "delete", names),
+        SupervisionReply::ResetAll { names } => render_batch("reset", "reset", names),
     }
+}
+
+#[must_use]
+pub fn render_batch(done: &str, base: &str, names: &[String]) -> String {
+    if names.is_empty() {
+        return format!("no apps to {base}");
+    }
+    format!("{done} {}", names.join(", "))
 }
 
 #[must_use]

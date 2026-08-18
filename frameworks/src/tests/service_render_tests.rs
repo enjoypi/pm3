@@ -6,7 +6,7 @@ async fn a_status_query_reports_a_service_that_was_never_installed() {
     let home = home_of(&fixture);
     let report = dispatch_service(
         &fixture.config_path,
-        None,
+        &ServiceAction::Status,
         &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
@@ -21,7 +21,7 @@ async fn a_status_query_that_cannot_reach_the_manager_is_reported() {
     install_unit(&fixture, UnitKind::Launchd);
     let err = dispatch_service(
         &fixture.config_path,
-        None,
+        &ServiceAction::Status,
         &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
@@ -36,7 +36,7 @@ async fn a_broken_config_stops_a_service_command() {
     let home = home_of(&fixture);
     let err = dispatch_service(
         "/nonexistent/pm3-service.yaml",
-        None,
+        &ServiceAction::Status,
         &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
@@ -52,13 +52,13 @@ async fn a_broken_config_stops_a_service_command() {
 async fn an_install_writes_the_unit_under_the_given_home() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
-    let command = ServiceCommands::Install {
+    let command = ServiceAction::Install {
         dry_run: false,
         force: false,
     };
     let report = dispatch_service(
         &fixture.config_path,
-        Some(&command),
+        &command,
         &context(&fixture, UnitKind::Systemd, &home),
     )
     .await
@@ -158,13 +158,13 @@ async fn a_second_install_of_the_same_config_is_accepted() {
 async fn a_dry_run_install_writes_nothing() {
     let fixture = fixture(FALSE_PROGRAM);
     let home = home_of(&fixture);
-    let command = ServiceCommands::Install {
+    let command = ServiceAction::Install {
         dry_run: true,
         force: false,
     };
     let report = dispatch_service(
         &fixture.config_path,
-        Some(&command),
+        &command,
         &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
@@ -180,13 +180,13 @@ async fn a_dry_run_install_writes_nothing() {
 async fn an_install_that_the_manager_refuses_is_reported() {
     let fixture = fixture(FALSE_PROGRAM);
     let home = home_of(&fixture);
-    let command = ServiceCommands::Install {
+    let command = ServiceAction::Install {
         dry_run: false,
         force: false,
     };
     let err = dispatch_service(
         &fixture.config_path,
-        Some(&command),
+        &command,
         &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
@@ -219,11 +219,11 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
         uid: None,
         binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
     };
-    let command = ServiceCommands::Install {
+    let command = ServiceAction::Install {
         dry_run: false,
         force: false,
     };
-    let err = dispatch_service(&config.to_string_lossy(), Some(&command), &context)
+    let err = dispatch_service(&config.to_string_lossy(), &command, &context)
         .await
         .unwrap_err()
         .to_string();
@@ -235,10 +235,10 @@ async fn an_uninstall_removes_the_unit_it_installed() {
     let fixture = fixture(TRUE_PROGRAM);
     let home = home_of(&fixture);
     install_unit(&fixture, UnitKind::Launchd);
-    let command = ServiceCommands::Uninstall { dry_run: false };
+    let command = ServiceAction::Uninstall { dry_run: false };
     let report = dispatch_service(
         &fixture.config_path,
-        Some(&command),
+        &command,
         &context(&fixture, UnitKind::Launchd, &home),
     )
     .await
@@ -256,13 +256,13 @@ async fn an_install_renders_the_network_wait_into_the_unit() {
     let yaml = crate::test_support::config_yaml(&fixture.dir.path().join("home").to_string_lossy())
         .replace("wait_for_network: false", "wait_for_network: true");
     std::fs::write(&fixture.config_path, yaml).expect("rewrite the config");
-    let command = ServiceCommands::Install {
+    let command = ServiceAction::Install {
         dry_run: true,
         force: false,
     };
     let report = dispatch_service(
         &fixture.config_path,
-        Some(&command),
+        &command,
         &context(&fixture, UnitKind::Systemd, &home),
     )
     .await

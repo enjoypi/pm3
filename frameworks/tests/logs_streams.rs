@@ -34,7 +34,7 @@ fn start_chatty(home: &common::Home) {
 fn logs_with_err_reads_the_stderr_stream() {
     let home = home();
     start_chatty(&home);
-    let shown = stdout_of(&pm3(&home, &["logs", "web", "--err"]));
+    let shown = stdout_of(&pm3(&home, &["logs", "web", "--err", "--nostream"]));
     assert!(shown.contains("web-err"), "got: {shown}");
     assert!(!shown.contains("web-out"), "got: {shown}");
     shutdown_daemon(&home);
@@ -44,7 +44,7 @@ fn logs_with_err_reads_the_stderr_stream() {
 fn logs_without_a_name_aggregates_every_declared_service() {
     let home = home();
     start_chatty(&home);
-    let shown = stdout_of(&pm3(&home, &["logs"]));
+    let shown = stdout_of(&pm3(&home, &["logs", "--nostream"]));
     assert!(shown.contains("api | api-out"), "got: {shown}");
     assert!(shown.contains("web | web-out"), "got: {shown}");
     shutdown_daemon(&home);
@@ -54,7 +54,7 @@ fn logs_without_a_name_aggregates_every_declared_service() {
 fn logs_with_several_names_prefixes_each_service() {
     let home = home();
     start_chatty(&home);
-    let shown = stdout_of(&pm3(&home, &["logs", "web", "api"]));
+    let shown = stdout_of(&pm3(&home, &["logs", "web", "api", "--nostream"]));
     assert!(shown.contains("web | web-out"), "got: {shown}");
     assert!(shown.contains("api | api-out"), "got: {shown}");
     shutdown_daemon(&home);
@@ -64,7 +64,7 @@ fn logs_with_several_names_prefixes_each_service() {
 fn logs_with_all_merges_both_streams() {
     let home = home();
     start_chatty(&home);
-    let shown = stdout_of(&pm3(&home, &["logs", "web", "--all"]));
+    let shown = stdout_of(&pm3(&home, &["logs", "web", "--all", "--nostream"]));
     assert!(shown.contains("web [out] | web-out"), "got: {shown}");
     assert!(shown.contains("web [err] | web-err"), "got: {shown}");
     shutdown_daemon(&home);

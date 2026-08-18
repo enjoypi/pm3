@@ -6,250 +6,252 @@
 
 @~/.claude/rust-p1.md
 
-pm3：极简版 pm2（带严格沙盒隔离）。单二进制，CLI 与常驻 daemon 合一，经 Unix socket（Windows 为命名管道）通信。
+pm3: a minimal pm2 (with strict sandbox isolation). Single binary: CLI and long-running daemon in one, talking over a Unix socket (named pipe on Windows).
 
-文档分工：`README.md` 只给用户讲怎么用；`docs/requirements.md` 讲要什么行为（给人看，不含技术细节）；`docs/windows.md` 是 Windows 能力矩阵；**CLAUDE.md 只记踩过的坑——跨层的记在本文件，单层实现细节下沉到各 crate 的 `CLAUDE.md`。** 新增内容前先按这个分工挑文件，别往 README 或需求里塞实现细节。
+Documentation split (all project documentation is English-only): `docs/requirements.md` describes the required behavior (for humans, no technical details); `docs/windows.md` is the Windows capability matrix; **CLAUDE.md only records pitfalls — cross-layer ones live in this file, single-layer implementation details sink into each crate's own `CLAUDE.md`.** Pick the file by this split before adding content; never stuff implementation details into the requirements.
 
-## 项目速览
+## Project map
 
-| crate | 职责 | 层内坑 |
+| crate | responsibility | in-layer pitfalls |
 |---|---|---|
-| `entities` | 业务对象与状态机：`AppSpec`/`ProcessStatus`/`RestartPolicy`/`DepGraph`/`SandboxPolicy` | `entities/CLAUDE.md` |
-| `usecases` | Interactor 与 Port trait：`supervisor`（daemon 编排总入口）/`start`/`stop`/`restart`/`delete`/`resurrect`/`supervise`/`query` | `usecases/CLAUDE.md` |
-| `adapters` | 格式转换与外部实现：config/http/persistence/presenter/process/sandbox/schedule/service/unit | `adapters/CLAUDE.md` |
-| `frameworks` | 组装与入口：`main.rs`/`cli.rs`/`daemon/`/`client/`/`service.rs`/`signal.rs` | `frameworks/CLAUDE.md` |
-| `arch_tests` | 依赖方向强制 | `arch_tests/CLAUDE.md` |
-| `dev_scripts` | Bun/TS 驱动 `just` 的复杂 recipe；覆盖率门禁与残留 reap | `dev_scripts/CLAUDE.md` |
+| `entities` | business objects and state machines: `AppSpec`/`ProcessStatus`/`RestartPolicy`/`DepGraph`/`SandboxPolicy` | `entities/CLAUDE.md` |
+| `usecases` | interactors and port traits: `supervisor` (the daemon's orchestration entry point)/`start`/`stop`/`restart`/`delete`/`resurrect`/`supervise`/`query` | `usecases/CLAUDE.md` |
+| `adapters` | format conversion and external implementations: config/http/persistence/presenter/process/sandbox/schedule/service/unit | `adapters/CLAUDE.md` |
+| `frameworks` | assembly and entry points: `main.rs`/`cli.rs`/`daemon/`/`client/`/`service.rs`/`signal.rs` | `frameworks/CLAUDE.md` |
+| `arch_tests` | dependency-direction enforcement | `arch_tests/CLAUDE.md` |
+| `dev_scripts` | Bun/TS driving the complex `just` recipes; coverage gate and leftover reaping | `dev_scripts/CLAUDE.md` |
 
-全部 recipe 见 @justfile，四个要点：`just cov` 是**日常验收**（四指标 100% + lcov 真值 plate + 生产文件完整性自检，`--fresh` 清 workspace 重算）；`just lint` 是 clippy 四组全开、任何 warning 即失败；`just fmt` 必须 nightly（只有它能重排 import）；`just install` 才是装真机的唯一入口。另有 `check-windows`（交叉编译检查，只编译不链接）、`monitor`、`bench`、`typecheck`、`test-scripts`。
+All recipes are in @justfile; four key points: `just cov` is the **daily gate** (four metrics at 100% + lcov ground-truth plate + production-file completeness self-check, `--fresh` wipes the workspace and recomputes); `just lint` is clippy with all four lint groups on, any warning fails; `just fmt` must be nightly (only nightly reorders imports); `just install` is the only entry point for real-machine installs. Also `check-windows` (cross-compile check, compiles but never links), `monitor`, `bench`, `typecheck`, `test-scripts`.
 
-## 命令与工作流
+## Commands and workflow
 
-- 优先用 @justfile，禁止随手 `cargo`；例外：`just` 的 recipe 都是 workspace 级，单 crate 迭代用 `cargo <cmd> -p <crate> --release --offline`
-- 改过 `Cargo.toml` 后 `--locked` 会直接失败，改用 `--offline`
-- Bash 命令里出现字面量 `.env` 会被 hook 整条拦掉（报 `禁止读写 .env 文件`），而本仓到处是 `spec.env` / `entry.env` / `<name>.env` → 查这些内容用 Read / Grep 工具，别用 `rg`/`grep`/`sed` 的 Bash 命令；真机 `cfg_dir` 下的凭据文件连 Read 也被权限设置拒掉 → 验收「`.env` 生效了没」只能看日志与服务状态，别把「读一眼那个文件」写进步骤
-- 手工验证要另建 pm3 home：scratchpad 路径太长，unix socket 会撞 macOS `SUN_LEN`（>104 字节，报 `path must be shorter than SUN_LEN`）→ 用 `mktemp -d`
-- 改 `adapters/` 的目录结构、重命名类型、或把常量下沉进 `config.yaml` 后 MUST 跑 `just test-scripts`（原因见 `dev_scripts/CLAUDE.md`）
+- Prefer @justfile; never casually run `cargo`; exception: `just` recipes are workspace-level, single-crate iteration uses `cargo <cmd> -p <crate> --release --offline`
+- After editing `Cargo.toml`, `--locked` fails outright; use `--offline` instead
+- A literal `.env` in a Bash command gets the whole command blocked by a hook (`禁止读写 .env 文件`), and this repo is full of `spec.env` / `entry.env` / `<name>.env` → use the Read / Grep tools for those, not `rg`/`grep`/`sed` in Bash; credential files under the real machine's `cfg_dir` are refused even by Read (permission settings) → verifying "did the `.env` take effect" can only go through logs and service status; never write "read that file" into a verification step
+- Manual verification needs a separate pm3 home: the scratchpad path is too long, unix sockets hit macOS `SUN_LEN` (>104 bytes, `path must be shorter than SUN_LEN`) → use `mktemp -d`
+- After changing `adapters/`'s directory layout, renaming types, or sinking constants into `config.yaml`, MUST run `just test-scripts` (reason in `dev_scripts/CLAUDE.md`)
 
-### 装真机与换代
+### Real-machine install and handover
 
-- 固定走 `just install`（构建后调 `pm3 install`），MUST NOT 手工搬二进制（换代顺序有硬约束，见下）。`pm3 install [SOURCE]` 自己走完：备份 → `.incoming` + rename 换二进制 → `service uninstall` → `kill` → `service install --force` → 等接管 → before/after 对比（lost 非空即非零退出）。换代步骤在**进程内**完成，不 spawn 新二进制：rename 覆写正在执行的文件在 macOS/Linux 合法（ETXTBSY 只在 write-open；Windows 不能覆写运行中的 exe，两步 rename 见「Windows」节），且 `ServiceContext.binary` 显式注入 destination——rename 后 `current_exe()` 在 Linux 会带 ` (deleted)` 后缀，流程内 MUST NOT 再读它
-- 「等 daemon 退净」不靠 `pgrep -f "<bin> daemon"`：`kill_daemon` 内置 `wait_until_released(socket)`（daemon 收尾先删 pid 再删 socket，socket 消失即清理完毕），比 pgrep 准且少一个外部程序
-- before/after 服务对比直读 `dump.yaml`（`dump_snapshot`，只取 name+pid，不 resolve spec），MUST NOT 调 `pm3 list`——那会经 `ensure_daemon_running` 拉起非托管 daemon 抢 socket；after 快照由「接管等待」收敛（Running + 管理器 pid == `pm3.pid` + UDS 健康三者同时成立，因为 pid 文件先于 resurrect 写入，单靠 pid 对齐不算接管完成）
-- 排查真机先从 `~/.pm3/config.yaml` 读 `cfg_dir`：它与 `pm3.home` 各自独立配置（本机 `home=~/.pm3`、`cfg_dir=~/.config/pm3`、二进制在 `~/bin/pm3`），按 `<home>/service` 猜必定扑空
-- `pm3 service install` 用 `current_exe()` 渲染 unit → MUST NOT 在仓库目录执行（会把 plist 钉在 `target/release/pm3`，一次 `cargo clean` 就起不来）；先把二进制 `cp` 到最终位置，再用**那个**二进制执行 install
-- **症状**：`launchctl list` 的 PID 列是 `-`，job 已载入但 launchd 未监管、KeepAlive 形同虚设
-  **原因**：任何 pm3 CLI 命令都会经 `ensure_daemon_running` 自动拉起一个**非 launchd 托管**的 daemon；它扛不住 `launchctl unload`，且会抢赢 socket 竞争让 launchd 那份直接退出
-  **修法**：换代顺序 MUST 是 `service uninstall` → `pm3 kill` → 等 daemon 退净 → `service install --force`（`pm3 install` 内建这一整套）；install 后 MUST 等「launchd 报的 pid == `pm3.pid` 内容」再跑任何 CLI 命令，否则又会拉起竞争者。已处于未监管态时先 `pm3 kill` 停掉自启实例，再 `launchctl kickstart gui/$(id -u)/<label>` 交回 launchd（`pm3 install` 在 launchd 超时后自动做一次 kickstart 重试）
-- unit MUST 导出安装时的 `PM3_*` 环境（`UnitSpec.pm3_env`，三个渲染器都写，Windows 写进 `.cmd` 包装脚本；值要排序否则 `reconcile` 的逐字节比对每次都判 Stale）：install 拷进 `pm3.home` 的 `config.yaml` 是**未做变量替换**的原文，而 unit 只导出 `HOME`/`PATH` 时，`${PM3_HOME:-~/.pm3}` 在服务管理器起的 daemon 里退回默认值 ⇒ daemon 在 `~/.pm3` 建 socket/pid/dump，而 CLI（shell 里有 `PM3_HOME`）去连 `/srv/pm3/pm3.sock` ⇒ 连不上就经 `ensure_daemon_running` 再拉起一个**非托管** daemon，正是本节开头那个坑。注意反过来把「替换后的文本」落盘会让 `reconcile` 每次 install 都判 Conflict
-- 换代备份落在 **`<pm3.home>/install-backups/<旧版本号>/`**（`adapters::install::backup_root`，`PM3_INSTALL_BACKUPS` 可覆盖，目的地 `PM3_INSTALL_PATH`；目录名取 `<旧二进制> --version` 的末位 token，查不到即 `unknown`），MUST NOT 放回 `~/.pm3-install-backups`：备份里有旧 `config.yaml`，而 `mkdir` 的权限受 umask 摆布（实测出过 0775）→ 放进 `pm3.home` 才被那层 0700 兜住（备份目录与文件再显式 chmod 0700/0600），且它正好是沙箱的 hidden root ⇒ 被托管的服务连备份都看不见。回滚就是从对应版本目录取 `pm3` 二进制 + unit + config 三件套
-- 手工 `cp` 二进制会撞 `Text file busy`（旧 daemon 还在跑）→ 先 uninstall + `pm3 kill` 再拷。`pkill -f '<path> daemon'` 会匹配到发起它的 shell 自身命令行、把自己一起杀掉（症状：命令 exit 144），列残留的方法见 `dev_scripts/CLAUDE.md`
-- Linux 侧同一套顺序换 `systemctl --user`。`XDG_RUNTIME_DIR` 与 linger 的三个坑（都不需要手工 export，但手工敲 systemctl 排查时要）见 `adapters/CLAUDE.md`「服务管理器」
+- Always go through `just install` (builds, then calls `pm3 install`); MUST NOT move the binary by hand (the handover order has hard constraints, below). `pm3 install [SOURCE]` walks the whole path itself: backup → `.incoming` + rename to swap the binary → `unstartup` → `shutdown` → `startup --force` → wait for takeover → before/after diff (non-empty lost means non-zero exit). The handover steps run **in-process**, no new binary is spawned: renaming over a running file is legal on macOS/Linux (ETXTBSY only on write-open; Windows cannot overwrite a running exe, two-step rename in the "Windows" section), and `ServiceContext.binary` explicitly injects the destination — after the rename, `current_exe()` carries a ` (deleted)` suffix on Linux, so the flow MUST NOT read it again
+- "Wait until the daemon is gone" does not rely on `pgrep -f "<bin> daemon"`: `shutdown_daemon` has `wait_until_released(socket)` built in (the daemon deletes the pid file first, then the socket; the socket's disappearance means cleanup is done) — more accurate than pgrep and one fewer external program
+- The before/after service diff reads `dump.yaml` directly (`dump_snapshot`, name+pid only, no spec resolution); MUST NOT call `pm3 list` — that would go through `ensure_daemon_running` and launch an unmanaged daemon that steals the socket; the after snapshot converges via the "takeover wait" (Running + manager pid == `pm3.pid` + UDS health all hold at once, because the pid file is written before resurrect, so pid alignment alone does not prove takeover)
+- Troubleshooting the real machine starts by reading `cfg_dir` from `~/.pm3/config.yaml`: it and `pm3.home` are configured independently (this machine: `home=~/.pm3`, `cfg_dir=~/.config/pm3`, binary at `~/bin/pm3`); guessing `<home>/service` always misses
+- `pm3 startup` renders the unit from `current_exe()` → MUST NOT run it from the repo directory (it pins the plist to `target/release/pm3`, and one `cargo clean` breaks auto-start); first `cp` the binary to its final location, then run startup with **that** binary
+- **Symptom**: the PID column in `launchctl list` is `-`; the job is loaded but launchd is not supervising it, KeepAlive is dead
+  **Cause**: any pm3 CLI command goes through `ensure_daemon_running` and auto-launches a daemon **not managed by launchd**; it cannot survive `launchctl unload`, and it wins the socket race so the launchd instance exits outright
+  **Fix**: the handover order MUST be `unstartup` → `pm3 shutdown` → wait until the daemon is gone → `startup --force` (`pm3 install` has this whole sequence built in); after startup, MUST wait for "launchd's reported pid == `pm3.pid` contents" before running any CLI command, or another competitor gets launched. If already in the unsupervised state, first `pm3 shutdown` the self-launched instance, then `launchctl kickstart gui/$(id -u)/<label>` hands it back to launchd (`pm3 install` automatically retries with one kickstart after a launchd timeout)
+- The unit MUST export the install-time `PM3_*` environment (`UnitSpec.pm3_env`; all three renderers write it, on Windows into the `.cmd` wrapper script; values must be sorted or `reconcile`'s byte-for-byte comparison judges Stale every time): the `config.yaml` install copies into `pm3.home` is the **unsubstituted** original text, and when the unit only exports `HOME`/`PATH`, `${PM3_HOME:-~/.pm3}` falls back to the default in a daemon started by the service manager ⇒ the daemon builds socket/pid/dump in `~/.pm3` while the CLI (which has `PM3_HOME` in its shell) connects to `/srv/pm3/pm3.sock` ⇒ failing to connect, it launches another **unmanaged** daemon through `ensure_daemon_running` — exactly the pit at the start of this section. Note that persisting the "substituted text" instead makes `reconcile` judge Conflict on every install
+- Handover backups land in **`<pm3.home>/install-backups/<old version>/`** (`adapters::install::backup_root`, overridable via `PM3_INSTALL_BACKUPS`, destination `PM3_INSTALL_PATH`; the directory name is the last token of `<old binary> --version`, `unknown` if unreadable); MUST NOT go back to `~/.pm3-install-backups`: the backup contains the old `config.yaml`, and `mkdir` permissions are at the umask's mercy (0775 observed in the wild) → inside `pm3.home` the 0700 layer catches it (backup dir and files get explicit chmod 0700/0600), and it happens to be a sandbox hidden root ⇒ managed services cannot even see the backups. Rolling back means taking the `pm3` binary + unit + config trio from the matching version directory
+- Manually `cp`-ing the binary hits `Text file busy` (the old daemon is still running) → uninstall + `pm3 shutdown` first, then copy. `pkill -f '<path> daemon'` matches the command line of the shell that launched it and kills that shell too (symptom: command exits 144); how to list leftovers is in `dev_scripts/CLAUDE.md`
+- On Linux the same order works with `systemctl --user`. The three `XDG_RUNTIME_DIR` and linger pits (none needs a manual export, but you need them when running systemctl by hand to troubleshoot) are in `adapters/CLAUDE.md` "Service managers"
 
-### Windows（Task Scheduler + 命名管道）
+### Windows (Task Scheduler + named pipes)
 
-能力矩阵与降级清单见 `docs/windows.md`，这里只记跨层的坑。
+The capability matrix and degradation list are in `docs/windows.md`; only cross-layer pits live here.
 
-- 服务形态是当前用户 OnLogon 任务（免管理员）：unit 是 Task 2.0 XML，落在 `~/.pm3/service/<label>.xml`，经 `schtasks /Create /XML` 注册。**Task Scheduler XML 不支持环境变量** → `HOME`/`PATH`/`PM3_*` 由同目录的 `<label>-daemon.cmd` 包装脚本逐行 `set`（值里 `%` 转义成 `%%`），脚本末尾恒 `exit /b 1` —— 这是 restart 语义的关键：Task Scheduler 只在「失败」时重启（RestartOnFailure，最小间隔 1 分钟），恒报失败 ≈ `always`，代价是 `on-failure` 在 Windows 降级为 `always`
-- **tokio 在 Windows 没有 `UnixListener`**（std 有但只能阻塞，进不了 reactor）→ 传输在 Windows 是命名管道 `\\.\pipe\pm3-<hash>`（`layout::pipe_name_of`，`DefaultHasher(socket 路径 + secret)`；CLI 与 daemon 同二进制，哈希一致即可），而 `pm3.sock` 仍存在但只是**存在性标记文件**：`bind_uds` 建管道后写标记、`clear_runtime_files` 删标记，`wait_until_released` 与「stale socket 自愈」全部照旧走文件。MUST NOT 把标记文件当成真 socket 去 bind
-- **管道名 MUST 混入 `<pm3.home>/pipe.secret`**（`layout::pipe_secret`，缺失即生成、损坏即重建，0600 语义靠 NTFS 用户目录）：Windows 无 `SO_PEERCRED`，peer 准入是 fail-open，「别的用户猜不出管道名、也抢不到注册」是这里唯一的隔离手段。只哈希 socket 路径的话管道名对同机任何用户都可推算 ⇒ 抢注即中间人
-- Windows 上**不能覆写正在运行的 exe**（rename 上去报 AccessDenied，与 ETXTBSY 不同）→ `replace_binary` 先把旧 exe rename 成 `<destination>.retired`（运行中的 exe 可以改名、不能删不能盖），再把 `.incoming` rename 到位
-- `UnitKind::WinSchtasks` 变体、XML/wrapper 渲染器、schtasks 命令构造器 MUST NOT 加 `cfg(windows)`：纯逻辑跨平台编译，单测全在 Linux 跑（与「systemd 渲染器在 macOS 可测」同模式）；`#[cfg]` 只出现在宿主事实采集（uid/HOME/信号/权限位）与传输层。这样 `just cov` 门禁对 Windows 代码天然免疫
-- 信号/强杀的 Windows 对应：`/bin/kill` → `taskkill /PID <pid> /T /F`（/T 杀进程树 ≈ 进程组；TERM 与 KILL 无差别，优雅停机只有 daemon 自己的 CTRL_SHUTDOWN 落盘）；`.process_group(0)` 与 `peer_cred()` 只编译在 unix，socket 准入在 Windows 走 fail-open（与「读不出属主即放行」同设计）
+- The service form is a per-user OnLogon task (no admin needed): the unit is Task 2.0 XML at `~/.pm3/service/<label>.xml`, registered via `schtasks /Create /XML`. **Task Scheduler XML does not support environment variables** → `HOME`/`PATH`/`PM3_*` are set line by line by the sibling `<label>-daemon.cmd` wrapper script (`%` in values is escaped to `%%`), and the script always ends with `exit /b 1` — this is the key to restart semantics: Task Scheduler only restarts on "failure" (RestartOnFailure, minimum interval 1 minute), so always-fail ≈ `always`, at the cost of `on-failure` degrading to `always` on Windows
+- **tokio has no `UnixListener` on Windows** (std has one but it can only block, it cannot join the reactor) → the transport on Windows is a named pipe `\\.\pipe\pm3-<hash>` (`layout::pipe_name_of`, `DefaultHasher(socket path + secret)`; CLI and daemon are the same binary so the hashes agree), while `pm3.sock` still exists but only as an **existence marker file**: `bind_uds` writes the marker after creating the pipe, `clear_runtime_files` deletes it, and `wait_until_released` plus "stale socket self-healing" all keep working on the file. MUST NOT treat the marker file as a real socket to bind
+- **The pipe name MUST mix in `<pm3.home>/pipe.secret`** (`layout::pipe_secret`, generated when missing, rebuilt when corrupt, 0600 semantics via the NTFS user directory): Windows has no `SO_PEERCRED`, peer admission is fail-open, and "other users can neither guess the pipe name nor register it first" is the only isolation here. Hashing only the socket path makes the pipe name computable by any user on the machine ⇒ squatting it is a man-in-the-middle
+- On Windows **you cannot overwrite a running exe** (rename onto it reports AccessDenied, different from ETXTBSY) → `replace_binary` first renames the old exe to `<destination>.retired` (a running exe can be renamed, not deleted, not overwritten), then renames `.incoming` into place
+- The `UnitKind::WinSchtasks` variant, the XML/wrapper renderers, and the schtasks command builders MUST NOT be gated behind `cfg(windows)`: pure logic compiles cross-platform and unit tests all run on Linux (same pattern as "the systemd renderer is testable on macOS"); `#[cfg]` only appears in host-fact collection (uid/HOME/signals/permission bits) and the transport layer. This keeps the `just cov` gate naturally immune to Windows code
+- The Windows counterparts of signal/force-kill: `/bin/kill` → `taskkill /PID <pid> /T /F` (/T kills the process tree ≈ process group; TERM and KILL are indistinguishable, the only graceful stop is the daemon's own CTRL_SHUTDOWN persistence); `.process_group(0)` and `peer_cred()` only compile on unix, socket admission on Windows is fail-open (same design as "admit when the owner is unreadable")
 
-### 资源上限（fork bomb 防线）
+### Resource limits (fork-bomb defense)
 
-`RLIMIT_NPROC` / seccomp 要 `libc` + `unsafe`，与 workspace 的 `unsafe_code = "deny"` 冲突 → 防线改由**服务管理器**声明，零 unsafe、零新外部程序，且是内核级的硬限制。两项都只在 unit 文件里，**改配置后 MUST `pm3 service install --force` 重装 unit 才生效**，光 `pm3 kill` + 重启 daemon 没用。
+`RLIMIT_NPROC` / seccomp need `libc` + `unsafe`, which conflicts with the workspace's `unsafe_code = "deny"` → the defense is declared by the **service manager** instead: zero unsafe, zero new external programs, and kernel-level hard limits. Both knobs live only in the unit file, so **after changing the config you MUST `pm3 startup --force` to reinstall the unit** — a bare `pm3 shutdown` + daemon restart does nothing.
 
-- `pm3.service.max_tasks` → systemd `TasksMax=` / launchd `HardResourceLimits.NumberOfProcesses`。**它是 pm3 整体的总量**（daemon + 全部被托管服务共处一个 cgroup / 同一 uid），不是每服务限额 → 调低到「够正常用」的值会在服务数量涨上来时集体 spawn 失败，默认 4096 是按此留的余量。**systemd 数的是 task 不是进程**，JVM/Node 这类多线程服务吃得比看起来多
-- `pm3.service.cpu_quota_percent` 只渲染进 systemd（`CPUQuota=`，可超 100% 表示多核），**launchd 侧刻意不渲染**：它只有 `RLIMIT_CPU`（累计 CPU 秒数），到点直接杀进程 ⇒ 一个健康的长跑 daemon 必被杀。默认 `0` = 不限制，因为盲目限 CPU 会拖慢正常的计算密集服务；fork bomb 的爆炸半径已由 `max_tasks` 兜住
+- `pm3.service.max_tasks` → systemd `TasksMax=` / launchd `HardResourceLimits.NumberOfProcesses`. **It is the total for all of pm3** (the daemon plus every managed service shares one cgroup / one uid), not a per-service quota → lowering it to "just enough for normal use" makes every spawn fail once the service count grows; the default 4096 leaves that headroom. **systemd counts tasks, not processes** — multi-threaded services like JVM/Node eat far more than they appear to
+- `pm3.service.cpu_quota_percent` renders only into systemd (`CPUQuota=`, may exceed 100% for multiple cores); **launchd deliberately renders nothing**: it only has `RLIMIT_CPU` (cumulative CPU seconds), which kills the process when reached ⇒ a healthy long-running daemon would inevitably be killed. The default `0` means unlimited, because blindly capping CPU slows down legitimately compute-heavy services; the fork-bomb blast radius is already contained by `max_tasks`
 
-## 改动波及清单
+## Change propagation list
 
-改这里就必须同步那里，漏一处即编译失败或运行期对不上。
+Changing here means syncing there; miss one and the build fails or runtime disagrees.
 
-- 给 `Pm3Config` 加字段要同步 6 处：根 `config.yaml`、`adapters/test_support/config_sections.rs`、`adapters/src/test_helpers/config_schema_test_helpers.rs`、`frameworks/test_support/config_fixtures.rs`、`frameworks/tests/common/mod.rs`、校验函数与 `every_error_variant` 表
-- 给 `UnitSpec` 加字段要同步 6 处：`adapters/src/unit/spec.rs` 的结构体、`launchd.rs`/`systemd.rs`/`schtasks.rs` 三个渲染器、`adapters/test_support/unit_specs.rs` 的 `spec_for`、`frameworks/src/service.rs` 的 `build_spec`（唯一生产构造点）；渲染器漏一个不会编译失败，症状是只有那个平台的 unit 少字段而其他平台测试全绿 → 新字段 MUST 在每份渲染器测试里各断言一次（某平台没有对应能力时，就断言「它不出现」）
-- 给 `UnitProgramSet` 加字段要同步 4 处：`adapters/src/unit/command.rs` 的结构体与 `from_config`、`adapters/test_support/unit_specs.rs` 的 `program_set`、`frameworks/src/service.rs` 的 `ServiceContext` 与 `open_service_session`、`frameworks/src/tests/service_tests.rs` 的两处字面量；宿主派生值（uid、`XDG_RUNTIME_DIR`）经 `ServiceContext` 注入（读 env 纪律见「配置与路径」）
-- 给 `SpecSource` 加字段要同步 4 处：`adapters/src/apps_file/source.rs` 的结构体、`frameworks/src/daemon/service.rs`（唯一生产构造点）、`adapters/test_support/spec_sources.rs`、`frameworks/src/test_helpers/daemon_actor_test_helpers.rs` 与 `frameworks/src/tests/daemon_ports_tests.rs`；宿主派生值（`host_home`）同样只在 `layout.rs` 读 env 后注入
-- 改 `usecases/src/ports/*` 里 trait 方法的签名要同步 3 个实现：`adapters` 侧的真实现（如 `YamlDumpStore`）、`frameworks/src/daemon/ports.rs` 的 `DaemonPorts` 转发、`usecases/src/test_helpers/ports_test_helpers.rs` 的 `FakePorts`；`FakePorts` 新增的 `seed_*` 若没人调用会触发 `dead_code`，且它计入覆盖率门禁
-- 给 `ExitOutcome` 加变体要同步 4 处：`usecases/src/ports/launcher.rs` 的 enum 与 `failed()`、`adapters/src/process/tokio_launcher.rs`（子进程）、`adapters/src/process/watcher.rs`（adopt 来的进程）、`frameworks/src/daemon/timers.rs` 的 `unwrap_or`
-- 给 `ProcessRuntime` 加字段要同步 4 处：`adapters/src/persistence/dto.rs` 的 `RuntimeDto` + `decode_state` + `encode_state`（两处都穷举解构）、`adapters/test_support/process_records.rs`；跨版本可读的字段一律 `#[serde(default)]`
-- 给 `ProcessTable` 加「非记录」字段（如 `boot`）要想清**谁负责填**：`from_records` 一律重建，所以 `resurrect` 里 `*table = ProcessTable::from_records(..)` **之后**才能 `remember_boot`；`save_table` 从表里取值，这样各 usecase 的 `save_table(table, ports)` 调用点一处不用改
-- 给 `SandboxPolicy` 加字段会波及 ~13 处字面量、给 `AppSpec` 加字段会波及 ~9 处（四层的 test_helpers/test_support）→ 加完先 `cargo build --workspace --all-targets` 靠 E0063 逐个补齐，字段插在字面量开头即可（顺序无关）
-- 落盘 MUST 走 `adapters::write_private` / `append_private`（`0o600`，`private_file.rs`）：`tokio::fs::write` 与裸 `OpenOptions` 把权限交给 umask，而 pm3 从不设 umask。`.mode()` 只在**创建**时生效，已存在的旧文件权限不变——真机升级后的旧 `dump.yaml` 仍是 0644，靠 `pm3.home` 的 0700 兜底
-- 新增「含路径的字段」或新增 `${...}` 占位符各只有一个改点（`adapters::fold_entry` 与 `substitute_env_vars` 的保留名分支）——细节见 `adapters/CLAUDE.md`
+- Adding a field to `Pm3Config` syncs 6 places: root `config.yaml`, `adapters/test_support/config_sections.rs`, `adapters/src/test_helpers/config_schema_test_helpers.rs`, `frameworks/test_support/config_fixtures.rs`, `frameworks/tests/common/mod.rs`, the validation function and the `every_error_variant` table
+- Adding a field to `UnitSpec` syncs 6 places: the struct in `adapters/src/unit/spec.rs`, the three renderers `launchd.rs`/`systemd.rs`/`schtasks.rs`, `spec_for` in `adapters/test_support/unit_specs.rs`, `build_spec` in `frameworks/src/service.rs` (the only production construction site); missing one renderer does not fail the build — the symptom is that platform's unit silently lacking the field while every other platform's tests stay green → a new field MUST be asserted once in each renderer's test (when a platform has no such capability, assert "it does not appear")
+- Adding a field to `UnitProgramSet` syncs 4 places: the struct and `from_config` in `adapters/src/unit/command.rs`, `program_set` in `adapters/test_support/unit_specs.rs`, `ServiceContext` and `open_service_session` in `frameworks/src/service.rs`, the two literals in `frameworks/src/tests/service_tests.rs`; host-derived values (uid, `XDG_RUNTIME_DIR`) are injected through `ServiceContext` (env-reading discipline in "Config and paths")
+- Adding a field to `SpecSource` syncs 4 places: the struct in `adapters/src/apps_file/source.rs`, `frameworks/src/daemon/service.rs` (the only production construction site), `adapters/test_support/spec_sources.rs`, `frameworks/src/test_helpers/daemon_actor_test_helpers.rs` and `frameworks/src/tests/daemon_ports_tests.rs`; host-derived values (`host_home`) are likewise read from env only in `layout.rs` and then injected
+- Changing a trait method signature in `usecases/src/ports/*` syncs 3 implementations: the real implementation on the `adapters` side (e.g. `YamlDumpStore`), the `DaemonPorts` forwarding in `frameworks/src/daemon/ports.rs`, the `FakePorts` in `usecases/src/test_helpers/ports_test_helpers.rs`; a newly added `seed_*` on `FakePorts` that nobody calls triggers `dead_code`, and it counts toward the coverage gate
+- Adding a variant to `ExitOutcome` syncs 4 places: the enum and `failed()` in `usecases/src/ports/launcher.rs`, `adapters/src/process/tokio_launcher.rs` (child processes), `adapters/src/process/watcher.rs` (adopted processes), the `unwrap_or` in `frameworks/src/daemon/timers.rs`
+- Adding a field to `ProcessRuntime` syncs 4 places: `RuntimeDto` + `decode_state` + `encode_state` in `adapters/src/persistence/dto.rs` (both destructure exhaustively), `adapters/test_support/process_records.rs`; fields that must stay readable across versions always get `#[serde(default)]`
+- Adding a "non-record" field to `ProcessTable` (like `boot`) means thinking through **who fills it**: `from_records` always rebuilds, so in `resurrect`, `remember_boot` may only run **after** `*table = ProcessTable::from_records(..)`; `save_table` reads the value from the table, so every usecase's `save_table(table, ports)` call site stays untouched
+- Adding a field to `SandboxPolicy` ripples to ~13 literals, adding one to `AppSpec` to ~9 (test_helpers/test_support across all four layers) → after adding, run `cargo build --workspace --all-targets` first and let E0063 point out each site; inserting the field at the start of each literal works (order is irrelevant)
+- Persistence MUST go through `adapters::write_private` / `append_private` (`0o600`, `private_file.rs`): `tokio::fs::write` and bare `OpenOptions` leave permissions to the umask, and pm3 never sets a umask. `.mode()` only takes effect at **creation**; an existing old file keeps its permissions — an upgraded real machine's old `dump.yaml` is still 0644, caught by `pm3.home`'s 0700
+- Adding a "path-bearing field" or a new `${...}` placeholder each has exactly one edit site (`adapters::fold_entry` and the reserved-name branch of `substitute_env_vars`) — details in `adapters/CLAUDE.md`
 
-## 领域不变量
+## Domain invariants
 
-跨层生效的业务规则；单层实现细节见各 crate `CLAUDE.md`。
+Business rules that apply across layers; single-layer implementation details live in each crate's `CLAUDE.md`.
 
-### 进程与信号
+### Processes and signals
 
-- 停止/强杀 MUST 先对进程组发信号（`/bin/kill -<SIG> -- -<pid>`）、失败再退回单 pid：spawn 时 `process_group(0)` 让子进程自成组，只杀单 pid 会漏掉它 fork 的孙进程；adopt 来的进程可能不是组长，故回退分支必须保留
-- 传给 `/bin/kill` 的 pid MUST 先过 `is_signalable`（`pid >= 2 && i32::try_from(pid).is_ok()`）：procps 对超 i32 的值**静默截断**——`4294967295` → `kill(-1)` 杀光当前用户所有进程（user manager/tmux/全部用户级服务一起没），`-4294967295` → `kill(1)`；macOS 的 BSD kill 严格报错，故此坑只在 Linux 炸。上一条的「组信号失败即回退单 pid」会把第一步的失败直接放大成第二步的灾难
-- `Stopping` 不是「已停止」：判「pm3 是否还持有进程」用 `ProcessStatus::is_settled()`（仅 Stopped|Errored），用 `!is_running()` 会让重复 `stop` 清空 pid、让 `restart` 再 spawn 一个同名实例
-- SIGTERM 只落盘退出、不停服务，彻底停机只有 `pm3 kill --with-services`
-- daemon 换代（shutdown）MUST NOT 把 `Stopping` 记录改写成 `Stopped`：`persist_for_handover` 只落盘、保留状态与 pid。改写会清掉 identity，让下一代 `resurrect` 的 `!is_settled()` 筛选整条跳过它 —— 既不 evict 也不监控，drain 未完的进程永久残留，随后一次 `start` 就起出第二份实例。对应地 `resurrect` 对 `Stopping` 记录走 `Verdict::Settle`：先 `evict` 掉幸存者再记 `Stopped`（把上一代没做完的 stop 做完），MUST NOT 让它走 `Adopt` —— 那会把运维明确停掉的服务重新拉回 `Online`
-- 所有强杀入口 MUST 共用一条带守卫的路径（`Supervisor::sweep_pid`：查 `tracked_pids` → `pid_was_recycled` 比对 token → `force_kill`，失败记 warn）。新增清扫入口 MUST 复用 `sweep_pid`，MUST NOT 在 `frameworks` 层自己调 `ports.force_kill`——裸发信号不校验 token，pid 复用后会打掉无关进程组（Linux 上尤其致命）
-- 「延迟重启」在途期间 MUST 可被 `stop`/`delete`/`stop_all` 取消，否则 `restart_delay_ms` 窗口内被停掉的服务会自行复活
-- generation 守卫的两条铁律（`on_force_kill` 有 token 时让路、`delete` MUST NOT 清 generation）与 `stop_all` 的编排纪律见 `usecases/CLAUDE.md`「停止与强杀」——这些坑的共同症状都是「服务停了又自己回来」或「强杀打到复用 pid」
-- 子进程环境默认为空（`tokio_launcher` 有 `env_clear()`），所以 spawn 前必须已解析出绝对路径
+- Stop/force-kill MUST signal the process group first (`/bin/kill -<SIG> -- -<pid>`), falling back to the single pid on failure: `process_group(0)` at spawn makes the child its own group leader, and killing only the single pid leaks grandchildren it forked; an adopted process may not be a group leader, so the fallback branch must stay
+- A pid passed to `/bin/kill` MUST first pass `is_signalable` (`pid >= 2 && i32::try_from(pid).is_ok()`): procps **silently truncates** values beyond i32 — `4294967295` → `kill(-1)` kills every process of the current user (user manager/tmux/all user-level services gone together), `-4294967295` → `kill(1)`; macOS's BSD kill errors strictly, so this pit only blows up on Linux. The previous rule's "fall back to the single pid when the group signal fails" amplifies step one's failure straight into step two's disaster
+- `Stopping` is not "stopped": deciding "does pm3 still own this process" uses `ProcessStatus::is_settled()` (only Stopped|Errored); using `!is_running()` makes a repeated `stop` clear the pid and lets `restart` spawn a second instance under the same name
+- SIGTERM only persists and exits; it does not stop services. A full stop is only `pm3 shutdown --with-services`
+- Daemon handover (shutdown) MUST NOT rewrite `Stopping` records to `Stopped`: `persist_for_handover` only persists, keeping status and pid. Rewriting erases the identity, so the next generation's `resurrect` skips the record entirely in its `!is_settled()` filter — neither evicted nor monitored, the mid-drain process stays forever, and a later `start` spawns a second instance. Correspondingly, `resurrect` treats `Stopping` records with `Verdict::Settle`: first `evict` the survivor, then record `Stopped` (finishing the stop the previous generation did not finish); MUST NOT let it take `Adopt` — that would pull a service the operator explicitly stopped back to `Online`
+- All force-kill entries MUST share one guarded path (`Supervisor::sweep_pid`: check `tracked_pids` → `pid_was_recycled` compares the token → `force_kill`, failures logged as warn). New sweep entries MUST reuse `sweep_pid`; MUST NOT call `ports.force_kill` directly in the `frameworks` layer — an unguarded signal does not verify the token, and after pid recycling it hits an unrelated process group (especially lethal on Linux)
+- A pending "delayed restart" MUST be cancellable by `stop`/`delete`/`stop_all`, or a service stopped inside the `restart_delay_ms` window revives itself
+- The two iron rules of the generation guard (`on_force_kill` yields when a token exists, `delete` MUST NOT clear the generation) and `stop_all`'s orchestration discipline are in `usecases/CLAUDE.md` "Stop and force-kill" — the shared symptom of those pits is "the service comes back after being stopped" or "a force-kill hits a recycled pid"
+- The child process environment is empty by default (`tokio_launcher` has `env_clear()`), so the absolute path must be resolved before spawn
 
-### 身份指纹与接管
+### Identity fingerprints and reclaiming
 
-- 指纹三要素记进 `dump.yaml`：身份令牌（`ps -o lstart=`）+ 启动参数摘要 + 二进制 sha256；daemon 重启后逐服务比对，全同则 `adopt` 已存活进程并轮询监控，任一不同则先 `evict` 旧幸存进程再重启
-- 指纹 MUST NOT 含任何宿主环境派生值：`SandboxPolicy` 分 `writable_roots`（运维声明，进指纹）与 `derived_roots`（pm3 从 cwd/logs_dir/`$TMPDIR` 推导，不进指纹），沙箱授予 `granted_roots()` 并集。**两者是相加关系**：声明 `writable_roots` MUST NOT 清空 `derived_roots`，否则 `--writable-dir /srv/data` 会把服务自己的 cwd 踢出沙箱，进程一写工作目录就 EACCES 并进重启熔断；要授予「什么都不可写」用 `mode: read-only`，不要用空列表；`render_identity(&AppSpec)` 渲染声明而非包装后的 argv。踩过的坑：launchd 起的 daemon 有 `TMPDIR`、shell 起的没有 → 每次换代都误判 respawn
-- 指纹 MUST 在 `start_one` spawn 成功那一刻采集：shutdown 时算会把「磁盘上的新哈希」当成旧进程的，重启后误判未变更 → 接管到跑着旧二进制的进程
-- 防 pid 复用的身份令牌固定用 `LC_ALL=C ps -ww -o lstart= -p <pid>`（管道下不截断、`LC_ALL=C` 消 locale 漂移）；MUST NOT 换 `etime`（时长需容差）或加 `command=`（`spawn()` 返回时可能尚未 exec，拿到的是旧 argv）
-- 存活探测 MUST 是三态 `Liveness::{Alive(token), Gone, Unreadable}`，MUST NOT 退回 `Option<String>`：把「ps 超时/缺失/非零退出」和「进程真的没了」混成 `None`，会让 `watcher` 把仍在跑的进程当已退出而重启（原进程脱离 `live` 集合成孤儿），并让 `resurrect` 跳过 `evict` 直接 respawn。`ps -p <pid>` 退出码 1 才是 `Gone`，其余非零退出是 `Unreadable`。`Unreadable` 时 `watcher` 继续轮询、`resurrect` 走 `respawn(stale: Some(pid))` 先杀后起（fail-safe）
-- 指纹的输入 MUST 是运维声明的原文，MUST NOT 是 `canonicalize` 的结果：`materialise_workspace` 把解析后的路径**追加**进 `derived_roots`（不进指纹），`writable_roots` 原样保留。否则声明的 root 在首次启动时还不存在（canonicalize 失败回退字面量）、之后被创建或换成符号链接，digest 就变了 ⇒ 一个配置分毫未改、正常运行的服务每次换代都被 evict 后重启。沙箱靠 `granted_roots()` 同时授予声明值与真实路径，两者都授予是安全的
-- 「子进程退出」MUST 是三态 `ExitOutcome::{Code(i32), Signalled, Unobserved}`，MUST NOT 退回 `Option<i32>`（与 `Liveness` 同一类教训）：`None` 会把「被信号打死」（真失败）与「adopt 来的进程读不到退出码」（未知）混成一个值，让 `settled_status` 把干净退出的被接管服务一律记成 `Errored` —— 同一个服务不换代时显示 `stopped`、跨过一次换代就显示 `errored`，靠状态列告警的监控当场误报。判失败用 `failed()`，`Unobserved` 不算失败
-- 运行期监控 MUST 把 dump 里的身份令牌传给 `wait_for_exit`：只判「pid 还在不在」会在 pid 复用后永远等下去，随后的 `stop` 会对复用 pid 发进程组信号误杀整组
-- 运行镜像 MUST 装 `procps`（`/bin/ps`）：缺了它每次 daemon 重启所有服务都被判「探测失败」而驱逐重启
-- `resurrect` 判定 respawn 且旧进程仍存活（token 已匹配）时 MUST 先 `terminate` 掉它，否则孤儿与新实例重复运行（症状：`just cov` 跑完残留 `pm3 __sleep`）
-- `evict_pid` MUST 在发信号**之前**再探一次 `identity(pid)` 并比对 token：verdict 用的是 `judge_all` 开头那一批 `identities()`，而各服务的驱逐（每个最多等满 `kill_timeout_ms`）会让排在后面的服务 token 严重过期 ⇒ 首次 `terminate(-pid)` 就可能打掉复用 pid 的无辜进程组（`wait_gone` 之后那道 `pid_was_recycled` 只兜得住后续 `force_kill`）。全部驱逐经 `evict_all` 用 `join_all` **并行**执行（原来逐服务串行，缺 `procps` 时 20 个服务要阻塞 ~32 秒，期间所有 CLI 命令挂起到超时）
-- **跨过一次主机重启，dump 里所有 pid 一律作废**（`PidTrust`）：boot 标识取 **pid 1 的 `lstart`**（`ports.identity(1)`，systemd/launchd 都在 boot 时启动），存 `dump.yaml` 顶层 `boot:`。这样不必引入新 Port、新外部程序或 `libc`——`ps` 本就是硬依赖。`PidTrust::Lost` 时 `judge` 直接 `Change::Rebooted` 且 `stale: None`，`surviving_pid` 提前返回 `None` ⇒ 全程不对陌生 pid 发信号。**两个 fail-safe 方向 MUST 保住**：dump 无 `boot`（旧版升级上来）或本机读不出 pid 1 都判 `Kept`，退回原有的 token 校验，MUST NOT 反过来「未知就作废」（那会让每次升级都 evict 全部服务）
+- Three fingerprint elements go into `dump.yaml`: the identity token (`ps -o lstart=`) + the launch-argument digest + the binary's sha256; after a daemon restart each service is compared, and an exact match `adopt`s the surviving process with polling supervision, while any difference first `evict`s the old survivor and then restarts
+- Fingerprints MUST NOT contain any host-environment-derived value: `SandboxPolicy` splits `writable_roots` (operator-declared, fingerprinted) from `derived_roots` (pm3-derived from cwd/logs_dir/`$TMPDIR`, not fingerprinted); the sandbox grants the union `granted_roots()`. **The two are additive**: declaring `writable_roots` MUST NOT clear `derived_roots`, or `--writable-dir /srv/data` kicks the service's own cwd out of the sandbox and the process gets EACCES on its first write to the working directory, landing in the restart breaker; to grant "nothing writable" use `mode: read-only`, not an empty list; `render_identity(&AppSpec)` renders the declaration, not the wrapped argv. A pit already hit: a launchd-started daemon has `TMPDIR`, a shell-started one does not → every handover misjudged as respawn
+- Fingerprints MUST be captured the moment `start_one` spawns successfully: computing them at shutdown mistakes "the new hash on disk" for the old process's, so after a restart the change looks absent → the daemon adopts a process running the old binary
+- The anti-pid-recycling identity token is fixed as `LC_ALL=C ps -ww -o lstart= -p <pid>` (`-ww` avoids truncation under pipes, `LC_ALL=C` kills locale drift); MUST NOT switch to `etime` (durations need tolerance) or add `command=` (`spawn()` may return before exec, yielding the old argv)
+- Liveness probing MUST be the three-state `Liveness::{Alive(token), Gone, Unreadable}`, MUST NOT degrade to `Option<String>`: merging "ps timed out / missing / non-zero exit" with "the process is really gone" into one `None` makes `watcher` restart a process that is still running (the original leaves the `live` set as an orphan), and makes `resurrect` skip `evict` and respawn directly. Exit code 1 from `ps -p <pid>` is `Gone`; every other non-zero exit is `Unreadable`. On `Unreadable`, `watcher` keeps polling and `resurrect` takes `respawn(stale: Some(pid))` — kill first, then start (fail-safe)
+- The fingerprint's input MUST be the operator's declared text, MUST NOT be the result of `canonicalize`: `materialise_workspace` **appends** resolved paths to `derived_roots` (not fingerprinted) and keeps `writable_roots` as declared. Otherwise a declared root does not exist at first start (canonicalize fails, falls back to the literal), gets created or swapped for a symlink later, and the digest changes ⇒ a service whose config never changed and that runs fine gets evicted and restarted on every handover. The sandbox grants both the declared value and the real path via `granted_roots()`; granting both is safe
+- "Child exited" MUST be the three-state `ExitOutcome::{Code(i32), Signalled, Unobserved}`, MUST NOT degrade to `Option<i32>` (the same lesson as `Liveness`): `None` merges "killed by a signal" (a real failure) with "cannot read the exit code of an adopted process" (unknown) into one value, making `settled_status` record every cleanly exited adopted service as `Errored` — the same service shows `stopped` within one generation and `errored` after a handover, instantly false-alarming any monitor watching the status column. Judge failure with `failed()`; `Unobserved` is not a failure
+- Runtime monitoring MUST pass the identity token from the dump to `wait_for_exit`: checking only "is the pid still there" waits forever after pid recycling, and a later `stop` sends a group signal to the recycled pid, killing an innocent group
+- The runtime image MUST install `procps` (`/bin/ps`): without it, every daemon restart judges every service "probe failed" and evicts + restarts them all
+- When `resurrect` decides respawn and the old process is still alive (token matched), it MUST `terminate` it first, or the orphan and the new instance run side by side (symptom: leftover `pm3 __sleep` after `just cov`)
+- `evict_pid` MUST re-probe `identity(pid)` and compare the token **before** signaling: the verdict uses the batch of `identities()` captured at the start of `judge_all`, and each service's eviction (up to a full `kill_timeout_ms` each) badly stales the tokens of the services behind it ⇒ the very first `terminate(-pid)` can hit an innocent group on a recycled pid (the `pid_was_recycled` check after `wait_gone` only protects the later `force_kill`). All evictions run **in parallel** via `evict_all` with `join_all` (they used to be serial per service; without `procps`, 20 services blocked for ~32 seconds with every CLI command hanging until timeout)
+- **Across a host reboot, every pid in the dump is void** (`PidTrust`): the boot marker is **pid 1's `lstart`** (`ports.identity(1)`; systemd/launchd both start at boot), stored as top-level `boot:` in `dump.yaml`. This needs no new Port, external program, or `libc` — `ps` is already a hard dependency. On `PidTrust::Lost`, `judge` returns `Change::Rebooted` directly with `stale: None`, and `surviving_pid` returns `None` early ⇒ no signal is ever sent to an unfamiliar pid. **Both fail-safe directions MUST be preserved**: a dump without `boot` (upgraded from an old version) or an unreadable pid 1 both judge `Kept`, falling back to the original token checks; MUST NOT invert this into "unknown means void" (that would evict every service on every upgrade)
 
-### 沙箱
+### The sandbox
 
-- **自带沙箱的程序 MUST 用 `mode: danger-full-access`**：seatbelt 不允许嵌套，sshd 的特权分离子进程调 `sandbox_init` 建自己的沙箱时被拒 → 日志 `sandbox initialization failed: Operation not permitted` / `ssh_sandbox_child: sandbox_init: Operation not permitted [preauth]`，症状是端口监听正常但握手就断（客户端看到 `kex_exchange_identification: read: Connection reset by peer`）。换 `read-only` 之类无用（任何 profile 都拒），OpenSSH 7.5+ 也已移除 `UsePrivilegeSeparation no`。`adapters/src/sandbox/wrapper.rs` 对 `is_unconfined()` 直接返回未包装命令，等于恢复 launchd 时代的约束强度——不是降级。同理 macOS app bundle 也套不进去（Google Drive 靠 setuid root 的 `mount_helper` 挂载盘符）
-- `pm3 start` **没有设置 mode 的命令行开关**（开关全表见 README，沙箱相关只有 `--network` / `--writable-dir` / `--readable-dir`）：非默认 mode 只能改 `cfg_dir/<name>.yaml` 再 `pm3 restart`（restart 会重新读盘）
+- **Programs with their own sandbox MUST use `mode: danger-full-access`**: seatbelt does not nest; sshd's privilege-separation child gets denied calling `sandbox_init` for its own sandbox → logs `sandbox initialization failed: Operation not permitted` / `ssh_sandbox_child: sandbox_init: Operation not permitted [preauth]`, the symptom being a listening port whose handshake dies (client sees `kex_exchange_identification: read: Connection reset by peer`). Switching to `read-only` or similar is useless (every profile denies it), and OpenSSH 7.5+ removed `UsePrivilegeSeparation no`. `adapters/src/sandbox/wrapper.rs` returns the unwrapped command for `is_unconfined()`, restoring launchd-era constraint strength — not a downgrade. macOS app bundles likewise cannot be wrapped (Google Drive mounts its volume via a setuid-root `mount_helper`)
+- `pm3 start` **has no CLI switch for the mode** (the full switch list is in `pm3 start --help`; the only sandbox-related ones are `--network` / `--writable-dir` / `--readable-dir`): a non-default mode requires editing `cfg_dir/<name>.yaml` and running `pm3 restart` (restart re-reads the disk)
 
-`SandboxPolicy` 的路径分四类（读只有 `full|minimal` 两档，刻意不做最长前缀裁决表）：
+`SandboxPolicy` paths come in four kinds (read scope has only the two levels `full|minimal`, deliberately no longest-prefix arbitration table):
 
-| 字段 | 来源 | 进指纹 |
+| field | source | fingerprinted |
 |---|---|---|
-| `read` / `readable_roots` | 运维声明 | 是 |
-| `writable_roots` | 运维声明 | 是 |
-| `derived_roots` | pm3 推导 cwd/logs/tmp | 否 |
-| `unreadable_roots` | pm3 注入 `pm3.home` 与 `cfg_dir` | 否 |
+| `read` / `readable_roots` | operator-declared | yes |
+| `writable_roots` | operator-declared | yes |
+| `derived_roots` | pm3-derived cwd/logs/tmp | no |
+| `unreadable_roots` | pm3-injected `pm3.home` and `cfg_dir` | no |
 
-- **默认 `read: minimal`**：`--tmpfs /` 打底后只铺 `pm3.sandbox.minimal_read_roots` + 声明的 `readable_roots` + **程序自身的路径**（漏了最后一条 exec 直接 ENOENT）。服务报 EACCES 时先补 `readable_roots`，退路是该服务写 `read: full`
-- **`unreadable_roots` 与「可写根」的嵌套方向是安全语义，不是风格**：bwrap 是 `--tmpfs <hidden>` → `--bind <granted>`（最浅的先）→ **再** `--tmpfs` 那些落在 granted 之下的 hidden（`nested_in`）；seatbelt 无顺序语义，hidden 靠 carveout 实现，且 MUST 按 `(granted, hidden)` 配对生成——只有 `covers_path(granted, hidden)`（hidden 嵌套在 granted 之内，含相等）才给那条 allow 挂 `(require-not (subpath (param "HIDDEN_i")))`。无条件给每条 allow 挂全部 hidden 的 carveout 会把「granted 嵌套在 hidden 之内」的授权整条作废（`require-not` 命中祖先即整条规则不成立，`deny default` 兜底 ⇒ cwd 既不可读也不可写），而 cwd 默认就在 `pm3.home` 下——PM3-44 曾因此让所有服务一重启就 EPERM；反方向本就由 `deny default` 兜住，不需要 carveout
-- **任何可写根都 MUST NOT 覆盖 hidden root**（`validate_policy` 拒绝，含 `derived_roots`）：`cwd: <pm3.home>` 会把 socket 与全部 `.env` 一起交回给服务，两种后端都救不回来——测试 fixture 因此一律用 `<home>/work` 而非 `<home>` 当 cwd
-- `network: true` 只放行 IP，MUST NOT 连 unix socket 一起放行（macOS 上那等于把 `pm3.sock` 交给服务）
+- **Default `read: minimal`**: after the `--tmpfs /` base, only `pm3.sandbox.minimal_read_roots` + declared `readable_roots` + **the program's own path** are laid down (missing the last one makes exec fail with ENOENT outright). When a service reports EACCES, first extend `readable_roots`; the escape hatch is `read: full` for that service
+- **The nesting direction between `unreadable_roots` and "writable roots" is security semantics, not style**: for bwrap it is `--tmpfs <hidden>` → `--bind <granted>` (shallowest first) → **then** `--tmpfs` again for the hiddens nested under a granted (`nested_in`); seatbelt has no ordering semantics, hidden is implemented via carveouts, and they MUST be generated per `(granted, hidden)` pair — only when `covers_path(granted, hidden)` (the hidden nests inside the granted, equality included) does that allow get a `(require-not (subpath (param "HIDDEN_i")))`. Unconditionally hanging every hidden's carveout on every allow voids any grant where "the granted nests inside a hidden" (`require-not` matching an ancestor voids the whole rule, `deny default` catches the rest ⇒ cwd becomes neither readable nor writable), and cwd sits under `pm3.home` by default — PM3-44 once made every service EPERM on restart this way; the opposite direction is already covered by `deny default` and needs no carveout
+- **No writable root may cover a hidden root** (`validate_policy` rejects, `derived_roots` included): `cwd: <pm3.home>` hands the socket and every `.env` back to the service, and neither backend can save it — test fixtures therefore always use `<home>/work`, never `<home>`, as cwd
+- `network: true` only allows IP; MUST NOT also allow unix sockets (on macOS that hands `pm3.sock` to the service)
 
-两个后端各自的 profile/参数纪律（SBPL 写法、DNS 放行、GPU 放行、bwrap 的 namespace 与 `--new-session`）见 `adapters/CLAUDE.md` 的「沙箱与路径」。
+Each backend's own profile/parameter discipline (SBPL syntax, DNS passthrough, GPU passthrough, bwrap's namespaces and `--new-session`) is in `adapters/CLAUDE.md` "Sandbox and paths".
 
-### cron 调度
+### cron scheduling
 
-- 到点只调 `restart_app`、**不新增状态**（架构照抄 pm2 `lib/Worker.js`）
-- `Fire` 事件 MUST 先比对 `timers.get(name).fire_at_ms == Some(fire_at_ms)` 再执行，否则已过期的定时器会误触发；`stop`/`delete`/`stop_all` 三条路径 MUST 走 `disarm`（remove + `JoinHandle::abort`）——`Daemon.timers: HashMap<name, Timer>` 同时是 `next` 列数据源、调度激活标记与过期判别依据，这样 `next` 有值即「等触发」、空即「真停了」，避开 pm2 那句 `stopped but CRON RESTART is still UP` 的语义混淆
-- `Timer` MUST 持 `JoinHandle` 并在重新 `arm_timer` 时 abort 旧 task：只存 `fire_at_ms` 会让每次 restart 多留一个睡到旧 deadline 的孤儿 task
-- 「这个服务的调度是否激活」MUST 落盘（`ProcessRuntime::schedule_armed`）：只存在内存 `timers` 里的话，daemon 换代后 `arm_known_timers` 会把用户 `stop` 掉的 cron 服务重新武装、到点自行复活
+- On fire, only `restart_app` is called; **no new state is introduced** (architecture mirrors pm2 `lib/Worker.js`)
+- A `Fire` event MUST first compare `timers.get(name).fire_at_ms == Some(fire_at_ms)` before executing, or a stale timer misfires; the `stop`/`delete`/`stop_all` paths MUST go through `disarm` (remove + `JoinHandle::abort`) — `Daemon.timers: HashMap<name, Timer>` is simultaneously the data source of the `next` column, the schedule-active marker, and the staleness discriminator, so a present `next` means "waiting to fire" and an empty one means "truly stopped", avoiding pm2's semantic muddle of `stopped but CRON RESTART is still UP`
+- A `Timer` MUST hold its `JoinHandle` and abort the old task when re-`arm_timer`ing: storing only `fire_at_ms` leaves one more orphan task sleeping until the old deadline on every restart
+- "Is this service's schedule active" MUST be persisted (`ProcessRuntime::schedule_armed`): if it only lived in the in-memory `timers`, a daemon handover's `arm_known_timers` would re-arm a cron service the user `stop`ped, reviving it at the next fire
 
-### 内存熔断
+### Memory breaker
 
-- 采样 MUST 走**独立一条** `ps`，MUST NOT 往身份令牌那条（`pid=,lstart=`）加列：令牌解析把第一个空格之后的整段当值，加一列 rss 会让每次内存波动都被判成 pid 复用、全部服务在换代时被驱逐（三条 `ps` 的分工见 `adapters/CLAUDE.md`）
-- tick 是自持循环（`SupervisionEffect::ScheduleMemorySample` → `DaemonEvent::SampleMemory` → 处理完再排下一次），**无条件续排**、只在「没有服务声明限额」时跳过 `ps`：这样不必跟踪「tick 是否在途」，start/delete 也不用管重新武装。**首拍由 `serve_supervised` 在 resurrect 之后注入**（`events.send(SampleMemory)`，日志 rotate 的 `RotateLogs` 同处）——没有首拍整条链在生产上永不启动而单测全绿（单测直接调 handler）；新增自持 tick 时 MUST 在同一个注入点登记
-- `max_memory_kib` **不进指纹**（`fingerprint.rs` 里标 `_`）：限额是运维策略不是进程身份，改限额不该 evict+respawn
-- 超限只调 `restart_app`（与 cron 同一条路径），所以 `restart` 是异步的——测试断言要看 `stopping` 状态或事件，不能直接比对新旧 pid
+- Sampling MUST go through its **own separate** `ps`; MUST NOT add columns to the identity-token one (`pid=,lstart=`): token parsing treats everything after the first space as the value, so adding an rss column makes every memory fluctuation look like pid recycling, evicting every service at handover (the three `ps` calls' division of labor is in `adapters/CLAUDE.md`)
+- The tick is a self-sustaining loop (`SupervisionEffect::ScheduleMemorySample` → `DaemonEvent::SampleMemory` → schedule the next one after handling), **rescheduled unconditionally**, skipping only the `ps` when "no service declares a limit": this way there is no "is a tick in flight" to track, and start/delete never re-arm anything. **The first beat is injected by `serve_supervised` after resurrect** (`events.send(SampleMemory)`; log rotation's `RotateLogs` lives in the same place) — without the first beat the whole chain never starts in production while unit tests stay green (they call the handler directly); every new self-sustaining tick MUST register at the same injection point
+- `max_memory_kib` **is not fingerprinted** (marked `_` in `fingerprint.rs`): a limit is operator policy, not process identity; changing it must not evict+respawn
+- Breaching the limit only calls `restart_app` (the same path as cron), so the `restart` is asynchronous — tests must assert on the `stopping` status or on events, not by comparing old and new pids
 
-### 就绪探针
+### Readiness probes
 
-- 带 `ready_probe` 的服务 spawn 后停留 `Launching`，`TaskBoard` 的探针 task 报 `Ready`/`ReadyTimeout` 事件才推进；adopt 来的 `Online` 进程直接 Online，MUST NOT 重新等探针
-- 探针在**宿主机、沙箱外**执行（exec 探针经宿主 `search_path` 解析、tcp 探针测客户端视角可达性；沙箱内 `network: false` 的服务也能被探到）；探针命令 MUST NOT 进日志（凭据规则同 spawn 参数）
-- 就绪等待是异步的，所以 `start` 回复在探针出结果前已发出：`Launching` 与被依赖挂起的 `Deferred` 都 MUST 算正常 outcome、MUST NOT 进 `refused`（否则 CLI 会把服务文件回滚删掉）
-- 探针超时是**终态**：terminate + `ready_failed` 标记，随后的退出事件直接记 `Errored`，MUST NOT 走 `decide_restart`（不触发 autorestart）；等待中的依赖者级联标 `Errored`
-- 已知限制：探针窗口内 daemon 换代，Deferred 服务以 `Stopped` 落盘、不自动续拉（无孤儿无双开，需人工 `start`）；waiters 只在内存，不落盘
-- adopt/waiter/取消三处的实现约束见 `usecases/CLAUDE.md`「就绪探针」
+- A service with `ready_probe` stays `Launching` after spawn; the `TaskBoard`'s probe task advances it via `Ready`/`ReadyTimeout` events; an adopted `Online` process goes Online directly, MUST NOT wait for a probe again
+- Probes execute **on the host, outside the sandbox** (exec probes resolve through the host's `search_path`, tcp probes test client-side reachability; even a sandboxed `network: false` service can be probed); probe commands MUST NOT enter logs (same credential rule as spawn arguments)
+- Readiness waiting is asynchronous, so the `start` reply is sent before the probe concludes: both `Launching` and dependency-suspended `Deferred` MUST count as normal outcomes, MUST NOT land in `refused` (or the CLI rolls back and deletes the service files)
+- A probe timeout is a **terminal state**: terminate + the `ready_failed` mark; the subsequent exit event records `Errored` directly, MUST NOT go through `decide_restart` (no autorestart); waiting dependents cascade to `Errored`
+- Known limitation: if the daemon hands over inside the probe window, Deferred services persist as `Stopped` and are not re-launched automatically (no orphans, no duplicates; a manual `start` is needed); waiters live only in memory, never persisted
+- The implementation constraints of adopt/waiters/cancellation are in `usecases/CLAUDE.md` "Readiness probes"
 
-### 日志
+### Logs
 
-- 服务日志 fd 由子进程独占（daemon 以 O_APPEND 打开后 move 给子进程）⇒ rename 式 rotate 无效，写侧只能 **copytruncate**；`pm3.log_rotate_max_bytes` 默认 0 = 关闭
-- 读侧两条路径（`read_tail` 与 `LogFollower`）MUST 受 `pm3.log_read_max_bytes` 约束：没有上限时，服务用 `\r` 刷进度条会让 `pm3 logs -f` 的内存无界增长，而对一个无换行的巨型日志执行 `pm3 logs` 会直接 OOM（rotate 只按字节切，不保证有换行）
-- `pm3 logs` 全程不经 daemon（服务名从 `cfg_dir` 枚举、流选择与行前缀都在 CLI 侧，见 `frameworks/CLAUDE.md`）
+- A service's log fds are owned by the child (the daemon opens them O_APPEND and moves them into the child) ⇒ rename-style rotation is impossible; the write side can only **copytruncate**; `pm3.log_rotate_max_bytes` defaults to 0 = off
+- Both read paths (`read_tail` and `LogFollower`) MUST be bounded by `pm3.log_read_max_bytes`: unbounded, a service repainting a progress bar with `\r` grows the memory of a following `pm3 logs` without limit, and running `pm3 logs --nostream` on a giant newline-free log OOMs outright (rotation cuts by bytes, it does not guarantee newlines)
+- `pm3 logs` never goes through the daemon (service names are enumerated from `cfg_dir`; stream selection and line prefixes all happen CLI-side, see `frameworks/CLAUDE.md`)
 
-### CLI ↔ daemon 协议
+### CLI ↔ daemon protocol
 
-- 是 JSON envelope `ReplyDto { report, service, already_running, refused, unsaved, views }`：新增命令走 `ask_report`（只要文案）或 `ask`（要结构化字段）；MUST NOT 靠 `.contains(渲染文本)` 反解业务状态。`views` 是 `ProcessViewDto`（adapters 侧 DTO，白名单字段天然不含 env），只有 list/describe 填；`--json` 由 CLI 拿 `views` 调 `render_json_*` 本地渲染，frameworks 不许碰 serde_json
-- `start` 是**部分提交**的批处理，所以回滚粒度 MUST 与提交粒度一致：daemon 在「起了一部分」时回 200 + `refused`（未起来的服务名），CLI 只 `undo.run_for(&refused)` 并以 `Error::PartialStart` 结束（非零退出）；一个都没起来才回非 200、CLI 全量回滚。把部分成功当成「什么都没发生」而全量删服务文件，会让已在跑的服务下次 daemon 启动时 `rejoin` 失败被丢弃 → 永久孤儿
-- `start` 的「某个服务起不来」与「起来了但落不了盘」MUST 是两个独立字段（`refused` / `unsaved`）：`refused` 由「requested 减 outcomes」反推，天然表达不了「全都起来了但 `dump.yaml` 写失败」⇒ 回 200 + 空 `refused` ⇒ CLI 退出码 0，而 dump 里没有这些服务，下次 daemon 重启 `resurrect` 读不到记录、既不 evict 也不监控 ⇒ 永久孤儿，CI 按退出码判定完全无感。`unsaved` 非空时 CLI MUST 非零退出（`Error::UnsavedStart`）且 MUST NOT 回滚服务文件（服务在跑）。`Supervisor::start` 只在 `outcomes` 为空时才返回 `Err`
-- `start` 请求只传服务名列表（`services: Vec<String>`）——服务文件是唯一事实来源，MUST NOT 把 spec 塞进请求体
-- 但**手写 `cfg_dir/<name>.yaml` 不足以让服务被认出**：`pm3 start <name>` 对不在 daemon 服务表里的名字会退回按 apps 文件解析，报 `cannot resolve the apps file '<name>'`。新服务 MUST 先用 inline 形式注册一次（`pm3 start --name <name> [--network] <prog> [args]`），此后 `<name>` 才能直接用；pm3 写出的 yaml 可与手写的逐字节相同，差别只在注册路径
-- CLI MUST 在请求头带 `x-request-id`（`adapters::REQUEST_ID_HEADER`，值取 `<CLI pid>-<序号>`），daemon 的 `request_id_of` 优先读它、缺失或空才回退内部 `AtomicU64`。回退分支 MUST 保留：换代期间旧版 CLI 不发这个头。少了这层，一次 `pm3 start` 的客户端日志与 daemon 日志无法串起来（daemon 侧计数器每次重启从 1 开始，跨进程毫无意义）
-- **连进来的 peer 要过 uid 校验**（`OwnerOnlyListener`，`SO_PEERCRED` 经 `UnixStream::peer_cred`）：owner 取**socket 文件自己的属主**（本进程刚创建它，macOS/Linux 都拿得到，无需 `/proc` 也无需 `libc`；Windows 无 `peer_cred`，准入见「Windows」节），不匹配就 drop 连接并 warn、循环等下一个。**校验是 fail-open**：`admits` 在 peer 或 owner 任一未知时放行，退回 socket 0600 + 目录 0700 那道防线——一个探测不到属主的环境不该让整台机器的 pm3 停摆。拦截 MUST 发生在 `Listener::accept` 里（协议之前），MUST NOT 做成 axum 中间件：那样非法 peer 已经能塞进一个请求体
-- 请求体上限走 `pm3.request_body_limit_bytes` + `DefaultBodyLimit`（超限回 413）：单 actor 循环下一个巨大 body 就是一条队头阻塞路径，而 axum 默认的 2 MB 对「一串服务名」来说过宽
+- A JSON envelope `ReplyDto { report, service, already_running, refused, unsaved, deleted, views }`: new commands go through `ask_report` (text only) or `ask` (structured fields); MUST NOT reverse-engineer business state via `.contains(rendered text)`. `views` is `ProcessViewDto` (an adapters-side DTO whose whitelisted fields naturally exclude env), filled only by list/describe; `--json` is rendered locally by the CLI from `views` via `render_json_*`, frameworks never touches serde_json. `deleted` carries the names a batch `delete all` removed so the CLI can forget exactly those service files
+- `start` is a **partially committing** batch, so the rollback granularity MUST match the commit granularity: on "some started", the daemon replies 200 + `refused` (the names that did not come up), and the CLI only `undo.run_for(&refused)`, ending with `Error::PartialStart` (non-zero exit); only when nothing started at all does it reply non-200 and the CLI rolls back everything. Treating partial success as "nothing happened" and deleting every service file makes the next daemon start fail to `rejoin` the running services and drop them → permanent orphans
+- start's "a service would not come up" and "came up but would not persist" MUST be two separate fields (`refused` / `unsaved`): `refused` is derived as "requested minus outcomes" and inherently cannot express "everything came up but writing `dump.yaml` failed" ⇒ replying 200 + empty `refused` ⇒ CLI exit code 0, while the dump lacks those services, so the next daemon restart's `resurrect` finds no records and neither evicts nor monitors them ⇒ permanent orphans, invisible to CI judging by exit code. When `unsaved` is non-empty the CLI MUST exit non-zero (`Error::UnsavedStart`) and MUST NOT roll back the service files (the services are running). `Supervisor::start` returns `Err` only when `outcomes` is empty
+- A `start` request carries only the service-name list (`services: Vec<String>`) — the service files are the single source of truth; MUST NOT stuff specs into the request body
+- But **hand-writing `cfg_dir/<name>.yaml` is not enough for a service to be recognized**: `pm3 start <name>` for a name not in the daemon's service table falls back to parsing it as an apps file, reporting `cannot resolve the apps file '<name>'`. A new service MUST first be registered once in inline form (`pm3 start --name <name> [--network] <prog> [args]`); only then can `<name>` be used directly; the yaml pm3 writes can be byte-for-byte identical to a handwritten one — the difference is only the registration path
+- The CLI MUST send an `x-request-id` header (`adapters::REQUEST_ID_HEADER`, value `<CLI pid>-<sequence>`); the daemon's `request_id_of` prefers it, falling back to its internal `AtomicU64` only when it is missing or empty. The fallback branch MUST stay: old CLIs during a handover do not send this header. Without this layer, one `pm3 start`'s client log and daemon log cannot be stitched together (the daemon-side counter restarts from 1 on every boot and means nothing across processes)
+- **Incoming peers pass a uid check** (`OwnerOnlyListener`, `SO_PEERCRED` via `UnixStream::peer_cred`): the owner is **the socket file's own owner** (this process just created it, readable on macOS/Linux without `/proc` or `libc`; Windows has no `peer_cred`, admission there is in the "Windows" section); a mismatch drops the connection with a warn and loops for the next. **The check is fail-open**: `admits` passes when either peer or owner is unknown, falling back to the socket-0600 + directory-0700 defense — an environment that cannot read ownership should not take down pm3 for the whole machine. The interception MUST happen in `Listener::accept` (before the protocol), MUST NOT be an axum middleware: by then an illegitimate peer can already stuff in a request body
+- The request-body limit goes through `pm3.request_body_limit_bytes` + `DefaultBodyLimit` (413 on overflow): under a single-actor loop a giant body is a head-of-line blocking path, and axum's default 2 MB is far too wide for "a list of service names"
+- `stop`/`restart`/`delete`/`reset` accept `all` as the every-app selector (`AppSelector::All`), batch-applied by the supervisor with per-service failures logged and skipped (never aborting the batch); `all` is a reserved name that `validate_app_name` rejects, or an app named `all` would be shadowed by the selector
 
-### 环境变量与凭据
+### Environment variables and credentials
 
-- 服务的环境变量**只**来自 `cfg_dir/<name>.env`；`<name>.yaml` 的 `env` 字段已删除，残留的 `env:` MUST 报错而非静默忽略（`AppEntry` 没有 `deny_unknown_fields`，不显式拒绝就是无声吞掉）——两个拒绝点见 `adapters/CLAUDE.md`
-- **读取点只有 `SpecSource::resolve_service` 一处**：`SpecResolver::prepare`（CLI start）与 `YamlDumpStore::rejoin`（daemon 换代逐条读盘）都经过它。只在 `prepare` 里读会让换代后所有服务 env 变空 ⇒ env 进指纹 ⇒ 全部服务被判 `Change::Launch` 而 evict+respawn
-- `.env` **缺失 MUST 是 `Ok(空)`**，只有「存在但解析失败」才 `Err`：`rejoin` 拿到 `Err` 就没有 spec、造不出 `ProcessRecord`，那条记录进不了表
-- **进不了表的记录 MUST 被 evict，MUST NOT 静默丢弃**：`DumpStore::load` 返回 `DumpContents { records, stranded }`，`resolve_service` 失败的那条以 `StrandedProcess { name, pid, token }` 进 `stranded`，`resurrect` 开头先 `sweep_stranded`（复用 `surviving_pid` 的 token 守卫 + `evict_pid`）。只 return None 的话，手改 `.env` 打错一个字再换代，正在跑的进程就既不 evict 也不监控、pid 还从 dump 擦除 ⇒ 永久孤儿 + 下次 `start` 起出第二份实例
-- **`HOME` 由 pm3 注入**（`SpecSource.host_home` → `with_host_home`，`.env` 声明了同名 key 就以声明为准）：子进程环境被 `env_clear()` 清空，不注入的话服务只能在 `script`/`args` 里写死绝对路径。宿主 `$HOME` 由 `layout.rs::host_home()` 读一次注入（纪律见「配置与路径」）。它随 `spec.env` 进指纹，安全的前提是 unit 会导出安装时的 `HOME`（见「装真机与换代」），launchd/systemd/shell 三种上下文取值一致
-- `.env` MUST NOT 过 `substitute_env_vars`：那个替换器遇到含 `"` / `\` / 控制字符的值直接报错，还会把随机密码里的 `${...}` 当占位符展开。`.env` 自己只认**一个**变量 `$HOME`/`${HOME}`（展开成注入的 `host_home`），其余 `$` 一律原样——解析器要守住的三条边界见 `adapters/CLAUDE.md`
-- 凭据 MUST NOT 出现在任何错误文案里：`EnvFileError` 只带路径、行号、key 名
-- pm3 **只读不写** `.env`（CLI 的 `--env` 已移除），所以 `ServiceUndo` / `reconcile` 都不必管它；只有 `forget` 要连带删除
-- 给 `AppSpec` 加字段时，**只有 `usecases/src/fingerprint.rs` 的 `render_identity` 会编译失败**（真·全字段 `let AppSpec { .. }` 解构）：`encode_state` 是 `let ProcessRecord { spec: _, runtime }`、`ProcessView` 是字段访问式构造，两者都会静默吞掉新字段。新字段若含凭据性质的内容，MUST 自己确认这两处。`AppSpec` derive 了 `Debug` 但没有 `Serialize`，MUST NOT 用 `?spec` / `{:?}` 打印它
-- `pm3 restart` 会**重新读盘**，所以改完 `.env` / `<name>.yaml` 用 restart 就生效；`on_restart` / `on_fire` / `restart_now` MUST NOT 重读（实现边界见 `usecases/CLAUDE.md`）
+- A service's environment variables come **only** from `cfg_dir/<name>.env`; the `env` field in `<name>.yaml` has been removed, and a leftover `env:` MUST error rather than be silently ignored (`AppEntry` has no `deny_unknown_fields`; not rejecting explicitly means silently swallowing it) — the two rejection points are in `adapters/CLAUDE.md`
+- **The only read site is `SpecSource::resolve_service`**: both `SpecResolver::prepare` (CLI start) and `YamlDumpStore::rejoin` (the daemon reading records back at handover) go through it. Reading only in `prepare` empties every service's env after a handover ⇒ env is fingerprinted ⇒ every service judges `Change::Launch` and gets evicted+respawned
+- A **missing `.env` MUST be `Ok(empty)`**; only "present but unparseable" is `Err`: `rejoin` receiving an `Err` has no spec, cannot build a `ProcessRecord`, and that record never enters the table
+- **A record that cannot enter the table MUST be evicted, MUST NOT be silently dropped**: `DumpStore::load` returns `DumpContents { records, stranded }`; a record whose `resolve_service` fails enters `stranded` as `StrandedProcess { name, pid, token }`, and `resurrect` starts with `sweep_stranded` (reusing `surviving_pid`'s token guard + `evict_pid`). Just returning None means: typo one character in a hand-edited `.env`, hand over, and the running process is neither evicted nor monitored, with its pid erased from the dump ⇒ permanent orphan + the next `start` spawns a second instance
+- **`HOME` is injected by pm3** (`SpecSource.host_home` → `with_host_home`; if the `.env` declares the same key, the declaration wins): the child environment is emptied by `env_clear()`, and without the injection services could only hardcode absolute paths in `script`/`args`. The host `$HOME` is read once and injected by `layout.rs::host_home()` (discipline in "Config and paths"). It is fingerprinted as part of `spec.env`; safety rests on the unit exporting the install-time `HOME` (see "Real-machine install and handover"), giving identical values across launchd/systemd/shell contexts
+- `.env` MUST NOT go through `substitute_env_vars`: that substitutor errors outright on values containing `"` / `\` / control characters, and expands `${...}` inside random passwords as placeholders. `.env` itself recognizes exactly **one** variable, `$HOME`/`${HOME}` (expanded to the injected `host_home`); every other `$` stays literal — the three boundaries the parser must hold are in `adapters/CLAUDE.md`
+- Credentials MUST NOT appear in any error text: `EnvFileError` carries only path, line number, and key name
+- pm3 **only reads, never writes** `.env` (the CLI's `--env` was removed), so neither `ServiceUndo` nor `reconcile` needs to care; only `forget` deletes it alongside
+- When adding a field to `AppSpec`, **only `render_identity` in `usecases/src/fingerprint.rs` fails to compile** (a true all-fields `let AppSpec { .. }` destructure): `encode_state` is `let ProcessRecord { spec: _, runtime }` and `ProcessView` is field-access construction — both silently swallow a new field. If the new field is credential-flavored, you MUST check those two sites yourself. `AppSpec` derives `Debug` but not `Serialize`; MUST NOT print it with `?spec` / `{:?}`
+- `pm3 restart` **re-reads the disk**, so editing `.env` / `<name>.yaml` takes effect through restart; `on_restart` / `on_fire` / `restart_now` MUST NOT re-read (implementation boundary in `usecases/CLAUDE.md`)
 
-### 日志字段
+### Log fields
 
-面向 AI 排障，所以字段名比文案重要；改日志前先看这里。
+Built for AI troubleshooting, so field names matter more than message text; read this before changing logs.
 
-- 每条业务日志 MUST 带 `feature` + `action` 两个字段。**MUST NOT 用 `operation`**：6 必备字段里是 `action`，混用会让按 `action` 过滤的查询整段漏掉。`action` 的值用 `snake_case`，MUST NOT 带点（`drain.start` → `drain_start`）
-- `feature` 取值收敛在：`lifecycle` `supervisor` `resurrect` `persistence` `api` `client` `server` `service` `unit` `install`
-- 每个**外部调用**（`ps` / `kill` / `launchctl` / `systemctl` / UDS 往返）MUST 记 `duration_ms`：`let started = Instant::now();` 起头，日志里 `started.elapsed().as_millis()`
-- 级别按「谁看」分：AI/排障走 `debug`（外部调用、中间状态），人/监控走 `info+`（服务起停成败在 `usecases` 的 `start_one` / `request_stop` 里发）
-- **CLI 进程 MUST 自己装 subscriber**，否则 `feature` 为 `client`/`service`/`unit` 的日志全部静默丢弃：装在 `open_session` / `open_service_session`（这两处本来就已读过配置），写 **stderr**（daemon 写 stdout 只因为它被重定向进 `pm3.log`，CLI 的 stdout 是给人看的报文）。`log_stuck_undo` 这类**只有日志一条通路**的 warn（服务文件回滚失败）不在退出码也不在 stderr 文案里，CLI 不装就永远没人看到
-- spawn 日志 MUST NOT 打 `args` 与 `env`：服务的启动参数可能含运维塞进去的凭据
-- 「尽力而为」的收尾 IO 可以 `.ok()`，但**改变外部可见状态的失败 MUST 记 `warn`**：`force_kill` 失败意味着孤儿进程存活，服务文件回滚失败意味着盘上文件与运行中的服务不一致。吞掉错误后仍记「成功」的日志比没有日志更糟
+- Every business log MUST carry `feature` + `action`. **MUST NOT use `operation`**: the 6 required fields use `action`, and mixing makes queries filtering by `action` silently miss whole segments. `action` values use `snake_case`, MUST NOT contain dots (`drain.start` → `drain_start`)
+- `feature` values converge on: `lifecycle` `supervisor` `resurrect` `persistence` `api` `client` `server` `service` `unit` `install`
+- Every **external call** (`ps` / `kill` / `launchctl` / `systemctl` / UDS round-trips) MUST record `duration_ms`: start with `let started = Instant::now();`, log `started.elapsed().as_millis()`
+- Levels split by audience: AI/troubleshooting goes `debug` (external calls, intermediate state), humans/monitoring go `info+` (service start/stop outcomes are emitted in `usecases`' `start_one` / `request_stop`)
+- **The CLI process MUST install its own subscriber**, or every log with `feature` = `client`/`service`/`unit` is silently dropped: install in `open_session` / `open_service_session` (both already read the config), writing to **stderr** (the daemon writes stdout only because that is redirected into `pm3.log`; the CLI's stdout is the report for humans). A warn whose **only channel is the log** (like `log_stuck_undo`, service-file rollback failures) appears in neither the exit code nor stderr text — without the CLI subscriber nobody ever sees it
+- Spawn logs MUST NOT print `args` or `env`: a service's launch arguments may carry credentials the operator stuffed in
+- Best-effort cleanup IO may `.ok()`, but **failures that change externally visible state MUST be logged as `warn`**: a failed `force_kill` means an orphan stays alive, a failed service-file rollback means the files on disk disagree with the running services. Logging "success" after swallowing an error is worse than no log at all
 
-### 配置与路径
+### Config and paths
 
-- daemon 自己的 `config.yaml` 只能放在 `pm3.home`：`cfg_dir` 由配置本身定义，放不进去
-- `ensure_layout` 把 `pm3.home` 与 `cfg_dir` 收紧到 `0700`，但 **chmod 失败只 warn、MUST NOT 向上抛**：`cfg_dir` 可以指向配置管理预建（root 属主）或只读挂载的目录，一 `?` 就让**每条 CLI 命令**（`prepared_session`）和 daemon 启动一起失败，而目录权限本来只是「更安全一点」的加固
-- **pm3 调用的每个外部程序都来自配置**，代码里 MUST NOT 再出现第二份路径常量：`pm3.service.{launchctl,systemctl,loginctl,schtasks,taskkill}_path`（发行版差异大：Debian 在 `/usr/bin`、部分发行版在 `/bin`、NixOS 在 `/run/current-system/sw/bin`；后两个只在 Windows 消费，unix 强杀走硬约束的 `/bin/kill`）、`pm3.sandbox.{seatbelt,bwrap}_program`（`bwrap` 走 `search_path` 解析，`sandbox-exec` 是绝对路径故 `search_path` 对它无效）。例外只有 `/bin/ps` 与 `/bin/kill`（身份令牌与进程组信号的硬约束，见「进程与信号」）
-- `PM3_HOME` 同时决定**配置发现**与 `pm3.home`：`default_config_path` 先读 `PM3_HOME` 再回退 `~/.pm3`——只让 `config.yaml` 里的 `${PM3_HOME:-~/.pm3}` 认它的话，`export PM3_HOME=/srv/pm3` 后 `pm3 list` 仍去读 `~/.pm3/config.yaml`
-- 读 env 的逻辑 MUST 抽成接 `Option<&str>` 参数的纯函数（`default_config_path(pm3_home_env, home_env)`），env 只在 `frameworks/src/layout.rs` 的 `host_home` / `host_pm3_home` 里读一次：Rust 2024 的 `set_var` 是 `unsafe`，测试无法注入进程级 env
-- `substitute_env_vars` **不递归展开默认值**：`${PM3_SEARCH_PATH:-${HOME}/.cargo/bin:...}` 里的 `${HOME}` 会原样留在配置里 → 想让 pm3 找到 `~/.cargo/bin` 下的程序，不要改 `search_path`，直接把服务的 `script` 写成 `${HOME}/.cargo/bin/<prog>`（顶层占位符会展开）
-- args 里指代「该服务自己的可写工作目录」MUST 用 `${PM3_SERVICE_CWD}`（命令行写裸 `PM3_SERVICE_CWD`，CLI 折叠成带花括号形式），MUST NOT 写 `${HOME}/.pm3/<name>`（那把 pm3 布局烧进了参数）；只在 args 生效，`cwd`/`writable_roots`/`script` 里写它不展开、会被相对路径校验直接拒；`pm3 describe` 显示的是展开后的真实路径，不能拿它当「配置无绝对路径」的证据
-- 服务名 MUST 只含 `[A-Za-z0-9._-]` 且不以 `.` 开头、不能被 `parse::<u32>()` 解析（`entities::validate_app_name`）。校验点在 `service_file_of` **内部**（返回 `Result`）而非各调用方：CLI 是先写盘后交 daemon 校验，只在 `path_safe`（stop/restart/delete/describe）拦一道时，`pm3 start --name ../../../.bashrc` 会先把 yaml 写到 `cfg_dir` 之外、`--force` 还会覆写既有文件。`pm3 logs` 的日志路径同理走 `stdout_log` 的校验：
-  - 纯数字会被 `AppSelector::parse` 读成 pm_id，`pm3 stop 3` 会误伤 pm_id=3 的**另一个**服务
-  - `/` 与 `..` 会随 `service_file_of` 把服务文件写到 `cfg_dir` 之外（CLI 是先写盘后交 daemon 校验，拦不住）
-  - 空格等字符会被原样嵌进 HTTP 请求行，`pm3 stop "my app"` 直接把 request-line 切碎（症状：`the daemon answered nothing`），服务能起却停不掉
+- The daemon's own `config.yaml` can only live in `pm3.home`: `cfg_dir` is defined by the config itself, so it cannot live there
+- `ensure_layout` tightens `pm3.home` and `cfg_dir` to `0700`, but **a chmod failure only warns, MUST NOT propagate**: `cfg_dir` may point at a config-management-precreated (root-owned) or read-only-mounted directory, and one `?` fails **every CLI command** (`prepared_session`) plus daemon startup, while directory permissions were only ever a "slightly safer" hardening
+- **Every external program pm3 invokes comes from the config**; a second path constant MUST NOT appear in code: `pm3.service.{launchctl,systemctl,loginctl,schtasks,taskkill}_path` (distros differ wildly: Debian uses `/usr/bin`, some use `/bin`, NixOS uses `/run/current-system/sw/bin`; the last two are only consumed on Windows, unix force-kill goes through the hard-constrained `/bin/kill`), `pm3.sandbox.{seatbelt,bwrap}_program` (`bwrap` resolves through `search_path`; `sandbox-exec` is an absolute path so `search_path` does not apply to it). The only exceptions are `/bin/ps` and `/bin/kill` (hard constraints of identity tokens and process-group signals, see "Processes and signals")
+- `PM3_HOME` decides both **config discovery** and `pm3.home`: `default_config_path` reads `PM3_HOME` first, then falls back to `~/.pm3` — if only `config.yaml`'s `${PM3_HOME:-~/.pm3}` honored it, `export PM3_HOME=/srv/pm3` would still leave `pm3 list` reading `~/.pm3/config.yaml`
+- Env-reading logic MUST be extracted into pure functions taking `Option<&str>` parameters (`default_config_path(pm3_home_env, home_env)`); env is read once, only in `frameworks/src/layout.rs`'s `host_home` / `host_pm3_home`: Rust 2024's `set_var` is `unsafe`, so tests cannot inject process-level env
+- `substitute_env_vars` **does not recursively expand default values**: `${PM3_SEARCH_PATH:-${HOME}/.cargo/bin:...}` leaves the inner `${HOME}` literally in the config → to make pm3 find a program under `~/.cargo/bin`, do not touch `search_path`; write the service's `script` as `${HOME}/.cargo/bin/<prog>` (top-level placeholders do expand)
+- To reference "this service's own writable working directory" in args, MUST use `${PM3_SERVICE_CWD}` (write bare `PM3_SERVICE_CWD` on the command line; the CLI folds it into the braced form), MUST NOT write `${HOME}/.pm3/<name>` (that burns pm3's layout into the arguments); it only expands inside args — writing it in `cwd`/`writable_roots`/`script` does not expand and gets rejected by relative-path validation; `pm3 describe` shows the expanded real path, which cannot serve as proof of "no absolute paths in the config"
+- Service names MUST only contain `[A-Za-z0-9._-]`, MUST NOT start with `.`, MUST NOT parse via `parse::<u32>()`, and MUST NOT be the reserved word `all` (the every-app selector) — `entities::validate_app_name`. The validation point is **inside** `service_file_of` (returning `Result`), not at each caller: the CLI writes the file first and lets the daemon validate, so blocking only at `path_safe` (stop/restart/delete/describe) would let `pm3 start --name ../../../.bashrc` write yaml outside `cfg_dir` first, with `--force` overwriting existing files. `pm3 logs`' log paths likewise go through `stdout_log`'s validation:
+  - Pure digits are read as a pm_id by `AppSelector::parse`; `pm3 stop 3` hurts **another** service whose pm_id is 3
+  - `/` and `..` ride `service_file_of` to write service files outside `cfg_dir` (the CLI writes first and validates after, so it cannot be blocked)
+  - Spaces and friends land verbatim in the HTTP request line; `pm3 stop "my app"` shreds the request-line (symptom: `the daemon answered nothing`) — the service starts but can never be stopped
 
-## 覆盖率 region 纪律
+## Coverage region discipline
 
-日常验收是 `just lint` → `just cov`（四指标 100%）。**门禁的运行纪律、四类失败自救与残留清理见 `dev_scripts/CLAUDE.md`**；集成/e2e 技法见 `frameworks/CLAUDE.md`。两个前提：`cargo-llvm-cov` 忽略路径含 `tests/` 的文件而 `test_helpers/`、`test_support/` **计入**门禁（helper 里的 `panic!` 就是未覆盖行）；覆盖率按**函数实例化组**统计、组内取 `max`，所以「同一个 if 被两份实例化各走一半」加多少测试都补不满。
+The daily gate is `just lint` → `just cov` (four metrics at 100%). **The gate's running discipline, the four failure self-rescues, and leftover cleanup are in `dev_scripts/CLAUDE.md`**; integration/e2e techniques are in `frameworks/CLAUDE.md`. Two premises: `cargo-llvm-cov` ignores files whose path contains `tests/`, while `test_helpers/` and `test_support/` **count toward** the gate (a `panic!` in a helper is an uncovered line); coverage is counted per **function-instantiation group** with `max` taken inside the group, so "the same if walked half by each of two instantiations" cannot be filled by adding any number of tests.
 
-- 每个 `?` 的 Err 分支是独立 region，各需一条失败路径测试；`.expect()` / `.unwrap_or(<常量>)` / `.unwrap_or_default()` 不产生本文件 region，「已证不可达」处用 `.expect()` 优于 `map_err` + `?`
-- 但 `.expect()` MUST NOT 出现在**返回 `Result` 的函数**里（clippy `unwrap_in_result`，本仓 `-D warnings`）：想用「已证不可达」的 `.expect()` 收掉一个 `?` 的 Err region 时，把这次调用抽成一个**不返回 `Result`** 的包装函数、在里面 `.ok()`（如 `init_cli_telemetry`）
-- 泛型 fn 里的闭包按实例化各算一份 region，测试补不满：`unsaved.map(|error| error.to_string())` 改成 `unsaved.as_ref().map(ToString::to_string)`，消掉闭包即消掉那份 region
-- 同一函数里连续两个 `?` 调同一个 helper（`parse_bound(low)?` 后 `parse_bound(high)?`）时，只测「第一个失败」会让第二个的 Err region 永不可达 → 必须再补一条「前者合法、后者非法」的用例（`25~b` 之于 `a~b`）
-- `?` 的 Err region 可达性取决于调用顺序：`canonical_config_path` 排在 `load_and_parse_config` **之后**时其 Err 分支永不可达（文件已读成功 → canonicalize 必成功），把「路径解析」提到「读文件」之前才能覆盖
-- tail-return（`f().await` 直接作返回值）不产生 Err region，改成 `let x = f().await?;` 就新增一条；收尾处可用 `f().await.map(|x| ...)`（Err 直传不产生 region，closure 是独立 fn 随 Ok 路径覆盖）；真的失败路径则注入依赖让单测能打
-- 不可注入的系统读取（`std::env::current_exe()`）不要在函数体里直接 `?`；把 `io::Result<T>` 塞进注入的 context，用 `.as_ref().map_err(...)?` 消费，测试才能构造 Err 命中该 region
-- 每个 thiserror variant 都要构造 + `.to_string()` 断言一次，否则该 `Display::fmt` match arm 的 region 不计入覆盖
-- `tracing::debug!(field = <表达式>)` 的表达式只在 subscriber 启用时求值，测试无 subscriber → 该行 region 不覆盖；MUST 先 `let x = <表达式>;` 再 `tracing::debug!(x)`
-- `if cond { ... }` 块尾的 `}` 会生成一条独立 region，只有「进入块又走完」才算命中；若该路径不可达就改写成 `if !cond { return ... }` 的早返形式
-- 轮询循环的 fall-through `}` 不产生计数（`for _ in 0..=n` 尤甚）→ 让函数返回值并在循环后以 `true` 收尾（`while cond { if 超预算 { return false } ... } true`），fall-through 才有可命中的 region
-- `tokio::select!` 展开出的不可达 region 无法覆盖；用一个 forward task 把两个 channel 汇成一个，主循环只 `recv()` 一个 queue
-- 泛型/`impl Trait` 参数会按实例化各算一份 region：把 `shutdown: impl Future` 改成 `Pin<Box<dyn Future + Send>>` 可把实例化收敛为一份
-- 泛型函数里的 `if` 若被两份实例化各走一半（lib 测试只走 true、e2e 只走 false），覆盖率**加多少测试都补不满**（组内取 max，见上一节）→ MUST 把判断抽成**非泛型**纯函数放进 `usecases`，在那里单测两条臂（实例：`Supervisor::stop_all` 的 `if covered.contains(&pid)` → 抽成 `query::unswept_pids(tracked, scheduled)`）。这类判断本就是业务查询，抽出去顺带把分层也修对了
-- 不可达的防御分支应**重写消除**，而非加测试掩盖
+- Every `?`'s Err branch is its own region, each needing a failure-path test; `.expect()` / `.unwrap_or(<constant>)` / `.unwrap_or_default()` produce no region in this file — for "proven unreachable" spots, `.expect()` beats `map_err` + `?`
+- But `.expect()` MUST NOT appear in a **function returning `Result`** (clippy `unwrap_in_result`, and this repo runs `-D warnings`): to consume a `?`'s Err region with a "proven unreachable" `.expect()`, extract the call into a wrapper that does **not** return `Result` and `.ok()` inside it (like `init_cli_telemetry`)
+- Closures inside generic fns count one region per instantiation, which tests cannot fill: `unsaved.map(|error| error.to_string())` becomes `unsaved.as_ref().map(ToString::to_string)` — removing the closure removes that region
+- Two consecutive `?` calls to the same helper in one function (`parse_bound(low)?` then `parse_bound(high)?`): testing only "the first fails" leaves the second's Err region forever unreachable → add a case where "the former is valid, the latter invalid" (`25~b` versus `a~b`)
+- A `?`'s Err-region reachability depends on call order: when `canonical_config_path` is ordered **after** `load_and_parse_config`, its Err branch is unreachable (the file read already succeeded → canonicalize must succeed); moving "path resolution" before "file reading" makes it coverable
+- Tail-return (`f().await` as the direct return value) produces no Err region; changing it to `let x = f().await?;` adds one; at the tail you can use `f().await.map(|x| ...)` (Err passes through with no region, and the closure is its own fn covered by the Ok path); real failure paths should inject dependencies so unit tests can hit them
+- Non-injectable system reads (`std::env::current_exe()`) should not be `?`-ed directly inside a function body; put the `io::Result<T>` into an injected context and consume it with `.as_ref().map_err(...)?`, so tests can construct the Err and hit that region
+- Every thiserror variant must be constructed + `.to_string()`-asserted once, or that `Display::fmt` match arm's region never counts as covered
+- In `tracing::debug!(field = <expression>)`, the expression only evaluates when a subscriber is enabled; tests have no subscriber → that line's region stays uncovered; MUST `let x = <expression>;` first, then `tracing::debug!(x)`
+- The closing `}` of an `if cond { ... }` block generates its own region, hit only by "entering the block and walking out"; if that path is unreachable, rewrite as an early-return `if !cond { return ... }`
+- A polling loop's fall-through `}` gets no count (`for _ in 0..=n` especially) → have the function return a value and end with `true` after the loop (`while cond { if over_budget { return false } ... } true`), giving the fall-through a hittable region
+- The unreachable regions `tokio::select!` expands into cannot be covered; use one forward task to merge two channels into one, and let the main loop `recv()` a single queue
+- Generic/`impl Trait` parameters count one region per instantiation: changing `shutdown: impl Future` to `Pin<Box<dyn Future + Send>>` collapses the instantiations to one
+- If an `if` inside a generic function is walked half by each of two instantiations (lib tests only true, e2e only false), coverage **cannot be filled by any number of tests** (`max` inside the group, see the previous section) → the judgement MUST be extracted into a **non-generic** pure function in `usecases` and unit-tested on both arms there (instance: `Supervisor::stop_all`'s `if covered.contains(&pid)` → extracted as `query::unswept_pids(tracked, scheduled)`). Such judgements are business queries anyway, and extracting them fixes the layering too
+- Unreachable defensive branches should be **rewritten away**, not masked with tests
 
-## clippy 与库的坑
+## clippy and library pits
 
-clippy 四组全开、`-D warnings`，这些是反复撞到的：
+clippy runs with all four lint groups and `-D warnings`; these are the recurring hits:
 
-- 命名：`similar_names`（`launcher`/`launched`、`receiver`/`received`）、`shadow_unrelated`（闭包参数名与外层 `let` 撞名即报）——换个名字即解
-- `elidable_lifetime_names`：`fn f<'s>(x: &'s [T]) -> R<'s>` → `fn f(x: &[T]) -> R<'_>`
-- `string_slice` 禁掉一切 `&text[n..]`，哪怕 `n` 是 ASCII 常量的 `.len()`：扫描字符串用 `split_once(pat)` 循环，别 `find` + `split_at` + 切片（`strip_prefix` 也别用，它多一条永不可达的 `else` 分支，覆盖率补不上）
-- `unnecessary_join`：`.collect::<Vec<_>>().join("")` → `.collect::<String>()`
-- `format_push_string` 与 `format_collect` 互相堵死：`push_str(&format!)` 和 `.map(format!).collect::<String>()` 都报，出路是 `fold(format!(init), |mut t, x| { let _ = writeln!(t, ..); t })`，或把闭包体抽成**具名** fn 再 `.map(named).collect()`（`format_collect` 只盯闭包体是 `format!` 的形态，`launchd.rs` 的 `render_argument` 就是这么写的）
-- 测试侧三条：同一 `test_support/*.rs` MUST NOT 被两处 `#[path]` 重复挂载（`duplicate_mod`，统一在 `lib.rs` 以 `#[cfg(test)] pub(crate) mod` 挂一次）；test_helper 的请求构造器 MUST NOT 与 handler 同名（`get`/`post`/`delete` 在 `use super::{test_helpers::*, *}` 下二义 → 用 `get_from`/`post_to`/`delete_at`）；只有 `Ok` 分支的 fixture 触发 `unnecessary_wraps` → fixture 返回裸值、调用处再 `Ok(...)`
-- 跨 async 边界的回调参数要写 `&(dyn Fn(&str) + Send + Sync)`，否则外层 future 不是 `Send`
-- 结构体从「拥有」改成「借用配置」后，返回 `Foo<'static>` 的 fixture 会编译失败 → 用 `LazyLock<Config>` 让引用变 `'static`
-- axum 0.8 原生 `impl Listener for tokio::net::UnixListener`（无需 hyper-util）；`tokio::net::unix::SocketAddr` 只 impl Debug 不 impl Display → 日志用 `?addr`
-- clap `trailing_var_arg` + `allow_hyphen_values`：pm3 自身选项必须出现在程序名**之前**，否则被当子进程参数
-- **Rust 生态没有任何 cron 库支持 OpenBSD 风格的随机 `~`**（croner/cron/cronexpr/jiff-cron/cron_tab 全无，只有 cronexpr 支持 Jenkins 的固定哈希 `H`）→ 自己展开成具体数字再交 croner
+- Naming: `similar_names` (`launcher`/`launched`, `receiver`/`received`), `shadow_unrelated` (a closure parameter colliding with an outer `let`) — just rename
+- `elidable_lifetime_names`: `fn f<'s>(x: &'s [T]) -> R<'s>` → `fn f(x: &[T]) -> R<'_>`
+- `string_slice` bans every `&text[n..]`, even when `n` is an ASCII constant's `.len()`: scan strings with a `split_once(pat)` loop, not `find` + `split_at` + slicing (avoid `strip_prefix` too — it adds a forever-unreachable `else` branch coverage cannot fill)
+- `unnecessary_join`: `.collect::<Vec<_>>().join("")` → `.collect::<String>()`
+- `format_push_string` and `format_collect` block each other: both `push_str(&format!)` and `.map(format!).collect::<String>()` are flagged; the way out is `fold(format!(init), |mut t, x| { let _ = writeln!(t, ..); t })`, or extracting the closure body into a **named** fn and calling `.map(named).collect()` (`format_collect` only targets closures whose body is `format!`; `launchd.rs`'s `render_argument` is written exactly this way)
+- Three test-side ones: the same `test_support/*.rs` MUST NOT be mounted twice via `#[path]` (`duplicate_mod`; mount it once in `lib.rs` as `#[cfg(test)] pub(crate) mod`); test-helper request builders MUST NOT share names with handlers (`get`/`post`/`delete` are ambiguous under `use super::{test_helpers::*, *}` → use `get_from`/`post_to`/`delete_at`); a fixture with only an `Ok` branch triggers `unnecessary_wraps` → return the bare value from the fixture and wrap in `Ok(...)` at the call site
+- A callback parameter crossing an async boundary must be `&(dyn Fn(&str) + Send + Sync)`, or the outer future is not `Send`
+- After a struct changes from "owning" to "borrowing the config", a fixture returning `Foo<'static>` fails to compile → use `LazyLock<Config>` to make the reference `'static`
+- axum 0.8 natively implements `impl Listener for tokio::net::UnixListener` (no hyper-util needed); `tokio::net::unix::SocketAddr` only implements Debug, not Display → log with `?addr`
+- clap `trailing_var_arg` + `allow_hyphen_values`: pm3's own options must appear **before** the program name, or they become the child process's arguments
+- clap 4 has **no subcommand grouping** (`help_heading` only exists for args) → the top-level `--help` groups commands via a literal `help_template` const; the drift this invites is guarded by a `Cli::command().render_help()` assertion test in `cli_tests.rs` that must name every visible command. Also, pm2-style `visible_aliases` are not collected by static `clap_complete::generate`, so aliases never reach the completion scripts
+- **No Rust cron library supports OpenBSD-style random `~`** (none of croner/cron/cronexpr/jiff-cron/cron_tab; only cronexpr supports Jenkins's fixed-hash `H`) → expand to concrete numbers ourselves and hand them to croner
 
-## 真机排障工具
+## Real-machine troubleshooting tools
 
-- 判「是不是 OOM」用 `/proc/vmstat` 的 `oom_kill`（开机以来内核 + cgroup OOM 累计杀进程数）：为 0 即可彻底排除，比翻 dmesg/journal 可靠
-- 抓「谁杀了进程」MUST 用 `sudo systemd-run --unit=X --collect perf record -a -e syscalls:sys_enter_kill -e signal:signal_generate`：直接从用户会话起的 perf 属 `user-1000.slice`，slice 一崩它就陪葬、数据废掉（`data size field is 0`）；输出里行首是发送者、`comm=`/`pid=` 是目标、`grp=1` 表示进程组广播
-- 验证 kill 语义用 `strace -e trace=kill /bin/kill -0 -- <target>`：sig 0 只探测不投递，能看到内核实际收到的 pid
-- 托管 sshd 的两条（它是「必须 `danger-full-access`」的典型）：`sshd_config` **不做任何环境变量展开**，`${HOME}`/`$HOME` 都当字面目录名、相对路径按 sshd 的 cwd 解析（而 pm3 把 cwd 设成 `<pm3 home>/<name>`）故必失败，只有 `~` 可用（走 `getpwuid`，`env -i` 下也成立）；验收时本机 `ssh -p <port> 127.0.0.1` 报 `Permission denied (publickey)` 是**正常的**，改为比对 `ssh-keygen -lf <host key>.pub` 与 `ssh -v` 报的 `Server host key` 指纹，且 `pgrep -x sshd` 匹配不到它（proctitle 被改写成 `sshd: ... [listener]`）→ 用 `lsof -nP -iTCP:<port> -sTCP:LISTEN`
+- "Was it OOM" is answered by `/proc/vmstat`'s `oom_kill` (kernel + cgroup OOM kills since boot): 0 rules it out completely — more reliable than digging through dmesg/journal
+- Catching "who killed the process" MUST use `sudo systemd-run --unit=X --collect perf record -a -e syscalls:sys_enter_kill -e signal:signal_generate`: a perf started directly from the user session belongs to `user-1000.slice`, so when the slice dies it is buried alongside and the data is garbage (`data size field is 0`); in the output, the line head is the sender, `comm=`/`pid=` the target, `grp=1` a process-group broadcast
+- Verify kill semantics with `strace -e trace=kill /bin/kill -0 -- <target>`: signal 0 probes without delivering, showing the pid the kernel actually received
+- Two for managed sshd (the canonical "must be `danger-full-access`" case): `sshd_config` **does no environment-variable expansion at all** — `${HOME}`/`$HOME` are treated as literal directory names and relative paths resolve against sshd's cwd (which pm3 sets to `<pm3 home>/<name>`), so both must fail; only `~` works (it goes through `getpwuid`, holding even under `env -i`). During acceptance, a local `ssh -p <port> 127.0.0.1` reporting `Permission denied (publickey)` is **normal**; instead compare `ssh-keygen -lf <host key>.pub` against the `Server host key` fingerprint that `ssh -v` reports, and note that `pgrep -x sshd` cannot match it (the proctitle is rewritten to `sshd: ... [listener]`) → use `lsof -nP -iTCP:<port> -sTCP:LISTEN`

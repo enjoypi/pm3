@@ -1,22 +1,22 @@
-# arch_tests — 依赖方向强制
+# arch_tests — dependency direction enforcement
 
-`src/lib.rs` 是空壳，全部断言在 `tests/architecture.rs`，直接解析各 crate 的 `Cargo.toml` 与 `lib.rs`。
+`src/lib.rs` is an empty shell; all assertions live in `tests/architecture.rs`, which parses each crate's `Cargo.toml` and `lib.rs` directly.
 
-## 强制的两类规则
+## The two enforced rule classes
 
-**依赖方向**（读 `Cargo.toml` 的 `[dependencies]`，`usecases` 的 tokio 只禁 runtime 表、dev 表放行）
+**Dependency direction** (reads `[dependencies]` of `Cargo.toml`; for `usecases`, tokio is banned only in the runtime table — the dev table is allowed)
 
 - `frameworks` ✗ `usecases` / `entities`
 - `usecases` ✗ `adapters` / `frameworks` / `axum` / `serde` / `serde_json` / runtime `tokio`
 - `entities` ✗ `usecases` / `adapters` / `frameworks` / `serde` / `serde_json` / `tokio`
 - `adapters` ✗ `frameworks`
 
-**再导出必须具名**（读 `lib.rs`，禁 `pub use inner::*;`）
+**Re-exports must be named** (reads `lib.rs`; bans `pub use inner::*;`)
 
-- `usecases` 具名再导出 `entities`，`adapters` 具名再导出 `usecases`
-- `frameworks` 拿内层类型只能走 `adapters` 的具名再导出——加新类型时要在 `adapters/src/lib.rs` 补一行，别图省事写 glob
+- `usecases` re-exports `entities` by name; `adapters` re-exports `usecases` by name
+- `frameworks` can reach inner-layer types only through `adapters`' named re-exports — when adding a new type, add a line in `adapters/src/lib.rs`; don't take the shortcut of a glob
 
-## 本层规则
+## Layer rules
 
-- 新增禁令用现成的 `assert_no_dependency` / `assert_no_runtime_dependency` / `assert_no_wildcard_reexport`，一条断言一个 `#[test]`
-- 这些 helper 自身也有单测（`dependency_names_*` / `wildcard_reexport_violation_*`）——覆盖率门禁要求，改 helper 时同步补
+- For new bans use the existing `assert_no_dependency` / `assert_no_runtime_dependency` / `assert_no_wildcard_reexport`, one assertion per `#[test]`
+- These helpers have their own unit tests (`dependency_names_*` / `wildcard_reexport_violation_*`) — required by the coverage gate; add tests in sync when changing a helper

@@ -117,6 +117,7 @@ async fn finish_start(
         already_running,
         refused,
         unsaved,
+        deleted: _,
         views: _,
     } = reply;
     match settle_start(refused, unsaved.as_deref()) {
@@ -174,15 +175,18 @@ pub async fn delete_app(config_path: &str, selector: &str) -> Result<String> {
     let path = app_path(selector)?;
     let session = prepared_session(config_path).await?;
     let deleted = ask(&session, "DELETE", &path, None).await?;
-    forget(
-        &session.cfg_dir,
-        deleted.service.as_deref().unwrap_or(selector),
-    )
-    .await;
+    match deleted.service.as_deref() {
+        Some(name) => forget(&session.cfg_dir, name).await,
+        None => {
+            for name in &deleted.deleted {
+                forget(&session.cfg_dir, name).await;
+            }
+        }
+    }
     Ok(deleted.report)
 }
 
-pub async fn kill_daemon(config_path: &str, with_services: bool) -> Result<String> {
+pub async fn shutdown_daemon(config_path: &str, with_services: bool) -> Result<String> {
     let session = prepared_session(config_path).await?;
     let pm3 = &session.config.pm3;
     let client = UdsClient::new(session.paths.socket.clone(), pm3.request_timeout_ms);

@@ -17,7 +17,8 @@ use super::{
 };
 use crate::{
     presenter::{
-        affected_service, already_running_names, refused_names, render_reply, unsaved_reason,
+        affected_service, already_running_names, deleted_names, refused_names, render_reply,
+        unsaved_reason,
     },
     state::{DaemonError, DaemonHandle},
 };
@@ -144,6 +145,7 @@ fn refusal(error: &DaemonError) -> ReplyDto {
         already_running: Vec::new(),
         refused: Vec::new(),
         unsaved: None,
+        deleted: Vec::new(),
         views: Vec::new(),
     }
 }
@@ -190,6 +192,7 @@ fn envelope(reply: &SupervisionReply) -> ReplyDto {
         already_running: already_running_names(reply),
         refused: refused_names(reply),
         unsaved: unsaved_reason(reply),
+        deleted: deleted_names(reply),
         views: views_of(reply),
     }
 }
@@ -206,7 +209,10 @@ fn views_of(reply: &SupervisionReply) -> Vec<ProcessViewDto> {
         | Dr::Deleted { .. }
         | Dr::Reset { .. }
         | Dr::Signalled { .. }
-        | Dr::StoppedAll { .. } => Vec::new(),
+        | Dr::StoppedAll { .. }
+        | Dr::RestartedAll { .. }
+        | Dr::DeletedAll { .. }
+        | Dr::ResetAll { .. } => Vec::new(),
     }
 }
 

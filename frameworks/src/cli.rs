@@ -7,17 +7,45 @@ use crate::{
     Error, Result, commands,
     layout::{host_home, host_pm3_home},
     prompt,
+    service::ServiceAction,
 };
 
 pub const MISSING_COMMAND: &str = "--name needs a program to run after it";
 pub const AMBIGUOUS_TARGET: &str =
     "without --name, start takes exactly one apps file; pm3 options must come before the program";
 
+const HELP_TEMPLATE: &str = "\
+{about-with-newline}
+{usage-heading} {usage}
+
+Apps:
+  start       Start and daemonize an app
+  stop        Stop an app
+  restart     Restart an app (re-reads its config and .env)
+  delete      Stop and delete an app from the managed list
+  reset       Reset restart counters for an app
+  sendSignal  Send a system signal to an app's process group
+  describe    Describe all parameters of an app [aliases: desc, info, show]
+  list        List all apps [aliases: l, ls, ps, status]
+  logs        Show or stream app logs
+
+pm3 itself:
+  install     Install or upgrade the pm3 binary and re-register auto-start
+  startup     Enable the startup hook (register auto-start at login)
+  unstartup   Disable the startup hook
+  shutdown    Stop the pm3 daemon (apps keep running unless --with-services)
+  config      Validate or show the configuration
+  completion  Print the shell completion script for SHELL
+
+Options:
+{options}{after-help}";
+
 #[derive(Debug, Parser)]
 #[command(
     name = "pm3",
     version,
-    about = "极简进程管理器，每个服务跑在严格沙盒中"
+    about = "A minimal process manager; every app runs in a strict sandbox",
+    help_template = HELP_TEMPLATE
 )]
 pub struct Cli {
     #[arg(long, global = true, default_value_t = default_config(host_pm3_home().as_deref(), host_home().as_deref()))]
@@ -34,30 +62,34 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     #[command(
-        about = "Start an apps file, or one program given inline after --name",
+        about = "Start and daemonize an app",
         long_about = "pm3 start <APPS_FILE>\npm3 start --name <NAME> [OPTIONS] <PROGRAM> [ARGS...]\n\npm3 options must come before the program: everything after it belongs to the program."
     )]
     Start(StartArgs),
 
-    #[command(about = "Stop a managed app")]
+    #[command(about = "Stop an app")]
     Stop { selector: String },
 
-    #[command(about = "Restart a managed app")]
+    #[command(about = "Restart an app (re-reads its config and .env)")]
     Restart { selector: String },
 
-    #[command(about = "Stop a managed app and forget it")]
+    #[command(about = "Stop and delete an app from the managed list")]
     Delete { selector: String },
 
-    #[command(about = "Clear a managed app's restart counters and breaker state")]
+    #[command(about = "Reset restart counters for an app")]
     Reset { selector: String },
 
     #[command(
-        about = "Send a signal to a managed app's process group",
-        long_about = "Send a signal to a managed app's process group. NAME is one of TERM, INT, QUIT, HUP, USR1, USR2 (case-insensitive)."
+        name = "sendSignal",
+        about = "Send a system signal to an app's process group",
+        long_about = "Send a system signal to an app's process group. SIGNAL is one of TERM, INT, QUIT, HUP, USR1, USR2 (case-insensitive)."
     )]
-    Signal { selector: String, name: String },
+    SendSignal { signal: String, selector: String },
 
-    #[command(about = "Show everything known about one app")]
+    #[command(
+        about = "Describe all parameters of an app",
+        visible_aliases = ["desc", "info", "show"]
+    )]
     Describe {
         selector: String,
 
@@ -65,55 +97,49 @@ pub enum Commands {
         json: bool,
     },
 
-    #[command(about = "List every managed app")]
+    #[command(
+        about = "List all apps",
+        visible_aliases = ["l", "ls", "ps", "status"]
+    )]
     List {
         #[arg(long, help = "Print the listing as JSON")]
         json: bool,
     },
 
-    #[command(about = "Show the logs of managed apps")]
-    Logs {
-        names: Vec<String>,
+    #[command(about = "Show or stream app logs")]
+    Logs(LogsArgs),
 
-        #[arg(short = 'n', long)]
-        lines: Option<usize>,
-
-        #[arg(short = 'f', long)]
-        follow: bool,
-
-        #[arg(long, help = "Show the stderr log instead of stdout")]
-        err: bool,
-
-        #[arg(
-            long,
-            conflicts_with = "err",
-            help = "Merge the stdout and stderr logs"
-        )]
-        all: bool,
-
-        #[arg(
-            long,
-            conflicts_with_all = ["follow", "lines"],
-            help = "Truncate the selected log files instead of showing them"
-        )]
-        clear: bool,
-    },
-
-    #[command(about = "Configuration management")]
+    #[command(about = "Validate or show the configuration")]
     Config {
         #[command(subcommand)]
         command: ConfigCommands,
     },
 
-    #[command(about = "Manage the pm3 auto-start service")]
-    Service {
-        #[command(subcommand)]
-        command: Option<ServiceCommands>,
+    #[command(about = "Enable the startup hook (register auto-start at login)")]
+    Startup {
+        #[arg(long)]
+        dry_run: bool,
+
+        #[arg(long)]
+        force: bool,
+
+        #[arg(
+            long,
+            conflicts_with_all = ["dry_run", "force"],
+            help = "Show the registered state instead of registering"
+        )]
+        status: bool,
+    },
+
+    #[command(about = "Disable the startup hook")]
+    Unstartup {
+        #[arg(long)]
+        dry_run: bool,
     },
 
     #[command(
-        about = "Install or upgrade pm3 itself",
-        long_about = "Backs up the running install, swaps in SOURCE (the running binary by default), reinstalls the auto-start service, and verifies every managed service is reclaimed."
+        about = "Install or upgrade the pm3 binary and re-register auto-start",
+        long_about = "Backs up the running install, swaps in SOURCE (the running binary by default), reinstalls the auto-start service, and verifies every managed app is reclaimed."
     )]
     Install {
         #[arg(value_name = "SOURCE", help = "New binary to install")]
@@ -121,15 +147,15 @@ pub enum Commands {
     },
 
     #[command(
-        about = "Stop the pm3 daemon",
-        long_about = "Stops the pm3 daemon. Managed services keep running and are reclaimed by the next daemon unless --with-services is given."
+        about = "Stop the pm3 daemon (apps keep running unless --with-services)",
+        long_about = "Stop the pm3 daemon. Managed apps keep running and are reclaimed by the next daemon unless --with-services is given."
     )]
-    Kill {
-        #[arg(long, help = "Stop every managed service before leaving")]
+    Shutdown {
+        #[arg(long, help = "Stop every managed app before leaving")]
         with_services: bool,
     },
 
-    #[command(about = "Run the pm3 daemon in the foreground")]
+    #[command(hide = true, about = "Run the pm3 daemon in the foreground")]
     Daemon,
 
     #[command(about = "Print the shell completion script for SHELL")]
@@ -139,9 +165,41 @@ pub enum Commands {
     Sleep { ms: u64 },
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "clap derives each flag as a bool; this struct only bundles the logs flags for dispatch"
+)]
+#[derive(Debug, Args)]
+pub struct LogsArgs {
+    #[arg(short = 'n', long)]
+    pub lines: Option<usize>,
+
+    #[arg(long, help = "Print the last lines and exit instead of streaming")]
+    pub nostream: bool,
+
+    #[arg(long, help = "Show the stderr log instead of stdout")]
+    pub err: bool,
+
+    #[arg(
+        long,
+        conflicts_with = "err",
+        help = "Merge the stdout and stderr logs"
+    )]
+    pub all: bool,
+
+    #[arg(
+        long,
+        conflicts_with = "lines",
+        help = "Truncate the selected log files instead of showing them"
+    )]
+    pub clear: bool,
+
+    pub names: Vec<String>,
+}
+
 #[derive(Debug, Args)]
 pub struct StartArgs {
-    #[arg(long, help = "Manage one inline program under this name")]
+    #[arg(short = 'n', long, help = "Manage one inline program under this name")]
     pub name: Option<String>,
 
     #[arg(long, help = "Working directory; defaults to <pm3 home>/<name>")]
@@ -150,6 +208,7 @@ pub struct StartArgs {
     #[arg(
         long,
         value_name = "EXPR",
+        visible_alias = "cron-restart",
         help = "Five-field cron schedule; '~' picks a random value on every fire"
     )]
     pub cron: Option<String>,
@@ -178,7 +237,7 @@ pub struct StartArgs {
     pub readable_dirs: Vec<String>,
 
     #[arg(
-        long = "max-memory",
+        long = "max-memory-restart",
         value_name = "SIZE",
         help = "Restart the program when its resident memory grows past this size, e.g. 300M"
     )]
@@ -207,35 +266,17 @@ pub struct StartArgs {
     pub listen_timeout_ms: Option<u64>,
 
     #[arg(
-        long = "stop-exit-code",
+        long = "stop-exit-codes",
         value_name = "CODE",
         help = "Treat this exit code as a clean stop; repeatable"
     )]
     pub stop_exit_codes: Vec<i32>,
 
-    #[arg(long, help = "Overwrite an existing service file")]
+    #[arg(short = 'f', long, help = "Overwrite an existing service file")]
     pub force: bool,
 
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub target: Vec<String>,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ServiceCommands {
-    #[command(about = "Install the pm3 daemon as a user-level auto-start service")]
-    Install {
-        #[arg(long)]
-        dry_run: bool,
-
-        #[arg(long)]
-        force: bool,
-    },
-
-    #[command(about = "Deactivate and remove the pm3 auto-start service")]
-    Uninstall {
-        #[arg(long)]
-        dry_run: bool,
-    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -263,42 +304,29 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
         Commands::Restart { selector } => act(&config, &selector, commands::RESTART_ACTION).await,
         Commands::Delete { selector } => commands::delete_app(&config, &selector).await.map(Some),
         Commands::Reset { selector } => act(&config, &selector, commands::RESET_ACTION).await,
-        Commands::Signal { selector, name } => commands::signal_app(&config, &selector, &name)
-            .await
-            .map(Some),
+        Commands::SendSignal { signal, selector } => {
+            commands::signal_app(&config, &selector, &signal)
+                .await
+                .map(Some)
+        }
         Commands::Describe { selector, json } => commands::describe_app(&config, &selector, json)
             .await
             .map(Some),
         Commands::List { json } => commands::list_apps(&config, json).await.map(Some),
-        Commands::Logs {
-            names,
-            lines,
-            follow,
-            err,
-            all,
-            clear,
-        } => {
-            let request = crate::logs::LogRequest {
-                names,
-                lines,
-                err,
-                all,
-                follow,
-                action: if clear {
-                    crate::logs::LogAction::Clear
-                } else {
-                    crate::logs::LogAction::Show
-                },
-                polls: crate::logs::FOLLOW_FOREVER,
-            };
-            crate::logs::run_logs(&config, &request, &emit).await
-        }
+        Commands::Logs(args) => run_logs_command(&config, args).await,
         Commands::Config { command } => run_config(&config, &command).map(Some),
-        Commands::Service { command } => crate::service::run_service(&config, command.as_ref())
-            .await
-            .map(Some),
+        Commands::Startup {
+            dry_run,
+            force,
+            status,
+        } => run_auto_start(&config, dry_run, force, status).await,
+        Commands::Unstartup { dry_run } => {
+            crate::service::run_service(&config, &ServiceAction::Uninstall { dry_run })
+                .await
+                .map(Some)
+        }
         Commands::Install { source } => crate::install::run(&config, source).await.map(|()| None),
-        Commands::Kill { with_services } => commands::kill_daemon(&config, with_services)
+        Commands::Shutdown { with_services } => commands::shutdown_daemon(&config, with_services)
             .await
             .map(Some),
         Commands::Daemon => crate::daemon::run_daemon(&config).await.map(|()| None),
@@ -316,6 +344,37 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
 fn print_completion(shell: clap_complete::Shell) {
     let mut command = Cli::command();
     clap_complete::generate(shell, &mut command, "pm3", &mut std::io::stdout());
+}
+
+async fn run_logs_command(config: &str, args: LogsArgs) -> Result<Option<String>> {
+    let request = crate::logs::LogRequest {
+        names: args.names,
+        lines: args.lines,
+        err: args.err,
+        all: args.all,
+        follow: !args.nostream,
+        action: if args.clear {
+            crate::logs::LogAction::Clear
+        } else {
+            crate::logs::LogAction::Show
+        },
+        polls: crate::logs::FOLLOW_FOREVER,
+    };
+    crate::logs::run_logs(config, &request, &emit).await
+}
+
+async fn run_auto_start(
+    config: &str,
+    dry_run: bool,
+    force: bool,
+    status: bool,
+) -> Result<Option<String>> {
+    let action = if status {
+        ServiceAction::Status
+    } else {
+        ServiceAction::Install { dry_run, force }
+    };
+    crate::service::run_service(config, &action).await.map(Some)
 }
 
 #[must_use]

@@ -133,6 +133,16 @@ pub fn log_failure(action: &str, app: &str, error: &UsecaseError) {
     );
 }
 
+pub fn log_batch_skip(action: &str, app: &str, reason: &str) {
+    tracing::warn!(
+        feature = "supervisor",
+        action,
+        app,
+        reason,
+        "pm3 daemon skipped a service while applying a batch request",
+    );
+}
+
 pub fn log_armed(app: &str, fire_at_ms: u64) {
     tracing::debug!(
         feature = "supervisor",

@@ -27,7 +27,10 @@ impl Drop for Home {
         if !self.root.join("pm3.pid").exists() {
             return;
         }
-        for args in [["list"].as_slice(), ["kill", "--with-services"].as_slice()] {
+        for args in [
+            ["list"].as_slice(),
+            ["shutdown", "--with-services"].as_slice(),
+        ] {
             std::process::Command::new(PM3)
                 .arg("--config")
                 .arg(&self.config)
@@ -389,7 +392,7 @@ pub fn signal(pid: u32, name: &str) {
 pub fn shutdown_daemon(home: &Home) {
     let listed = pm3(home, &["list"]);
     assert!(listed.status.success(), "{}", stdout_of(&listed));
-    let killed = pm3(home, &["kill", "--with-services"]);
+    let killed = pm3(home, &["shutdown", "--with-services"]);
     assert!(killed.status.success(), "{}", stdout_of(&killed));
     wait_until_gone(&home.root.join("pm3.sock"));
 }

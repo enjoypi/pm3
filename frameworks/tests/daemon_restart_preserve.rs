@@ -207,7 +207,7 @@ fn killing_the_daemon_with_its_services_leaves_nothing_running() {
     let home = home();
     let pid = start_sleeper(&home);
 
-    let killed = pm3(&home, &["kill", "--with-services"]);
+    let killed = pm3(&home, &["shutdown", "--with-services"]);
     assert!(killed.status.success(), "{}", stdout_of(&killed));
     assert!(
         stdout_of(&killed).contains(SERVICE),
@@ -231,7 +231,7 @@ fn killing_with_services_tolerates_a_dump_it_cannot_write() {
     std::fs::create_dir_all(&dump).expect("block the dump path");
     std::fs::write(dump.join("occupied"), "state").expect("fill the blocked dump path");
 
-    let killed = pm3(&home, &["kill", "--with-services"]);
+    let killed = pm3(&home, &["shutdown", "--with-services"]);
 
     assert!(killed.status.success(), "{}", stdout_of(&killed));
     std::fs::remove_dir_all(&dump).expect("unblock the dump path");
@@ -265,7 +265,7 @@ fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
     let home = home();
     serve_health_then_refusal(&home.root.join("pm3.sock"));
 
-    let killed = pm3(&home, &["kill", "--with-services"]);
+    let killed = pm3(&home, &["shutdown", "--with-services"]);
 
     assert!(!killed.status.success(), "{}", stdout_of(&killed));
     assert!(
@@ -280,7 +280,7 @@ fn killing_the_daemon_alone_leaves_the_service_running() {
     let home = home();
     let pid = start_sleeper(&home);
 
-    let killed = pm3(&home, &["kill"]);
+    let killed = pm3(&home, &["shutdown"]);
     assert!(killed.status.success(), "{}", stdout_of(&killed));
     assert!(
         stdout_of(&killed).contains("keep running"),
@@ -318,7 +318,7 @@ fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
     let home = home();
     answer_one_probe_then_vanish(&home.root.join("pm3.sock"));
 
-    let killed = pm3(&home, &["kill"]);
+    let killed = pm3(&home, &["shutdown"]);
     assert!(killed.status.success(), "{}", common::stderr_of(&killed));
     assert!(
         stdout_of(&killed).contains("not running"),
@@ -330,7 +330,7 @@ fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
 #[test]
 fn killing_a_daemon_that_is_not_running_says_so() {
     let home = home();
-    let killed = pm3(&home, &["kill"]);
+    let killed = pm3(&home, &["shutdown"]);
     assert!(killed.status.success(), "{}", stdout_of(&killed));
     assert!(
         stdout_of(&killed).contains("not running"),
@@ -347,7 +347,7 @@ fn killing_a_daemon_whose_pid_file_vanished_says_what_it_cannot_read() {
     let recorded = std::fs::read_to_string(&pid_file).expect("the daemon pid file");
     std::fs::remove_file(&pid_file).expect("drop the pid file");
 
-    let killed = pm3(&home, &["kill"]);
+    let killed = pm3(&home, &["shutdown"]);
     assert!(!killed.status.success(), "{}", stdout_of(&killed));
     assert!(
         common::stderr_of(&killed).contains("cannot read the pm3 daemon pid"),
@@ -367,7 +367,7 @@ fn killing_a_daemon_whose_pid_file_is_bogus_reports_the_refused_signal() {
     let recorded = std::fs::read_to_string(&pid_file).expect("the daemon pid file");
     std::fs::write(&pid_file, u32::MAX.to_string()).expect("plant a bogus pid");
 
-    let killed = pm3(&home, &["kill"]);
+    let killed = pm3(&home, &["shutdown"]);
     assert!(!killed.status.success(), "{}", stdout_of(&killed));
     assert!(
         common::stderr_of(&killed).contains("cannot signal pid"),
@@ -387,7 +387,7 @@ fn killing_with_services_needs_a_usable_service_directory() {
     std::fs::remove_dir_all(&cfg_dir).expect("clear the service directory");
     std::fs::write(&cfg_dir, "not a directory").expect("occupy the service directory");
 
-    let killed = pm3(&home, &["kill", "--with-services"]);
+    let killed = pm3(&home, &["shutdown", "--with-services"]);
     assert!(!killed.status.success(), "{}", stdout_of(&killed));
     assert!(
         common::stderr_of(&killed).contains("cannot prepare the pm3 home"),
@@ -412,7 +412,7 @@ fn killing_a_daemon_that_will_not_leave_reports_a_failure() {
         .expect("should spawn a decoy");
     std::fs::write(&pid_file, decoy.id().to_string()).expect("point the pid file at the decoy");
 
-    let killed = pm3(&home, &["kill"]);
+    let killed = pm3(&home, &["shutdown"]);
     assert!(
         !killed.status.success(),
         "pm3 must not claim success while the daemon is still listening: {}",
@@ -462,7 +462,7 @@ fn deleting_without_a_usable_config_cannot_open_a_session() {
 #[test]
 fn killing_without_a_usable_config_cannot_open_a_session() {
     let killed = std::process::Command::new(common::PM3)
-        .args(["--config", "/nonexistent/pm3.yaml", "kill"])
+        .args(["--config", "/nonexistent/pm3.yaml", "shutdown"])
         .output()
         .expect("pm3 should run");
     assert!(!killed.status.success(), "{}", stdout_of(&killed));

@@ -181,6 +181,7 @@ async fn the_cli_reads_the_stderr_log_with_the_err_flag() {
         "logs",
         "web",
         "--err",
+        "--nostream",
     ]))
     .await
     .expect("should read the err log");
@@ -295,16 +296,4 @@ async fn the_cli_clears_a_log_with_the_clear_flag() {
     assert_eq!(printed.as_deref(), Some(format!("cleared {path}").as_str()));
     assert_eq!(std::fs::metadata(&path).expect("stat").len(), 0);
     stop_daemon(fixture).await;
-}
-
-#[test]
-fn the_clear_flag_conflicts_with_follow_and_a_line_count() {
-    assert!(
-        Cli::try_parse_from(["pm3", "logs", "web", "--clear", "--follow"]).is_err(),
-        "--clear must conflict with --follow"
-    );
-    assert!(
-        Cli::try_parse_from(["pm3", "logs", "web", "--clear", "-n", "5"]).is_err(),
-        "--clear must conflict with -n"
-    );
 }

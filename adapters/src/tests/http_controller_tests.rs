@@ -250,6 +250,23 @@ async fn deleting_an_app_forwards_the_selector() {
 }
 
 #[tokio::test]
+async fn deleting_every_app_forwards_the_all_selector_and_lists_the_deleted() {
+    let outcome = Ok(SupervisionReply::DeletedAll {
+        names: vec!["web".to_string(), "db".to_string()],
+    });
+    let exchange = exchange(outcome, delete_at("/apps/all")).await;
+    assert_eq!(
+        exchange.request,
+        Some(SupervisionRequest::Delete(AppSelector::All))
+    );
+    assert!(
+        exchange.body.contains("\"deleted\":[\"web\",\"db\"]"),
+        "got: {}",
+        exchange.body
+    );
+}
+
+#[tokio::test]
 async fn an_unknown_app_answers_not_found() {
     let outcome = Err(UsecaseError::NotFound("web".to_string()).into());
     let exchange = exchange(outcome, get_from("/apps/web")).await;

@@ -7,7 +7,6 @@ use adapters::{
 
 use crate::{
     Error, Result,
-    cli::ServiceCommands,
     layout::{
         canonicalize, ensure_layout, host_home, host_pm3_env, host_runtime_dir, host_uid,
         resolve_cfg_dir, resolve_layout,
@@ -48,7 +47,14 @@ pub struct ServiceSession {
     pub daemon_poll_interval_ms: u64,
 }
 
-pub async fn run_service(config_path: &str, command: Option<&ServiceCommands>) -> Result<String> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ServiceAction {
+    Status,
+    Install { dry_run: bool, force: bool },
+    Uninstall { dry_run: bool },
+}
+
+pub async fn run_service(config_path: &str, action: &ServiceAction) -> Result<String> {
     let home = host_home();
     let context = ServiceContext {
         programs: None,
@@ -59,23 +65,23 @@ pub async fn run_service(config_path: &str, command: Option<&ServiceCommands>) -
         uid: host_uid(),
         binary: std::env::current_exe(),
     };
-    dispatch_service(config_path, command, &context).await
+    dispatch_service(config_path, action, &context).await
 }
 
 pub async fn dispatch_service(
     config_path: &str,
-    command: Option<&ServiceCommands>,
+    action: &ServiceAction,
     context: &ServiceContext<'_>,
 ) -> Result<String> {
     let session = open_service_session(config_path, context)?;
     let programs = context.programs.unwrap_or(&session.programs);
     let timeout_ms = session.command_timeout_ms;
-    match command {
-        None => Ok(status_report(&session.spec, programs, timeout_ms).await?),
-        Some(ServiceCommands::Install { dry_run, force }) => {
+    match action {
+        ServiceAction::Status => Ok(status_report(&session.spec, programs, timeout_ms).await?),
+        ServiceAction::Install { dry_run, force } => {
             install(&session, programs, *dry_run, *force).await
         }
-        Some(ServiceCommands::Uninstall { dry_run }) => {
+        ServiceAction::Uninstall { dry_run } => {
             Ok(uninstall_unit(&session.spec, programs, *dry_run, timeout_ms).await?)
         }
     }

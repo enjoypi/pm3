@@ -1,120 +1,124 @@
-# pm3 需求描述
+# pm3 Requirements
 
-pm3 是极简版 pm2，额外带严格的沙盒隔离。一个程序既是命令行工具也是常驻守护进程，两者在本机直接通信，不占用任何网络端口。
+pm3 is a minimalist pm2 with strict sandbox isolation on top. A single program serves as both the command-line tool and the resident daemon; the two communicate directly on the local machine without occupying any network port.
 
-面向的是「在自己的机器或一台服务器上，托管几个常驻程序和定时任务」的场景：托管的程序开机自启、崩溃自动拉起、日志集中可查，并且只能读写自己那一亩三分地。
+It targets the scenario of "hosting a few long-running programs and scheduled jobs on your own machine or a single server": managed programs auto-start at boot, are restarted automatically after crashes, have their logs collected in one place, and can only read and write their own little patch of ground.
 
-## 为什么要有 pm3
+## Why pm3
 
-pm2 解决的是「让程序常驻并自动拉起」，但它不管这些程序能碰到什么：被托管的进程默认能读满盘、连满网，一个被入侵的小服务就是整台机器的入口。它自身还背着一整套语言运行时与百兆级常驻内存，为了管三个小程序而多养一个大进程。
+pm2 solves "keep a program running and restart it automatically," but it does not care what those programs can touch: a managed process can by default read the whole disk and reach the whole network, so one compromised little service is an entry point into the entire machine. It also carries a full language runtime and a hundred megabytes of resident memory — raising one big process just to manage three small ones.
 
-pm3 要的是反过来的默认：**托管裸进程，默认拒网、默认只能写自己的工作目录**，要开口子必须逐条声明；管理器自身只是一个几 MiB 的常驻进程，除了系统自带的进程查询与信号工具外不依赖任何东西。
+pm3 wants the opposite defaults: **manage bare processes, deny the network by default, allow writes only to the working directory by default**; every opening must be declared one by one. The manager itself is just a resident process of a few MiB and depends on nothing beyond the operating system's own process-query and signal tools.
 
-它不打算取代容器。容器给的是镜像分发与强隔离——依赖打包、独立网络栈、可复现部署；pm3 给的是裸进程的轻量托管——秒级启动、直接读写宿主文件、没有构建镜像这一步。pm3 的沙盒是「降权」而非虚拟化，服务与宿主共享内核，隔离强度弱于容器，但开销低到可以忽略。要分发给别人的机器、要可复现环境、要强隔离，用容器；要在自己机器上管几个长期跑的小服务与定时任务，用 pm3。
+It is not trying to replace containers. Containers give you image distribution and strong isolation — dependency packaging, an independent network stack, reproducible deployment; pm3 gives you lightweight hosting of bare processes — second-level startup, direct reads and writes of host files, no image-building step. The pm3 sandbox is "dropping privileges," not virtualization: services share the kernel with the host, isolation is weaker than a container's, but the overhead is negligible. If you need to distribute to other people's machines, reproducible environments, or strong isolation, use containers; if you want to run a few long-lived small services and scheduled jobs on your own machine, use pm3.
 
-同样，要管大规模集群、要进程内的负载均衡，pm2 更合适。pm3 刻意不做这些。
+Likewise, for managing large clusters or in-process load balancing, pm2 is the better fit. pm3 deliberately does not do those things.
 
-## 托管一个程序
-
-```
-pm3 start --name web [选项] <程序> <参数...>
-```
-
-命令做两件事：把这次的启动意图记成一份该服务专属的配置文件，然后让守护进程按它把程序跑起来。此后 `pm3 restart web` / `stop` / `delete` / `describe` 都只认服务名；看日志是 `pm3 logs web`，默认打印末尾若干行，`-n` 改行数、`-f` 持续跟随。
-
-配置文件是给人看、也允许人手改的：里面不出现任何绝对路径，家目录写成 `${HOME}`，程序名写裸名而不是全路径。这样同一份配置换台机器、换个用户名依然成立。
-
-`pm3 list` 一屏看完所有服务的状态、重启次数与下次触发时间。
-
-## 环境变量与凭据
-
-服务的环境变量一律写在服务配置旁边的 `<服务名>.env` 里，每行一条 `KEY=VALUE`，`#` 开头是注释。这个文件存在就自动加载，不存在就当没有环境变量。配置文件本身**不接受** `env` 字段，写了直接报错并提示搬到 `.env`——这样凭据不会出现在配置文件、`pm3 describe` 的输出、运行状态记录或任何一条日志里。
-
-除了这个文件里声明的，pm3 还会把 `HOME` 交给服务，省得配置里写死绝对路径；`.env` 里自己写一个 `HOME` 就以自己写的为准。除此之外服务拿到的环境是空的。
-
-值里可以写 `$HOME` 或 `${HOME}`，pm3 会替换成上面那个家目录，所以 `PATH=$HOME/.cargo/bin:/usr/bin:/bin` 这种写法不用把用户名硬编码进去。除此之外的 `$` 一律原样交给程序——`$HOMEBREW_PREFIX` 不会被当成家目录，随机密码里的 `$` 也不会被改写；万一密码里真的有 `$HOME` 这几个字，用单引号把值包起来就整段照搬。
-
-pm3 每次读这个文件都会把权限收紧成只有属主可读写，配置目录本身也只对属主开放；文件是个软链时只读不改权限，免得动到别人的凭据。
-
-轮换凭据就是改文件再 `pm3 restart <服务名>`——重启会重新读一遍配置和 `.env`。守护进程换代时也会重读，凭据变了就按新值重启该服务。删除服务时 `.env` 一并删除。
-
-万一改坏了（比如漏了 `=`）又碰上守护进程换代，pm3 读不出这个服务该怎么跑，就会把它原来那个进程停掉并在日志里说明，而不是丢着不管——否则它会一直在后台跑，谁也管不到，下次启动还会多出一份。
-
-## 意图与运行状态分开存
-
-用户声明的**意图**（跑什么、带什么参数、能写哪些目录）与 pm3 记录的**运行状态**（当前 pid、重启了几次）分别存放，互不污染。删掉运行状态不会丢配置；手改配置文件也不会破坏正在跑的进程记录。
-
-## 沙盒隔离
-
-每个被托管的程序默认只能写自己的工作目录，写目录之外会被系统拒绝，网络访问也被拒绝。需要放开的目录由运维在服务配置里逐条声明。隔离由操作系统内核强制执行，不是 pm3 在用户态拦。
-
-读也是收着的：默认只能读系统目录（配置里那份白名单）、自己的程序文件和自己的工作目录，别的路径看不见。程序确实需要读别处就逐条声明可读目录（`--readable-dir`），实在收不住的服务可以在它的配置里把读放开成整块磁盘。
-
-不管读放开到什么程度，pm3 自己那两个目录——存运行状态的和存服务配置的——始终从每个沙盒里挖掉：一个服务读不到另一个服务的凭据，也看不见守护进程的通信通道。因此服务的工作目录不能设成 pm3 自己的目录，这样声明会被直接拒绝。
-
-自带沙盒的程序（例如 sshd）套不进 pm3 的沙盒——系统不允许沙盒嵌套，它初始化自己那层时会被拒绝。这类程序必须在它的配置里把沙盒整个关掉，靠它自己的隔离机制。
-
-要在参数里指代「这个服务自己的可写工作目录」，写 `${PM3_SERVICE_CWD}` 占位符，pm3 启动时替换成真实路径。
-
-## 崩溃与熔断
-
-程序异常退出后自动拉起。若短时间内反复崩溃达到阈值，停止重试并标记为出错状态，避免无意义的重启风暴。服务之间可以声明依赖关系，pm3 按依赖顺序启动，并在配置成环时直接报错而不是死循环。
-
-反复崩溃时的重试间隔按指数退避拉长：第一次不稳定重启沿用配置里的重启间隔，之后每次翻倍，封顶默认 15 秒；间隔配成 0 时不退避，行为与固定间隔完全一致。
-
-依赖顺序只保证启动先后，不保证被依赖者真的可服务。需要后者时给服务配就绪探针，两种形式任选：周期性执行一条命令，退出码 0 即就绪；或周期性连接一个地址端口，能连上即就绪。另可给一个就绪总预算，默认 30 秒。探针跑在宿主机、沙盒外——它探的是客户端视角的可用性，所以沙盒内断网的服务照样能被探到。
-
-带探针的服务启动后停留在「启动中」，探针通过才转「在线」；声明了依赖的服务先记为「排队」，等被依赖者就绪后才真正拉起。超时或探针命令本身不存在时，服务被停掉并标记为出错，排队等待它的服务一并取消——探针失败是终态，不触发自动重启。守护进程若在探针等待期间换代，排队中的服务以停止状态落盘，换代后不会自动续拉，需要人工 `start`。
-
-内存泄漏也有兜底：给服务配一个内存上限（`--max-memory 300M`），pm3 定期采样常驻内存，超过上限就重启它。没配上限的服务不受影响，也不会被采样。
-
-## 定时任务
-
-服务配置里写 5 字段 cron 表达式即可定时触发：
-
-- 配成「不自动重启」时，它是一次性任务，到点跑一次、跑完就结束
-- 配成「自动重启」时，它是常驻服务，到点重启一次
-
-支持 OpenBSD 风格的随机语法 `~`：`~` 表示该字段随机取值，`a~b` 表示在区间内随机，`a~b/n` 表示带步长的区间随机。每次触发后重新摇号，所以像「每天早晚各一次，具体分钟随机」这样的需求，两次会落在不同的分钟——用来把定时任务的负载错开。
-
-`pm3 list` 的 `next` 列显示下次触发的本地时刻；这一列为空就代表这个服务确实停了，不会出现 pm2 那种「服务已停止但定时器还在跑」的模糊状态。
-
-## 谁能下命令
-
-命令通道是文件系统里的一个入口，只有属主可读写，所在目录也只对属主开放。除此之外守护进程还会核对连进来的那一端到底是哪个用户，不是自己就直接断开、记一条日志——不给对方开口的机会。请求另有大小上限，免得一个畸形请求把命令处理堵住。
-
-## 守护进程重启后接管现有服务
-
-升级 pm3 自身或重启守护进程时，已经在跑的服务不应该被打断。守护进程重启后逐个核对：如果某个服务的进程还是原来那一个、且启动参数和程序文件都没变过，就直接接管继续监控；只要有任何一项对不上，就先停掉旧进程再按新配置重启。
-
-主机重启过就是另一回事：那些进程编号早已被系统分给别的程序，核对身份也没有意义。pm3 把「这次开机」记在运行状态里，发现和上次记的不是同一次开机，就把记录里的进程编号全部当作失效，只按配置重新起一遍，一个信号都不往外发。从旧版本升级上来（状态里还没有这项记录）或本机读不出开机信息时，按老规矩逐个核对身份，不会莫名重启所有服务。
-
-给守护进程发终止信号只会保存状态并退出，不动被托管的服务。要连服务一起停，用 `pm3 kill --with-services`。
-
-## 开机自启
+## Managing a program
 
 ```
-pm3 service install     # 注册为当前用户的自启服务
-pm3 service uninstall   # 取消注册，但不删配置
-pm3 service             # 查看当前注册状态
-pm3 service install --dry-run   # 只打印将要写入的内容
+pm3 start --name web [options] <program> <arguments...>
 ```
 
-三个平台都注册为**当前用户**的自启项，不需要管理员权限。Linux 上还会一并开启「用户未登录时也继续运行」。Windows 上部分能力与另两个平台有差异，见 Windows 说明。
+The command does two things: it records this launch intent as a configuration file dedicated to that service, then asks the daemon to run the program according to it. From then on `pm3 restart web` / `stop` / `delete` / `describe` recognize only the service name; to read logs use `pm3 logs web`, which prints the last few lines and then keeps following new output; `-n` changes the number of lines, `--nostream` prints the tail and exits without following.
 
-自启配置里还写着一道进程数上限：某个被托管的程序失控地反复自我复制时，它撞到的是这道墙，而不是把整台机器的进程表耗尽。上限是 pm3 加上它所有服务的总量，配置里可调。想再限住 CPU 就配一个百分比配额，这项只有 Linux 支持——macOS 那边能限的是累计 CPU 时间，用在常驻服务上等于到点就杀，所以不给。
+The configuration file is meant for humans to read and is allowed to be edited by hand: it contains no absolute paths — the home directory is written as `${HOME}`, and the program is written as a bare name rather than a full path. That way the same configuration still holds on another machine or under another username.
 
-升级 pm3 自身是一条命令 `pm3 install`：它先备份当前这一代（二进制、自启配置、pm3 自己的配置三件套，按旧版本号归档），换上新二进制，重装自启项，然后逐个核对新一代是否真的接管了所有服务——有一个没接上就报失败。回滚就是从备份目录里取回那三件套。
+`pm3 list` shows every service's status, restart count, and next scheduled trigger time on one screen.
 
-## 文件放在哪
+`pm3 stop|restart|delete|reset all` applies the operation to every managed app at once; `all` is a reserved name and cannot be used as an app name.
 
-| 位置 | 放什么 |
+`list` has the aliases `l`/`ls`/`ps`/`status`, and `describe` has the aliases `desc`/`info`/`show`.
+
+## Environment variables and credentials
+
+A service's environment variables all live in a `<service-name>.env` file next to the service configuration, one `KEY=VALUE` per line, with `#` starting a comment. If the file exists it is loaded automatically; if it does not exist the service simply has no environment variables. The configuration file itself **does not accept** an `env` field — writing one is an outright error with a hint to move it to `.env` — so credentials never appear in the configuration file, in `pm3 describe` output, in runtime state records, or in any log line.
+
+Besides what this file declares, pm3 also hands `HOME` to the service so the configuration need not hardcode absolute paths; declaring your own `HOME` in `.env` takes precedence. Beyond that, the environment the service receives is empty.
+
+Values may contain `$HOME` or `${HOME}`, which pm3 replaces with the home directory above, so `PATH=$HOME/.cargo/bin:/usr/bin:/bin` works without hardcoding a username. Every other `$` is passed to the program exactly as written — `$HOMEBREW_PREFIX` is not mistaken for the home directory, and a `$` inside a random password is never rewritten; if a password really does contain the characters `$HOME`, wrap the value in single quotes and it is copied verbatim.
+
+Every time pm3 reads this file it tightens its permissions to owner-read-write only, and the configuration directory itself is open to the owner only; if the file is a symlink it is only read, without touching its permissions, so as not to disturb someone else's credentials.
+
+Rotating credentials means editing the file and running `pm3 restart <service-name>` — a restart re-reads both the configuration and `.env`. The daemon also re-reads them when it is replaced by a new generation, and if the credentials changed the service is restarted with the new values. Deleting a service deletes its `.env` along with it.
+
+If the file is broken (say, a missing `=`) when the daemon happens to be replaced, pm3 can no longer tell how that service is supposed to run, so it stops the original process and explains why in the log, rather than leaving it alone — otherwise it would keep running in the background beyond anyone's control, and the next start would spawn a duplicate.
+
+## Intent and runtime state are stored separately
+
+The **intent** the user declares (what to run, with which arguments, which directories it may write) and the **runtime state** pm3 records (current pid, restart count) are stored separately and never pollute each other. Deleting runtime state does not lose configuration; hand-editing a configuration file does not corrupt the records of running processes.
+
+## Sandbox isolation
+
+By default each managed program can only write to its own working directory — writes outside it are rejected by the system, and network access is rejected too. Directories that need to be opened are declared one by one by the operator in the service configuration. Isolation is enforced by the operating system kernel, not blocked by pm3 in user space.
+
+Reads are restricted as well: by default a service can only read system directories (the whitelist in the configuration), its own program files, and its own working directory; other paths are invisible. If a program genuinely needs to read elsewhere, declare readable directories one by one (`--readable-dir`); a service that really cannot be contained can have reads opened up to the whole disk in its configuration.
+
+No matter how far reads are opened, pm3's own two directories — the one holding runtime state and the one holding service configurations — are always carved out of every sandbox: one service cannot read another service's credentials, nor see the daemon's communication channel. Consequently a service's working directory must not be set to one of pm3's own directories; such a declaration is rejected outright.
+
+Programs that bring their own sandbox (sshd, for example) cannot fit inside pm3's sandbox — the system does not allow sandbox nesting, and such a program is rejected when it initializes its own layer. These programs must turn the sandbox off entirely in their configuration and rely on their own isolation mechanism.
+
+To refer in arguments to "this service's own writable working directory," write the `${PM3_SERVICE_CWD}` placeholder, which pm3 replaces with the real path at startup.
+
+## Crashes and circuit breaking
+
+A program that exits abnormally is restarted automatically. If it crashes repeatedly within a short time and reaches the threshold, retries stop and the service is marked errored, avoiding a pointless restart storm. Services may declare dependencies on each other; pm3 starts them in dependency order, and reports an outright error on a cyclic configuration instead of looping forever.
+
+The retry interval for repeated crashes grows with exponential backoff: the first unstable restart uses the restart interval from the configuration, then each subsequent one doubles, capped by default at 15 seconds; when the interval is configured as 0 there is no backoff, and behavior is identical to a fixed interval.
+
+Dependency order only guarantees start order, not that the depended-upon service is actually serving. When the latter is needed, give the service a ready probe, in either of two forms: periodically execute a command, and exit code 0 means ready; or periodically connect to an address and port, and a successful connection means ready. An overall readiness budget may also be given, defaulting to 30 seconds. The probe runs on the host, outside the sandbox — it probes availability from the client's point of view, so a service with no network inside its sandbox can still be probed.
+
+A service with a probe stays "launching" after start and only turns "online" once the probe passes; a service that declares dependencies is first recorded as "queued" and is only really launched once the one it depends on is ready. On timeout, or when the probe command itself does not exist, the service is stopped and marked errored, and services queued waiting for it are cancelled along with it — probe failure is a terminal state and does not trigger auto-restart. If the daemon is replaced while a probe wait is in flight, queued services are persisted as stopped and are not automatically resumed after the handover; a manual `start` is required.
+
+Memory leaks also have a backstop: give a service a memory limit (`--max-memory-restart 300M`), and pm3 periodically samples its resident memory and restarts it when it exceeds the limit. Services without a configured limit are unaffected and are not sampled.
+
+## Scheduled jobs
+
+Writing a 5-field cron expression in the service configuration schedules it:
+
+- With "no auto-restart," it is a one-shot job: it runs once at the scheduled time and finishes
+- With "auto-restart," it is a resident service that gets restarted once at the scheduled time
+
+OpenBSD-style random syntax `~` is supported: `~` picks a random value for that field, `a~b` picks randomly within the range, and `a~b/n` picks randomly within the range with a step. A new value is drawn after every trigger, so a requirement like "twice a day, morning and evening, at a random minute" lands on different minutes each time — a way to spread the load of scheduled jobs.
+
+The `next` column of `pm3 list` shows the next trigger's local time; when this column is empty the service really is stopped — there is no pm2-style ambiguity of "the service is stopped but the timer is still running."
+
+## Who may issue commands
+
+The command channel is an entry point in the filesystem, readable and writable by the owner only, in a directory open to the owner only. On top of that, the daemon checks which user is actually on the other end of each incoming connection; if it is not itself, it disconnects directly and logs a line — giving the other side no chance to speak. Requests also have a size limit, so one malformed request cannot jam command processing.
+
+## Taking over existing services after a daemon restart
+
+Upgrading pm3 itself or restarting the daemon should not interrupt services that are already running. After restarting, the daemon checks them one by one: if a service's process is still the original one, and neither its launch arguments nor its program file have changed, it is adopted and monitoring continues; if any item does not match, the old process is stopped first and the service is restarted with the new configuration.
+
+A host reboot is a different matter: those process ids have long since been handed out to other programs by the system, and verifying identity is meaningless. pm3 records "this boot" in its runtime state, and when it finds the recorded boot is not the same one, it treats every process id in the records as invalid, simply starts everything again from configuration, and sends not a single signal outward. When upgrading from an old version (where the state has no such record yet) or when the boot information cannot be read on this machine, it falls back to the old rule of verifying identity one by one, and never restarts all services for no reason.
+
+Sending the daemon a termination signal only saves state and exits; it does not touch the managed services. To stop the services along with it, use `pm3 shutdown --with-services`.
+
+## Auto-start at boot
+
+```
+pm3 startup               # register as an auto-start service for the current user
+pm3 unstartup             # unregister, without deleting configuration
+pm3 startup --status      # show the current registration status
+pm3 startup --dry-run     # only print what would be written
+```
+
+On all three platforms the registration is an auto-start entry for the **current user**, requiring no administrator privileges. On Linux, "keep running while the user is not logged in" is also enabled. Some capabilities on Windows differ from the other two platforms; see the Windows notes.
+
+The auto-start configuration also carries a process-count limit: when a managed program runs away replicating itself, it hits this wall instead of exhausting the whole machine's process table. The limit is the combined total of pm3 plus all its services, and is tunable in the configuration. To also constrain CPU, configure a percentage quota; this item is supported on Linux only — what macOS can limit is cumulative CPU time, which on a resident service amounts to killing it when the time is up, so it is not offered.
+
+Upgrading pm3 itself is a single command, `pm3 install`: it first backs up the current generation (the binary, the auto-start configuration, and pm3's own configuration, archived under the old version number), swaps in the new binary, reinstalls the auto-start entry, then verifies one by one that the new generation has really taken over every service — a single service not taken over means failure. Rolling back means fetching that trio back from the backup directory.
+
+## Where files live
+
+| Location | Contents |
 |---|---|
-| `~/.pm3` | 运行时状态：通信入口、进程编号记录、日志、各服务的工作目录，守护进程自己的配置，以及每次升级前的回滚备份 |
-| `~/.config/pm3` | 每个服务一份配置文件，外加可选的同名凭据文件 |
+| `~/.pm3` | Runtime state: the communication entry point, process id records, logs, each service's working directory, the daemon's own configuration, and the rollback backup from each upgrade |
+| `~/.config/pm3` | One configuration file per service, plus an optional credentials file of the same name |
 
-两个位置都可以在配置里改。写配置文件时若目标已存在：内容相同就静默通过，内容不同则打印差异并拒绝覆盖，加 `--force` 才真的写。
+Both locations can be changed in the configuration. When writing a configuration file whose target already exists: identical content passes silently; different content prints a diff and refuses to overwrite; only with `--force` is it really written.
 
-`pm3 config check` 校验守护进程自己那份配置能否读通，`pm3 config show` 打印占位符替换后的最终结果——排查「配置里写的和实际生效的不一样」先看它。
+`pm3 config check` validates that the daemon's own configuration parses, and `pm3 config show` prints the final result after placeholder substitution — it is the first thing to look at when troubleshooting "what the configuration says differs from what actually takes effect."
 
-程序搜索路径由 pm3 自己的配置统一决定，不继承启动 pm3 时那个 shell 的环境变量，避免「手动跑得起来、开机自启就找不到程序」。
+The program search path is decided uniformly by pm3's own configuration and is not inherited from the environment variables of the shell that launched pm3, avoiding "it runs when started by hand, but auto-start at boot cannot find the program."

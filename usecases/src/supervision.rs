@@ -53,6 +53,15 @@ pub enum SupervisionReply {
     StoppedAll {
         names: Vec<String>,
     },
+    RestartedAll {
+        names: Vec<String>,
+    },
+    DeletedAll {
+        names: Vec<String>,
+    },
+    ResetAll {
+        names: Vec<String>,
+    },
 }
 
 #[derive(Debug, Error)]

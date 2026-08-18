@@ -22,12 +22,21 @@ pub async fn delete_app(
     if !dependents.is_empty() {
         return Err(UsecaseError::StillDependedOn { name, dependents });
     }
+    delete_one(table, &name, ports).await
+}
+
+pub(crate) async fn delete_one(
+    table: &mut ProcessTable,
+    name: &str,
+    ports: &impl Ports,
+) -> Result<DeleteOutcome> {
+    let selector = AppSelector::Name(name.to_string());
     let record = table
-        .find_mut(selector)
-        .expect("internal error: the same selector just located this record");
+        .find_mut(&selector)
+        .expect("internal error: the caller only names records the table holds");
     let stopped = request_stop(record, ports).await?;
     let removed = table
-        .remove(selector)
+        .remove(&selector)
         .expect("internal error: the same selector just located this record");
     if let Err(error) = save_table(table, ports).await {
         table.restore(removed);

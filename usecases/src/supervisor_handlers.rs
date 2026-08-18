@@ -1,8 +1,8 @@
 use entities::AppSpec;
 
 use crate::{
-    Ports,
-    delete::delete_app,
+    Ports, UsecaseError,
+    delete::{delete_app, delete_one},
     ports::SpecResolver,
     query::{identity_token_of, owner_of_pid, unswept_pids},
     reset::reset_app,
@@ -13,7 +13,8 @@ use crate::{
     stop::{stop_all_apps, stop_app},
     supervision::{SupervisionEffect, SupervisionFailure, SupervisionOutcome, SupervisionReply},
     supervisor::Supervisor,
-    supervisor_log::log_partial_start,
+    supervisor_log::{log_batch_skip, log_failure, log_partial_start},
+    table::dependency_order,
 };
 
 #[expect(
@@ -83,6 +84,9 @@ impl Supervisor {
         ports: &impl Ports,
         effects: &mut Vec<SupervisionEffect>,
     ) -> SupervisionOutcome {
+        if matches!(selector, AppSelector::All) {
+            return self.stop_all(ports, effects).await;
+        }
         let attempted = stop_app(&mut self.table, selector, ports).await;
         let outcome = match attempted {
             Ok(outcome) => outcome,
@@ -103,12 +107,55 @@ impl Supervisor {
         ports: &impl Ports,
         effects: &mut Vec<SupervisionEffect>,
     ) -> SupervisionOutcome {
+        if matches!(selector, AppSelector::All) {
+            return self.restart_all(resolver, ports, effects).await;
+        }
         self.reload_declaration(selector, resolver).await?;
         let outcome = restart_app(&mut self.table, selector, &self.logs_dir, ports).await?;
         let name = self.dispatch_restart(outcome, effects);
         self.cancel_restart(&name, effects);
         self.arm_timer(&name, ports, effects);
         Ok(SupervisionReply::Restarted { name })
+    }
+
+    async fn restart_all(
+        &mut self,
+        resolver: &impl SpecResolver,
+        ports: &impl Ports,
+        effects: &mut Vec<SupervisionEffect>,
+    ) -> SupervisionOutcome {
+        let mut names = Vec::new();
+        for name in self.table.names_in_table_order() {
+            match resolver.prepare(&name).await {
+                Ok(spec) => {
+                    self.reload_spec(&name, spec);
+                }
+                Err(error) => {
+                    log_batch_skip("restart", &name, &error.to_string());
+                    continue;
+                }
+            }
+            let attempt = restart_app(
+                &mut self.table,
+                &AppSelector::Name(name.clone()),
+                &self.logs_dir,
+                ports,
+            )
+            .await;
+            match attempt {
+                Ok(outcome) => {
+                    let restarted = self.dispatch_restart(outcome, effects);
+                    self.cancel_restart(&restarted, effects);
+                    self.arm_timer(&restarted, ports, effects);
+                    names.push(restarted);
+                }
+                Err(error) => {
+                    log_failure("restart", &name, &error);
+                    self.arm_timer(&name, ports, effects);
+                }
+            }
+        }
+        Ok(SupervisionReply::RestartedAll { names })
     }
 
     async fn reload_declaration(
@@ -124,12 +171,23 @@ impl Supervisor {
         Ok(())
     }
 
+    fn reload_spec(&mut self, name: &str, spec: AppSpec) {
+        let record = self
+            .table
+            .find_by_name_mut(name)
+            .expect("internal error: the batch only names records the table holds");
+        record.spec = spec;
+    }
+
     pub(crate) async fn delete(
         &mut self,
         selector: &AppSelector,
         ports: &impl Ports,
         effects: &mut Vec<SupervisionEffect>,
     ) -> SupervisionOutcome {
+        if matches!(selector, AppSelector::All) {
+            return self.delete_all(ports, effects).await;
+        }
         let token = identity_token_of(&self.table, selector);
         let attempted = delete_app(&mut self.table, selector, ports).await;
         let outcome = match attempted {
@@ -143,13 +201,50 @@ impl Supervisor {
         Ok(SupervisionReply::Deleted { name: outcome.name })
     }
 
+    async fn delete_all(
+        &mut self,
+        ports: &impl Ports,
+        effects: &mut Vec<SupervisionEffect>,
+    ) -> SupervisionOutcome {
+        let order = dependency_order(&self.table, log_unordered_delete);
+        let mut names = Vec::with_capacity(order.len());
+        for name in order.iter().rev() {
+            let token = self.identity_token(name);
+            match delete_one(&mut self.table, name, ports).await {
+                Ok(outcome) => {
+                    self.retire(&outcome.name, outcome.force_kill_pid, token, effects);
+                    names.push(outcome.name);
+                }
+                Err(error) => {
+                    self.cover_draining(&AppSelector::Name(name.clone()), effects);
+                    log_failure("delete", name, &error);
+                }
+            }
+        }
+        Ok(SupervisionReply::DeletedAll { names })
+    }
+
     pub(crate) async fn reset(
         &mut self,
         selector: &AppSelector,
         ports: &impl Ports,
     ) -> SupervisionOutcome {
+        if matches!(selector, AppSelector::All) {
+            return self.reset_all(ports).await;
+        }
         let name = reset_app(&mut self.table, selector, ports).await?;
         Ok(SupervisionReply::Reset { name })
+    }
+
+    async fn reset_all(&mut self, ports: &impl Ports) -> SupervisionOutcome {
+        let mut names = Vec::new();
+        for name in self.table.names_in_table_order() {
+            match reset_app(&mut self.table, &AppSelector::Name(name.clone()), ports).await {
+                Ok(reset) => names.push(reset),
+                Err(error) => log_failure("reset", &name, &error),
+            }
+        }
+        Ok(SupervisionReply::ResetAll { names })
     }
 
     pub(crate) async fn signal(
@@ -218,3 +313,17 @@ impl Supervisor {
         self.schedule_force_kill(name, force_kill_pid, token, effects);
     }
 }
+
+fn log_unordered_delete(error: &UsecaseError) {
+    let reason = error.to_string();
+    tracing::warn!(
+        feature = "lifecycle",
+        action = "delete_all",
+        reason,
+        "pm3 cannot order the deletion, so it deletes every service in table order",
+    );
+}
+
+#[cfg(test)]
+#[path = "tests/supervisor_batch_tests.rs"]
+mod batch_tests;

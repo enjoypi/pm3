@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn all_parses_as_the_every_app_selector() {
+    assert_eq!(AppSelector::parse("all"), AppSelector::All);
+}
+
+#[test]
+fn all_selector_matches_no_single_record() {
+    assert!(!AppSelector::All.matches(7, "all"));
+}
+
+#[test]
+fn all_selector_renders_the_reserved_word() {
+    assert_eq!(AppSelector::All.to_string(), "all");
+}
+
+#[test]
 fn digits_parse_as_a_process_id() {
     assert_eq!(AppSelector::parse("7"), AppSelector::Id(7));
 }

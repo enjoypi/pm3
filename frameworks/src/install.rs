@@ -12,7 +12,6 @@ use adapters::{
 
 use crate::{
     Error, Result,
-    cli::ServiceCommands,
     client::UdsClient,
     commands,
     layout::{
@@ -20,7 +19,8 @@ use crate::{
         host_uid, read_pid_file,
     },
     service::{
-        HOST_SERVICE_KIND, ServiceContext, ServiceSession, dispatch_service, open_service_session,
+        HOST_SERVICE_KIND, ServiceAction, ServiceContext, ServiceSession, dispatch_service,
+        open_service_session,
     },
 };
 
@@ -84,19 +84,19 @@ pub async fn run_install(
     emit(
         &dispatch_service(
             config_path,
-            Some(&ServiceCommands::Uninstall { dry_run: false }),
+            &ServiceAction::Uninstall { dry_run: false },
             &service_context,
         )
         .await?,
     );
-    emit(&commands::kill_daemon(config_path, false).await?);
+    emit(&commands::shutdown_daemon(config_path, false).await?);
     emit(
         &dispatch_service(
             config_path,
-            Some(&ServiceCommands::Install {
+            &ServiceAction::Install {
                 dry_run: false,
                 force: true,
-            }),
+            },
             &service_context,
         )
         .await?,

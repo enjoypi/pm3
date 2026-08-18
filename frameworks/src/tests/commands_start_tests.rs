@@ -191,10 +191,10 @@ fn vanishing_daemon(socket: PathBuf, replies: &'static [&'static [u8]]) -> JoinH
 }
 
 #[tokio::test]
-async fn killing_a_daemon_whose_pid_file_vanished_reports_the_loss() {
+async fn shutting_down_a_daemon_whose_pid_file_vanished_reports_the_loss() {
     let fixture = running_daemon().await;
     std::fs::remove_file(&fixture.paths.pid_file).expect("drop the pid file");
-    let err = kill_daemon(&fixture.config_path, false)
+    let err = shutdown_daemon(&fixture.config_path, false)
         .await
         .unwrap_err()
         .to_string();
@@ -203,14 +203,14 @@ async fn killing_a_daemon_whose_pid_file_vanished_reports_the_loss() {
 }
 
 #[tokio::test]
-async fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
+async fn shutting_down_with_services_reports_a_daemon_that_refuses_the_stop() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
     let answering = crate::daemon_fixture::answer_health_then_refusal(&home.join("pm3.sock"));
 
-    let err = kill_daemon(config.to_str().expect("path"), true)
+    let err = shutdown_daemon(config.to_str().expect("path"), true)
         .await
         .unwrap_err()
         .to_string();
@@ -220,13 +220,13 @@ async fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
 }
 
 #[tokio::test]
-async fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
+async fn shutting_down_a_daemon_that_already_left_is_treated_as_stopped() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
     let answering = crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock"));
-    let gone = kill_daemon(config.to_str().expect("path"), false)
+    let gone = shutdown_daemon(config.to_str().expect("path"), false)
         .await
         .expect("a daemon that already left counts as stopped");
     answering.await.expect("join the probe answerer");
@@ -234,7 +234,7 @@ async fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
 }
 
 #[tokio::test]
-async fn killing_with_services_reports_them_even_when_the_daemon_left_mid_kill() {
+async fn shutting_down_with_services_reports_them_even_when_the_daemon_left_mid_kill() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
@@ -243,7 +243,7 @@ async fn killing_with_services_reports_them_even_when_the_daemon_left_mid_kill()
         home.join("pm3.sock"),
         &[HEALTH_REPLY, HEALTH_REPLY, STOP_ALL_REPLY],
     );
-    let gone = kill_daemon(config.to_str().expect("path"), true)
+    let gone = shutdown_daemon(config.to_str().expect("path"), true)
         .await
         .expect("stop-all succeeded, so the vanished daemon counts as stopped");
     assert!(gone.contains("stopped all"), "got: {gone}");

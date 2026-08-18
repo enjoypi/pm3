@@ -7,6 +7,8 @@ use super::{
 };
 use crate::sandbox::{PolicyError, SandboxPolicy, validate_policy};
 
+pub const RESERVED_ALL_SELECTOR: &str = "all";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppSpec {
     pub name: String,
@@ -40,6 +42,9 @@ pub enum SpecError {
         "cannot accept app name '{0}' starting with a dot: it would escape the service directory"
     )]
     DottedName(String),
+
+    #[error("cannot accept app name '{0}': it is reserved as the every-app selector")]
+    ReservedName(String),
 
     #[error(
         "cannot accept app name '{name}': '{character}' is not allowed, use letters, digits, '-', '_' or '.'"
@@ -125,6 +130,9 @@ pub fn validate_app_name(name: &str) -> Result<(), SpecError> {
     }
     if name.starts_with('.') {
         return Err(SpecError::DottedName(name.to_string()));
+    }
+    if name == RESERVED_ALL_SELECTOR {
+        return Err(SpecError::ReservedName(name.to_string()));
     }
     name.chars()
         .find(|letter| !is_name_letter(*letter))

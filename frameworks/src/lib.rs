@@ -53,7 +53,7 @@ pub enum Error {
     Dump(#[from] adapters::DumpError),
 
     #[error(
-        "the pm3 service did not come under the service manager's supervision within {timeout_ms} ms; the previous install is backed up in '{backup}' — restore the binary, unit and config from there, then run `pm3 service install --force`"
+        "the pm3 service did not come under the service manager's supervision within {timeout_ms} ms; the previous install is backed up in '{backup}' — restore the binary, unit and config from there, then run `pm3 startup --force`"
     )]
     InstallTakeover { timeout_ms: u64, backup: String },
 

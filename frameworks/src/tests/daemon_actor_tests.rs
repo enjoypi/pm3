@@ -205,6 +205,19 @@ async fn restarting_a_running_app_waits_for_its_exit() {
 }
 
 #[tokio::test]
+async fn restarting_without_a_declaration_fails() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    std::fs::remove_file(service_file_of(&harness.cfg_dir, "web").expect("a safe service name"))
+        .expect("remove the declaration");
+    let outcome = harness
+        .daemon
+        .handle(SupervisionRequest::Restart(selector("web")))
+        .await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
 async fn deleting_an_app_forgets_it() {
     let mut harness = harness();
     start_one(&mut harness, "web", SLEEPER).await;

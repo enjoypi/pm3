@@ -100,13 +100,13 @@ async fn install_with(
     home: &str,
     force: bool,
 ) -> Result<String> {
-    let command = ServiceCommands::Install {
+    let command = ServiceAction::Install {
         dry_run: false,
         force,
     };
     dispatch_service(
         &fixture.config_path,
-        Some(&command),
+        &command,
         &context(fixture, kind, home),
     )
     .await
