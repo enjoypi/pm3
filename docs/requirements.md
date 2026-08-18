@@ -72,6 +72,8 @@ A service with a probe stays "launching" after start and only turns "online" onc
 
 Memory leaks also have a backstop: give a service a memory limit (`--max-memory-restart 300M`), and pm3 periodically samples its resident memory and restarts it when it exceeds the limit. Services without a configured limit are unaffected and are not sampled.
 
+The memory and CPU figures — both the limit above and the columns `pm3 list` and `pm3 describe` print — cover the service's whole process tree, not just the program pm3 launched. A service that does its work in worker processes is reported at what it really costs.
+
 ## Scheduled jobs
 
 Writing a 5-field cron expression in the service configuration schedules it:

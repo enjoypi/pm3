@@ -268,32 +268,16 @@ async fn a_missing_ps_samples_no_memory() {
 }
 
 #[tokio::test]
-async fn an_unparsable_memory_line_is_skipped() {
-    let (_dir, probe) = probe_with("echo '7 plenty'; echo '8 4096'");
-    let sampled = probe.resident_memory(&[7, 8]).await;
-    assert_eq!(sampled.get(&7), None);
-    assert_eq!(sampled.get(&8), Some(&4096));
-}
-
-#[tokio::test]
-async fn a_memory_line_without_a_numeric_pid_is_skipped() {
-    let (_dir, probe) = probe_with("echo 'header rss'; echo '8 4096'");
-    let sampled = probe.resident_memory(&[8]).await;
-    assert_eq!(sampled.get(&8), Some(&4096));
-    assert_eq!(sampled.len(), 1);
-}
-
-#[tokio::test]
 async fn a_memory_sample_for_a_pid_that_already_left_reports_nothing() {
     let (_dir, probe) = probe_with("exit 1");
     assert!(probe.resident_memory(&[7]).await.is_empty());
 }
 
 #[tokio::test]
-async fn a_memory_line_without_a_separator_is_skipped() {
-    let (_dir, probe) = probe_with("echo 'unsplittable'; echo '8 4096'");
-    let sampled = probe.resident_memory(&[8]).await;
-    assert_eq!(sampled.len(), 1);
+async fn a_memory_sample_sums_the_whole_process_group() {
+    let (_dir, probe) = probe_with("echo '7 7 4096 0.0'; echo '9 7 2048 0.0'");
+    let sampled = probe.resident_memory(&[7]).await;
+    assert_eq!(sampled.get(&7), Some(&6144));
 }
 
 #[tokio::test]
@@ -322,7 +306,7 @@ async fn a_resource_sample_ps_refuses_reports_nothing() {
 
 #[tokio::test]
 async fn a_resource_report_carries_rss_and_cpu_side_by_side() {
-    let (_dir, probe) = probe_with("echo '7 4096 12.3'; echo '8 2048 0.0'");
+    let (_dir, probe) = probe_with("echo '7 7 4096 12.3'; echo '8 8 2048 0.0'");
     let sampled = probe.resource_usage(&[7, 8]).await;
     assert_eq!(
         sampled.get(&7),
@@ -342,7 +326,7 @@ async fn a_resource_report_carries_rss_and_cpu_side_by_side() {
 
 #[tokio::test]
 async fn a_cpu_value_without_a_fraction_reads_as_whole_percents() {
-    let (_dir, probe) = probe_with("echo '7 4096 12'");
+    let (_dir, probe) = probe_with("echo '7 7 4096 12'");
     let sampled = probe.resource_usage(&[7]).await;
     assert_eq!(
         sampled.get(&7),
@@ -354,40 +338,43 @@ async fn a_cpu_value_without_a_fraction_reads_as_whole_percents() {
 }
 
 #[tokio::test]
-async fn a_resource_line_with_a_broken_cpu_is_skipped() {
-    let (_dir, probe) = probe_with("echo '7 4096 12.'; echo '8 2048 0.5'");
+async fn a_resource_sample_sums_the_whole_process_group() {
+    let (_dir, probe) = probe_with("echo '7 7 4096 1.0'; echo '9 7 2048 0.5'; echo '8 8 1024 0.1'");
     let sampled = probe.resource_usage(&[7, 8]).await;
-    assert_eq!(sampled.get(&7), None);
+    assert_eq!(
+        sampled.get(&7),
+        Some(&ResourceSample {
+            rss_kib: 6144,
+            cpu_tenths: 15,
+        })
+    );
     assert_eq!(
         sampled.get(&8),
         Some(&ResourceSample {
-            rss_kib: 2048,
-            cpu_tenths: 5,
+            rss_kib: 1024,
+            cpu_tenths: 1,
         })
     );
 }
 
 #[tokio::test]
-async fn a_resource_line_with_a_broken_rss_is_skipped() {
-    let (_dir, probe) = probe_with("echo '7 plenty 0.5'; echo '8 2048 0.5'");
-    let sampled = probe.resource_usage(&[7, 8]).await;
-    assert_eq!(sampled.get(&7), None);
-    assert!(sampled.contains_key(&8));
-}
-
-#[tokio::test]
-async fn a_resource_line_that_ends_early_is_skipped() {
-    let (_dir, probe) = probe_with("echo '7 4096'; echo '8 2048 0.5'");
-    let sampled = probe.resource_usage(&[7, 8]).await;
-    assert_eq!(sampled.get(&7), None);
-    assert!(sampled.contains_key(&8));
+async fn a_process_that_does_not_lead_its_group_reports_only_itself() {
+    let (_dir, probe) = probe_with("echo '7 5 4096 1.0'; echo '9 5 2048 0.5'");
+    let sampled = probe.resource_usage(&[7]).await;
+    assert_eq!(
+        sampled.get(&7),
+        Some(&ResourceSample {
+            rss_kib: 4096,
+            cpu_tenths: 10,
+        })
+    );
 }
 
 #[tokio::test]
 async fn malformed_resource_lines_are_skipped_one_by_one() {
-    let body = "echo ''; echo 'abc 2048 0.5'; echo '7'; echo '8 xx 0.5'; echo '9 2048 xx.5'; echo '11 2048 1.x'; echo '12 1024 0.5'";
+    let body = "echo ''; echo 'abc 7 2048 0.5'; echo '7'; echo '7 xx 2048 0.5'; echo '11 11'; echo '11 11 xx 0.5'; echo '11 11 2048'; echo '11 11 2048 x.5'; echo '11 11 2048 12.'; echo '11 11 2048 1.x'; echo '12 12 1024 0.5'";
     let (_dir, probe) = probe_with(body);
-    let sampled = probe.resource_usage(&[12]).await;
+    let sampled = probe.resource_usage(&[11, 12]).await;
     assert_eq!(sampled.len(), 1);
     assert_eq!(
         sampled.get(&12),

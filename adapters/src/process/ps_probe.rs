@@ -18,10 +18,16 @@ const NO_SUCH_PROCESS_CODE: i32 = 1;
 const WIDE_FLAG: &str = "-ww";
 const FORMAT_FLAG: &str = "-o";
 const BATCH_FORMAT: &str = "pid=,lstart=";
-const MEMORY_FORMAT: &str = "pid=,rss=";
-const RESOURCE_FORMAT: &str = "pid=,rss=,pcpu=";
+const SAMPLE_FORMAT: &str = "pid=,pgid=,rss=,pcpu=";
 const PID_SEPARATOR: &str = ",";
 const PID_FLAG: &str = "-p";
+const EVERY_PROCESS_FLAG: &str = "-A";
+const MEMORY_ACTION: &str = "probe_memory";
+const RESOURCE_ACTION: &str = "probe_resources";
+const EMPTY_SAMPLE: ResourceSample = ResourceSample {
+    rss_kib: 0,
+    cpu_tenths: 0,
+};
 const LOCALE_VARIABLE: &str = "LC_ALL";
 const FIXED_LOCALE: &str = "C";
 
@@ -48,31 +54,41 @@ impl PsProcessProbe {
     }
 
     pub async fn resident_memory_kib(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
-        if pids.is_empty() {
-            return BTreeMap::new();
-        }
-        let joined = join_pids(pids);
-        let started = Instant::now();
-        let Some(stdout) = self.ask_ps(MEMORY_FORMAT, &joined).await else {
-            return BTreeMap::new();
-        };
-        let listed = parse_memory_report(&stdout);
-        log_memory_probe(&joined, listed.len(), started.elapsed().as_millis());
-        listed
+        self.grouped_samples(pids, MEMORY_ACTION)
+            .await
+            .into_iter()
+            .map(|(pid, sample)| (pid, sample.rss_kib))
+            .collect()
     }
 
     pub async fn resource_samples(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
+        self.grouped_samples(pids, RESOURCE_ACTION).await
+    }
+
+    async fn grouped_samples(
+        &self,
+        pids: &[u32],
+        action: &'static str,
+    ) -> BTreeMap<u32, ResourceSample> {
         if pids.is_empty() {
             return BTreeMap::new();
         }
         let joined = join_pids(pids);
         let started = Instant::now();
-        let Some(stdout) = self.ask_ps(RESOURCE_FORMAT, &joined).await else {
+        let Some(stdout) = self.ask_every_process(SAMPLE_FORMAT, &joined).await else {
             return BTreeMap::new();
         };
-        let listed = parse_resource_report(&stdout);
-        log_resource_probe(&joined, listed.len(), started.elapsed().as_millis());
-        listed
+        let sampled = group_totals_for(&parse_group_rows(&stdout), pids);
+        log_sample_probe(action, &joined, sampled.len(), started.elapsed().as_millis());
+        sampled
+    }
+
+    async fn ask_every_process(&self, format: &str, label: &str) -> Option<String> {
+        let mut command = Command::new(&self.program);
+        command
+            .args([WIDE_FLAG, EVERY_PROCESS_FLAG, FORMAT_FLAG, format])
+            .env(LOCALE_VARIABLE, FIXED_LOCALE);
+        self.read_ps(command, label).await
     }
 
     async fn ask_ps(&self, format: &str, joined: &str) -> Option<String> {
@@ -81,6 +97,10 @@ impl PsProcessProbe {
             .args([WIDE_FLAG, FORMAT_FLAG, format, PID_FLAG])
             .arg(joined)
             .env(LOCALE_VARIABLE, FIXED_LOCALE);
+        self.read_ps(command, joined).await
+    }
+
+    async fn read_ps(&self, command: Command, joined: &str) -> Option<String> {
         let output = match capture_timed(command, self.timeout_ms).await {
             CommandOutcome::Stalled => {
                 log_stalled_probe(joined, self.timeout_ms);
@@ -118,33 +138,55 @@ fn join_pids(pids: &[u32]) -> String {
         .join(PID_SEPARATOR)
 }
 
-fn parse_memory_report(stdout: &str) -> BTreeMap<u32, u64> {
-    stdout
-        .lines()
-        .filter_map(|line| {
-            let (pid, rss) = line.trim_start().split_once(' ')?;
-            Some((pid.parse::<u32>().ok()?, rss.trim().parse::<u64>().ok()?))
-        })
+#[derive(Clone, Copy)]
+struct GroupRow {
+    pid: u32,
+    pgid: u32,
+    sample: ResourceSample,
+}
+
+fn parse_group_rows(stdout: &str) -> Vec<GroupRow> {
+    stdout.lines().filter_map(parse_group_row).collect()
+}
+
+fn parse_group_row(line: &str) -> Option<GroupRow> {
+    let mut fields = line.split_whitespace();
+    let pid = fields.next()?.parse::<u32>().ok()?;
+    let group = fields.next()?.parse::<u32>().ok()?;
+    let rss_kib = fields.next()?.parse::<u64>().ok()?;
+    let cpu_tenths = parse_tenths(fields.next()?)?;
+    Some(GroupRow {
+        pid,
+        pgid: group,
+        sample: ResourceSample {
+            rss_kib,
+            cpu_tenths,
+        },
+    })
+}
+
+fn group_totals_for(rows: &[GroupRow], targets: &[u32]) -> BTreeMap<u32, ResourceSample> {
+    let mut totals: HashMap<u32, ResourceSample> = HashMap::new();
+    let mut own: HashMap<u32, ResourceSample> = HashMap::new();
+    for row in rows {
+        let total = totals.entry(row.pgid).or_insert(EMPTY_SAMPLE);
+        total.rss_kib = total.rss_kib.saturating_add(row.sample.rss_kib);
+        total.cpu_tenths = total.cpu_tenths.saturating_add(row.sample.cpu_tenths);
+        own.insert(row.pid, row.sample);
+    }
+    targets
+        .iter()
+        .filter_map(|pid| Some((*pid, sample_for(*pid, &own, &totals)?)))
         .collect()
 }
 
-fn parse_resource_report(stdout: &str) -> BTreeMap<u32, ResourceSample> {
-    stdout
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace();
-            let pid = fields.next()?.parse::<u32>().ok()?;
-            let rss_kib = fields.next()?.parse::<u64>().ok()?;
-            let cpu_tenths = parse_tenths(fields.next()?)?;
-            Some((
-                pid,
-                ResourceSample {
-                    rss_kib,
-                    cpu_tenths,
-                },
-            ))
-        })
-        .collect()
+fn sample_for(
+    pid: u32,
+    own: &HashMap<u32, ResourceSample>,
+    totals: &HashMap<u32, ResourceSample>,
+) -> Option<ResourceSample> {
+    let mine = own.get(&pid).copied()?;
+    Some(totals.get(&pid).copied().unwrap_or(mine))
 }
 
 fn parse_tenths(raw: &str) -> Option<u32> {
@@ -229,25 +271,14 @@ fn log_probe(pids: &str, alive: usize, duration_ms: u128) {
     );
 }
 
-fn log_memory_probe(pids: &str, sampled: usize, duration_ms: u128) {
+fn log_sample_probe(action: &str, pids: &str, sampled: usize, duration_ms: u128) {
     tracing::debug!(
         feature = "supervisor",
         pids,
         sampled,
         duration_ms,
-        action = "probe_memory",
-        "sampled the resident memory of the managed processes"
-    );
-}
-
-fn log_resource_probe(pids: &str, sampled: usize, duration_ms: u128) {
-    tracing::debug!(
-        feature = "supervisor",
-        pids,
-        sampled,
-        duration_ms,
-        action = "probe_resources",
-        "sampled the resource usage of the managed processes"
+        action,
+        "sampled the resource usage of the managed process groups"
     );
 }
 
