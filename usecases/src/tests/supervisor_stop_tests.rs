@@ -13,6 +13,10 @@ const READY_POLL_MS: u64 = 200;
 
 struct NoResolver;
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl SpecResolver for NoResolver {
     async fn prepare(&self, name: &str) -> Result<AppSpec, SpecResolveError> {
         Err(SpecResolveError::Missing {

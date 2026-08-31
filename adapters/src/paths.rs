@@ -2,12 +2,12 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-pub const SOCKET_FILE: &str = "pm3.sock";
-pub const PID_FILE: &str = "pm3.pid";
-pub const LOCK_FILE: &str = "pm3.lock";
+pub(crate) const SOCKET_FILE: &str = "pm3.sock";
+pub(crate) const PID_FILE: &str = "pm3.pid";
+pub(crate) const LOCK_FILE: &str = "pm3.lock";
 pub const CONFIG_FILE: &str = "config.yaml";
-pub const DUMP_FILE: &str = "dump.yaml";
-pub const DAEMON_LOG_FILE: &str = "pm3.log";
+pub(crate) const DUMP_FILE: &str = "dump.yaml";
+pub(crate) const DAEMON_LOG_FILE: &str = "pm3.log";
 pub const LOGS_DIR: &str = "logs";
 pub const DEFAULT_HOME: &str = "~/.pm3";
 

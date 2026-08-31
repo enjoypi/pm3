@@ -54,7 +54,7 @@ impl PsProcessProbe {
         Self::new(PS_PROGRAM.to_string(), timeout_ms, poll_interval_ms)
     }
 
-    pub async fn resident_memory_kib(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
+    pub(crate) async fn resident_memory_kib(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
         self.grouped_samples(pids, MEMORY_ACTION)
             .await
             .into_iter()
@@ -62,7 +62,7 @@ impl PsProcessProbe {
             .collect()
     }
 
-    pub async fn resource_samples(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
+    pub(crate) async fn resource_samples(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
         self.grouped_samples(pids, RESOURCE_ACTION).await
     }
 

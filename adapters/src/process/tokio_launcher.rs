@@ -66,9 +66,22 @@ impl ProcessLauncher for TokioProcessLauncher {
         let child = build_command(spec, stdout, stderr)
             .await
             .spawn()
-            .map_err(|e| LaunchError::Spawn {
-                app: spec.name.clone(),
-                reason: e.to_string(),
+            .map_err(|failure| {
+                let duration_ms = started.elapsed().as_millis();
+                let reason = failure.to_string();
+                tracing::warn!(
+                    feature = "supervisor",
+                    app = spec.name,
+                    program = spec.program,
+                    duration_ms,
+                    action = "spawn",
+                    reason,
+                    "cannot spawn child process"
+                );
+                LaunchError::Spawn {
+                    app: spec.name.clone(),
+                    reason,
+                }
             })?;
         let pid = child
             .id()

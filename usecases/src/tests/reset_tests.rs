@@ -1,16 +1,7 @@
 use entities::ProcessStatus;
 
 use super::*;
-use crate::{
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec},
-    start::start_apps,
-};
-
-async fn started_table(ports: &FakePorts) -> ProcessTable {
-    let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, ports).await;
-    table
-}
+use crate::ports_test_helpers::{FakePorts, started_table};
 
 #[tokio::test]
 async fn resetting_a_known_app_clears_its_restart_counters() {

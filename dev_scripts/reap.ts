@@ -12,17 +12,17 @@ export interface ProcessRow {
   args: string;
 }
 
-export interface DaemonArgs {
+interface DaemonArgs {
   exe: string;
   configPath: string;
 }
 
-export interface DaemonRef {
+interface DaemonRef {
   pid: number;
   configPath: string;
 }
 
-export interface ReapPlan {
+interface ReapPlan {
   daemons: DaemonRef[];
   servicePids: number[];
   dirs: string[];

@@ -76,12 +76,10 @@ async fn a_bare_service_cwd_token_is_stored_as_a_braced_placeholder() {
 #[tokio::test]
 async fn splitting_an_apps_file_folds_the_service_cwd_token() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n    args:\n      - \"PM3_SERVICE_CWD/data\"\n",
-    )
-    .expect("write the apps file");
+    );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -191,12 +189,10 @@ async fn a_config_directory_that_is_missing_is_reported() {
 #[tokio::test]
 async fn an_apps_file_is_split_into_one_config_file_per_app() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
-    )
-    .expect("write the apps file");
+    );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -208,9 +204,7 @@ async fn an_apps_file_is_split_into_one_config_file_per_app() {
 #[tokio::test]
 async fn splitting_an_unchanged_apps_file_reports_no_changes() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
-        .expect("write the apps file");
+    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -223,12 +217,10 @@ async fn splitting_an_unchanged_apps_file_reports_no_changes() {
 #[tokio::test]
 async fn splitting_folds_the_home_out_of_every_app() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"/home/dev/web\"\n    args:\n      - \"/home/dev/app.js\"\n",
-    )
-    .expect("write the apps file");
+    );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -252,9 +244,7 @@ async fn splitting_an_unreadable_apps_file_is_reported() {
 #[tokio::test]
 async fn splitting_over_a_changed_config_needs_force() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
-        .expect("write the apps file");
+    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
     std::fs::write(home.cfg_dir.join("web.yaml"), "apps: []\n").expect("seed a conflict");
     let err = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -266,12 +256,10 @@ async fn splitting_over_a_changed_config_needs_force() {
 #[tokio::test]
 async fn undoing_a_fresh_split_removes_every_file_it_wrote() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
-    )
-    .expect("write the apps file");
+    );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -283,9 +271,7 @@ async fn undoing_a_fresh_split_removes_every_file_it_wrote() {
 #[tokio::test]
 async fn undoing_a_forced_split_restores_the_previous_config() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
-        .expect("write the apps file");
+    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
     let service = home.cfg_dir.join("web.yaml");
     std::fs::write(&service, "apps: []\n").expect("seed the previous config");
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), true)
@@ -301,12 +287,10 @@ async fn undoing_a_forced_split_restores_the_previous_config() {
 #[tokio::test]
 async fn an_undo_that_cannot_reach_its_file_leaves_the_rest_of_the_rollback_running() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
-    )
-    .expect("write the apps file");
+    );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -321,9 +305,7 @@ async fn an_undo_that_cannot_reach_its_file_leaves_the_rest_of_the_rollback_runn
 #[tokio::test]
 async fn undoing_an_unchanged_split_touches_nothing() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(&apps_file, "apps:\n  - name: web\n    script: /bin/sh\n")
-        .expect("write the apps file");
+    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -340,12 +322,10 @@ async fn undoing_an_unchanged_split_touches_nothing() {
 #[tokio::test]
 async fn a_split_that_hits_a_conflict_rolls_back_what_it_already_wrote() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
-    )
-    .expect("write the apps file");
+    );
     std::fs::write(home.cfg_dir.join("db.yaml"), "apps: []\n").expect("seed a conflict");
     let err = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -390,12 +370,10 @@ async fn forgetting_an_unknown_service_is_quiet() {
 #[tokio::test]
 async fn splitting_an_apps_file_folds_home_out_of_the_writable_roots() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n    sandbox:\n      writable_roots:\n        - \"/home/dev/prj\"\n",
-    )
-    .expect("write the apps file");
+    );
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -407,12 +385,10 @@ async fn splitting_an_apps_file_folds_home_out_of_the_writable_roots() {
 #[tokio::test]
 async fn splitting_an_apps_file_that_declares_an_environment_is_refused() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n    env:\n      TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
-    )
-    .expect("write the apps file");
+    );
     let refused = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect_err("an apps file may not declare an environment")
@@ -428,12 +404,10 @@ async fn splitting_an_apps_file_that_declares_an_environment_is_refused() {
 #[tokio::test]
 async fn splitting_an_apps_file_leaves_a_sandbox_without_roots_alone() {
     let home = home();
-    let apps_file = home.dir.path().join("apps.yaml");
-    std::fs::write(
-        &apps_file,
+    let apps_file = write_apps_file(
+        &home,
         "apps:\n  - name: web\n    script: /bin/sh\n    sandbox:\n      network: true\n",
-    )
-    .expect("write the apps file");
+    );
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");

@@ -9,7 +9,7 @@ const onlineDeadlineMs = 15_000;
 const socketGoneDeadlineMs = 10_000;
 const pollIntervalMs = 50;
 
-export interface Summary {
+interface Summary {
   count: number;
   mean: number;
   median: number;
@@ -22,7 +22,7 @@ interface ServiceView {
   pid: number | null;
 }
 
-export interface BenchReport {
+interface BenchReport {
   pm3Version: string;
   machine: string;
   dateUtc: string;

@@ -71,6 +71,7 @@ impl TaskBoard {
         }
     }
 
+    #[cfg(test)]
     #[must_use]
     pub fn has_force_kill(&self, name: &str) -> bool {
         self.force_kills.contains_key(name)

@@ -10,8 +10,8 @@ use crate::{
     service::ServiceAction,
 };
 
-pub const MISSING_COMMAND: &str = "--name needs a program to run after it";
-pub const AMBIGUOUS_TARGET: &str =
+pub(crate) const MISSING_COMMAND: &str = "--name needs a program to run after it";
+pub(crate) const AMBIGUOUS_TARGET: &str =
     "without --name, start takes exactly one apps file; pm3 options must come before the program";
 
 const HELP_TEMPLATE: &str = "\

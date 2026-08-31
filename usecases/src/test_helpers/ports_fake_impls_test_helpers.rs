@@ -1,5 +1,9 @@
 use super::*;
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl ProcessLauncher for FakePorts {
     async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
         self.record_spawn(spec)
@@ -17,6 +21,10 @@ impl ProcessLauncher for FakePorts {
     }
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl Signaler for FakePorts {
     async fn terminate(&self, pid: u32, scope: SignalScope) -> Result<(), SignalError> {
         self.record_signal(pid, scope)
@@ -59,6 +67,10 @@ impl CommandWrapper for FakePorts {
     }
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl DumpStore for FakePorts {
     async fn load(&self) -> Result<DumpContents, DumpError> {
         self.read_stored()
@@ -69,6 +81,10 @@ impl DumpStore for FakePorts {
     }
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl LogRotator for FakePorts {
     async fn rotate_logs(
         &self,
@@ -79,12 +95,20 @@ impl LogRotator for FakePorts {
     }
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl ReadyProber for FakePorts {
     async fn check_ready(&self, _probe: &ReadyProbe) -> Readiness {
         Readiness::Ready
     }
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl ProcessProbe for FakePorts {
     async fn resident_memory(&self, _pids: &[u32]) -> BTreeMap<u32, u64> {
         BTreeMap::new()
@@ -143,6 +167,10 @@ impl ProcessProbe for FakePorts {
     }
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
 impl Fingerprinter for FakePorts {
     fn digest(&self, text: &str) -> String {
         format!("{TEXT_DIGEST_PREFIX}{text}")

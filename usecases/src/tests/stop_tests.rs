@@ -3,7 +3,7 @@ use entities::ProcessStatus;
 use super::*;
 use crate::{
     ports::ExitOutcome,
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec, spec_with_deps},
+    ports_test_helpers::{FakePorts, LOGS_DIR, spec, spec_with_deps, started_table},
     restart::restart_app,
     start::start_apps,
     supervise::{ExitAction, handle_child_exit},
@@ -11,12 +11,6 @@ use crate::{
 
 fn stopped_names(stopped: &[StopOutcome]) -> Vec<String> {
     stopped.iter().map(|outcome| outcome.name.clone()).collect()
-}
-
-async fn started_table(ports: &FakePorts) -> ProcessTable {
-    let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, ports).await;
-    table
 }
 
 #[tokio::test]

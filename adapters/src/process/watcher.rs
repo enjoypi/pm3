@@ -59,7 +59,7 @@ pub struct AdoptedWatch {
 }
 
 impl AdoptedWatch {
-    pub async fn until_gone(
+    pub(crate) async fn until_gone(
         self: &Arc<Self>,
         probe: Arc<PsProcessProbe>,
         pid: u32,

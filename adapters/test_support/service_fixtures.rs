@@ -19,6 +19,12 @@ pub fn home() -> Home {
     Home { dir, cfg_dir }
 }
 
+pub fn write_apps_file(home: &Home, yaml: &str) -> PathBuf {
+    let apps_file = home.dir.path().join("apps.yaml");
+    std::fs::write(&apps_file, yaml).expect("write the apps file");
+    apps_file
+}
+
 pub fn context(home: &Home) -> ServiceContext<'_> {
     ServiceContext {
         cfg_dir: &home.cfg_dir,

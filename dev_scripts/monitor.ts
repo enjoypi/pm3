@@ -65,7 +65,7 @@ async function writeMatchingLines(
   }
 }
 
-export async function tailFilteredServiceLog(argv: string[]): Promise<number> {
+async function tailFilteredServiceLog(argv: string[]): Promise<number> {
   const kind = parseKind(argv[0]);
   const serviceLog = resolveServiceLog((name) => Bun.env[name]);
   const tail = Bun.spawn(["tail", "-F", "-n0", serviceLog], {

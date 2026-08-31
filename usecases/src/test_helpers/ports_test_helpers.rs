@@ -15,6 +15,8 @@ use crate::{
         WrappedCommand,
     },
     record::ProcessRecord,
+    start::start_apps,
+    table::ProcessTable,
 };
 
 pub const SANDBOX_PREFIX: &str = "/usr/bin/pm3-sandbox";
@@ -426,6 +428,12 @@ pub fn spec_probed(name: &str) -> AppSpec {
 }
 
 pub const LOGS_DIR: &str = "/fake/logs";
+
+pub async fn started_table(ports: &FakePorts) -> ProcessTable {
+    let mut table = ProcessTable::new();
+    start_apps(&mut table, &[spec("api")], LOGS_DIR, ports).await;
+    table
+}
 
 #[path = "ports_fake_impls_test_helpers.rs"]
 mod impls;

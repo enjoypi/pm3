@@ -3,15 +3,8 @@ use entities::ProcessStatus;
 use super::*;
 use crate::{
     SignalScope,
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec},
-    start::start_apps,
+    ports_test_helpers::{FakePorts, spec, started_table},
 };
-
-async fn started_table(ports: &FakePorts) -> ProcessTable {
-    let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, ports).await;
-    table
-}
 
 #[tokio::test]
 async fn signalling_a_running_app_delivers_to_its_process_group() {

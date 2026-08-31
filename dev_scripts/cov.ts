@@ -90,7 +90,7 @@ async function reapOrphansQuietly(): Promise<void> {
   }
 }
 
-export async function enforceCoverageGate(
+async function enforceCoverageGate(
   argv: readonly string[],
 ): Promise<number> {
   await reapOrphansQuietly();

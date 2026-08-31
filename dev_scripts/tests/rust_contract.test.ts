@@ -8,7 +8,7 @@ async function sourceOf(relative: string): Promise<string> {
 
 function constantOf(source: string, name: string): string {
   const found = source.match(
-    new RegExp(`pub const ${name}: &str = "([^"]+)";`),
+    new RegExp(`pub(?:\\(crate\\))? const ${name}: &str = "([^"]+)";`),
   );
   if (found === null) {
     throw new Error(`${name} is no longer declared the way this guard reads it`);

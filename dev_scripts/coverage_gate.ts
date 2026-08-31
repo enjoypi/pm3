@@ -81,7 +81,7 @@ export function collectInstrumentedFiles(
   return instrumented;
 }
 
-export async function listProductionSources(): Promise<string[]> {
+async function listProductionSources(): Promise<string[]> {
   const rustSources = new Bun.Glob("**/*.rs");
   const found: string[] = [];
   for (const root of productionSourceRoots) {

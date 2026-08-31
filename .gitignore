@@ -17,3 +17,5 @@ rustc-ice-*.txt
 .env
 
 .claude.local.md
+
+.debug/

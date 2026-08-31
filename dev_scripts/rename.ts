@@ -96,7 +96,7 @@ function fail(reason: string): number {
   return 2;
 }
 
-export async function renameProject(argv: readonly string[]): Promise<number> {
+async function renameProject(argv: readonly string[]): Promise<number> {
   const newName = argv[0];
   if (argv.length !== 1 || newName === undefined) {
     process.stderr.write(`${usage}\n`);
