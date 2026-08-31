@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "adapters"
-version = "1.14.1"
+version = "1.14.2"
 dependencies = [
  "axum",
  "chrono",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "arch_tests"
-version = "1.14.1"
+version = "1.14.2"
 dependencies = [
  "toml",
 ]
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "entities"
-version = "1.14.1"
+version = "1.14.2"
 dependencies = [
  "thiserror 2.0.20",
 ]
@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "frameworks"
-version = "1.14.1"
+version = "1.14.2"
 dependencies = [
  "adapters",
  "axum",
@@ -1373,7 +1373,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "usecases"
-version = "1.14.1"
+version = "1.14.2"
 dependencies = [
  "entities",
  "futures-util",
