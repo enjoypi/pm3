@@ -1,0 +1,5 @@
+ignore:
+  - fingerprint: 56600a7be27db6e58832da42a425c4483137c761:.env.example:db-uri-inline-credential:2
+    reason: 早期脚手架模板占位符（changeme），历史提交内容，非真实凭证
+  - fingerprint: 56600a7be27db6e58832da42a425c4483137c761:.env.example:db-uri-inline-credential:3
+    reason: 早期脚手架模板占位符（changeme），历史提交内容，非真实凭证
