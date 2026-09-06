@@ -72,8 +72,14 @@ else
     "$tmp/pm3" --config "$tmp/config.yaml" install
 fi
 
-echo "install.sh: 完成。pm3 已落位（默认 ~/bin/pm3，可用 PM3_INSTALL_PATH 覆盖）并注册开机自启。"
+echo "install.sh: 完成。pm3 已落位（默认 ~/.local/bin/pm3，可用 PM3_INSTALL_PATH 覆盖）并注册开机自启。"
 case ":$PATH:" in
-    *":$HOME/bin:"*) ;;
-    *) warn "~/bin 不在 PATH 里，直接使用请把它加进 shell 配置" ;;
+    *":$HOME/.local/bin:"*) ;;
+    *)
+        if [ "$os" = "Linux" ]; then
+            warn "~/.local/bin 不在 PATH 里：多数发行版的 ~/.profile 会在该目录存在时自动加入，重新登录一次或手动加进 shell 配置"
+        else
+            warn "~/.local/bin 不在 PATH 里，macOS 不会自动加入，请手动加进 shell 配置"
+        fi
+        ;;
 esac

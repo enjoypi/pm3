@@ -4,7 +4,7 @@ use usecases::is_name_letter;
 
 use super::InstallError;
 
-const DEFAULT_DESTINATION: &str = "bin/pm3";
+const DEFAULT_DESTINATION: &str = ".local/bin/pm3";
 const BACKUP_DIRECTORY: &str = "install-backups";
 const UNKNOWN_VERSION: &str = "unknown";
 
