@@ -33,6 +33,9 @@ pub struct RuntimeDto {
     pub pending_restart: bool,
 
     #[serde(default)]
+    pub supervised_restart: bool,
+
+    #[serde(default)]
     pub schedule_armed: bool,
 }
 
@@ -72,6 +75,7 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         started_at_ms,
         identity,
         pending_restart,
+        supervised_restart,
         schedule_armed,
     } = runtime;
     let parsed = ProcessStatus::parse(&status).ok_or_else(|| DecodeError::UnknownStatus {
@@ -89,6 +93,7 @@ pub fn decode_state(dto: StateDto) -> Result<ProcessRuntime, DecodeError> {
         started_at_ms,
         identity: identity.map(decode_identity),
         pending_restart,
+        supervised_restart,
         schedule_armed,
     };
     decoded
@@ -139,6 +144,7 @@ fn encode_state(record: &ProcessRecord) -> StateDto {
         started_at_ms,
         identity,
         pending_restart,
+        supervised_restart,
         schedule_armed,
     } = runtime;
     StateDto {
@@ -153,6 +159,7 @@ fn encode_state(record: &ProcessRecord) -> StateDto {
             started_at_ms: *started_at_ms,
             identity: identity.as_ref().map(encode_identity),
             pending_restart: *pending_restart,
+            supervised_restart: *supervised_restart,
             schedule_armed: *schedule_armed,
         },
     }

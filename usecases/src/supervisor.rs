@@ -7,8 +7,9 @@ use crate::{
     fingerprint::pid_was_recycled,
     ports::{ExitOutcome, SpecResolver},
     query::{
-        armed_schedule_names, breached_memory, describe_app, identity_token_of, list_apps,
-        memory_watch_list, owner_of_pid, running_pids, schedule_of, unswept_pids,
+        armed_schedule_names, breached_memory, describe_app, hand_to_the_breaker,
+        identity_token_of, list_apps, memory_watch_list, owner_of_pid, running_pids, schedule_of,
+        unswept_pids,
     },
     record::ProcessView,
     restart::{RestartOutcome, restart_app},
@@ -225,6 +226,7 @@ impl Supervisor {
         for breach in breached_memory(&watched, &sampled) {
             log_memory_breach(&breach);
             self.restart_now(&breach.name, ports, &mut effects).await;
+            hand_to_the_breaker(self.table.find_by_name_mut(&breach.name));
         }
         effects
     }

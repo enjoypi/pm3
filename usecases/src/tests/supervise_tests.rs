@@ -288,3 +288,65 @@ async fn a_signal_death_is_never_a_clean_stop() {
         "got: {action:?}"
     );
 }
+
+#[tokio::test]
+async fn a_supervised_restart_answers_to_the_breaker() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        max_restarts: 1,
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    let record = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    record.runtime.request_supervised_restart();
+
+    let action = handle_child_exit(&mut table, "api", CRASH, &ports)
+        .await
+        .expect("exit handled");
+
+    assert_eq!(
+        action,
+        ExitAction::Settled {
+            status: ProcessStatus::Errored,
+        },
+        "a breached breaker must not be bypassed by a supervised restart"
+    );
+}
+
+#[tokio::test]
+async fn a_supervised_restart_backs_off_like_a_crash() {
+    let ports = FakePorts::new(1000);
+    let mut table = running_table(&ports, spec("api")).await;
+    let queued = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    queued.runtime.request_supervised_restart();
+
+    let action = handle_child_exit(&mut table, "api", UNOBSERVED, &ports)
+        .await
+        .expect("exit handled");
+
+    assert_eq!(action, ExitAction::RestartAfter { delay_ms: 250 });
+    let settled = table.find(&AppSelector::Id(0)).expect("record present");
+    assert_eq!(settled.runtime.restart_time, 1, "the tally must move");
+}
+
+#[tokio::test]
+async fn a_user_restart_still_bypasses_the_breaker() {
+    let ports = FakePorts::new(1000);
+    let candidate = AppSpec {
+        max_restarts: 1,
+        ..spec("api")
+    };
+    let mut table = running_table(&ports, candidate).await;
+    let record = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    record.runtime.request_restart();
+
+    let action = handle_child_exit(&mut table, "api", UNOBSERVED, &ports)
+        .await
+        .expect("exit handled");
+
+    assert_eq!(
+        action,
+        ExitAction::RestartAfter { delay_ms: 0 },
+        "an operator asked for this restart"
+    );
+}

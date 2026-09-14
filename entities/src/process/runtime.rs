@@ -27,6 +27,7 @@ pub struct ProcessRuntime {
     pub started_at_ms: Option<u64>,
     pub identity: Option<ProcessIdentity>,
     pub pending_restart: bool,
+    pub supervised_restart: bool,
     pub schedule_armed: bool,
 }
 
@@ -44,6 +45,7 @@ impl ProcessRuntime {
             started_at_ms: None,
             identity: None,
             pending_restart: false,
+            supervised_restart: false,
             schedule_armed: false,
         }
     }
@@ -110,8 +112,14 @@ impl ProcessRuntime {
         self.pending_restart = true;
     }
 
+    pub const fn request_supervised_restart(&mut self) {
+        self.pending_restart = true;
+        self.supervised_restart = true;
+    }
+
     pub const fn cancel_restart(&mut self) {
         self.pending_restart = false;
+        self.supervised_restart = false;
     }
 
     pub const fn arm_schedule(&mut self) {
@@ -126,6 +134,15 @@ impl ProcessRuntime {
         let requested = self.pending_restart;
         self.cancel_restart();
         requested
+    }
+
+    #[must_use]
+    pub const fn takes_the_breaker(&self) -> bool {
+        if self.pending_restart {
+            self.supervised_restart
+        } else {
+            false
+        }
     }
 }
 

@@ -1,7 +1,8 @@
 use entities::{ProcessStatus, RestartDecision, decide_restart};
 
 use crate::{
-    Ports, Result, UsecaseError, persist::save_table, ports::ExitOutcome, table::ProcessTable,
+    Ports, Result, UsecaseError, persist::save_table, ports::ExitOutcome, record::ProcessRecord,
+    table::ProcessTable,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -48,6 +49,41 @@ pub async fn settle_failed_probe(
     Ok(())
 }
 
+fn settle_without_the_breaker(
+    record: &mut ProcessRecord,
+    outcome: ExitOutcome,
+) -> Option<ExitAction> {
+    let was_stopping = record.runtime.status.is_shutting_down();
+    let supervised = record.runtime.takes_the_breaker();
+    let requested = record.runtime.take_restart_request();
+
+    if requested {
+        if supervised {
+            return None;
+        }
+        return Some(ExitAction::RestartAfter { delay_ms: 0 });
+    }
+    if was_stopping {
+        return Some(ExitAction::Settled {
+            status: ProcessStatus::Stopped,
+        });
+    }
+    if stops_on_this_code(record, outcome) {
+        return Some(ExitAction::Settled {
+            status: ProcessStatus::Stopped,
+        });
+    }
+    None
+}
+
+fn stops_on_this_code(record: &ProcessRecord, outcome: ExitOutcome) -> bool {
+    if let ExitOutcome::Code(code) = outcome {
+        record.spec.stops_on(code)
+    } else {
+        false
+    }
+}
+
 fn classify_exit(
     table: &mut ProcessTable,
     name: &str,
@@ -58,28 +94,9 @@ fn classify_exit(
         .find_by_name_mut(name)
         .ok_or_else(|| UsecaseError::NotFound(name.to_string()))?;
 
-    let was_stopping = record.runtime.status.is_shutting_down();
-    let restart_requested = record.runtime.take_restart_request();
-
-    if restart_requested {
+    if let Some(settled) = settle_without_the_breaker(record, outcome) {
         record.runtime.mark_exited(ProcessStatus::Stopped);
-        return Ok(ExitAction::RestartAfter { delay_ms: 0 });
-    }
-
-    if was_stopping {
-        record.runtime.mark_exited(ProcessStatus::Stopped);
-        return Ok(ExitAction::Settled {
-            status: ProcessStatus::Stopped,
-        });
-    }
-
-    if let ExitOutcome::Code(code) = outcome
-        && record.spec.stops_on(code)
-    {
-        record.runtime.mark_exited(ProcessStatus::Stopped);
-        return Ok(ExitAction::Settled {
-            status: ProcessStatus::Stopped,
-        });
+        return Ok(settled);
     }
 
     let decision = decide_restart(

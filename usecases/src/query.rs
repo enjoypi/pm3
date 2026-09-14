@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use entities::decide_memory_verdict;
 
 use crate::{
-    Result, UsecaseError, record::ProcessView, selector::AppSelector, table::ProcessTable,
+    Result, UsecaseError,
+    record::{ProcessRecord, ProcessView},
+    selector::AppSelector,
+    table::ProcessTable,
 };
 
 const STRAY_LABEL: &str = "stray";
@@ -153,3 +156,12 @@ mod supervision_tests;
 #[cfg(test)]
 #[path = "tests/query_tests.rs"]
 mod tests;
+
+pub const fn hand_to_the_breaker(record: Option<&mut ProcessRecord>) {
+    let Some(record) = record else {
+        return;
+    };
+    if record.runtime.pending_restart {
+        record.runtime.request_supervised_restart();
+    }
+}

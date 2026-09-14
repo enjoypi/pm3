@@ -228,3 +228,26 @@ fn a_running_service_without_a_pid_is_not_watched() {
     let table = ProcessTable::from_records(vec![record]);
     assert!(memory_watch_list(&table).is_empty());
 }
+
+#[test]
+fn a_queued_restart_is_handed_to_the_breaker() {
+    let mut record = launched("api", 0, 4242, "token");
+    record.runtime.request_restart();
+    hand_to_the_breaker(Some(&mut record));
+    assert!(record.runtime.supervised_restart);
+}
+
+#[test]
+fn a_restart_that_never_queued_is_left_alone() {
+    let mut record = launched("api", 0, 4242, "token");
+    hand_to_the_breaker(Some(&mut record));
+    assert!(
+        !record.runtime.supervised_restart,
+        "nothing is awaiting an exit"
+    );
+}
+
+#[test]
+fn a_missing_record_is_no_breaker_at_all() {
+    hand_to_the_breaker(None);
+}

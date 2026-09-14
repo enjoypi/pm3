@@ -247,3 +247,43 @@ fn resetting_an_errored_service_marks_it_stopped() {
     assert_eq!(runtime.status, ProcessStatus::Stopped);
     assert_eq!(runtime.restart_time, 0);
 }
+
+#[test]
+fn a_new_runtime_holds_no_supervised_restart() {
+    let runtime = ProcessRuntime::new(1, "api".to_string(), 1000);
+    assert!(!runtime.supervised_restart);
+}
+
+#[test]
+fn a_supervised_request_also_expects_the_exit() {
+    let mut runtime = online_at(1000);
+    runtime.request_supervised_restart();
+    assert!(runtime.pending_restart, "the exit must still be expected");
+    assert!(
+        runtime.supervised_restart,
+        "the breaker must judge this restart"
+    );
+}
+
+#[test]
+fn taking_a_supervised_request_clears_the_supervision_flag() {
+    let mut runtime = online_at(1000);
+    runtime.request_supervised_restart();
+    assert!(runtime.take_restart_request());
+    assert!(!runtime.supervised_restart);
+}
+
+#[test]
+fn cancelling_clears_a_supervised_request_too() {
+    let mut runtime = online_at(1000);
+    runtime.request_supervised_restart();
+    runtime.cancel_restart();
+    assert!(!runtime.supervised_restart);
+}
+
+#[test]
+fn a_plain_request_is_not_supervised() {
+    let mut runtime = online_at(1000);
+    runtime.request_restart();
+    assert!(!runtime.supervised_restart);
+}

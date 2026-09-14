@@ -9,13 +9,19 @@ fn a_declared_destination_wins() {
 #[test]
 fn an_empty_destination_falls_back_to_the_home_local_bin() {
     let destination = destination_of(Some(""), Some("/home/dev")).expect("home is known");
-    assert_eq!(destination, std::path::Path::new("/home/dev/.local/bin/pm3"));
+    assert_eq!(
+        destination,
+        std::path::Path::new("/home/dev/.local/bin/pm3")
+    );
 }
 
 #[test]
 fn an_undeclared_destination_falls_back_to_the_home_local_bin() {
     let destination = destination_of(None, Some("/home/dev")).expect("home is known");
-    assert_eq!(destination, std::path::Path::new("/home/dev/.local/bin/pm3"));
+    assert_eq!(
+        destination,
+        std::path::Path::new("/home/dev/.local/bin/pm3")
+    );
 }
 
 #[test]
