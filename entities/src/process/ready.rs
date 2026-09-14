@@ -28,6 +28,13 @@ pub fn validate_probe(app: &str, probe: &ReadyProbe) -> Result<(), SpecError> {
     Ok(())
 }
 
+pub fn validate_liveness_probe(app: &str, probe: &ReadyProbe) -> Result<(), SpecError> {
+    if matches!(probe, ReadyProbe::Exec { .. }) {
+        return Err(SpecError::ExecLivenessProbe(app.to_string()));
+    }
+    validate_probe(app, probe)
+}
+
 #[cfg(test)]
 #[path = "../tests/process_ready_tests.rs"]
 mod tests;

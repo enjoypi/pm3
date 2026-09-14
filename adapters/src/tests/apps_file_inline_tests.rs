@@ -257,6 +257,7 @@ fn fully_declared_entry() -> AppEntry {
         restart_delay_ms: Some(50),
         max_restart_delay_ms: Some(60000),
         listen_timeout_ms: Some(20000),
+        liveness_tcp: None,
         ready_probe: Some(ReadyProbeEntry {
             exec: None,
             tcp: Some("127.0.0.1:8080".to_string()),
@@ -481,6 +482,7 @@ fn an_inline_tcp_probe_round_trips() {
 #[test]
 fn an_empty_probe_section_is_omitted() {
     let entry = AppEntry {
+        liveness_tcp: None,
         ready_probe: Some(ReadyProbeEntry {
             exec: None,
             tcp: None,
@@ -510,4 +512,19 @@ fn an_inline_request_renders_stop_exit_codes() {
 fn an_inline_request_without_stop_exit_codes_renders_none() {
     let yaml = encode_service_file(&inline_entry(&request(&[])));
     assert!(!yaml.contains("stop_exit_codes"), "got: {yaml}");
+}
+
+#[test]
+fn a_liveness_endpoint_survives_a_round_trip() {
+    let entry = AppEntry {
+        liveness_tcp: Some("127.0.0.1:8080".to_string()),
+        ..fully_declared_entry()
+    };
+    let yaml = encode_entry(&entry);
+    let reparsed: AppEntry = serde_yaml2::from_str(&yaml).expect("re-parses");
+    assert_eq!(
+        reparsed.liveness_tcp.as_deref(),
+        Some("127.0.0.1:8080"),
+        "a rewritten declaration must keep its probe"
+    );
 }

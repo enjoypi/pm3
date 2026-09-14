@@ -49,6 +49,7 @@ pub fn minimal_entry() -> AppEntry {
         max_restart_delay_ms: None,
         listen_timeout_ms: None,
         ready_probe: None,
+        liveness_tcp: None,
         schedule: None,
         max_memory: None,
         stop_exit_codes: Vec::new(),

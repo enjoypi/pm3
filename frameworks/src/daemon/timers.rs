@@ -14,6 +14,7 @@ pub struct TaskBoard {
     force_kills: HashMap<String, JoinHandle<()>>,
     ready: HashMap<String, JoinHandle<()>>,
     memory_sample: Option<JoinHandle<()>>,
+    liveness_sample: Option<JoinHandle<()>>,
     log_rotate: Option<JoinHandle<()>>,
 }
 
@@ -28,6 +29,7 @@ impl TaskBoard {
             force_kills: HashMap::new(),
             ready: HashMap::new(),
             memory_sample: None,
+            liveness_sample: None,
             log_rotate: None,
         }
     }
@@ -37,6 +39,7 @@ impl TaskBoard {
 
         match effect {
             Se::ScheduleMemorySample { delay_ms } => self.schedule_memory_sample(delay_ms),
+            Se::ScheduleLivenessSample { delay_ms } => self.schedule_liveness_sample(delay_ms),
             Se::ArmTimer {
                 name,
                 fire_at_ms,
@@ -106,6 +109,15 @@ impl TaskBoard {
             delay_ms,
             &self.events,
             DaemonEvent::SampleMemory,
+        );
+    }
+
+    fn schedule_liveness_sample(&mut self, delay_ms: u64) {
+        rearm_once(
+            &mut self.liveness_sample,
+            delay_ms,
+            &self.events,
+            DaemonEvent::SampleLiveness,
         );
     }
 

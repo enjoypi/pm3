@@ -28,6 +28,7 @@ pub struct ProcessRuntime {
     pub identity: Option<ProcessIdentity>,
     pub pending_restart: bool,
     pub supervised_restart: bool,
+    pub liveness_failures: u32,
     pub schedule_armed: bool,
 }
 
@@ -46,6 +47,7 @@ impl ProcessRuntime {
             identity: None,
             pending_restart: false,
             supervised_restart: false,
+            liveness_failures: 0,
             schedule_armed: false,
         }
     }
@@ -83,6 +85,16 @@ impl ProcessRuntime {
         self.pid = Some(pid);
         self.started_at_ms = Some(now_ms);
         self.identity = None;
+        self.liveness_failures = 0;
+    }
+
+    pub const fn pass_liveness(&mut self) {
+        self.liveness_failures = 0;
+    }
+
+    pub const fn fail_liveness(&mut self, threshold: u32) -> bool {
+        self.liveness_failures = self.liveness_failures.saturating_add(1);
+        self.liveness_failures >= threshold
     }
 
     pub fn record_identity(&mut self, identity: Option<ProcessIdentity>) {

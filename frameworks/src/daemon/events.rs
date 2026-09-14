@@ -22,6 +22,7 @@ pub enum DaemonEvent {
         token: Option<String>,
     },
     SampleMemory,
+    SampleLiveness,
     RotateLogs,
     Ready {
         name: String,

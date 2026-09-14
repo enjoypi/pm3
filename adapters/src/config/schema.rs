@@ -81,6 +81,12 @@ pub enum ConfigError {
     #[error("cannot accept pm3.memory_poll_interval_ms {0}: must be >= 1")]
     InvalidMemoryPollInterval(u64),
 
+    #[error("cannot accept pm3.liveness_poll_interval_ms {0}: must be >= 1")]
+    InvalidLivenessPollInterval(u64),
+
+    #[error("cannot accept pm3.liveness_failure_threshold {0}: must be >= 1")]
+    InvalidLivenessThreshold(u32),
+
     #[error("cannot accept pm3.sandbox.mode {mode}: must be one of {expected}")]
     InvalidSandboxMode { mode: String, expected: String },
 
@@ -142,6 +148,8 @@ pub struct Pm3Config {
     pub daemon_poll_interval_ms: u64,
     pub daemon_poll_max_interval_ms: u64,
     pub memory_poll_interval_ms: u64,
+    pub liveness_poll_interval_ms: u64,
+    pub liveness_failure_threshold: u32,
     pub log_follow_interval_ms: u64,
     pub log_tail_lines: u64,
     #[serde(default = "default_log_read_max_bytes")]
@@ -312,6 +320,16 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
 fn validate_choices(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if !usecases::VALID_SIGNALS.contains(&pm3.stop_signal.as_str()) {
         return Err(ConfigError::InvalidStopSignal(pm3.stop_signal.clone()));
+    }
+    if pm3.liveness_poll_interval_ms < 1 {
+        return Err(ConfigError::InvalidLivenessPollInterval(
+            pm3.liveness_poll_interval_ms,
+        ));
+    }
+    if pm3.liveness_failure_threshold < 1 {
+        return Err(ConfigError::InvalidLivenessThreshold(
+            pm3.liveness_failure_threshold,
+        ));
     }
     if pm3.restart.min_uptime_ms < 1 {
         return Err(ConfigError::InvalidMinUptime(pm3.restart.min_uptime_ms));

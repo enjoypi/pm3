@@ -6,6 +6,7 @@ fn spec() -> AppSpec {
     AppSpec {
         max_memory_kib: None,
         ready_probe: None,
+        liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
         name: "api".to_string(),

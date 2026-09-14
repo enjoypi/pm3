@@ -117,6 +117,9 @@ pub enum SupervisionEffect {
     ScheduleMemorySample {
         delay_ms: u64,
     },
+    ScheduleLivenessSample {
+        delay_ms: u64,
+    },
     ArmTimer {
         name: String,
         fire_at_ms: u64,

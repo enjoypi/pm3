@@ -16,6 +16,7 @@ pub mod supervise;
 pub mod supervision;
 pub mod supervisor;
 pub mod supervisor_handlers;
+pub mod supervisor_liveness;
 pub mod supervisor_ready;
 pub mod table;
 pub mod timer_state;

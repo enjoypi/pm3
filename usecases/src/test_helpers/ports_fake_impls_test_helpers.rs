@@ -101,6 +101,9 @@ impl LogRotator for FakePorts {
 )]
 impl ReadyProber for FakePorts {
     async fn check_ready(&self, _probe: &ReadyProbe) -> Readiness {
+        if self.liveness_is_down() {
+            return Readiness::Failed("fake probe is down".to_string());
+        }
         Readiness::Ready
     }
 }

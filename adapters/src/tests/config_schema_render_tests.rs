@@ -239,6 +239,8 @@ fn every_error_variant_renders_a_message() {
             expected: "read-only, workspace-write, danger-full-access".to_string(),
         },
         ConfigError::InvalidMemoryPollInterval(0),
+        ConfigError::InvalidLivenessPollInterval(0),
+        ConfigError::InvalidLivenessThreshold(0),
         ConfigError::InvalidSandboxRead {
             read: "everything".to_string(),
             expected: "full, minimal".to_string(),
@@ -283,6 +285,28 @@ fn validate_rejects_a_zero_memory_poll_interval() {
     let err = validate_config(&cfg).unwrap_err();
     assert!(
         matches!(err, ConfigError::InvalidMemoryPollInterval(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_zero_liveness_poll_interval() {
+    let mut cfg = valid_config();
+    cfg.pm3.liveness_poll_interval_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidLivenessPollInterval(0)),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_zero_liveness_threshold() {
+    let mut cfg = valid_config();
+    cfg.pm3.liveness_failure_threshold = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidLivenessThreshold(0)),
         "got: {err}"
     );
 }

@@ -54,6 +54,8 @@ pub fn valid_pm3_config() -> Pm3Config {
         daemon_poll_interval_ms: 50,
         daemon_poll_max_interval_ms: 1000,
         memory_poll_interval_ms: 30000,
+        liveness_poll_interval_ms: 30000,
+        liveness_failure_threshold: 3,
         log_follow_interval_ms: 200,
         log_tail_lines: 20,
         log_read_max_bytes: 4_194_304,

@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 
-use entities::decide_memory_verdict;
+use entities::{ProcessStatus, ReadyProbe, decide_memory_verdict};
 
 use crate::{
     Result, UsecaseError,
+    ports::Readiness,
     record::{ProcessRecord, ProcessView},
     selector::AppSelector,
     table::ProcessTable,
@@ -164,4 +165,41 @@ pub const fn hand_to_the_breaker(record: Option<&mut ProcessRecord>) {
     if record.runtime.pending_restart {
         record.runtime.request_supervised_restart();
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LivenessWatch {
+    pub name: String,
+    pub probe: ReadyProbe,
+}
+
+#[must_use]
+pub fn liveness_watch_list(table: &ProcessTable) -> Vec<LivenessWatch> {
+    table
+        .records()
+        .iter()
+        .filter(|record| record.runtime.status == ProcessStatus::Online)
+        .filter_map(|record| {
+            Some(LivenessWatch {
+                name: record.runtime.name.clone(),
+                probe: record.spec.liveness_probe.clone()?,
+            })
+        })
+        .collect()
+}
+
+#[must_use]
+pub const fn record_liveness(
+    record: Option<&mut ProcessRecord>,
+    verdict: &Readiness,
+    threshold: u32,
+) -> bool {
+    let Some(record) = record else {
+        return false;
+    };
+    if matches!(verdict, Readiness::Ready) {
+        record.runtime.pass_liveness();
+        return false;
+    }
+    record.runtime.fail_liveness(threshold)
 }

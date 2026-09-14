@@ -345,3 +345,35 @@ fn a_service_file_reads_stop_exit_codes() {
         .expect("should parse");
     assert_eq!(entry.stop_exit_codes, vec![3, 0]);
 }
+
+#[test]
+fn resolve_specs_reads_a_liveness_endpoint() {
+    let entry = AppEntry {
+        liveness_tcp: Some("127.0.0.1:8080".to_string()),
+        ..minimal_entry()
+    };
+    let spec = resolve_one(&defaults(), &entry);
+    assert_eq!(
+        spec.liveness_probe,
+        Some(ReadyProbe::Tcp {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+        })
+    );
+}
+
+#[test]
+fn resolve_specs_leaves_liveness_unset_when_undeclared() {
+    let spec = resolve_one(&defaults(), &minimal_entry());
+    assert_eq!(spec.liveness_probe, None);
+}
+
+#[test]
+fn resolve_specs_refuses_a_liveness_endpoint_without_a_port() {
+    let entry = AppEntry {
+        liveness_tcp: Some("127.0.0.1".to_string()),
+        ..minimal_entry()
+    };
+    let err = resolve_one_err(&defaults(), &entry);
+    assert!(err.contains("host:port"), "got: {err}");
+}

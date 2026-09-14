@@ -23,6 +23,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
     AppSpec {
         max_memory_kib: None,
         ready_probe: None,
+        liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
         name: name.to_string(),
@@ -63,6 +64,7 @@ pub fn sample_runtime(name: &str) -> ProcessRuntime {
         identity: Some(sample_identity()),
         pending_restart: false,
         supervised_restart: false,
+        liveness_failures: 0,
         schedule_armed: true,
     }
 }

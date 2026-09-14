@@ -96,6 +96,7 @@ async fn serve_supervised(
 
     let supervisor = tokio::spawn(run(daemon, command_queue, event_queue));
     events.send(DaemonEvent::SampleMemory).await.ok();
+    events.send(DaemonEvent::SampleLiveness).await.ok();
     events.send(DaemonEvent::RotateLogs).await.ok();
     let served = serve_listener(
         listener,

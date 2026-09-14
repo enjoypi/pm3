@@ -290,7 +290,7 @@ impl Supervisor {
         effects
     }
 
-    async fn restart_now(
+    pub(crate) async fn restart_now(
         &mut self,
         name: &str,
         ports: &impl Ports,

@@ -251,3 +251,82 @@ fn a_restart_that_never_queued_is_left_alone() {
 fn a_missing_record_is_no_breaker_at_all() {
     hand_to_the_breaker(None);
 }
+
+fn probed(name: &str, pm_id: u32, pid: u32, port: u16) -> ProcessRecord {
+    let mut record = launched(name, pm_id, pid, "token");
+    record.spec.liveness_probe = Some(entities::ReadyProbe::Tcp {
+        host: "127.0.0.1".to_string(),
+        port,
+    });
+    record.runtime.mark_online();
+    record
+}
+
+#[test]
+fn a_service_without_a_liveness_probe_is_not_watched() {
+    let table = ProcessTable::from_records(vec![launched("api", 0, 4242, "token")]);
+    assert!(liveness_watch_list(&table).is_empty());
+}
+
+#[test]
+fn an_online_service_with_a_probe_is_watched() {
+    let table = ProcessTable::from_records(vec![probed("api", 0, 4242, 8080)]);
+    assert_eq!(
+        liveness_watch_list(&table),
+        vec![LivenessWatch {
+            name: "api".to_string(),
+            probe: entities::ReadyProbe::Tcp {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+            },
+        }]
+    );
+}
+
+#[test]
+fn a_launching_service_is_left_to_its_ready_probe() {
+    let mut record = probed("api", 0, 4242, 8080);
+    record.runtime.status = ProcessStatus::Launching;
+    let table = ProcessTable::from_records(vec![record]);
+    assert!(
+        liveness_watch_list(&table).is_empty(),
+        "startup belongs to the ready probe"
+    );
+}
+
+#[test]
+fn a_stopping_service_is_not_probed() {
+    let mut record = probed("api", 0, 4242, 8080);
+    record.runtime.mark_stopping();
+    let table = ProcessTable::from_records(vec![record]);
+    assert!(
+        liveness_watch_list(&table).is_empty(),
+        "a draining service answers nothing"
+    );
+}
+
+#[test]
+fn a_liveness_pass_clears_the_failure_tally() {
+    let mut record = probed("api", 0, 4242, 8080);
+    record.runtime.fail_liveness(3);
+    let tripped = record_liveness(Some(&mut record), &crate::ports::Readiness::Ready, 3);
+    assert!(!tripped);
+    assert_eq!(record.runtime.liveness_failures, 0);
+}
+
+#[test]
+fn a_liveness_failure_trips_at_the_threshold() {
+    let mut record = probed("api", 0, 4242, 8080);
+    let down = crate::ports::Readiness::Failed("down".to_string());
+    assert!(!record_liveness(Some(&mut record), &down, 2));
+    assert!(record_liveness(Some(&mut record), &down, 2));
+}
+
+#[test]
+fn a_liveness_verdict_for_a_missing_record_trips_nothing() {
+    assert!(!record_liveness(
+        None,
+        &crate::ports::Readiness::Failed("down".to_string()),
+        1
+    ));
+}

@@ -47,6 +47,7 @@ struct FakeState {
     recycled_after_probe: Vec<u32>,
     vanished_after_probe: Vec<u32>,
     probed: BTreeSet<u32>,
+    liveness_down: u8,
     waited: Vec<u32>,
     events: Vec<String>,
     slow_wait: bool,
@@ -97,6 +98,14 @@ impl FakePorts {
 
     pub fn fail_wrap_for(&self, app: &str) {
         self.with_state(|state| state.wrap_failures.push(app.to_string()));
+    }
+
+    pub fn break_liveness(&self) {
+        self.with_state(|state| state.liveness_down = 1);
+    }
+
+    pub fn liveness_is_down(&self) -> bool {
+        self.read(|state| state.liveness_down == 1)
     }
 
     pub fn fail_signal_for(&self, pid: u32) {
@@ -382,6 +391,7 @@ pub fn spec(name: &str) -> AppSpec {
     AppSpec {
         max_memory_kib: None,
         ready_probe: None,
+        liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
         name: name.to_string(),

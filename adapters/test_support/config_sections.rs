@@ -13,6 +13,8 @@ pub fn pm3_section(home: &str, kill_timeout_ms: u64, sandbox_mode: &str) -> Stri
   daemon_poll_interval_ms: 50
   daemon_poll_max_interval_ms: 1000
   memory_poll_interval_ms: 30000
+  liveness_poll_interval_ms: 30000
+  liveness_failure_threshold: 3
   log_follow_interval_ms: 200
   log_tail_lines: 20
   log_read_max_bytes: 4194304

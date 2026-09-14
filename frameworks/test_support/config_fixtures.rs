@@ -9,6 +9,8 @@ pub const REQUEST_TIMEOUT_MS: u64 = 30000;
 pub const COMMAND_TIMEOUT_MS: u64 = 5000;
 pub const POLL_INTERVAL_MS: u64 = 20;
 pub const MEMORY_POLL_INTERVAL_MS: u64 = 40;
+pub const LIVENESS_POLL_INTERVAL_MS: u64 = 40;
+pub const LIVENESS_FAILURE_THRESHOLD: u32 = 3;
 pub const FOLLOW_INTERVAL_MS: u64 = 200;
 pub const LOG_TAIL_LINES: u64 = 20;
 pub const DRAIN_TIMEOUT_SECS: u64 = 5;
@@ -48,6 +50,8 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         daemon_poll_interval_ms: POLL_INTERVAL_MS,
         daemon_poll_max_interval_ms: POLL_INTERVAL_MS,
         memory_poll_interval_ms: MEMORY_POLL_INTERVAL_MS,
+        liveness_poll_interval_ms: LIVENESS_POLL_INTERVAL_MS,
+        liveness_failure_threshold: LIVENESS_FAILURE_THRESHOLD,
         log_follow_interval_ms: FOLLOW_INTERVAL_MS,
         log_tail_lines: LOG_TAIL_LINES,
         log_read_max_bytes: 4_194_304,
@@ -104,6 +108,8 @@ pub fn config_yaml(home: &str) -> String {
   daemon_poll_interval_ms: {POLL_INTERVAL_MS}
   daemon_poll_max_interval_ms: {POLL_INTERVAL_MS}
   memory_poll_interval_ms: {MEMORY_POLL_INTERVAL_MS}
+  liveness_poll_interval_ms: {LIVENESS_POLL_INTERVAL_MS}
+  liveness_failure_threshold: {LIVENESS_FAILURE_THRESHOLD}
   log_follow_interval_ms: {FOLLOW_INTERVAL_MS}
   log_tail_lines: {LOG_TAIL_LINES}
   log_read_max_bytes: 4194304

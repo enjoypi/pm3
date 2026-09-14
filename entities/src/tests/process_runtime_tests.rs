@@ -312,3 +312,37 @@ fn an_elapsed_run_survives_a_clock_rollback() {
     runtime.mark_stopping();
     assert_eq!(runtime.elapsed_since_launch_ms(500), None);
 }
+
+#[test]
+fn a_new_runtime_has_no_liveness_failures() {
+    let runtime = ProcessRuntime::new(1, "api".to_string(), 1000);
+    assert_eq!(runtime.liveness_failures, 0);
+}
+
+#[test]
+fn liveness_failures_accumulate_until_the_threshold() {
+    let mut runtime = online_at(1000);
+    assert!(!runtime.fail_liveness(3), "one failure is not enough");
+    assert!(!runtime.fail_liveness(3));
+    assert!(runtime.fail_liveness(3), "the third one trips it");
+    assert_eq!(runtime.liveness_failures, 3);
+}
+
+#[test]
+fn a_liveness_pass_clears_the_tally() {
+    let mut runtime = online_at(1000);
+    runtime.fail_liveness(3);
+    runtime.pass_liveness();
+    assert_eq!(runtime.liveness_failures, 0);
+}
+
+#[test]
+fn a_relaunch_clears_the_liveness_tally() {
+    let mut runtime = online_at(1000);
+    runtime.fail_liveness(3);
+    runtime.mark_launched(200, 2000);
+    assert_eq!(
+        runtime.liveness_failures, 0,
+        "a fresh process starts from zero"
+    );
+}

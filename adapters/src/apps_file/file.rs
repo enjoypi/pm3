@@ -51,6 +51,8 @@ pub struct AppEntry {
     #[serde(default)]
     pub ready_probe: Option<ReadyProbeEntry>,
     #[serde(default)]
+    pub liveness_tcp: Option<String>,
+    #[serde(default)]
     pub schedule: Option<String>,
     #[serde(default)]
     pub max_memory: Option<String>,
@@ -260,9 +262,11 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
     let sandbox = resolve_sandbox(defaults, entry, &cwd)?;
     let max_memory_kib = resolve_memory_limit(entry)?;
     let ready_probe = resolve_ready_probe(entry)?;
+    let liveness_probe = resolve_liveness_probe(entry)?;
     Ok(AppSpec {
         max_memory_kib,
         ready_probe,
+        liveness_probe,
         listen_timeout_ms: entry.listen_timeout_ms,
         name: entry.name.clone(),
         script: script.to_string_lossy().into_owned(),
@@ -343,6 +347,13 @@ fn resolve_memory_limit(entry: &AppEntry) -> Result<Option<u64>, AppsFileError> 
             app: entry.name.clone(),
             limit: declared.to_string(),
         })
+}
+
+fn resolve_liveness_probe(entry: &AppEntry) -> Result<Option<ReadyProbe>, AppsFileError> {
+    let Some(endpoint) = &entry.liveness_tcp else {
+        return Ok(None);
+    };
+    parse_tcp_endpoint(&entry.name, endpoint).map(Some)
 }
 
 fn resolve_ready_probe(entry: &AppEntry) -> Result<Option<ReadyProbe>, AppsFileError> {

@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use super::{
     depgraph::DependencyNode,
-    ready::{ReadyProbe, validate_probe},
+    ready::{ReadyProbe, validate_liveness_probe, validate_probe},
     restart::RestartPolicy,
 };
 use crate::sandbox::{PolicyError, SandboxPolicy, validate_policy};
@@ -25,6 +25,7 @@ pub struct AppSpec {
     pub depends_on: Vec<String>,
     pub max_memory_kib: Option<u64>,
     pub ready_probe: Option<ReadyProbe>,
+    pub liveness_probe: Option<ReadyProbe>,
     pub listen_timeout_ms: Option<u64>,
     pub stop_exit_codes: Vec<i32>,
     pub sandbox: SandboxPolicy,
@@ -32,6 +33,11 @@ pub struct AppSpec {
 
 #[derive(Debug, Eq, PartialEq, Error)]
 pub enum SpecError {
+    #[error(
+        "cannot accept an exec liveness probe for app '{0}': a repeating probe must not fork, declare a tcp endpoint"
+    )]
+    ExecLivenessProbe(String),
+
     #[error("cannot accept blank app name")]
     EmptyName,
 
@@ -171,6 +177,9 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
     }
     if let Some(probe) = &spec.ready_probe {
         validate_probe(&spec.name, probe)?;
+    }
+    if let Some(probe) = &spec.liveness_probe {
+        validate_liveness_probe(&spec.name, probe)?;
     }
     if spec.listen_timeout_ms == Some(0) {
         return Err(SpecError::InvalidListenTimeout(spec.name.clone()));

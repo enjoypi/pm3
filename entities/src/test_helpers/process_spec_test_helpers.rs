@@ -18,6 +18,7 @@ pub fn spec(name: &str) -> AppSpec {
     AppSpec {
         max_memory_kib: None,
         ready_probe: None,
+        liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
         name: name.to_string(),

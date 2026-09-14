@@ -367,3 +367,48 @@ fn validate_rejects_a_negative_stop_exit_code() {
         "cannot accept stop_exit_code -1 for app 'api': use a code of 0-255"
     );
 }
+
+#[test]
+fn a_liveness_probe_is_validated_like_a_ready_probe() {
+    let candidate = AppSpec {
+        liveness_probe: Some(ReadyProbe::Tcp {
+            host: String::new(),
+            port: 8080,
+        }),
+        ..spec("api")
+    };
+    assert_eq!(
+        validate_spec(&candidate),
+        Err(SpecError::InvalidReadyEndpoint {
+            app: "api".to_string(),
+            endpoint: ":8080".to_string(),
+        })
+    );
+}
+
+#[test]
+fn a_tcp_liveness_probe_is_accepted() {
+    let candidate = AppSpec {
+        liveness_probe: Some(ReadyProbe::Tcp {
+            host: "127.0.0.1".to_string(),
+            port: 8080,
+        }),
+        ..spec("api")
+    };
+    assert_eq!(validate_spec(&candidate), Ok(()));
+}
+
+#[test]
+fn an_exec_liveness_probe_is_refused() {
+    let candidate = AppSpec {
+        liveness_probe: Some(ReadyProbe::Exec {
+            command: vec!["/usr/bin/true".to_string()],
+        }),
+        ..spec("api")
+    };
+    assert_eq!(
+        validate_spec(&candidate),
+        Err(SpecError::ExecLivenessProbe("api".to_string())),
+        "a liveness probe runs forever, so it must not fork"
+    );
+}

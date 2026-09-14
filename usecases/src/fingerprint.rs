@@ -32,6 +32,7 @@ pub fn render_identity(spec: &AppSpec) -> String {
         depends_on: _,
         max_memory_kib: _,
         ready_probe: _,
+        liveness_probe: _,
         listen_timeout_ms: _,
         stop_exit_codes: _,
         sandbox,

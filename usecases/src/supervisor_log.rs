@@ -176,3 +176,13 @@ pub fn log_memory_breach(breach: &crate::query::MemoryBreach) {
         "pm3 restarts a service that grew past its memory limit",
     );
 }
+
+pub fn log_liveness_failure(app: &str, threshold: u32) {
+    tracing::warn!(
+        feature = "supervisor",
+        action = "liveness_failure",
+        app,
+        threshold,
+        "pm3 restarts a service whose liveness probe kept failing",
+    );
+}

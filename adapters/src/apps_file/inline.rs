@@ -55,6 +55,7 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
         stop_exit_codes: request.stop_exit_codes.to_vec(),
         listen_timeout_ms: request.listen_timeout_ms,
         ready_probe: ready_probe_of(request),
+        liveness_tcp: None,
         sandbox: Some(sandbox),
     };
     fold_entry(&entry, request.home)
@@ -144,6 +145,10 @@ fn encode_entry(entry: &AppEntry) -> String {
     text.push_str(&optional_text("max_memory", entry.max_memory.as_deref()));
     text.push_str(&number_sequence("stop_exit_codes", &entry.stop_exit_codes));
     text.push_str(&optional("listen_timeout_ms", entry.listen_timeout_ms));
+    text.push_str(&optional_text(
+        "liveness_tcp",
+        entry.liveness_tcp.as_deref(),
+    ));
     text.push_str(&encode_ready_probe(entry.ready_probe.as_ref()));
     text.push_str(&encode_sandbox(entry.sandbox.as_ref()));
     text

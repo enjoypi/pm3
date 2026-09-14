@@ -80,6 +80,8 @@ pub fn home_with_timeout(
 #[derive(Copy, Clone)]
 pub struct HomeTunables {
     pub memory_poll_interval_ms: u64,
+    pub liveness_poll_interval_ms: u64,
+    pub liveness_failure_threshold: u32,
     pub log_rotate_max_bytes: u64,
     pub log_rotate_interval_ms: u64,
     pub wait_for_network: bool,
@@ -89,6 +91,8 @@ impl Default for HomeTunables {
     fn default() -> Self {
         Self {
             memory_poll_interval_ms: 30000,
+            liveness_poll_interval_ms: 30000,
+            liveness_failure_threshold: 3,
             log_rotate_max_bytes: 0,
             log_rotate_interval_ms: 60000,
             wait_for_network: false,
@@ -105,6 +109,21 @@ pub fn home_waiting_for_network() -> Home {
         START_TIMEOUT_MS,
         HomeTunables {
             wait_for_network: true,
+            ..HomeTunables::default()
+        },
+    )
+}
+
+pub fn home_with_liveness_poll(liveness_poll_interval_ms: u64) -> Home {
+    build_home_full(
+        "danger-full-access",
+        FULL_READ,
+        true,
+        "info",
+        START_TIMEOUT_MS,
+        HomeTunables {
+            liveness_poll_interval_ms,
+            liveness_failure_threshold: 1,
             ..HomeTunables::default()
         },
     )
@@ -194,6 +213,8 @@ pub fn config_yaml(
     tunables: &HomeTunables,
 ) -> String {
     let memory_poll_interval_ms = tunables.memory_poll_interval_ms;
+    let liveness_poll_interval_ms = tunables.liveness_poll_interval_ms;
+    let liveness_failure_threshold = tunables.liveness_failure_threshold;
     let log_rotate_max_bytes = tunables.log_rotate_max_bytes;
     let log_rotate_interval_ms = tunables.log_rotate_interval_ms;
     let service = service_yaml(tunables.wait_for_network);
@@ -211,6 +232,8 @@ pub fn config_yaml(
   daemon_poll_interval_ms: 40
   daemon_poll_max_interval_ms: 200
   memory_poll_interval_ms: {memory_poll_interval_ms}
+  liveness_poll_interval_ms: {liveness_poll_interval_ms}
+  liveness_failure_threshold: {liveness_failure_threshold}
   log_follow_interval_ms: 200
   log_tail_lines: 20
   log_read_max_bytes: 4194304
