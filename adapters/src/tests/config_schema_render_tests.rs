@@ -313,3 +313,23 @@ fn validate_rejects_a_zero_liveness_threshold() {
 
 #[path = "config_schema_sandbox_tests.rs"]
 mod sandbox_roots;
+
+#[derive(serde::Deserialize)]
+struct Pm3Head {
+    pm3: Pm3Config,
+}
+
+#[test]
+fn a_config_written_before_liveness_existed_still_parses() {
+    let text = crate::config_sections::pm3_section("/tmp/pm3-bw", 1600, "read-only");
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("liveness_"))
+        .collect();
+    let pruned = kept.join("\n");
+    let pm3 = serde_yaml2::from_str::<Pm3Head>(&pruned)
+        .expect("an older config still parses")
+        .pm3;
+    assert_eq!(pm3.liveness_poll_interval_ms, 30000);
+    assert_eq!(pm3.liveness_failure_threshold, 3);
+}

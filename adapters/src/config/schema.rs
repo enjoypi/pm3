@@ -148,7 +148,10 @@ pub struct Pm3Config {
     pub daemon_poll_interval_ms: u64,
     pub daemon_poll_max_interval_ms: u64,
     pub memory_poll_interval_ms: u64,
+    #[serde(default = "default_liveness_poll_interval_ms")]
     pub liveness_poll_interval_ms: u64,
+
+    #[serde(default = "default_liveness_failure_threshold")]
     pub liveness_failure_threshold: u32,
     pub log_follow_interval_ms: u64,
     pub log_tail_lines: u64,
@@ -208,6 +211,16 @@ pub struct TelemetryConfig {
 }
 
 pub const DEFAULT_LOG_READ_MAX_BYTES: u64 = 4 * 1024 * 1024;
+pub const DEFAULT_LIVENESS_POLL_INTERVAL_MS: u64 = 30000;
+pub const DEFAULT_LIVENESS_FAILURE_THRESHOLD: u32 = 3;
+
+const fn default_liveness_poll_interval_ms() -> u64 {
+    DEFAULT_LIVENESS_POLL_INTERVAL_MS
+}
+
+const fn default_liveness_failure_threshold() -> u32 {
+    DEFAULT_LIVENESS_FAILURE_THRESHOLD
+}
 
 const fn default_log_read_max_bytes() -> u64 {
     DEFAULT_LOG_READ_MAX_BYTES
