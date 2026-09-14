@@ -59,6 +59,15 @@ impl ProcessRuntime {
             .and_then(|started| now_ms.checked_sub(started))
     }
 
+    #[must_use]
+    pub fn elapsed_since_launch_ms(&self, now_ms: u64) -> Option<u64> {
+        if self.status.is_settled() {
+            return None;
+        }
+        self.started_at_ms
+            .and_then(|started| now_ms.checked_sub(started))
+    }
+
     pub fn validate_consistency(&self) -> Result<(), RuntimeError> {
         if self.status.is_running() && self.pid.is_none() {
             return Err(RuntimeError::RunningWithoutPid {

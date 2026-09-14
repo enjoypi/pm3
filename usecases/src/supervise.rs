@@ -101,7 +101,7 @@ fn classify_exit(
 
     let decision = decide_restart(
         record.spec.restart_policy(),
-        record.runtime.uptime_ms(now_ms),
+        record.runtime.elapsed_since_launch_ms(now_ms),
         record.runtime.unstable_restarts,
     );
     match decision {

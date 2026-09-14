@@ -287,3 +287,28 @@ fn a_plain_request_is_not_supervised() {
     runtime.request_restart();
     assert!(!runtime.supervised_restart);
 }
+
+#[test]
+fn a_stopping_runtime_still_reports_how_long_it_ran() {
+    let mut runtime = online_at(1000);
+    runtime.mark_stopping();
+    assert_eq!(
+        runtime.elapsed_since_launch_ms(1600),
+        Some(600),
+        "pm3 took it down, but it did run"
+    );
+}
+
+#[test]
+fn a_settled_runtime_reports_no_elapsed_run() {
+    let mut runtime = online_at(1000);
+    runtime.mark_exited(ProcessStatus::Stopped);
+    assert_eq!(runtime.elapsed_since_launch_ms(1600), None);
+}
+
+#[test]
+fn an_elapsed_run_survives_a_clock_rollback() {
+    let mut runtime = online_at(1000);
+    runtime.mark_stopping();
+    assert_eq!(runtime.elapsed_since_launch_ms(500), None);
+}
