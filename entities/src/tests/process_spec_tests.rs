@@ -52,6 +52,17 @@ fn validate_rejects_the_reserved_every_app_selector() {
 }
 
 #[test]
+fn validate_rejects_a_name_that_would_shadow_an_encrypted_environment() {
+    let err = validate_app_name("api.enc").unwrap_err();
+    assert_eq!(err, SpecError::EncryptedName("api.enc".to_string()));
+}
+
+#[test]
+fn validate_accepts_a_name_that_merely_holds_enc() {
+    validate_app_name("enc.api").expect("only the tail is reserved");
+}
+
+#[test]
 fn validate_rejects_a_hidden_name() {
     let err = validate_app_name(".hidden").unwrap_err();
     assert_eq!(err, SpecError::DottedName(".hidden".to_string()));
@@ -270,6 +281,7 @@ fn every_spec_error_renders_a_message() {
         SpecError::NumericName("3".to_string()),
         SpecError::DottedName(".api".to_string()),
         SpecError::ReservedName("all".to_string()),
+        SpecError::EncryptedName("api.enc".to_string()),
         SpecError::UnsafeName {
             name: "my app".to_string(),
             character: ' ',
@@ -411,4 +423,12 @@ fn an_exec_liveness_probe_is_refused() {
         Err(SpecError::ExecLivenessProbe("api".to_string())),
         "a liveness probe runs forever, so it must not fork"
     );
+}
+
+#[test]
+fn every_environment_origin_has_a_name() {
+    assert_eq!(crate::EnvOrigin::Plain.as_str(), "plain");
+    assert_eq!(crate::EnvOrigin::Encrypted.as_str(), "encrypted");
+    assert_eq!(crate::EnvOrigin::Sealed.as_str(), "sealed");
+    assert_eq!(crate::EnvOrigin::default(), crate::EnvOrigin::Plain);
 }

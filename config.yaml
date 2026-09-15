@@ -22,6 +22,9 @@ pm3:
   ready_poll_interval_ms: 200
   daemon_channel_depth: 32
   request_body_limit_bytes: 131072
+  sops_identity_file: "${PM3_SOPS_IDENTITY_FILE:-}"
+  sops_program: "${PM3_SOPS_PROGRAM:-sops}"
+  sops_timeout_ms: 5000
   restart:
     autorestart: true
     min_uptime_ms: 1000

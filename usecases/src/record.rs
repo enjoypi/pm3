@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use entities::{AppSpec, ProcessRuntime, ProcessStatus};
+use entities::{AppSpec, EnvOrigin, ProcessRuntime, ProcessStatus};
 
 use crate::ports::ResourceSample;
 
@@ -22,6 +22,8 @@ pub struct ProcessView {
     pub schedule: Option<String>,
     pub sandbox_mode: String,
     pub sandbox_network: bool,
+    pub env_origin: EnvOrigin,
+    pub env_declared: usize,
     pub script: String,
     pub args: Vec<String>,
     pub cwd: String,
@@ -56,6 +58,8 @@ impl ProcessRecord {
             schedule: self.spec.schedule.clone(),
             sandbox_mode: self.spec.sandbox.mode.as_str().to_string(),
             sandbox_network: self.spec.sandbox.network,
+            env_origin: self.spec.env_origin,
+            env_declared: self.spec.env_declared,
             script: self.spec.script.clone(),
             args: self.spec.args.clone(),
             cwd: self.spec.cwd.clone(),

@@ -16,6 +16,8 @@ fn spec_with_args(cwd: &str, args: &[&str]) -> AppSpec {
 
 fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
     AppSpec {
+        env_origin: usecases::EnvOrigin::default(),
+        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,

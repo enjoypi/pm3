@@ -163,7 +163,11 @@ async fn a_resurrected_probe_service_rewaits_readiness_before_going_online() {
     )
     .expect("copy the service file");
 
-    revived.daemon.resurrect_saved_apps().await;
+    revived
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
 
     assert_eq!(status_of(&mut revived, "web").await, "launching");
     let event = next_event(&mut revived.events).await;

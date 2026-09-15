@@ -209,7 +209,11 @@ async fn resurrecting_restores_the_saved_apps() {
         revived.cfg_dir.join("web.yaml"),
     )
     .expect("copy the service file");
-    revived.daemon.resurrect_saved_apps().await;
+    revived
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
     assert_eq!(listed(&mut revived).await, 1);
 }
 
@@ -219,7 +223,11 @@ async fn resurrecting_skips_an_app_without_a_service_file() {
     start_one(&mut origin, "web", SLEEPER).await;
     let mut revived = harness();
     std::fs::copy(&origin.paths.dump_file, &revived.paths.dump_file).expect("copy the dump");
-    revived.daemon.resurrect_saved_apps().await;
+    revived
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
     assert_eq!(listed(&mut revived).await, 0);
 }
 
@@ -227,7 +235,11 @@ async fn resurrecting_skips_an_app_without_a_service_file() {
 async fn resurrecting_a_broken_dump_is_tolerated() {
     let mut harness = harness();
     std::fs::write(&harness.paths.dump_file, "{{not yaml").expect("write a broken dump");
-    harness.daemon.resurrect_saved_apps().await;
+    harness
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
     assert_eq!(listed(&mut harness).await, 0);
 }
 

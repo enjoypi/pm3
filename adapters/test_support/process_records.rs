@@ -21,6 +21,8 @@ pub fn sample_identity() -> ProcessIdentity {
 
 pub fn sample_spec(name: &str) -> AppSpec {
     AppSpec {
+        env_origin: usecases::EnvOrigin::default(),
+        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,

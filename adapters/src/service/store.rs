@@ -6,7 +6,7 @@ use std::{
 use thiserror::Error;
 use usecases::SpecError;
 
-use crate::apps_file::{AppsFileError, diff_lines, env_file_of, service_file_of};
+use crate::apps_file::{AppsFileError, diff_lines, enc_file_of, env_file_of, service_file_of};
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
@@ -94,13 +94,16 @@ impl UndoStep {
 }
 
 pub async fn forget(cfg_dir: &Path, name: &str) {
-    let (Ok(declaration), Ok(secrets)) =
-        (service_file_of(cfg_dir, name), env_file_of(cfg_dir, name))
-    else {
+    let (Ok(declaration), Ok(secrets), Ok(encrypted)) = (
+        service_file_of(cfg_dir, name),
+        env_file_of(cfg_dir, name),
+        enc_file_of(cfg_dir, name),
+    ) else {
         return;
     };
     remove_quietly(&declaration).await;
     remove_quietly(&secrets).await;
+    remove_quietly(&encrypted).await;
 }
 
 async fn remove_quietly(path: &Path) {

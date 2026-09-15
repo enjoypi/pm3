@@ -113,7 +113,11 @@ async fn taking_over_saved_apps_re_arms_their_timers() {
     let mut harness = harness();
     start_scheduled(&mut harness, "tick", "* * * * *").await;
 
-    harness.daemon.resurrect_saved_apps().await;
+    harness
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
 
     assert!(
         described(&mut harness, "tick").await.next_fire_ms.is_some(),
@@ -131,7 +135,11 @@ async fn a_task_stopped_on_purpose_stays_disarmed_across_a_daemon_restart() {
         .await
         .expect("should stop");
 
-    harness.daemon.resurrect_saved_apps().await;
+    harness
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
 
     assert_eq!(
         described(&mut harness, "tick").await.next_fire_ms,
@@ -171,7 +179,11 @@ async fn everything_stopped_together_stays_disarmed_across_a_daemon_restart() {
         .await
         .expect("should stop everything");
 
-    harness.daemon.resurrect_saved_apps().await;
+    harness
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
 
     assert_eq!(described(&mut harness, "tick").await.next_fire_ms, None);
 }

@@ -102,7 +102,11 @@ async fn a_service_stopped_before_the_handover_is_settled_by_the_next_daemon() {
         .expect("should stop");
     harness.daemon.shutdown().await;
 
-    harness.daemon.resurrect_saved_apps().await;
+    harness
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .expect("the takeover should hold");
 
     assert_eq!(status_of(&mut harness, "web").await, "stopped");
 }

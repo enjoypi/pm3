@@ -54,3 +54,17 @@ fn view_carries_the_schedule_but_leaves_the_next_fire_to_the_daemon() {
     assert_eq!(view.schedule.as_deref(), Some("~ * * * *"));
     assert_eq!(view.next_fire_ms, None);
 }
+
+#[test]
+fn view_carries_where_the_environment_came_from() {
+    let mut candidate = record("api", 3);
+    candidate.spec.env_origin = entities::EnvOrigin::Sealed;
+    assert_eq!(candidate.view(5000).env_origin, entities::EnvOrigin::Sealed);
+}
+
+#[test]
+fn view_carries_how_many_values_were_declared() {
+    let mut candidate = record("api", 3);
+    candidate.spec.env_declared = 4;
+    assert_eq!(candidate.view(5000).env_declared, 4);
+}

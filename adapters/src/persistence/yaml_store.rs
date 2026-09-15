@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use futures_util::future::join_all;
 use tokio::fs;
 use usecases::{
     DumpContents, DumpError, DumpStore, ProcessRecord, ProcessRuntime, ServiceSnapshot,
@@ -31,23 +32,35 @@ impl YamlDumpStore {
         self.path.as_path()
     }
 
-    async fn rejoin(&self, state: StateDto, contents: &mut DumpContents) {
+    async fn rejoin(&self, state: StateDto) -> Result<Rejoined, DumpError> {
         let runtime = match decode_state(state.clone()) {
             Ok(runtime) => runtime,
             Err(error) => {
                 warn_undecodable(&error);
-                contents.stranded.push(stranded_of(&state));
-                return;
+                return Ok(Rejoined::Stranded(stranded_of(&state)));
             }
         };
         match self.specs.resolve_service(&runtime.name).await {
-            Ok(spec) => contents.records.push(ProcessRecord { spec, runtime }),
+            Ok(spec) => Ok(Rejoined::Record(Box::new(ProcessRecord { spec, runtime }))),
+            Err(AppsFileError::EncFile(error)) => {
+                let reason = error.to_string();
+                warn_unreadable_environment(&runtime.name, &reason);
+                Err(DumpError::Unreadable {
+                    path: self.path.to_string_lossy().into_owned(),
+                    reason,
+                })
+            }
             Err(error) => {
                 warn_unusable(&runtime.name, &error);
-                contents.stranded.push(stranded_from(runtime));
+                Ok(Rejoined::Stranded(stranded_from(runtime)))
             }
         }
     }
+}
+
+enum Rejoined {
+    Record(Box<ProcessRecord>),
+    Stranded(StrandedProcess),
 }
 
 fn stranded_of(state: &StateDto) -> StrandedProcess {
@@ -77,13 +90,17 @@ impl DumpStore for YamlDumpStore {
         };
         let doc: DumpDocument =
             serde_yaml2::from_str(&raw).map_err(|e| read_error(&self.path, &e.to_string()))?;
+        let rejoined = join_all(doc.services.into_iter().map(|state| self.rejoin(state))).await;
         let mut contents = DumpContents {
-            records: Vec::with_capacity(doc.services.len()),
+            records: Vec::with_capacity(rejoined.len()),
             stranded: Vec::new(),
             boot: doc.boot,
         };
-        for state in doc.services {
-            self.rejoin(state, &mut contents).await;
+        for outcome in rejoined {
+            match outcome? {
+                Rejoined::Record(record) => contents.records.push(*record),
+                Rejoined::Stranded(orphan) => contents.stranded.push(orphan),
+            }
         }
         Ok(contents)
     }
@@ -143,6 +160,16 @@ fn warn_unusable(app: &str, error: &AppsFileError) {
         app,
         reason,
         "pm3 cannot restore a saved app from its service file",
+    );
+}
+
+fn warn_unreadable_environment(app: &str, reason: &str) {
+    tracing::warn!(
+        feature = "persistence",
+        action = "rejoin",
+        app,
+        reason,
+        "pm3 stops reading the state file rather than letting an unreadable environment evict a running app",
     );
 }
 

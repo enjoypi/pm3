@@ -77,16 +77,20 @@ impl Supervisor {
         }
     }
 
-    pub async fn resurrect_saved(&mut self, ports: &impl Ports) -> Vec<SupervisionEffect> {
+    pub async fn resurrect_saved(
+        &mut self,
+        ports: &impl Ports,
+    ) -> crate::Result<Vec<SupervisionEffect>> {
         let mut effects = Vec::new();
         match resurrect(&mut self.table, &self.logs_dir, self.kill_timeout_ms, ports).await {
             Ok(outcomes) => self.watch_all(&outcomes, &mut effects),
+            Err(error) if error.blocks_takeover() => return Err(error),
             Err(error) => log_failure("resurrect", "-", &error),
         }
         for name in armed_schedule_names(&self.table) {
             self.arm_timer(&name, ports, &mut effects);
         }
-        effects
+        Ok(effects)
     }
 
     pub async fn handle(

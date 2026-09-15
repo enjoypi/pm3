@@ -5,6 +5,8 @@ pub const RUNNING_UPTIME_MS: u64 = 5_000;
 
 pub fn running_view(pm_id: u32, name: &str) -> ProcessView {
     ProcessView {
+        env_origin: usecases::EnvOrigin::default(),
+        env_declared: 0,
         pm_id,
         name: name.to_string(),
         pid: Some(RUNNING_PID),

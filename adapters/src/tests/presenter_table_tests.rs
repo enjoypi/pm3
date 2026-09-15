@@ -127,3 +127,39 @@ fn a_scheduled_row_shows_the_next_clock_time_with_its_offset() {
         "next column should read as HH:MM±HH:MM, got: {next}"
     );
 }
+
+fn view_with_origin(origin: usecases::EnvOrigin) -> ProcessView {
+    ProcessView {
+        env_origin: origin,
+        ..running_view(0, "web")
+    }
+}
+
+#[test]
+fn a_sealed_environment_is_flagged_on_its_own_row() {
+    let rendered = render_table(&[view_with_origin(usecases::EnvOrigin::Sealed)]);
+    let body = rendered.lines().nth(1).expect("body row");
+    assert!(
+        body.ends_with("env:sealed"),
+        "an app running without the credentials it declares must stand out: {body}"
+    );
+}
+
+#[test]
+fn an_opened_environment_leaves_the_row_alone() {
+    for origin in [usecases::EnvOrigin::Plain, usecases::EnvOrigin::Encrypted] {
+        let rendered = render_table(&[view_with_origin(origin)]);
+        assert!(
+            !rendered.contains("env:"),
+            "a healthy app must not widen the listing, got: {rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .next()
+                .expect("header")
+                .ends_with("sandbox"),
+            "the header keeps its ten columns: {rendered}"
+        );
+    }
+}

@@ -32,6 +32,12 @@ pub fn live_token(pid: u32) -> String {
     format!("{LIVE_TOKEN_PREFIX}{pid}")
 }
 
+#[derive(Copy, Clone, Debug)]
+enum LoadFailure {
+    Read,
+    Unreadable,
+}
+
 #[derive(Debug, Default)]
 struct FakeState {
     now_ms: u64,
@@ -59,7 +65,7 @@ struct FakeState {
     stored_boot: Option<String>,
     saved_boot: Option<String>,
     saves: usize,
-    load_fails: bool,
+    load_failure: Option<LoadFailure>,
     save_fails: bool,
     live: BTreeMap<u32, String>,
     resources: BTreeMap<u32, ResourceSample>,
@@ -137,7 +143,11 @@ impl FakePorts {
     }
 
     pub fn fail_load(&self) {
-        self.with_state(|state| state.load_fails = true);
+        self.with_state(|state| state.load_failure = Some(LoadFailure::Read));
+    }
+
+    pub fn fail_load_as_unreadable(&self) {
+        self.with_state(|state| state.load_failure = Some(LoadFailure::Unreadable));
     }
 
     pub fn fail_save(&self) {
@@ -370,11 +380,20 @@ impl FakePorts {
     fn read_stored(&self) -> Result<DumpContents, DumpError> {
         let contents = {
             let guard = self.locked();
-            if guard.load_fails {
-                return Err(DumpError::Read {
-                    path: "/fake/dump.yaml".to_string(),
-                    reason: "injected read failure".to_string(),
-                });
+            match guard.load_failure {
+                Some(LoadFailure::Unreadable) => {
+                    return Err(DumpError::Unreadable {
+                        path: "/fake/dump.yaml".to_string(),
+                        reason: "injected decryption failure".to_string(),
+                    });
+                }
+                Some(LoadFailure::Read) => {
+                    return Err(DumpError::Read {
+                        path: "/fake/dump.yaml".to_string(),
+                        reason: "injected read failure".to_string(),
+                    });
+                }
+                None => {}
             }
             DumpContents {
                 records: guard.stored.clone(),
@@ -389,6 +408,8 @@ impl FakePorts {
 #[must_use]
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
+        env_origin: entities::EnvOrigin::default(),
+        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,

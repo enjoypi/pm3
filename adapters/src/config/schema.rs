@@ -60,6 +60,9 @@ pub enum ConfigError {
     #[error("cannot accept pm3.request_body_limit_bytes {0}: must be >= 1")]
     InvalidBodyLimit(usize),
 
+    #[error("cannot accept pm3.sops_timeout_ms {0}: must be >= 1")]
+    InvalidSopsTimeout(u64),
+
     #[error("cannot accept pm3.service.max_tasks {0}: must be >= 1")]
     InvalidMaxTasks(u64),
 
@@ -163,6 +166,12 @@ pub struct Pm3Config {
     pub ready_poll_interval_ms: u64,
     pub daemon_channel_depth: usize,
     pub request_body_limit_bytes: usize,
+    #[serde(default)]
+    pub sops_identity_file: String,
+    #[serde(default = "default_sops_program")]
+    pub sops_program: String,
+    #[serde(default = "default_sops_timeout_ms")]
+    pub sops_timeout_ms: u64,
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
     pub service: ServiceConfig,
@@ -213,6 +222,15 @@ pub struct TelemetryConfig {
 pub const DEFAULT_LOG_READ_MAX_BYTES: u64 = 4 * 1024 * 1024;
 pub const DEFAULT_LIVENESS_POLL_INTERVAL_MS: u64 = 30000;
 pub const DEFAULT_LIVENESS_FAILURE_THRESHOLD: u32 = 3;
+pub const DEFAULT_SOPS_TIMEOUT_MS: u64 = 5000;
+
+fn default_sops_program() -> String {
+    crate::apps_file::SOPS_PROGRAM.to_string()
+}
+
+const fn default_sops_timeout_ms() -> u64 {
+    DEFAULT_SOPS_TIMEOUT_MS
+}
 
 const fn default_liveness_poll_interval_ms() -> u64 {
     DEFAULT_LIVENESS_POLL_INTERVAL_MS
@@ -265,7 +283,12 @@ fn validate_paths(pm3: &Pm3Config) -> Result<(), ConfigError> {
     reject_line_break("pm3.search_path", &pm3.search_path)
 }
 
-const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
+fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
+    validate_timeouts(pm3)?;
+    validate_intervals(pm3)
+}
+
+const fn validate_timeouts(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.kill_timeout_ms < 1 {
         return Err(ConfigError::InvalidKillTimeout(pm3.kill_timeout_ms));
     }
@@ -281,6 +304,16 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.command_timeout_ms < 1 {
         return Err(ConfigError::InvalidCommandTimeout(pm3.command_timeout_ms));
     }
+    if pm3.ready_timeout_ms < 1 {
+        return Err(ConfigError::InvalidReadyTimeout(pm3.ready_timeout_ms));
+    }
+    if pm3.sops_timeout_ms < 1 {
+        return Err(ConfigError::InvalidSopsTimeout(pm3.sops_timeout_ms));
+    }
+    Ok(())
+}
+
+const fn validate_intervals(pm3: &Pm3Config) -> Result<(), ConfigError> {
     if pm3.daemon_poll_interval_ms < 1 {
         return Err(ConfigError::InvalidPollInterval(
             pm3.daemon_poll_interval_ms,
@@ -312,9 +345,6 @@ const fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
         return Err(ConfigError::InvalidLogRotateInterval(
             pm3.log_rotate_interval_ms,
         ));
-    }
-    if pm3.ready_timeout_ms < 1 {
-        return Err(ConfigError::InvalidReadyTimeout(pm3.ready_timeout_ms));
     }
     if pm3.ready_poll_interval_ms < 1 {
         return Err(ConfigError::InvalidReadyPollInterval(
@@ -404,6 +434,7 @@ fn validate_programs(pm3: &Pm3Config) -> Result<(), ConfigError> {
     reject_empty("pm3.service.loginctl_path", &pm3.service.loginctl_path)?;
     reject_empty("pm3.service.schtasks_path", &pm3.service.schtasks_path)?;
     reject_empty("pm3.service.taskkill_path", &pm3.service.taskkill_path)?;
+    reject_empty("pm3.sops_program", &pm3.sops_program)?;
     if !VALID_RESTART_CONDITIONS.contains(&pm3.service.restart_condition.as_str()) {
         return Err(ConfigError::InvalidRestartCondition(
             pm3.service.restart_condition.clone(),

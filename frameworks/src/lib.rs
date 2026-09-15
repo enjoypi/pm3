@@ -72,6 +72,11 @@ pub enum Error {
     #[error(transparent)]
     Spec(#[from] adapters::SpecError),
 
+    #[error(
+        "cannot take over the apps the previous daemon left running: {reason}; the daemon refuses to start rather than evict them"
+    )]
+    Takeover { reason: String },
+
     #[error("cannot determine the pm3 binary path: {reason}")]
     ServiceProgram { reason: String },
 

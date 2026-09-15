@@ -27,6 +27,34 @@ fn the_dto_mirrors_the_view_field_by_field() {
 fn the_serialized_dto_has_no_env_field() {
     let dto = ProcessViewDto::from(&running_view(0, "web"));
     let json = serde_json::to_string(&dto).expect("serialize");
-    assert!(!json.contains("env"), "got: {json}");
+    assert!(!json.contains("\"env\":"), "got: {json}");
+    assert!(
+        json.contains("\"env_origin\":\"plain\""),
+        "the origin is a label, never a value: {json}"
+    );
     assert!(json.contains("\"name\":\"web\""), "got: {json}");
+}
+
+#[test]
+fn the_dto_carries_every_environment_origin() {
+    for (origin, shown) in [
+        (usecases::EnvOrigin::Plain, "plain"),
+        (usecases::EnvOrigin::Encrypted, "encrypted"),
+        (usecases::EnvOrigin::Sealed, "sealed"),
+    ] {
+        let view = usecases::ProcessView {
+            env_origin: origin,
+            ..running_view(0, "web")
+        };
+        assert_eq!(ProcessViewDto::from(&view).env_origin, shown);
+    }
+}
+
+#[test]
+fn the_dto_carries_how_many_values_were_declared() {
+    let view = usecases::ProcessView {
+        env_declared: 3,
+        ..running_view(0, "web")
+    };
+    assert_eq!(ProcessViewDto::from(&view).env_declared, 3);
 }

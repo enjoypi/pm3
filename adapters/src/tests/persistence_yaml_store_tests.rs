@@ -294,6 +294,30 @@ async fn load_strands_an_app_whose_writable_root_links_into_a_hidden_root() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn load_refuses_rather_than_stranding_an_app_it_cannot_decrypt() {
+    use crate::spec_sources::{with_decryptor, write_enc_file};
+
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let mut source = spec_source_in(dir.path());
+    register_service(&source, "web");
+    write_enc_file(&source, "web", "TOKEN: ENC[fake]\n");
+    with_decryptor(&mut source, "exit 4");
+    let store = YamlDumpStore::new(dir.path().join("dump.yaml"), source);
+    store
+        .save(&[sample_record("web")], None)
+        .await
+        .expect("should save");
+
+    let err = store.load().await.unwrap_err().to_string();
+
+    assert!(
+        err.contains("exited with status 4"),
+        "a decryptor that failed must stop the takeover, never evict a running app, got: {err}"
+    );
+}
+
 #[tokio::test]
 async fn load_reports_a_broken_document() {
     let fixture = fixture();

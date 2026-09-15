@@ -10,6 +10,7 @@ dependencies = [
  "chrono",
  "croner",
  "fastrand",
+ "futures-util",
  "serde",
  "serde_json",
  "serde_yaml2",

@@ -23,6 +23,8 @@ pub fn render_identity(spec: &AppSpec) -> String {
         args,
         cwd,
         env,
+        env_origin: _,
+        env_declared: _,
         autorestart: _,
         min_uptime_ms: _,
         max_restarts: _,

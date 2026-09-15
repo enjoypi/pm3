@@ -25,12 +25,12 @@ mod persist;
 mod supervisor_log;
 
 pub use entities::{
-    AppSpec, DependencyError, DependencyNode, MemoryVerdict, PolicyError, ProcessIdentity,
-    ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe, RestartDecision, RestartPolicy,
-    RuntimeError, SandboxMode, SandboxPolicy, SignalNameError, SpecError, VALID_SIGNALS,
-    covers_path, decide_memory_verdict, decide_restart, is_name_letter, normalize_root,
-    parse_memory_limit, parse_signal_name, root_is_forbidden, topo_sort, validate_app_name,
-    validate_forbidden_roots, validate_policy, validate_spec,
+    AppSpec, DependencyError, DependencyNode, EnvOrigin, MemoryVerdict, PolicyError,
+    ProcessIdentity, ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe, RestartDecision,
+    RestartPolicy, RuntimeError, SandboxMode, SandboxPolicy, SignalNameError, SpecError,
+    VALID_SIGNALS, covers_path, decide_memory_verdict, decide_restart, is_name_letter,
+    normalize_root, parse_memory_limit, parse_signal_name, root_is_forbidden, topo_sort,
+    validate_app_name, validate_forbidden_roots, validate_policy, validate_spec,
 };
 use thiserror::Error;
 
@@ -125,6 +125,13 @@ pub enum UsecaseError {
         name: String,
         dependents: Vec<String>,
     },
+}
+
+impl UsecaseError {
+    #[must_use]
+    pub const fn blocks_takeover(&self) -> bool {
+        matches!(self, Self::Dump(DumpError::Unreadable { .. }))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, UsecaseError>;

@@ -93,7 +93,7 @@ fn describe_marks_an_empty_list_as_missing() {
 
 #[test]
 fn every_field_gets_its_own_line() {
-    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 16);
+    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 17);
 }
 
 #[test]
@@ -134,4 +134,37 @@ fn describe_marks_an_unsampled_app_as_missing() {
     let view = idle_view(0, "web");
     assert_eq!(value_of(&view, "memory"), "-");
     assert_eq!(value_of(&view, "cpu"), "-");
+}
+
+#[test]
+fn describe_names_where_the_environment_came_from() {
+    for (origin, shown) in [
+        (usecases::EnvOrigin::Plain, "plain (2 values)"),
+        (usecases::EnvOrigin::Encrypted, "encrypted (2 values)"),
+        (
+            usecases::EnvOrigin::Sealed,
+            "encrypted, not opened (2 values)",
+        ),
+    ] {
+        let view = ProcessView {
+            env_origin: origin,
+            env_declared: 2,
+            ..running_view(0, "web")
+        };
+        assert_eq!(value_of(&view, "env"), shown);
+    }
+}
+
+#[test]
+fn describe_counts_a_single_value_in_the_singular() {
+    let view = ProcessView {
+        env_declared: 1,
+        ..running_view(0, "web")
+    };
+    assert_eq!(value_of(&view, "env"), "plain (1 value)");
+}
+
+#[test]
+fn describe_reports_an_empty_environment_as_none_declared() {
+    assert_eq!(value_of(&running_view(0, "web"), "env"), "plain (0 values)");
 }

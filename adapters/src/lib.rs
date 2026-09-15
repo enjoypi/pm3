@@ -20,22 +20,23 @@ pub mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
-    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome,
-    FingerprintError, Fingerprinter, HandoverComparison, LaunchError, LaunchSpec, LaunchedProcess,
-    Liveness, LogRotateError, LogRotator, LogStream, Ports, ProcessLauncher, ProcessProbe,
-    ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness, ReadyProbe,
-    ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
-    ServiceSnapshot, SignalError, SignalScope, Signaler, SpecError, SpecResolveError, StartKind,
-    StartOutcome, StartSettlement, StrandedProcess, SupervisionEffect, SupervisionOutcome,
-    SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand, compare_handover,
-    describe_handover, log_path, settle_start, validate_app_name,
+    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, EnvOrigin,
+    ExitOutcome, FingerprintError, Fingerprinter, HandoverComparison, LaunchError, LaunchSpec,
+    LaunchedProcess, Liveness, LogRotateError, LogRotator, LogStream, Ports, ProcessLauncher,
+    ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness,
+    ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy,
+    Scheduler, ServiceSnapshot, SignalError, SignalScope, Signaler, SpecError, SpecResolveError,
+    StartKind, StartOutcome, StartSettlement, StrandedProcess, SupervisionEffect,
+    SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand,
+    compare_handover, describe_handover, log_path, settle_start, validate_app_name,
 };
 
 pub use self::{
     apps_file::{
-        AppEntry, AppsFile, AppsFileError, ENV_FILE_SUFFIX, EnvFileError, InlineRequest,
-        ReadyProbeEntry, SERVICE_FILE_SUFFIX, SandboxEntry, SpecDefaults, SpecSource, diff_lines,
-        encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file, load_env_file,
+        AppEntry, AppsFile, AppsFileError, ENC_FILE_SUFFIX, ENV_FILE_SUFFIX, EncFileError,
+        EnvFileError, InlineRequest, ReadyProbeEntry, SERVICE_FILE_SUFFIX, SOPS_PROGRAM,
+        SandboxEntry, SpecDefaults, SpecSource, diff_lines, enc_file_of, encode_service_file,
+        env_file_of, fold_entry, inline_entry, load_apps_file, load_enc_file, load_env_file,
         load_service_file, parse_apps_file, parse_env_file, parse_service_file, resolve_checked,
         service_file_of,
     },

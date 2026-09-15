@@ -4,6 +4,8 @@ use super::*;
 
 fn spec() -> AppSpec {
     AppSpec {
+        env_origin: entities::EnvOrigin::default(),
+        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,

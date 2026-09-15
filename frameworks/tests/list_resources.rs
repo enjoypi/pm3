@@ -38,7 +38,8 @@ fn the_listing_renders_json_when_asked() {
     let shown = stdout_of(&pm3(&home, &["list", "--json"]));
     assert!(shown.contains("\"name\":\"web\""), "got: {shown}");
     assert!(shown.contains("\"status\":\"online\""), "got: {shown}");
-    assert!(!shown.contains("env"), "got: {shown}");
+    assert!(!shown.contains("\"env\":"), "got: {shown}");
+    assert!(shown.contains("\"env_origin\":\"plain\""), "got: {shown}");
     let described = stdout_of(&pm3(&home, &["describe", "web", "--json"]));
     assert!(described.starts_with('{'), "got: {described}");
     shutdown_daemon(&home);

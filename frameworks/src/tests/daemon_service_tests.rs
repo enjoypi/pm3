@@ -83,6 +83,50 @@ async fn a_socket_path_blocked_by_a_directory_stops_the_daemon() {
 }
 
 #[tokio::test]
+async fn a_daemon_that_cannot_decrypt_an_environment_refuses_to_take_over() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    let paths = resolve_paths(&home);
+    let cfg_dir = home.join("service");
+    std::fs::create_dir_all(&paths.logs_dir).expect("prepare the home");
+    std::fs::create_dir_all(&cfg_dir).expect("prepare the service directory");
+    std::fs::write(
+        cfg_dir.join("web.yaml"),
+        "name: \"web\"\nscript: \"/bin/sh\"\n",
+    )
+    .expect("write the service file");
+    std::fs::write(cfg_dir.join("web.enc.yaml"), "TOKEN: ENC[fake]\n")
+        .expect("write the encrypted environment");
+    let decryptor = dir.path().join("fake-sops");
+    std::fs::write(&decryptor, "#!/bin/sh\nexit 4\n").expect("write the decryptor stub");
+    std::fs::set_permissions(&decryptor, std::fs::Permissions::from_mode(0o755))
+        .expect("make the decryptor stub executable");
+    std::fs::write(
+        &paths.dump_file,
+        "services:\n  - name: web\n    runtime:\n      pm_id: 0\n      status: stopped\n      restart_time: 0\n      unstable_restarts: 0\n      created_at_ms: 1\n",
+    )
+    .expect("seed the dump");
+    let config = crate::test_support::write_config_with_decryptor(
+        dir.path(),
+        &home.to_string_lossy(),
+        &decryptor.to_string_lossy(),
+    );
+
+    let err = run_daemon_with_shutdown(config.to_str().expect("path"), Box::pin(async {}))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("cannot take over"), "got: {err}");
+    assert!(
+        !paths.socket.exists(),
+        "a daemon that stood down must leave no socket behind"
+    );
+}
+
+#[tokio::test]
 async fn a_second_daemon_on_a_live_socket_exits_quietly() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");

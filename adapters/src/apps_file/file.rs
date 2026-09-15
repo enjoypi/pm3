@@ -6,8 +6,8 @@ use std::{
 use serde::Deserialize;
 use thiserror::Error;
 use usecases::{
-    AppSpec, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy, SpecError, parse_memory_limit,
-    validate_forbidden_roots, validate_spec,
+    AppSpec, EnvOrigin, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy, SpecError,
+    parse_memory_limit, validate_forbidden_roots, validate_spec,
 };
 
 use super::roots::dedup_roots;
@@ -146,6 +146,9 @@ pub enum AppsFileError {
     EnvFile(#[from] super::env_file::EnvFileError),
 
     #[error(transparent)]
+    EncFile(#[from] super::enc_file::EncFileError),
+
+    #[error(transparent)]
     Substitute(#[from] ConfigLoadError),
 
     #[error(transparent)]
@@ -264,6 +267,8 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
     let ready_probe = resolve_ready_probe(entry)?;
     let liveness_probe = resolve_liveness_probe(entry)?;
     Ok(AppSpec {
+        env_origin: EnvOrigin::Plain,
+        env_declared: 0,
         max_memory_kib,
         ready_probe,
         liveness_probe,

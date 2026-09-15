@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use usecases::{AppSpec, SpecError, SpecResolveError, SpecResolver, validate_app_name};
+use usecases::{AppSpec, EnvOrigin, SpecError, SpecResolveError, SpecResolver, validate_app_name};
 
 use super::{
-    env_file::{ENV_FILE_SUFFIX, load_env_file},
+    enc_file::{ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
+    env_file::{ENV_FILE_SUFFIX, load_env_file, parse_env_text},
     file::{AppsFileError, SpecDefaults, load_service_file, resolve_checked},
 };
 use crate::config::Pm3Config;
@@ -44,9 +45,10 @@ impl SpecSource {
             return Err(AppsFileError::MissingApp(name.to_string()));
         }
         let mut spec = resolve_checked(&self.defaults()?, &entry)?;
-        spec.env = self
-            .resolve_environment(&path.with_extension(ENV_FILE_SUFFIX), name)
-            .await?;
+        let environment = self.resolve_environment(&path, name).await?;
+        spec.env = environment.values;
+        spec.env_origin = environment.origin;
+        spec.env_declared = environment.declared;
         crate::workspace::materialise_workspace(
             &mut spec,
             &self.config.sandbox.forbidden_writable_roots,
@@ -63,13 +65,77 @@ impl SpecSource {
 
     async fn resolve_environment(
         &self,
-        path: &Path,
+        service: &Path,
         name: &str,
-    ) -> Result<Vec<(String, String)>, AppsFileError> {
-        let declared = load_env_file(path, self.host_home.as_deref()).await?;
-        log_environment(name, declared.len());
-        Ok(with_host_home(self.host_home.as_deref(), declared))
+    ) -> Result<Environment, AppsFileError> {
+        let (origin, declared) = match self.decrypt_environment(service).await? {
+            Secrets::Opened(text) => (
+                EnvOrigin::Encrypted,
+                parse_env_text(&text.path, self.host_home.as_deref(), &text.body)?,
+            ),
+            Secrets::Sealed => (EnvOrigin::Sealed, self.plain_environment(service).await?),
+            Secrets::Absent => (EnvOrigin::Plain, self.plain_environment(service).await?),
+        };
+        let counted = declared.len();
+        log_environment(name, counted, origin.as_str());
+        Ok(Environment {
+            origin,
+            declared: counted,
+            values: with_host_home(self.host_home.as_deref(), declared),
+        })
     }
+
+    async fn plain_environment(
+        &self,
+        service: &Path,
+    ) -> Result<Vec<(String, String)>, AppsFileError> {
+        let declared = load_env_file(
+            &service.with_extension(ENV_FILE_SUFFIX),
+            self.host_home.as_deref(),
+        )
+        .await?;
+        Ok(declared)
+    }
+
+    async fn decrypt_environment(&self, service: &Path) -> Result<Secrets, AppsFileError> {
+        let path = service.with_extension(ENC_FILE_SUFFIX);
+        if !enc_file_present(&path).await? {
+            return Ok(Secrets::Absent);
+        }
+        if self.config.sops_identity_file.is_empty() {
+            log_unopened_secrets(&path.to_string_lossy());
+            return Ok(Secrets::Sealed);
+        }
+        let body = load_enc_file(
+            &self.config.sops_program,
+            &path,
+            &self.config.sops_identity_file,
+            &self.config.search_path,
+            self.config.sops_timeout_ms,
+        )
+        .await?;
+        Ok(Secrets::Opened(Decrypted {
+            path: path.to_string_lossy().into_owned(),
+            body,
+        }))
+    }
+}
+
+struct Environment {
+    origin: EnvOrigin,
+    declared: usize,
+    values: Vec<(String, String)>,
+}
+
+enum Secrets {
+    Opened(Decrypted),
+    Sealed,
+    Absent,
+}
+
+struct Decrypted {
+    path: String,
+    body: String,
 }
 
 fn with_host_home(home: Option<&str>, declared: Vec<(String, String)>) -> Vec<(String, String)> {
@@ -84,13 +150,23 @@ fn with_host_home(home: Option<&str>, declared: Vec<(String, String)>) -> Vec<(S
     merged
 }
 
-fn log_environment(app: &str, entries: usize) {
+fn log_environment(app: &str, entries: usize, origin: &str) {
     tracing::debug!(
         feature = "service",
         action = "load_env",
         app,
         entries,
+        origin,
         "pm3 read the environment values that belong to an app",
+    );
+}
+
+fn log_unopened_secrets(path: &str) {
+    tracing::warn!(
+        feature = "service",
+        action = "load_env",
+        path,
+        "pm3 left an encrypted environment file closed because pm3.sops_identity_file names no identity, so the app runs without the values it declares",
     );
 }
 

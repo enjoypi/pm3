@@ -53,9 +53,16 @@ impl Daemon {
         }
     }
 
-    pub async fn resurrect_saved_apps(&mut self) {
-        let effects = self.supervisor.resurrect_saved(&*self.ports).await;
+    pub async fn resurrect_saved_apps(&mut self) -> crate::Result<()> {
+        let effects = self
+            .supervisor
+            .resurrect_saved(&*self.ports)
+            .await
+            .map_err(|error| crate::Error::Takeover {
+                reason: error.to_string(),
+            })?;
         self.run(effects);
+        Ok(())
     }
 
     pub async fn handle(&mut self, request: SupervisionRequest) -> SupervisionOutcome {

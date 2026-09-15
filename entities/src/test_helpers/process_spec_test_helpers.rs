@@ -16,6 +16,8 @@ pub fn confined_policy() -> SandboxPolicy {
 
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
+        env_origin: crate::EnvOrigin::default(),
+        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,

@@ -1,8 +1,8 @@
 use usecases::ProcessView;
 
 use super::fields::{
-    MISSING, format_cpu, format_list, format_memory, format_pid, format_sandbox, format_stamp,
-    format_uptime, pad, widest,
+    MISSING, format_cpu, format_env_origin, format_list, format_memory, format_pid, format_sandbox,
+    format_stamp, format_uptime, pad, widest,
 };
 
 const LABEL_GAP: &str = "  ";
@@ -42,6 +42,7 @@ fn describe_rows(view: &ProcessView) -> Vec<(&'static str, String)> {
             format_sandbox(&view.sandbox_mode, view.sandbox_network),
         ),
         ("writable roots", format_list(&view.writable_roots)),
+        ("env", format_env_origin(view.env_origin, view.env_declared)),
     ]
 }
 

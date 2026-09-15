@@ -334,3 +334,57 @@ async fn a_file_that_cannot_be_tightened_only_warns() {
     secure_file(&path, &path.to_string_lossy()).await;
     assert!(!path.exists());
 }
+
+#[test]
+fn a_decrypted_value_keeps_the_quotes_it_carries() {
+    let parsed = parse_env_text(SHOWN, Some(HOME), "PASSWORD=\"quoted\"\n")
+        .expect("the decrypted text should parse");
+    assert_eq!(
+        parsed,
+        [("PASSWORD".to_string(), "\"quoted\"".to_string())],
+        "a decrypted secret is already a value, so nothing may unquote it a second time"
+    );
+}
+
+#[test]
+fn a_decrypted_value_keeps_its_backslashes() {
+    let parsed = parse_env_text(SHOWN, Some(HOME), "PASSWORD=a\\nb\\x41\n")
+        .expect("the decrypted text should parse");
+    assert_eq!(
+        parsed,
+        [("PASSWORD".to_string(), "a\\nb\\x41".to_string())],
+        "escape sequences belong to the secret, not to a dotenv reader"
+    );
+}
+
+#[test]
+fn a_decrypted_value_keeps_the_spaces_around_it() {
+    let parsed = parse_env_text(SHOWN, Some(HOME), "PASSWORD= pad \n")
+        .expect("the decrypted text should parse");
+    assert_eq!(
+        parsed,
+        [("PASSWORD".to_string(), " pad ".to_string())],
+        "a secret that ends in a space keeps it"
+    );
+}
+
+#[test]
+fn a_decrypted_value_still_expands_the_host_home() {
+    let parsed = parse_env_text(SHOWN, Some(HOME), "BIN=$HOME/bin\n")
+        .expect("the decrypted text should parse");
+    assert_eq!(
+        parsed,
+        [("BIN".to_string(), format!("{HOME}/bin"))],
+        "pm3 recognizes exactly one variable, encrypted or not"
+    );
+}
+
+#[test]
+fn a_decrypted_text_is_still_read_as_key_and_value() {
+    let refusal = parse_env_text(SHOWN, Some(HOME), "PASSWORD\n")
+        .expect_err("a line without a separator should be refused");
+    assert!(
+        matches!(refusal, EnvFileError::Malformed { .. }),
+        "got {refusal:?}"
+    );
+}

@@ -11,6 +11,9 @@ pub enum DumpError {
 
     #[error("cannot write state file '{path}': {reason}")]
     Write { path: String, reason: String },
+
+    #[error("cannot rebuild the apps saved in '{path}': {reason}")]
+    Unreadable { path: String, reason: String },
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

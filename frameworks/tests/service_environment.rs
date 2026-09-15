@@ -12,7 +12,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use self::common::{Home, home, pm3, shutdown_daemon, stdout_of, wait_for_file, write_apps};
+use self::common::{
+    Home, PM3, daemon_log, described_pid, home, pm3, process_is_alive, shutdown_daemon, stdout_of,
+    wait_for_file, wait_for_listing, wait_for_log, wait_until_gone, write_apps,
+};
 
 const NAME: &str = "keeper";
 const TOKEN_KEY: &str = "TUNNEL_TOKEN";
@@ -33,6 +36,47 @@ fn env_file(home: &Home) -> PathBuf {
 
 fn token_file(home: &Home) -> PathBuf {
     home.root.join(NAME).join("token.txt")
+}
+
+fn enc_file(home: &Home) -> PathBuf {
+    home.root.join("service").join(format!("{NAME}.enc.yaml"))
+}
+
+fn decryptor_veto(home: &Home) -> PathBuf {
+    home.root.join("decryptor-veto")
+}
+
+fn with_decryptor(home: &Home, token: &str) {
+    let program = home.root.join("fake-sops");
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\nif [ -f {} ]; then exit 4; fi\nprintf '{TOKEN_KEY}={token}\\n'\n",
+            decryptor_veto(home).to_string_lossy()
+        ),
+    )
+    .expect("write the decryptor stub");
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+        .expect("make the decryptor stub executable");
+    let identity = home.root.join("age-key");
+    std::fs::write(&identity, "fake identity\n").expect("write the identity file");
+    let text = std::fs::read_to_string(&home.config).expect("the pm3 config");
+    let patched = text.replacen(
+        "pm3:\n",
+        &format!(
+            "pm3:\n  sops_identity_file: \"{}\"\n  sops_program: \"{}\"\n  sops_timeout_ms: 2000\n",
+            identity.to_string_lossy(),
+            program.to_string_lossy()
+        ),
+        1,
+    );
+    std::fs::write(&home.config, patched).expect("rewrite the pm3 config");
+    std::fs::create_dir_all(home.root.join("service")).expect("create the service directory");
+    std::fs::write(
+        enc_file(home),
+        format!("{TOKEN_KEY}: ENC[AES256_GCM,data:x]\n"),
+    )
+    .expect("write the encrypted environment");
 }
 
 fn declare_token(home: &Home, token: &str) {
@@ -199,5 +243,100 @@ fn deleting_an_app_removes_its_environment_file() {
     assert!(deleted.status.success(), "{}", stdout_of(&deleted));
     assert!(!env_file(&home).exists(), "a deleted app keeps no secrets");
     assert!(!service_file(&home).exists());
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn an_encrypted_environment_reaches_the_managed_process() {
+    let home = home();
+    with_decryptor(&home, FIRST_TOKEN);
+
+    let started = start_reporter(&home);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+    wait_for_file(&token_file(&home));
+
+    assert_eq!(
+        wait_for_content(&token_file(&home), FIRST_TOKEN),
+        FIRST_TOKEN,
+        "a sops sidecar takes the place of the plaintext file"
+    );
+    let described = stdout_of(&pm3(&home, &["describe", NAME]));
+    assert!(!described.contains(FIRST_TOKEN), "{described}");
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn a_decryptor_that_fails_stops_the_takeover_instead_of_evicting() {
+    let home = home();
+    with_decryptor(&home, FIRST_TOKEN);
+    let apps = write_apps(
+        &home,
+        &format!(
+            "apps:\n  - name: {NAME}\n    script: {PM3}\n    cwd: \"{}\"\n    args:\n      - \"__sleep\"\n      - \"120000\"\n",
+            home.root.to_string_lossy()
+        ),
+    );
+    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+    let survivor = described_pid(&home, NAME);
+
+    let parted = pm3(&home, &["shutdown"]);
+    assert!(parted.status.success(), "{}", stdout_of(&parted));
+    wait_until_gone(&home.root.join("pm3.sock"));
+    std::fs::write(decryptor_veto(&home), "broken\n").expect("veto the decryptor");
+
+    let refused = pm3(&home, &["list"]);
+
+    assert!(
+        !refused.status.success(),
+        "a daemon that cannot take over must not answer: {}",
+        stdout_of(&refused)
+    );
+    wait_for_log(&daemon_log(&home), "stops reading the state file");
+    assert!(
+        process_is_alive(survivor),
+        "the app the previous daemon left running must survive a decryptor failure"
+    );
+
+    std::fs::remove_file(decryptor_veto(&home)).expect("let the decryptor work again");
+    wait_for_listing(&home, "online");
+    assert_eq!(
+        described_pid(&home, NAME),
+        survivor,
+        "once decryption works the app is reclaimed, not restarted"
+    );
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn a_sidecar_pm3_never_opened_is_visible_in_the_listing() {
+    let home = home();
+    with_decryptor(&home, FIRST_TOKEN);
+    let text = std::fs::read_to_string(&home.config).expect("the pm3 config");
+    std::fs::write(
+        &home.config,
+        text.replace(
+            &format!(
+                "sops_identity_file: \"{}/age-key\"",
+                home.root.to_string_lossy()
+            ),
+            "sops_identity_file: \"\"",
+        ),
+    )
+    .expect("forget the identity");
+
+    let started = start_reporter(&home);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+
+    let listed = wait_for_listing(&home, NAME);
+    assert!(
+        listed.contains("env:sealed"),
+        "an app running without the credentials it declares must stand out: {listed}"
+    );
+    let described = stdout_of(&pm3(&home, &["describe", NAME]));
+    assert!(
+        described.contains("encrypted, not opened"),
+        "got: {described}"
+    );
     shutdown_daemon(&home);
 }

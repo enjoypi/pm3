@@ -75,7 +75,10 @@ async fn a_reclaimed_survivor_still_probing_awaits_readiness_again() {
     ports.seed_live(7, &crate::ports_test_helpers::live_token(7));
     ports.seed_stored(vec![record]);
 
-    let effects = supervisor.resurrect_saved(&ports).await;
+    let effects = supervisor
+        .resurrect_saved(&ports)
+        .await
+        .expect("the takeover should hold");
 
     assert!(
         effects.iter().any(
@@ -278,3 +281,35 @@ fn generation_for(effects: &[SupervisionEffect], name: &str) -> u64 {
 
 #[path = "supervisor_ready_cascade_tests.rs"]
 mod cascade;
+
+#[tokio::test]
+async fn an_unreadable_environment_stops_the_takeover_instead_of_evicting() {
+    let ports = FakePorts::new(1000);
+    ports.fail_load_as_unreadable();
+    let mut supervisor = supervisor();
+
+    let err = supervisor
+        .resurrect_saved(&ports)
+        .await
+        .expect_err("a takeover pm3 cannot rebuild must not proceed");
+
+    assert!(err.blocks_takeover(), "got: {err}");
+    assert!(
+        ports.terminated().is_empty(),
+        "nothing may be signalled when pm3 cannot tell what is running"
+    );
+}
+
+#[tokio::test]
+async fn an_ordinary_read_failure_still_lets_the_daemon_serve() {
+    let ports = FakePorts::new(1000);
+    ports.fail_load();
+    let mut supervisor = supervisor();
+
+    let effects = supervisor
+        .resurrect_saved(&ports)
+        .await
+        .expect("a broken state file is survivable");
+
+    assert!(effects.is_empty(), "got: {effects:?}");
+}

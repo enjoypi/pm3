@@ -61,6 +61,9 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
         ready_poll_interval_ms: 200,
         daemon_channel_depth: CHANNEL_DEPTH,
         request_body_limit_bytes: BODY_LIMIT_BYTES,
+        sops_identity_file: String::new(),
+        sops_program: "sops".to_string(),
+        sops_timeout_ms: 5000,
         restart: RestartConfig {
             autorestart: true,
             min_uptime_ms: MIN_UPTIME_MS,
@@ -168,6 +171,19 @@ pub fn write_config_with_cfg_dir(dir: &Path, home: &str, cfg_dir: &str) -> PathB
     let yaml = config_yaml(home).replace(
         &format!("cfg_dir: \"{home}/service\""),
         &format!("cfg_dir: \"{cfg_dir}\""),
+    );
+    std::fs::write(&path, yaml).expect("write the pm3 config");
+    path
+}
+
+#[cfg(unix)]
+pub fn write_config_with_decryptor(dir: &Path, home: &str, program: &str) -> PathBuf {
+    let path = dir.join("config.yaml");
+    let yaml = config_yaml(home).replace(
+        &format!("request_body_limit_bytes: {BODY_LIMIT_BYTES}"),
+        &format!(
+            "request_body_limit_bytes: {BODY_LIMIT_BYTES}\n  sops_identity_file: \"{home}/age-key\"\n  sops_program: \"{program}\""
+        ),
     );
     std::fs::write(&path, yaml).expect("write the pm3 config");
     path

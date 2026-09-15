@@ -1,3 +1,4 @@
+mod enc_file;
 mod env_file;
 mod file;
 mod inline;
@@ -5,6 +6,7 @@ mod roots;
 mod source;
 
 pub use self::{
+    enc_file::{ENC_FILE_SUFFIX, EncFileError, SOPS_PROGRAM, enc_file_of, load_enc_file},
     env_file::{ENV_FILE_SUFFIX, EnvFileError, env_file_of, load_env_file, parse_env_file},
     file::{
         AppEntry, AppsFile, AppsFileError, ReadyProbeEntry, SandboxEntry, SpecDefaults,

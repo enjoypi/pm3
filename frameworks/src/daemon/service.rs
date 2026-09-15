@@ -92,7 +92,7 @@ async fn serve_supervised(
     let drain_timeout = Duration::from_secs(specs.config.drain_timeout_secs);
     let body_limit_bytes = specs.config.request_body_limit_bytes;
     let mut daemon = Daemon::new(specs, ports, events.clone());
-    daemon.resurrect_saved_apps().await;
+    daemon.resurrect_saved_apps().await?;
 
     let supervisor = tokio::spawn(run(daemon, command_queue, event_queue));
     events.send(DaemonEvent::SampleMemory).await.ok();

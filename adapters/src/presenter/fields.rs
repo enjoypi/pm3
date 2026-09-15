@@ -1,8 +1,15 @@
 use chrono::{Local, TimeZone as _};
+use usecases::EnvOrigin;
 
 pub const MISSING: &str = "-";
 pub const NETWORK_SUFFIX: &str = "+net";
 
+const PLAIN_ENV: &str = "plain";
+const ENCRYPTED_ENV: &str = "encrypted";
+const SEALED_ENV: &str = "encrypted, not opened";
+const SEALED_NOTICE: &str = "env:sealed";
+const SINGLE_VALUE: &str = "value";
+const MANY_VALUES: &str = "values";
 const LIST_SEPARATOR: &str = ", ";
 const CLOCK_FORMAT: &str = "%H:%M%:z";
 const STAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S UTC%:z";
@@ -91,6 +98,29 @@ pub fn format_sandbox(mode: &str, network: bool) -> String {
         return format!("{mode}{NETWORK_SUFFIX}");
     }
     mode.to_string()
+}
+
+pub fn format_env_origin(origin: EnvOrigin, declared: usize) -> String {
+    let named = match origin {
+        EnvOrigin::Plain => PLAIN_ENV,
+        EnvOrigin::Encrypted => ENCRYPTED_ENV,
+        EnvOrigin::Sealed => SEALED_ENV,
+    };
+    format!("{named} ({declared} {})", counted_noun(declared))
+}
+
+const fn counted_noun(declared: usize) -> &'static str {
+    if declared == 1 {
+        return SINGLE_VALUE;
+    }
+    MANY_VALUES
+}
+
+pub fn format_env_notice(origin: EnvOrigin) -> String {
+    match origin {
+        EnvOrigin::Sealed => SEALED_NOTICE.to_string(),
+        EnvOrigin::Plain | EnvOrigin::Encrypted => String::new(),
+    }
 }
 
 pub fn format_list(items: &[String]) -> String {

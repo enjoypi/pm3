@@ -74,6 +74,37 @@ pub fn parse_env_file(
     home: Option<&str>,
     text: &str,
 ) -> Result<Vec<(String, String)>, EnvFileError> {
+    parse_pairs(path, text, Quoting::Shell(home))
+}
+
+pub fn parse_env_text(
+    path: &str,
+    home: Option<&str>,
+    text: &str,
+) -> Result<Vec<(String, String)>, EnvFileError> {
+    parse_pairs(path, text, Quoting::Verbatim(home))
+}
+
+#[derive(Copy, Clone)]
+enum Quoting<'h> {
+    Shell(Option<&'h str>),
+    Verbatim(Option<&'h str>),
+}
+
+impl Quoting<'_> {
+    fn read(self, raw: &str) -> String {
+        match self {
+            Self::Shell(home) => unquote(home, raw.trim()),
+            Self::Verbatim(home) => expand_home(home, raw),
+        }
+    }
+}
+
+fn parse_pairs(
+    path: &str,
+    text: &str,
+    quoting: Quoting<'_>,
+) -> Result<Vec<(String, String)>, EnvFileError> {
     let mut parsed: BTreeMap<String, String> = BTreeMap::new();
     for (index, raw) in text.lines().enumerate() {
         let line = index + 1;
@@ -81,7 +112,7 @@ pub fn parse_env_file(
         if trimmed.is_empty() || trimmed.starts_with(COMMENT_PREFIX) {
             continue;
         }
-        let (key, value) = split_pair(path, home, line, trimmed)?;
+        let (key, value) = split_pair(path, quoting, line, raw)?;
         if parsed.insert(key.clone(), value).is_some() {
             return Err(EnvFileError::DuplicateKey {
                 path: path.to_string(),
@@ -135,7 +166,7 @@ async fn is_linked(path: &Path) -> bool {
 }
 fn split_pair(
     path: &str,
-    home: Option<&str>,
+    quoting: Quoting<'_>,
     line: usize,
     text: &str,
 ) -> Result<(String, String), EnvFileError> {
@@ -153,7 +184,7 @@ fn split_pair(
             line,
         });
     }
-    Ok((key, unquote(home, raw_value.trim())))
+    Ok((key, quoting.read(raw_value)))
 }
 
 fn is_env_key(key: &str) -> bool {
@@ -169,8 +200,12 @@ fn unquote(home: Option<&str>, raw: &str) -> String {
         return inner.to_string();
     }
     let plain = fenced(raw, DOUBLE_FENCE).map_or_else(|| raw.to_string(), unescape);
+    expand_home(home, &plain)
+}
+
+fn expand_home(home: Option<&str>, plain: &str) -> String {
     let Some(home) = home else {
-        return plain;
+        return plain.to_string();
     };
     expand_bare_home(home, &plain.replace(BRACED_HOME, home))
 }

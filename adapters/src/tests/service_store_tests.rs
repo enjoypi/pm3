@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    apps_file::{ENC_FILE_SUFFIX, ENV_FILE_SUFFIX},
     service::{InlineStart, prepare_inline, split_apps_file},
     service_fixtures::*,
 };
@@ -21,6 +22,23 @@ async fn a_partial_rollback_removes_only_the_named_service_file() {
 
     assert!(home.cfg_dir.join("web.yaml").is_file());
     assert!(!home.cfg_dir.join("api.yaml").exists());
+}
+
+#[tokio::test]
+async fn forgetting_a_service_also_takes_its_encrypted_environment() {
+    let home = home();
+    let declaration = home.cfg_dir.join(format!("{NAME}.yaml"));
+    let secrets = home.cfg_dir.join(format!("{NAME}.{ENV_FILE_SUFFIX}"));
+    let encrypted = home.cfg_dir.join(format!("{NAME}.{ENC_FILE_SUFFIX}"));
+    for path in [&declaration, &secrets, &encrypted] {
+        std::fs::write(path, "seeded").expect("seed the service files");
+    }
+    forget(&home.cfg_dir, NAME).await;
+    assert!(
+        !encrypted.exists(),
+        "a deleted service must leave no credentials behind"
+    );
+    assert!(!declaration.exists() && !secrets.exists());
 }
 
 #[tokio::test]

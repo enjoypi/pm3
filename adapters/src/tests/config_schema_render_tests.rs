@@ -108,6 +108,25 @@ fn validate_rejects_a_zero_request_body_limit() {
 }
 
 #[test]
+fn validate_rejects_a_zero_sops_timeout() {
+    let mut cfg = valid_config();
+    cfg.pm3.sops_timeout_ms = 0;
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidSopsTimeout(0)),
+        "a zero deadline would refuse every decryption, got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_sops_program() {
+    let mut cfg = valid_config();
+    cfg.pm3.sops_program = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(err.to_string(), "cannot accept empty pm3.sops_program");
+}
+
+#[test]
 fn validate_rejects_a_zero_daemon_channel_depth() {
     let mut cfg = valid_config();
     cfg.pm3.daemon_channel_depth = 0;
@@ -226,6 +245,7 @@ fn every_error_variant_renders_a_message() {
         ConfigError::InvalidReadyPollInterval(0),
         ConfigError::InvalidChannelDepth(0),
         ConfigError::InvalidBodyLimit(0),
+        ConfigError::InvalidSopsTimeout(0),
         ConfigError::InvalidMaxTasks(0),
         ConfigError::EmptyProgram {
             field: "pm3.sandbox.bwrap_program",

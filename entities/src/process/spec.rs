@@ -8,6 +8,26 @@ use super::{
 use crate::sandbox::{PolicyError, SandboxPolicy, validate_policy};
 
 pub const RESERVED_ALL_SELECTOR: &str = "all";
+pub const RESERVED_ENCRYPTED_SUFFIX: &str = ".enc";
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub enum EnvOrigin {
+    #[default]
+    Plain,
+    Encrypted,
+    Sealed,
+}
+
+impl EnvOrigin {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Encrypted => "encrypted",
+            Self::Sealed => "sealed",
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppSpec {
@@ -16,6 +36,8 @@ pub struct AppSpec {
     pub args: Vec<String>,
     pub cwd: String,
     pub env: Vec<(String, String)>,
+    pub env_origin: EnvOrigin,
+    pub env_declared: usize,
     pub autorestart: bool,
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
@@ -51,6 +73,11 @@ pub enum SpecError {
 
     #[error("cannot accept app name '{0}': it is reserved as the every-app selector")]
     ReservedName(String),
+
+    #[error(
+        "cannot accept app name '{0}' ending in '.enc': its service file would be the encrypted environment of another app"
+    )]
+    EncryptedName(String),
 
     #[error(
         "cannot accept app name '{name}': '{character}' is not allowed, use letters, digits, '-', '_' or '.'"
@@ -139,6 +166,9 @@ pub fn validate_app_name(name: &str) -> Result<(), SpecError> {
     }
     if name == RESERVED_ALL_SELECTOR {
         return Err(SpecError::ReservedName(name.to_string()));
+    }
+    if name.ends_with(RESERVED_ENCRYPTED_SUFFIX) {
+        return Err(SpecError::EncryptedName(name.to_string()));
     }
     name.chars()
         .find(|letter| !is_name_letter(*letter))

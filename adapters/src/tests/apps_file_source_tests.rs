@@ -3,6 +3,8 @@ use crate::spec_sources::{
     HOST_HOME, SERVICE_SCRIPT, register_service, service_yaml, spec_source_in, write_env_file,
     write_service_file,
 };
+#[cfg(unix)]
+use crate::spec_sources::{with_decryptor, write_enc_file};
 
 struct Fixture {
     dir: tempfile::TempDir,
@@ -302,4 +304,290 @@ async fn a_writable_root_linking_into_a_hidden_root_fails_the_prepare() {
     );
     let err = source.prepare("web").await.unwrap_err().to_string();
     assert!(err.contains("keeps out of every sandbox"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_encrypted_environment_reaches_the_service() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_enc_file(&fixture.source, "web", "TUNNEL_TOKEN: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'TUNNEL_TOKEN=eyJhIjoiZjQ2\\n'");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(
+        spec.env,
+        [
+            ("HOME".to_string(), HOST_HOME.to_string()),
+            ("TUNNEL_TOKEN".to_string(), "eyJhIjoiZjQ2".to_string()),
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_encrypted_environment_wins_over_a_plaintext_one() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "SOURCE=plaintext\n");
+    write_enc_file(&fixture.source, "web", "SOURCE: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'SOURCE=encrypted\\n'");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env
+            .contains(&("SOURCE".to_string(), "encrypted".to_string())),
+        "the encrypted sidecar is the one that counts, got {:?}",
+        spec.env
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_encrypted_environment_is_ignored_without_an_identity() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "SOURCE=plaintext\n");
+    write_enc_file(&fixture.source, "web", "SOURCE: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'SOURCE=encrypted\\n'");
+    fixture.source.config.sops_identity_file = String::new();
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env
+            .contains(&("SOURCE".to_string(), "plaintext".to_string())),
+        "an unconfigured identity leaves the encrypted sidecar untouched, got {:?}",
+        spec.env
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failing_decryptor_stops_the_service_from_resolving() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_enc_file(&fixture.source, "web", "TUNNEL_TOKEN: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "exit 4");
+    let err = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("exited with status 4"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_encrypted_value_may_hold_spaces() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_enc_file(&fixture.source, "web", "MOTTO: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'MOTTO=two words\\n'");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env
+            .contains(&("MOTTO".to_string(), "two words".to_string())),
+        "an unquoted dotenv value keeps its spaces, got {:?}",
+        spec.env
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_encrypted_environment_expands_the_host_home() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_enc_file(&fixture.source, "web", "BIN: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'BIN=$HOME/bin\\n'");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env
+            .contains(&("BIN".to_string(), format!("{HOST_HOME}/bin"))),
+        "the decrypted path goes through the same $HOME expansion, got {:?}",
+        spec.env
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_service_without_an_encrypted_sidecar_still_reads_its_plaintext_one() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "SOURCE=plaintext\n");
+    with_decryptor(&mut fixture.source, "printf 'SOURCE=encrypted\\n'");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env
+            .contains(&("SOURCE".to_string(), "plaintext".to_string())),
+        "a configured identity alone must not conjure an encrypted sidecar, got {:?}",
+        spec.env
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_unparsable_decrypted_environment_is_reported() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_enc_file(&fixture.source, "web", "TUNNEL_TOKEN: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'TUNNEL_TOKEN\\n'");
+    let err = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("expected KEY=VALUE"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_encrypted_value_reaches_the_service_exactly_as_it_was_decrypted() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_enc_file(&fixture.source, "web", "PASSWORD: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'PASSWORD=\"p@ss\\\\word\"\\n'");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env
+            .contains(&("PASSWORD".to_string(), "\"p@ss\\word\"".to_string())),
+        "a decrypted secret is handed over untouched, got {:?}",
+        spec.env
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_unreachable_encrypted_sidecar_stops_the_service_from_resolving() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    let path = crate::enc_file_of(&fixture.source.cfg_dir, "web").expect("a safe service name");
+    std::os::unix::fs::symlink(&path, &path).expect("seed a looping symlink");
+    with_decryptor(&mut fixture.source, "printf 'A=b\\n'");
+    let err = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot look at"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_plain_environment_is_remembered_as_its_own_origin() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "SOURCE=plaintext\n");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(spec.env_origin, usecases::EnvOrigin::Plain);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_decrypted_environment_is_remembered_as_its_own_origin() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_enc_file(&fixture.source, "web", "TOKEN: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'TOKEN=abc\\n'");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(spec.env_origin, usecases::EnvOrigin::Encrypted);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_sidecar_pm3_never_opened_is_remembered_as_sealed() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "SOURCE=plaintext\n");
+    write_enc_file(&fixture.source, "web", "TOKEN: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'TOKEN=abc\\n'");
+    fixture.source.config.sops_identity_file = String::new();
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(
+        spec.env_origin,
+        usecases::EnvOrigin::Sealed,
+        "an app falling back to plaintext because no identity is configured must still stand out"
+    );
+    assert!(
+        spec.env
+            .contains(&("SOURCE".to_string(), "plaintext".to_string())),
+        "got {:?}",
+        spec.env
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_sealed_sidecar_still_reports_a_broken_plaintext_fallback() {
+    let mut fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "BROKEN\n");
+    write_enc_file(&fixture.source, "web", "TOKEN: ENC[fake]\n");
+    with_decryptor(&mut fixture.source, "printf 'TOKEN=abc\\n'");
+    fixture.source.config.sops_identity_file = String::new();
+    let err = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("expected KEY=VALUE"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_spec_counts_only_the_values_the_operator_declared() {
+    let fixture = fixture();
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "A=1\nB=2\n");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(
+        spec.env_declared, 2,
+        "the HOME pm3 injects is not something the operator declared, got {:?}",
+        spec.env
+    );
+    assert_eq!(spec.env.len(), 3);
 }

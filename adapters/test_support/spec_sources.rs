@@ -51,6 +51,24 @@ pub fn write_env_file(source: &SpecSource, name: &str, body: &str) {
     std::fs::write(path, body).expect("write the environment file");
 }
 
+#[cfg(unix)]
+pub fn write_enc_file(source: &SpecSource, name: &str, body: &str) {
+    let path = crate::enc_file_of(&source.cfg_dir, name).expect("a safe service name");
+    std::fs::write(path, body).expect("write the encrypted file");
+}
+
+#[cfg(unix)]
+pub fn with_decryptor(source: &mut SpecSource, body: &str) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let path = source.cfg_dir.join("fake-sops");
+    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write the decryptor stub");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        .expect("make the decryptor stub executable");
+    source.config.sops_program = path.to_string_lossy().into_owned();
+    source.config.sops_identity_file = "/home/dev/.ssh/age-cfg".to_string();
+}
+
 pub fn service_yaml(name: &str) -> String {
     format!("name: \"{name}\"\nscript: \"{SERVICE_SCRIPT}\"\n")
 }
