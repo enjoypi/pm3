@@ -69,14 +69,17 @@ async fn a_value_holding_spaces_survives_the_pipe() {
 }
 
 #[tokio::test]
-async fn the_identity_reaches_the_decryptor() {
-    let text = decrypted("printf 'SEEN=%s\\n' \"$SOPS_AGE_SSH_PRIVATE_KEY_FILE\"")
-        .await
-        .expect("the stub should decrypt");
+async fn the_identity_reaches_the_decryptor_in_both_shapes() {
+    let probe = "printf 'SSH=%s AGE=%s\\n'";
+    let text = decrypted(&format!(
+        "{probe} \"$SOPS_AGE_SSH_PRIVATE_KEY_FILE\" \"$SOPS_AGE_KEY_FILE\""
+    ))
+    .await
+    .expect("the stub should decrypt");
     assert_eq!(
         text,
-        format!("SEEN={IDENTITY}\n"),
-        "the ssh-shaped identity travels in SOPS_AGE_SSH_PRIVATE_KEY_FILE"
+        format!("SSH={IDENTITY} AGE={IDENTITY}\n"),
+        "an age identity and an ssh identity use different variables and sops reads only the matching one, so pm3 hands the path to both"
     );
 }
 

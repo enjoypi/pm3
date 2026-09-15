@@ -16,7 +16,8 @@ use crate::{
 pub const ENC_FILE_SUFFIX: &str = "enc.yaml";
 pub const SOPS_PROGRAM: &str = "sops";
 
-const IDENTITY_VARIABLE: &str = "SOPS_AGE_SSH_PRIVATE_KEY_FILE";
+const SSH_IDENTITY_VARIABLE: &str = "SOPS_AGE_SSH_PRIVATE_KEY_FILE";
+const AGE_IDENTITY_VARIABLE: &str = "SOPS_AGE_KEY_FILE";
 const PATH_VARIABLE: &str = "PATH";
 const DECRYPT_FLAG: &str = "-d";
 const OUTPUT_TYPE_FLAG: &str = "--output-type";
@@ -90,7 +91,8 @@ pub async fn load_enc_file(
     let mut command = Command::new(program);
     command
         .env_clear()
-        .env(IDENTITY_VARIABLE, identity)
+        .env(SSH_IDENTITY_VARIABLE, identity)
+        .env(AGE_IDENTITY_VARIABLE, identity)
         .env(PATH_VARIABLE, search_path)
         .arg(DECRYPT_FLAG)
         .arg(OUTPUT_TYPE_FLAG)
