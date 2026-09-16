@@ -19,3 +19,4 @@ rustc-ice-*.txt
 .claude.local.md
 
 .debug/
+plan-xdg-global-env.md
