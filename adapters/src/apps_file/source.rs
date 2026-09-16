@@ -1,14 +1,15 @@
 use std::path::{Path, PathBuf};
 
 use usecases::{
-    AppSpec, EnvOrigin, EnvValue, SpecError, SpecResolveError, SpecResolver, merge_environment,
-    validate_app_name,
+    AppSpec, EnvOrigin, EnvScope, EnvValue, SpecError, SpecResolveError, SpecResolver,
+    merge_environment, validate_app_name,
 };
 
 use super::{
     enc_file::{ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
     env_file::{ENV_FILE_SUFFIX, load_env_file, parse_env_text},
     file::{AppsFileError, SpecDefaults, SpecRoots, load_service_file, resolve_checked},
+    global_env::scoped,
 };
 use crate::config::Pm3Config;
 
@@ -28,6 +29,7 @@ pub struct SpecSource {
     pub host_home: Option<String>,
     pub logs_dir: String,
     pub tmp_dir: Option<String>,
+    pub global_env: Vec<EnvValue>,
 }
 
 impl SpecSource {
@@ -83,7 +85,7 @@ impl SpecSource {
         let (origin, declared) = match self.decrypt_environment(service).await? {
             Secrets::Opened(text) => (
                 EnvOrigin::Encrypted,
-                declared_values(&parse_env_text(
+                app_values(&parse_env_text(
                     &text.path,
                     self.host_home.as_deref(),
                     &text.body,
@@ -92,7 +94,11 @@ impl SpecSource {
             Secrets::Sealed => (EnvOrigin::Sealed, self.plain_environment(service).await?),
             Secrets::Absent => (EnvOrigin::Plain, self.plain_environment(service).await?),
         };
-        let values = merge_environment(&[&injected_home(self.host_home.as_deref()), &declared]);
+        let values = merge_environment(&[
+            &injected_home(self.host_home.as_deref()),
+            &self.global_env,
+            &declared,
+        ]);
         let counted = declared.len();
         log_environment(name, counted, origin.as_str());
         Ok(Environment { origin, values })
@@ -104,7 +110,7 @@ impl SpecSource {
             self.host_home.as_deref(),
         )
         .await?;
-        Ok(declared_values(&declared))
+        Ok(app_values(&declared))
     }
 
     async fn decrypt_environment(&self, service: &Path) -> Result<Secrets, AppsFileError> {
@@ -153,11 +159,8 @@ fn injected_home(home: Option<&str>) -> Vec<EnvValue> {
     })
 }
 
-fn declared_values(declared: &[(String, String)]) -> Vec<EnvValue> {
-    declared
-        .iter()
-        .map(|(key, value)| EnvValue::app(key, value))
-        .collect()
+fn app_values(declared: &[(String, String)]) -> Vec<EnvValue> {
+    scoped(declared, EnvScope::App)
 }
 
 fn log_environment(app: &str, entries: usize, origin: &str) {

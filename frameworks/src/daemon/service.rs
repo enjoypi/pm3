@@ -1,7 +1,7 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use adapters::{
-    DaemonHandle, Pm3Paths, SandboxProgramSet, SpecSource, load_and_parse_config,
+    DaemonHandle, Pm3Paths, SandboxProgramSet, SpecSource, load_and_parse_config, load_global_env,
     log_startup_banner, router,
 };
 use tokio::sync::mpsc;
@@ -47,6 +47,9 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
     let home = host_home();
     let Pm3Places { paths, cfg_dir } = resolve_places(&config.pm3, home.as_deref())?;
     ensure_layout(&paths, &cfg_dir).await?;
+    let global_env = load_global_env(&config.pm3, &paths.roots.config, home.as_deref())
+        .await
+        .map_err(|error| unreadable_global_env(&error))?;
     let BindOutcome::Bound(listener) =
         bind_uds(&paths.socket, config.pm3.daemon_poll_interval_ms).await?
     else {
@@ -69,10 +72,17 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
         host_home: home,
         logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: std::env::var(TMPDIR_VARIABLE).ok(),
+        global_env,
     };
     let served = serve_supervised(specs, &paths, listener, shutdown).await;
     clear_runtime_files(&paths).await;
     served
+}
+
+fn unreadable_global_env(error: &adapters::AppsFileError) -> Error {
+    Error::GlobalEnvironment {
+        reason: error.to_string(),
+    }
 }
 
 async fn serve_supervised(

@@ -1,4 +1,4 @@
-use entities::{AppSpec, EnvValue};
+use entities::{AppSpec, EnvScope, EnvValue};
 
 use crate::ports::Liveness;
 
@@ -90,8 +90,17 @@ const fn network_label(allowed: bool) -> &'static str {
     }
 }
 
+fn identifies_the_process(entry: &EnvValue) -> bool {
+    entry.scope != EnvScope::Global
+}
+
 fn sorted_env(env: &[EnvValue]) -> Vec<&EnvValue> {
-    let mut entries: Vec<&EnvValue> = env.iter().collect();
+    let mut entries: Vec<&EnvValue> = Vec::with_capacity(env.len());
+    for entry in env {
+        if identifies_the_process(entry) {
+            entries.push(entry);
+        }
+    }
     entries.sort_by(|left, right| {
         left.key
             .cmp(&right.key)

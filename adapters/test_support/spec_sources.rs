@@ -38,6 +38,7 @@ pub fn spec_source_in(root: &Path) -> SpecSource {
         host_home: Some(HOST_HOME.to_string()),
         logs_dir,
         tmp_dir: None,
+        global_env: Vec::new(),
     }
 }
 
@@ -75,4 +76,11 @@ pub fn with_decryptor(source: &mut SpecSource, body: &str) {
 
 pub fn service_yaml(name: &str) -> String {
     format!("name: \"{name}\"\nscript: \"{SERVICE_SCRIPT}\"\n")
+}
+
+pub fn with_global_env(source: &mut SpecSource, declared: &[(&str, &str)]) {
+    source.global_env = declared
+        .iter()
+        .map(|(key, value)| usecases::EnvValue::global(key, value))
+        .collect();
 }

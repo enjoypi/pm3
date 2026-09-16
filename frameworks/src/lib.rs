@@ -77,6 +77,11 @@ pub enum Error {
     )]
     Takeover { reason: String },
 
+    #[error(
+        "cannot read the shared environment every app inherits: {reason}; the daemon refuses to start rather than run every service without it"
+    )]
+    GlobalEnvironment { reason: String },
+
     #[error("cannot determine the pm3 binary path: {reason}")]
     ServiceProgram { reason: String },
 

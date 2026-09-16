@@ -1,7 +1,7 @@
 #![cfg(unix)]
 use std::time::Duration;
 
-use adapters::{Pm3Roots, resolve_paths};
+use adapters::{ENV_FILE_SUFFIX, GLOBAL_ENV_STEM, Pm3Roots, resolve_paths};
 
 use super::*;
 use crate::{
@@ -256,4 +256,25 @@ async fn a_daemon_refuses_a_home_that_overflows_the_socket_limit() {
         .to_string();
 
     assert!(err.contains("exceeds the 104"), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_daemon_refuses_an_unreadable_shared_environment() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(&home).expect("prepare the pm3 home");
+    let shared = home.join(format!("{GLOBAL_ENV_STEM}.{ENV_FILE_SUFFIX}"));
+    std::fs::write(&shared, "TZ\n").expect("write a broken shared environment");
+    let config = write_config(dir.path(), &home.to_string_lossy());
+    let signals = ShutdownSignals::register().expect("register the shutdown handlers");
+
+    let err = run_daemon_with_signals(&config.to_string_lossy(), Ok(signals))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        err.contains("cannot read the shared environment"),
+        "got: {err}"
+    );
 }

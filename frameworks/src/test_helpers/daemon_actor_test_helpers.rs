@@ -76,6 +76,7 @@ fn built_harness_with_rotate(
         host_home: None,
         logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: None,
+        global_env: Vec::new(),
     };
     let ports = Arc::new(DaemonPorts::new(
         paths.dump_file.clone(),

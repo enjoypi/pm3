@@ -34,11 +34,11 @@ pub use usecases::{
 pub use self::{
     apps_file::{
         AppEntry, AppsFile, AppsFileError, ENC_FILE_SUFFIX, ENV_FILE_SUFFIX, EncFileError,
-        EnvFileError, InlineRequest, ReadyProbeEntry, SERVICE_FILE_SUFFIX, SOPS_PROGRAM,
-        SandboxEntry, SpecDefaults, SpecRoots, SpecSource, diff_lines, enc_file_of,
+        EnvFileError, GLOBAL_ENV_STEM, InlineRequest, ReadyProbeEntry, SERVICE_FILE_SUFFIX,
+        SOPS_PROGRAM, SandboxEntry, SpecDefaults, SpecRoots, SpecSource, diff_lines, enc_file_of,
         encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file, load_enc_file,
-        load_env_file, load_service_file, parse_apps_file, parse_env_file, parse_service_file,
-        resolve_checked, service_file_of,
+        load_env_file, load_global_env, load_service_file, parse_apps_file, parse_env_file,
+        parse_service_file, resolve_checked, service_file_of,
     },
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,

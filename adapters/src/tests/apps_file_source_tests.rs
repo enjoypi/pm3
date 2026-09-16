@@ -1,7 +1,7 @@
 use super::*;
 use crate::spec_sources::{
-    HOST_HOME, SERVICE_SCRIPT, register_service, service_yaml, spec_source_in, write_env_file,
-    write_service_file,
+    HOST_HOME, SERVICE_SCRIPT, register_service, service_yaml, spec_source_in, with_global_env,
+    write_env_file, write_service_file,
 };
 #[cfg(unix)]
 use crate::spec_sources::{with_decryptor, write_enc_file};
@@ -591,4 +591,76 @@ async fn the_spec_counts_only_the_values_the_operator_declared() {
         spec.env
     );
     assert_eq!(spec.env.len(), 3);
+}
+
+#[tokio::test]
+async fn a_shared_value_reaches_an_app_that_declares_nothing() {
+    let mut fixture = fixture();
+    with_global_env(&mut fixture.source, &[("TZ", "UTC")]);
+    register_service(&fixture.source, "web");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env.contains(&EnvValue::global("TZ", "UTC")),
+        "got: {:?}",
+        spec.env
+    );
+}
+
+#[tokio::test]
+async fn an_app_value_wins_over_a_shared_one_with_the_same_key() {
+    let mut fixture = fixture();
+    with_global_env(&mut fixture.source, &[("TZ", "UTC")]);
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "TZ=Asia/Shanghai\n");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert!(
+        spec.env.contains(&EnvValue::app("TZ", "Asia/Shanghai")),
+        "the app that spells a value out owns it, got: {:?}",
+        spec.env
+    );
+}
+
+#[tokio::test]
+async fn a_shared_value_wins_over_the_home_pm3_injects() {
+    let mut fixture = fixture();
+    with_global_env(&mut fixture.source, &[("HOME", "/srv/shared")]);
+    register_service(&fixture.source, "web");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(
+        spec.env,
+        [EnvValue::global("HOME", "/srv/shared")],
+        "got: {:?}",
+        spec.env
+    );
+}
+
+#[tokio::test]
+async fn the_declared_count_covers_the_shared_values_too() {
+    let mut fixture = fixture();
+    with_global_env(&mut fixture.source, &[("TZ", "UTC")]);
+    register_service(&fixture.source, "web");
+    write_env_file(&fixture.source, "web", "PORT=8080\n");
+    let spec = fixture
+        .source
+        .resolve_service("web")
+        .await
+        .expect("the service should resolve");
+    assert_eq!(
+        spec.declared_env_count(),
+        2,
+        "a shared value is declared by the operator too, got: {:?}",
+        spec.env
+    );
 }

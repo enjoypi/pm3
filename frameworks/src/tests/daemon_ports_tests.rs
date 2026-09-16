@@ -40,6 +40,7 @@ fn spec_source_in(dir: &Path) -> SpecSource {
         host_home: None,
         logs_dir: dir.join("logs").to_string_lossy().into_owned(),
         tmp_dir: None,
+        global_env: Vec::new(),
     }
 }
 

@@ -301,3 +301,48 @@ fn the_home_pm3_injects_stays_part_of_the_identity() {
         "a service launched with a different home is a different process"
     );
 }
+
+#[test]
+fn changing_a_global_value_leaves_the_identity_unchanged() {
+    let before = render_identity(&AppSpec {
+        env: vec![EnvValue::global("TZ", "UTC")],
+        ..spec()
+    });
+    let after = render_identity(&AppSpec {
+        env: vec![EnvValue::global("TZ", "Asia/Shanghai")],
+        ..spec()
+    });
+    assert_eq!(
+        before, after,
+        "a shared value is deployment context, so changing it must not evict every service"
+    );
+}
+
+#[test]
+fn a_global_value_never_reaches_the_identity_at_all() {
+    let with_global = render_identity(&AppSpec {
+        env: vec![EnvValue::global("TZ", "UTC")],
+        ..spec()
+    });
+    let without = render_identity(&AppSpec {
+        env: Vec::new(),
+        ..spec()
+    });
+    assert_eq!(with_global, without, "got: {with_global}");
+}
+
+#[test]
+fn an_app_value_that_shadows_a_global_one_still_counts() {
+    let shadowed = render_identity(&AppSpec {
+        env: vec![EnvValue::app("TZ", "UTC")],
+        ..spec()
+    });
+    let inherited = render_identity(&AppSpec {
+        env: vec![EnvValue::global("TZ", "UTC")],
+        ..spec()
+    });
+    assert_ne!(
+        shadowed, inherited,
+        "declaring a value pins it to the process, inheriting it does not"
+    );
+}
