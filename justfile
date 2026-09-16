@@ -37,7 +37,10 @@ test *args:
 [doc("装到真机：opt-level 3 构建后交给 pm3 install（备份、原子换二进制、重装 unit、核对接管）")]
 install:
     CARGO_PROFILE_RELEASE_OPT_LEVEL=3 cargo build {{ cargo_locked }} -p frameworks --release
-    target/release/pm3 --config config.yaml install target/release/pm3
+    cfg="${PM3_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pm3}/config.yaml"; \
+    [ -f "$cfg" ] || cfg="${PM3_HOME:-$HOME/.pm3}/config.yaml"; \
+    [ -f "$cfg" ] || { echo "just install: 找不到真机 config.yaml，MUST NOT 用仓内那份（它的 roots 全为空）" >&2; exit 1; }; \
+    target/release/pm3 --config "$cfg" install target/release/pm3
 
 [doc("tail 服务日志并过滤：crash 匹配 panic 与致命信号，business 匹配 error 与 WARN/ERROR")]
 monitor kind:

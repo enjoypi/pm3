@@ -22,3 +22,4 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 ## 构建环境
 
 - macOS：Xcode 大版本升级后 `IDEXcodeVersionForAgreedToGMLicense` 作废，`cc` 以 exit 69 拒绝链接。症状会伪装成「依赖更新引入了坏 crate」——`cargo build --all-targets` 只编 lib/test 时不链接，一路绿灯，直到编 bin 或某个依赖带 build script/cdylib 才炸。pm3 只要 linker 与 macOS SDK，Xcode 的其余部分都不需要 ⇒ 用 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`（免 sudo、只影响当次）或 `sudo xcode-select -s /Library/Developer/CommandLineTools`（永久）。`sudo xcodebuild -license accept` 也非交互，但每次 Xcode 升级都要重跑
+- `just install` MUST 自行解析真机 config（`PM3_CONFIG_DIR` → `$XDG_CONFIG_HOME/pm3` → `~/.pm3`），找不到就失败：recipe 原先硬写 `--config config.yaml`，而仓内那份的 roots 全为空，装上去会让机器直接跳到推导出的 XDG 布局，而 `dump.yaml` 与服务文件还在旧位置 ⇒ 下一个 daemon rejoin 不到任何东西，所有在跑的服务变成孤儿
