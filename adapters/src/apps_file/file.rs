@@ -6,7 +6,7 @@ use std::{
 use serde::Deserialize;
 use thiserror::Error;
 use usecases::{
-    AppSpec, EnvOrigin, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy, SpecError,
+    AppSpec, EnvOrigin, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy, SpecError, covers_path,
     parse_memory_limit, validate_forbidden_roots, validate_spec,
 };
 
@@ -268,7 +268,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
     let liveness_probe = resolve_liveness_probe(entry)?;
     Ok(AppSpec {
         env_origin: EnvOrigin::Plain,
-        env_declared: 0,
+
         max_memory_kib,
         ready_probe,
         liveness_probe,
@@ -417,12 +417,25 @@ fn default_writable_roots(
     if mode != SandboxMode::WorkspaceWrite {
         return Vec::new();
     }
-    let candidates = [Some(cwd), Some(defaults.logs_dir), defaults.tmp_dir]
-        .into_iter()
-        .flatten()
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string);
+    let hidden = pm3_owned_roots(defaults);
+    let candidates = [
+        Some(cwd),
+        Some(defaults.logs_dir),
+        tmp_root(defaults, &hidden),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|value| !value.is_empty())
+    .map(ToString::to_string);
     dedup_roots(candidates)
+}
+
+fn tmp_root<'d>(defaults: &SpecDefaults<'d>, hidden: &[String]) -> Option<&'d str> {
+    let tmp = defaults.tmp_dir?;
+    if hidden.iter().any(|root| covers_path(tmp, root)) {
+        return None;
+    }
+    Some(tmp)
 }
 
 fn parse_mode(scope: &str, raw: &str) -> Result<SandboxMode, AppsFileError> {

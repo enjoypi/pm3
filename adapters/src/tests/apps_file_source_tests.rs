@@ -181,7 +181,7 @@ async fn resolving_a_service_without_an_environment_file_still_hands_out_the_hom
         .expect("a missing environment file is fine");
     assert_eq!(
         spec.env,
-        [("HOME".to_string(), HOST_HOME.to_string())],
+        [EnvValue::injected("HOME", HOST_HOME)],
         "a service must not have to spell out an absolute home"
     );
 }
@@ -196,7 +196,12 @@ async fn a_declared_home_wins_over_the_one_pm3_hands_out() {
         .resolve_service("web")
         .await
         .expect("the service should resolve");
-    assert_eq!(spec.env, [("HOME".to_string(), "/srv/web".to_string())]);
+    assert_eq!(
+        spec.env,
+        [EnvValue::app("HOME", "/srv/web")],
+        "got: {:?}",
+        spec.env
+    );
 }
 
 #[tokio::test]
@@ -229,9 +234,9 @@ async fn resolving_a_service_loads_the_environment_beside_its_file() {
     assert_eq!(
         spec.env,
         [
-            ("HOME".to_string(), HOST_HOME.to_string()),
-            ("PORT".to_string(), "8080".to_string()),
-            ("TUNNEL_TOKEN".to_string(), "eyJhIjoiZjQ2".to_string()),
+            EnvValue::injected("HOME", HOST_HOME),
+            EnvValue::app("PORT", "8080"),
+            EnvValue::app("TUNNEL_TOKEN", "eyJhIjoiZjQ2"),
         ]
     );
 }
@@ -321,8 +326,8 @@ async fn an_encrypted_environment_reaches_the_service() {
     assert_eq!(
         spec.env,
         [
-            ("HOME".to_string(), HOST_HOME.to_string()),
-            ("TUNNEL_TOKEN".to_string(), "eyJhIjoiZjQ2".to_string()),
+            EnvValue::injected("HOME", HOST_HOME),
+            EnvValue::app("TUNNEL_TOKEN", "eyJhIjoiZjQ2"),
         ]
     );
 }
@@ -341,8 +346,7 @@ async fn an_encrypted_environment_wins_over_a_plaintext_one() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env
-            .contains(&("SOURCE".to_string(), "encrypted".to_string())),
+        spec.env.contains(&EnvValue::app("SOURCE", "encrypted")),
         "the encrypted sidecar is the one that counts, got {:?}",
         spec.env
     );
@@ -363,8 +367,7 @@ async fn an_encrypted_environment_is_ignored_without_an_identity() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env
-            .contains(&("SOURCE".to_string(), "plaintext".to_string())),
+        spec.env.contains(&EnvValue::app("SOURCE", "plaintext")),
         "an unconfigured identity leaves the encrypted sidecar untouched, got {:?}",
         spec.env
     );
@@ -399,8 +402,7 @@ async fn an_encrypted_value_may_hold_spaces() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env
-            .contains(&("MOTTO".to_string(), "two words".to_string())),
+        spec.env.contains(&EnvValue::app("MOTTO", "two words")),
         "an unquoted dotenv value keeps its spaces, got {:?}",
         spec.env
     );
@@ -420,7 +422,7 @@ async fn an_encrypted_environment_expands_the_host_home() {
         .expect("the service should resolve");
     assert!(
         spec.env
-            .contains(&("BIN".to_string(), format!("{HOST_HOME}/bin"))),
+            .contains(&EnvValue::app("BIN", &format!("{HOST_HOME}/bin"))),
         "the decrypted path goes through the same $HOME expansion, got {:?}",
         spec.env
     );
@@ -439,8 +441,7 @@ async fn a_service_without_an_encrypted_sidecar_still_reads_its_plaintext_one() 
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env
-            .contains(&("SOURCE".to_string(), "plaintext".to_string())),
+        spec.env.contains(&EnvValue::app("SOURCE", "plaintext")),
         "a configured identity alone must not conjure an encrypted sidecar, got {:?}",
         spec.env
     );
@@ -476,7 +477,7 @@ async fn an_encrypted_value_reaches_the_service_exactly_as_it_was_decrypted() {
         .expect("the service should resolve");
     assert!(
         spec.env
-            .contains(&("PASSWORD".to_string(), "\"p@ss\\word\"".to_string())),
+            .contains(&EnvValue::app("PASSWORD", "\"p@ss\\word\"")),
         "a decrypted secret is handed over untouched, got {:?}",
         spec.env
     );
@@ -548,8 +549,7 @@ async fn a_sidecar_pm3_never_opened_is_remembered_as_sealed() {
         "an app falling back to plaintext because no identity is configured must still stand out"
     );
     assert!(
-        spec.env
-            .contains(&("SOURCE".to_string(), "plaintext".to_string())),
+        spec.env.contains(&EnvValue::app("SOURCE", "plaintext")),
         "got {:?}",
         spec.env
     );
@@ -585,7 +585,8 @@ async fn the_spec_counts_only_the_values_the_operator_declared() {
         .await
         .expect("the service should resolve");
     assert_eq!(
-        spec.env_declared, 2,
+        spec.declared_env_count(),
+        2,
         "the HOME pm3 injects is not something the operator declared, got {:?}",
         spec.env
     );

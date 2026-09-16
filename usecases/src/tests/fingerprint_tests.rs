@@ -5,7 +5,6 @@ use super::*;
 fn spec() -> AppSpec {
     AppSpec {
         env_origin: entities::EnvOrigin::default(),
-        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,
@@ -16,8 +15,8 @@ fn spec() -> AppSpec {
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
         cwd: "/srv/api".to_string(),
         env: vec![
-            ("PORT".to_string(), "8080".to_string()),
-            ("HOME".to_string(), "/srv/api".to_string()),
+            EnvValue::app("PORT", "8080"),
+            EnvValue::app("HOME", "/srv/api"),
         ],
         autorestart: true,
         min_uptime_ms: 1000,
@@ -63,10 +62,7 @@ fn the_environment_renders_in_key_order_however_it_was_declared() {
 #[test]
 fn duplicate_environment_keys_render_in_value_order() {
     let one = AppSpec {
-        env: vec![
-            ("PORT".to_string(), "8080".to_string()),
-            ("PORT".to_string(), "9090".to_string()),
-        ],
+        env: vec![EnvValue::app("PORT", "8080"), EnvValue::app("PORT", "9090")],
         ..spec()
     };
     let other = AppSpec {
@@ -140,7 +136,7 @@ fn a_different_working_directory_renders_differently() {
 #[test]
 fn a_different_environment_value_renders_differently() {
     let retuned = AppSpec {
-        env: vec![("PORT".to_string(), "9090".to_string())],
+        env: vec![EnvValue::app("PORT", "9090")],
         ..spec()
     };
     assert_ne!(render_identity(&spec()), render_identity(&retuned));
@@ -272,4 +268,36 @@ fn the_ready_probe_leaves_the_identity_unchanged() {
         ..spec()
     };
     assert_eq!(render_identity(&spec()), render_identity(&reprobed));
+}
+
+#[test]
+fn the_scope_of_a_value_stays_out_of_the_identity() {
+    let declared = render_identity(&AppSpec {
+        env: vec![EnvValue::app("PORT", "8080")],
+        ..spec()
+    });
+    let injected = render_identity(&AppSpec {
+        env: vec![EnvValue::injected("PORT", "8080")],
+        ..spec()
+    });
+    assert_eq!(
+        declared, injected,
+        "where a value came from is deployment context, not process identity"
+    );
+}
+
+#[test]
+fn the_home_pm3_injects_stays_part_of_the_identity() {
+    let with_home = render_identity(&AppSpec {
+        env: vec![EnvValue::injected("HOME", "/home/dev")],
+        ..spec()
+    });
+    let without = render_identity(&AppSpec {
+        env: Vec::new(),
+        ..spec()
+    });
+    assert_ne!(
+        with_home, without,
+        "a service launched with a different home is a different process"
+    );
 }

@@ -1,4 +1,4 @@
-use entities::AppSpec;
+use entities::{AppSpec, EnvValue};
 
 use crate::ports::Liveness;
 
@@ -24,7 +24,6 @@ pub fn render_identity(spec: &AppSpec) -> String {
         cwd,
         env,
         env_origin: _,
-        env_declared: _,
         autorestart: _,
         min_uptime_ms: _,
         max_restarts: _,
@@ -91,18 +90,19 @@ const fn network_label(allowed: bool) -> &'static str {
     }
 }
 
-fn sorted_env(env: &[(String, String)]) -> Vec<&(String, String)> {
-    let mut entries: Vec<&(String, String)> = env.iter().collect();
-    entries.sort_by(|(left_key, left_value), (right_key, right_value)| {
-        left_key
-            .cmp(right_key)
-            .then_with(|| left_value.cmp(right_value))
+fn sorted_env(env: &[EnvValue]) -> Vec<&EnvValue> {
+    let mut entries: Vec<&EnvValue> = env.iter().collect();
+    entries.sort_by(|left, right| {
+        left.key
+            .cmp(&right.key)
+            .then_with(|| left.value.cmp(&right.value))
     });
     entries
 }
 
-fn entry_line(entry: &(String, String)) -> String {
-    let (key, value) = entry;
+fn entry_line(entry: &EnvValue) -> String {
+    let key = &entry.key;
+    let value = &entry.value;
     format!("{key}={value}")
 }
 

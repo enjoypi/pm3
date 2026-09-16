@@ -327,6 +327,19 @@ fn resolve_specs_skips_a_blank_tmp_dir() {
 }
 
 #[test]
+fn resolve_specs_skips_a_tmp_dir_that_would_hand_over_a_hidden_root() {
+    let defaults = SpecDefaults {
+        tmp_dir: Some("/tmp"),
+        ..defaults()
+    };
+    let spec = resolve_one(&defaults, &minimal_entry());
+    assert_eq!(
+        spec.sandbox.derived_roots,
+        vec![CWD, LOGS_DIR],
+        "granting the ancestor of pm3.home would hand the service the dump and every credential"
+    );
+}
+#[test]
 fn resolve_specs_grants_no_writable_root_in_read_only_mode() {
     let defaults = SpecDefaults {
         sandbox_mode: SandboxMode::ReadOnly,

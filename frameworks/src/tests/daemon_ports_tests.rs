@@ -63,7 +63,6 @@ fn stored_record() -> ProcessRecord {
     ProcessRecord {
         spec: AppSpec {
             env_origin: adapters::EnvOrigin::default(),
-            env_declared: 0,
             max_memory_kib: None,
             ready_probe: None,
             liveness_probe: None,

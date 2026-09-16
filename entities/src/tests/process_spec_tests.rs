@@ -214,7 +214,7 @@ fn validate_rejects_zero_listen_timeout() {
 #[test]
 fn validate_rejects_empty_env_key() {
     let candidate = AppSpec {
-        env: vec![(String::new(), "value".to_string())],
+        env: vec![EnvValue::app("", "value")],
         ..spec("api")
     };
     let err = validate_spec(&candidate).unwrap_err();
@@ -450,4 +450,18 @@ fn every_environment_origin_has_a_name() {
     assert_eq!(crate::EnvOrigin::Encrypted.as_str(), "encrypted");
     assert_eq!(crate::EnvOrigin::Sealed.as_str(), "sealed");
     assert_eq!(crate::EnvOrigin::default(), crate::EnvOrigin::Plain);
+}
+
+#[test]
+fn the_declared_env_count_excludes_the_values_pm3_injects() {
+    let spec = AppSpec {
+        env: vec![
+            EnvValue::injected("HOME", "/home/dev"),
+            EnvValue::global("TZ", "UTC"),
+            EnvValue::app("PORT", "8080"),
+        ],
+        ..spec("api")
+    };
+    let counted = spec.declared_env_count();
+    assert_eq!(counted, 2, "got: {counted}");
 }

@@ -1,4 +1,4 @@
-use entities::{ProcessStatus, SandboxMode};
+use entities::{EnvValue, ProcessStatus, SandboxMode};
 
 use super::test_helpers::*;
 
@@ -65,6 +65,11 @@ fn view_carries_where_the_environment_came_from() {
 #[test]
 fn view_carries_how_many_values_were_declared() {
     let mut candidate = record("api", 3);
-    candidate.spec.env_declared = 4;
-    assert_eq!(candidate.view(5000).env_declared, 4);
+    candidate.spec.env = vec![
+        EnvValue::injected("HOME", "/home/dev"),
+        EnvValue::global("TZ", "UTC"),
+        EnvValue::app("PORT", "8080"),
+    ];
+    let declared = candidate.view(5000).env_declared;
+    assert_eq!(declared, 2, "got: {declared}");
 }

@@ -2,6 +2,7 @@ use thiserror::Error;
 
 use super::{
     depgraph::DependencyNode,
+    env::{EnvScope, EnvValue},
     ready::{ReadyProbe, validate_liveness_probe, validate_probe},
     restart::RestartPolicy,
 };
@@ -36,9 +37,8 @@ pub struct AppSpec {
     pub script: String,
     pub args: Vec<String>,
     pub cwd: String,
-    pub env: Vec<(String, String)>,
+    pub env: Vec<EnvValue>,
     pub env_origin: EnvOrigin,
-    pub env_declared: usize,
     pub autorestart: bool,
     pub min_uptime_ms: u64,
     pub max_restarts: u32,
@@ -145,6 +145,13 @@ impl AppSpec {
     pub const fn is_scheduled_task(&self) -> bool {
         self.schedule.is_some() && !self.autorestart
     }
+    #[must_use]
+    pub fn declared_env_count(&self) -> usize {
+        self.env
+            .iter()
+            .filter(|entry| entry.scope != EnvScope::Injected)
+            .count()
+    }
 
     #[must_use]
     pub fn stops_on(&self, code: i32) -> bool {
@@ -223,7 +230,7 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
     if spec.listen_timeout_ms == Some(0) {
         return Err(SpecError::InvalidListenTimeout(spec.name.clone()));
     }
-    if spec.env.iter().any(|(key, _value)| key.trim().is_empty()) {
+    if spec.env.iter().any(|entry| entry.key.trim().is_empty()) {
         return Err(SpecError::EmptyEnvKey(spec.name.clone()));
     }
     if spec

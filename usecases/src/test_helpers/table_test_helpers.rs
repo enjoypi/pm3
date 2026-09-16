@@ -12,7 +12,6 @@ pub fn record_with_id(name: &str, pm_id: u32) -> ProcessRecord {
 pub fn spec(name: &str) -> AppSpec {
     AppSpec {
         env_origin: entities::EnvOrigin::default(),
-        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,

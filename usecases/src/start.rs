@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use entities::{AppSpec, DependencyNode, ProcessIdentity, ProcessStatus, topo_sort, validate_spec};
+use entities::{
+    AppSpec, DependencyNode, EnvValue, ProcessIdentity, ProcessStatus, topo_sort, validate_spec,
+};
 
 use crate::{
     Ports, Result, UsecaseError, fingerprint::render_identity, log_paths::log_paths,
@@ -355,10 +357,18 @@ pub(crate) fn build_launch_spec(
         program: wrapped.program,
         args: wrapped.args,
         cwd: spec.cwd.clone(),
-        env: spec.env.clone(),
+        env: launch_environment(&spec.env),
         stdout_path: paths.stdout,
         stderr_path: paths.stderr,
     })
+}
+
+fn launch_environment(env: &[EnvValue]) -> Vec<(String, String)> {
+    env.iter().map(pair_of).collect()
+}
+
+fn pair_of(entry: &EnvValue) -> (String, String) {
+    (entry.key.clone(), entry.value.clone())
 }
 
 #[must_use]

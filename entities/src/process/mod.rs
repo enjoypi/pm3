@@ -1,4 +1,5 @@
 mod depgraph;
+mod env;
 mod limits;
 mod ready;
 mod restart;
@@ -9,6 +10,7 @@ mod status;
 
 pub use self::{
     depgraph::{DependencyError, DependencyNode, topo_sort},
+    env::{EnvScope, EnvValue, merge_environment},
     limits::{MemoryVerdict, decide_memory_verdict, parse_memory_limit},
     ready::{ReadyProbe, validate_liveness_probe, validate_probe},
     restart::{RestartDecision, RestartPolicy, decide_restart},

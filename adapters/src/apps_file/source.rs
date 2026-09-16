@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use usecases::{AppSpec, EnvOrigin, SpecError, SpecResolveError, SpecResolver, validate_app_name};
+use usecases::{
+    AppSpec, EnvOrigin, EnvValue, SpecError, SpecResolveError, SpecResolver, merge_environment,
+    validate_app_name,
+};
 
 use super::{
     enc_file::{ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
@@ -48,7 +51,6 @@ impl SpecSource {
         let environment = self.resolve_environment(&path, name).await?;
         spec.env = environment.values;
         spec.env_origin = environment.origin;
-        spec.env_declared = environment.declared;
         crate::workspace::materialise_workspace(
             &mut spec,
             &self.config.sandbox.forbidden_writable_roots,
@@ -71,30 +73,28 @@ impl SpecSource {
         let (origin, declared) = match self.decrypt_environment(service).await? {
             Secrets::Opened(text) => (
                 EnvOrigin::Encrypted,
-                parse_env_text(&text.path, self.host_home.as_deref(), &text.body)?,
+                declared_values(&parse_env_text(
+                    &text.path,
+                    self.host_home.as_deref(),
+                    &text.body,
+                )?),
             ),
             Secrets::Sealed => (EnvOrigin::Sealed, self.plain_environment(service).await?),
             Secrets::Absent => (EnvOrigin::Plain, self.plain_environment(service).await?),
         };
+        let values = merge_environment(&[&injected_home(self.host_home.as_deref()), &declared]);
         let counted = declared.len();
         log_environment(name, counted, origin.as_str());
-        Ok(Environment {
-            origin,
-            declared: counted,
-            values: with_host_home(self.host_home.as_deref(), declared),
-        })
+        Ok(Environment { origin, values })
     }
 
-    async fn plain_environment(
-        &self,
-        service: &Path,
-    ) -> Result<Vec<(String, String)>, AppsFileError> {
+    async fn plain_environment(&self, service: &Path) -> Result<Vec<EnvValue>, AppsFileError> {
         let declared = load_env_file(
             &service.with_extension(ENV_FILE_SUFFIX),
             self.host_home.as_deref(),
         )
         .await?;
-        Ok(declared)
+        Ok(declared_values(&declared))
     }
 
     async fn decrypt_environment(&self, service: &Path) -> Result<Secrets, AppsFileError> {
@@ -123,8 +123,7 @@ impl SpecSource {
 
 struct Environment {
     origin: EnvOrigin,
-    declared: usize,
-    values: Vec<(String, String)>,
+    values: Vec<EnvValue>,
 }
 
 enum Secrets {
@@ -138,16 +137,17 @@ struct Decrypted {
     body: String,
 }
 
-fn with_host_home(home: Option<&str>, declared: Vec<(String, String)>) -> Vec<(String, String)> {
-    let Some(home) = home else {
-        return declared;
-    };
-    if declared.iter().any(|(key, _)| key == HOME_VARIABLE) {
-        return declared;
-    }
-    let mut merged = vec![(HOME_VARIABLE.to_string(), home.to_string())];
-    merged.extend(declared);
-    merged
+fn injected_home(home: Option<&str>) -> Vec<EnvValue> {
+    home.map_or_else(Vec::new, |value| {
+        vec![EnvValue::injected(HOME_VARIABLE, value)]
+    })
+}
+
+fn declared_values(declared: &[(String, String)]) -> Vec<EnvValue> {
+    declared
+        .iter()
+        .map(|(key, value)| EnvValue::app(key, value))
+        .collect()
 }
 
 fn log_environment(app: &str, entries: usize, origin: &str) {

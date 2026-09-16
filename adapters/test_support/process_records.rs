@@ -1,6 +1,6 @@
 use usecases::{
-    AppSpec, ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus, ReadScope, SandboxMode,
-    SandboxPolicy,
+    AppSpec, EnvValue, ProcessIdentity, ProcessRecord, ProcessRuntime, ProcessStatus, ReadScope,
+    SandboxMode, SandboxPolicy,
 };
 
 pub const CREATED_AT_MS: u64 = 1_700_000_000_000;
@@ -22,7 +22,6 @@ pub fn sample_identity() -> ProcessIdentity {
 pub fn sample_spec(name: &str) -> AppSpec {
     AppSpec {
         env_origin: usecases::EnvOrigin::default(),
-        env_declared: 0,
         max_memory_kib: None,
         ready_probe: None,
         liveness_probe: None,
@@ -32,7 +31,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
         cwd: "/srv/web".to_string(),
-        env: vec![("PORT".to_string(), "8080".to_string())],
+        env: vec![EnvValue::app("PORT", "8080")],
         autorestart: true,
         min_uptime_ms: 1000,
         max_restarts: 15,

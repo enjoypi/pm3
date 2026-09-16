@@ -59,7 +59,7 @@ impl ProcessRecord {
             sandbox_mode: self.spec.sandbox.mode.as_str().to_string(),
             sandbox_network: self.spec.sandbox.network,
             env_origin: self.spec.env_origin,
-            env_declared: self.spec.env_declared,
+            env_declared: self.spec.declared_env_count(),
             script: self.spec.script.clone(),
             args: self.spec.args.clone(),
             cwd: self.spec.cwd.clone(),
