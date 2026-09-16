@@ -83,3 +83,8 @@ Techniques (shared by integration tests and e2e):
   Fix: delete the lib unit test; drive failure paths through e2e too (e.g. `pm3 --config /nonexistent shutdown`)
   Note: `main.rs` only calls `frameworks::cli` with no duplicate mod compilation, yet llvm-cov still counts two instantiations ("lib test binary + pm3 bin")
 - New error branches go through the real binary: in e2e, `UnixListener::bind(socket)` a fake daemon that replies `200` + non-JSON body to drive the CLI's decode-failure path (`tests/stale_socket.rs`); such fake servers MUST use `while let Ok(..) = accept()` and MUST NOT `join()` (replying a fixed number of times hangs the test)
+
+## Windows transport
+
+- **tokio has no `UnixListener` on Windows** (std has one but it can only block, it cannot join the reactor) → the transport on Windows is a named pipe `\\.\pipe\pm3-<hash>` (`layout::pipe_name_of`, `DefaultHasher(socket path + secret)`; CLI and daemon are the same binary so the hashes agree), while `pm3.sock` still exists but only as an **existence marker file**: `bind_uds` writes the marker after creating the pipe, `clear_runtime_files` deletes it, and `wait_until_released` plus "stale socket self-healing" all keep working on the file. MUST NOT treat the marker file as a real socket to bind
+- **The pipe name MUST mix in `<pm3.home>/pipe.secret`** (`layout::pipe_secret`, generated when missing, rebuilt when corrupt, 0600 semantics via the NTFS user directory): Windows has no `SO_PEERCRED`, peer admission is fail-open, and "other users can neither guess the pipe name nor register it first" is the only isolation here. Hashing only the socket path makes the pipe name computable by any user on the machine ⇒ squatting it is a man-in-the-middle

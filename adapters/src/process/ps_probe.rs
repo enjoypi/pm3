@@ -22,6 +22,9 @@ const SAMPLE_FORMAT: &str = "pid=,pgid=,rss=,pcpu=";
 const PID_SEPARATOR: &str = ",";
 const PID_FLAG: &str = "-p";
 const EVERY_PROCESS_FLAG: &str = "-A";
+const GROUP_FLAG: &str = "-g";
+const GROUP_FORMAT: &str = "pid=";
+const GROUP_ACTION: &str = "probe_group";
 const IDENTITY_ACTION: &str = "probe";
 const MEMORY_ACTION: &str = "probe_memory";
 const RESOURCE_ACTION: &str = "probe_resources";
@@ -106,6 +109,21 @@ impl PsProcessProbe {
         self.read_ps(command, joined, action).await
     }
 
+    async fn ask_group(&self, pgid: u32) -> Option<String> {
+        let label = pgid.to_string();
+        let mut command = Command::new(&self.program);
+        command
+            .args([WIDE_FLAG, FORMAT_FLAG, GROUP_FORMAT, GROUP_FLAG])
+            .arg(&label)
+            .env(LOCALE_VARIABLE, FIXED_LOCALE);
+        self.read_ps(command, &label, GROUP_ACTION).await
+    }
+
+    async fn group_is_empty(&self, pgid: u32) -> Option<bool> {
+        let stdout = self.ask_group(pgid).await?;
+        Some(count_pids(&stdout) == 0)
+    }
+
     async fn read_ps(&self, command: Command, joined: &str, action: &str) -> Option<String> {
         let started = Instant::now();
         let output = match capture_timed(command, self.timeout_ms).await {
@@ -143,6 +161,13 @@ fn unreadable(pids: &[u32]) -> HashMap<u32, Liveness> {
     pids.iter()
         .map(|pid| (*pid, Liveness::Unreadable))
         .collect()
+}
+
+fn count_pids(stdout: &str) -> usize {
+    stdout
+        .lines()
+        .filter(|line| line.trim().parse::<u32>().is_ok())
+        .count()
 }
 
 fn join_pids(pids: &[u32]) -> String {
@@ -277,6 +302,24 @@ impl ProcessProbe for PsProcessProbe {
 
     async fn resource_usage(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
         self.resource_samples(pids).await
+    }
+
+    async fn wait_group_gone(&self, pgid: u32, timeout_ms: u64) -> bool {
+        let started = Instant::now();
+        let budget = Duration::from_millis(timeout_ms);
+        loop {
+            match self.group_is_empty(pgid).await {
+                Some(true) => return true,
+                Some(false) => {}
+                None => return false,
+            }
+            let remaining = budget.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return false;
+            }
+            let step = Duration::from_millis(self.poll_interval_ms.max(1));
+            sleep(remaining.min(step)).await;
+        }
     }
 
     async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {

@@ -1,6 +1,9 @@
 use entities::ProcessStatus;
 
-use crate::{UsecaseError, ports::RotatedLog};
+use crate::{
+    UsecaseError,
+    ports::{ExitOutcome, RotatedLog},
+};
 
 pub fn log_rotated(rotated: &RotatedLog) {
     let path = rotated.path.as_str();
@@ -51,14 +54,18 @@ pub fn log_rotate_failed(reason: &str) {
     );
 }
 
-pub fn log_settled(app: &str, status: ProcessStatus) {
+pub fn log_settled(app: &str, status: ProcessStatus, outcome: ExitOutcome) {
     let status = status.as_str();
-    tracing::debug!(
+    let exit = outcome.as_str();
+    let exit_code = outcome.code();
+    tracing::info!(
         feature = "supervisor",
         action = "settled",
         app,
         status,
-        "managed app settled",
+        exit,
+        exit_code,
+        "pm3 stopped supervising a service that exited",
     );
 }
 

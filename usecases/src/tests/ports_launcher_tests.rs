@@ -54,3 +54,17 @@ async fn a_launcher_that_handed_out_nothing_tracks_nothing() {
     let ports = crate::ports_test_helpers::FakePorts::new(1000);
     assert!(ports.tracked_pids().await.is_empty());
 }
+
+#[test]
+fn every_outcome_names_itself_for_the_log() {
+    assert_eq!(ExitOutcome::Code(0).as_str(), "code");
+    assert_eq!(ExitOutcome::Signalled.as_str(), "signalled");
+    assert_eq!(ExitOutcome::Unobserved.as_str(), "unobserved");
+}
+
+#[test]
+fn only_a_code_carries_a_number() {
+    assert_eq!(ExitOutcome::Code(3).code(), Some(3));
+    assert_eq!(ExitOutcome::Signalled.code(), None);
+    assert_eq!(ExitOutcome::Unobserved.code(), None);
+}

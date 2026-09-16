@@ -164,7 +164,7 @@ impl Supervisor {
         }
         if self.ready_failed.remove(name) {
             match settle_failed_probe(&mut self.table, name, ports).await {
-                Ok(()) => log_settled(name, ProcessStatus::Errored),
+                Ok(()) => log_settled(name, ProcessStatus::Errored, outcome),
                 Err(error) => log_failure("exit", name, &error),
             }
             return effects;
@@ -176,7 +176,7 @@ impl Supervisor {
             ExitAction::RestartAfter { delay_ms } => {
                 effects.push(self.queue_restart(name, delay_ms));
             }
-            ExitAction::Settled { status } => log_settled(name, status),
+            ExitAction::Settled { status } => log_settled(name, status, outcome),
         }
         effects
     }

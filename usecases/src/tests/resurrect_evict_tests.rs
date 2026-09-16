@@ -388,3 +388,98 @@ async fn a_confirmed_survivor_is_still_signalled_through_its_process_group() {
         ports.signal_scopes()
     );
 }
+
+#[tokio::test]
+async fn an_eviction_waits_for_the_whole_group_not_just_the_leader() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.seed_group(SURVIVOR_PID, &[SURVIVOR_PID, 99]);
+    resurrected(&ports).await;
+    assert!(
+        ports.group_waited().contains(&SURVIVOR_PID),
+        "a child that outlives its leader still holds the resources the replacement needs: {:?}",
+        ports.group_waited()
+    );
+}
+
+#[tokio::test]
+async fn a_group_member_that_outlives_the_leader_is_force_killed() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.seed_group(SURVIVOR_PID, &[SURVIVOR_PID, 99]);
+    ports.make_stubborn(99);
+    resurrected(&ports).await;
+    assert_eq!(
+        ports.force_killed(),
+        vec![SURVIVOR_PID],
+        "a group that will not drain is force killed through its leader pid"
+    );
+}
+
+#[tokio::test]
+async fn a_group_that_drains_on_its_own_is_never_force_killed() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.seed_group(SURVIVOR_PID, &[SURVIVOR_PID, 99]);
+    resurrected(&ports).await;
+    assert!(
+        ports.force_killed().is_empty(),
+        "got: {:?}",
+        ports.force_killed()
+    );
+}
+
+#[tokio::test]
+async fn an_unverified_pid_never_waits_on_a_group_it_may_not_own() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = None;
+    ports.seed_stored(vec![record]);
+    ports.seed_group(SURVIVOR_PID, &[SURVIVOR_PID, 99]);
+    resurrected(&ports).await;
+    assert!(
+        ports.group_waited().is_empty(),
+        "an adopted pid may not lead its group, so pm3 must not judge that group's members: {:?}",
+        ports.group_waited()
+    );
+}
+
+#[tokio::test]
+async fn a_refused_force_kill_of_a_lingering_group_still_starts_the_replacement() {
+    let ports = FakePorts::new(1000);
+    let mut record = survivor(&ports, "api");
+    record.runtime.identity = Some(ProcessIdentity {
+        launch_digest: "stale".to_string(),
+        ..expected_identity(&ports, &record)
+    });
+    ports.seed_stored(vec![record]);
+    ports.seed_group(SURVIVOR_PID, &[SURVIVOR_PID, 99]);
+    ports.make_stubborn(99);
+    ports.fail_force_kill_for(SURVIVOR_PID);
+    resurrected(&ports).await;
+    assert!(
+        ports.force_killed().is_empty(),
+        "got: {:?}",
+        ports.force_killed()
+    );
+    assert_eq!(
+        ports.spawned_names(),
+        vec!["api"],
+        "a group pm3 cannot reap must not hold back the replacement"
+    );
+}

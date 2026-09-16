@@ -147,6 +147,10 @@ impl ProcessProbe for DaemonPorts {
         self.probe.wait_gone(pid, timeout_ms).await
     }
 
+    async fn wait_group_gone(&self, pgid: u32, timeout_ms: u64) -> bool {
+        self.probe.wait_group_gone(pgid, timeout_ms).await
+    }
+
     async fn resident_memory(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
         self.probe.resident_memory(pids).await
     }

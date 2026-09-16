@@ -75,6 +75,8 @@ struct FakeState {
     tracked: BTreeSet<u32>,
     file_digests: BTreeMap<String, String>,
     digest_failures: Vec<String>,
+    groups: BTreeMap<u32, Vec<u32>>,
+    group_waited: Vec<u32>,
 }
 
 #[derive(Debug, Default)]
@@ -169,6 +171,37 @@ impl FakePorts {
     #[must_use]
     pub fn saved_boot(&self) -> Option<String> {
         self.read(|state| state.saved_boot.clone())
+    }
+
+    pub fn seed_group(&self, pgid: u32, members: &[u32]) {
+        self.with_state(|state| {
+            state.groups.insert(pgid, members.to_vec());
+        });
+    }
+
+    #[must_use]
+    pub fn group_waited(&self) -> Vec<u32> {
+        self.read(|state| state.group_waited.clone())
+    }
+
+    pub(crate) fn drain_group(&self, pgid: u32) -> bool {
+        let mut state = self.locked();
+        let drained = {
+            let state = &mut *state;
+            state.group_waited.push(pgid);
+            state.events.push(format!("wait_group:{pgid}"));
+            let members = state.groups.get(&pgid).cloned().unwrap_or_default();
+            let lingering: Vec<u32> = members
+                .into_iter()
+                .filter(|member| state.stubborn.contains(member))
+                .collect();
+            for member in &lingering {
+                state.live.insert(*member, live_token(*member));
+            }
+            lingering.is_empty()
+        };
+        drop(state);
+        drained
     }
 
     pub fn seed_live(&self, pid: u32, token: &str) {

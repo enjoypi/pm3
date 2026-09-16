@@ -47,6 +47,23 @@ impl ExitOutcome {
             Self::Unobserved => false,
         }
     }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Code(_code) => "code",
+            Self::Signalled => "signalled",
+            Self::Unobserved => "unobserved",
+        }
+    }
+
+    #[must_use]
+    pub const fn code(self) -> Option<i32> {
+        match self {
+            Self::Code(code) => Some(code),
+            Self::Signalled | Self::Unobserved => None,
+        }
+    }
 }
 
 pub trait ProcessLauncher: Send + Sync {

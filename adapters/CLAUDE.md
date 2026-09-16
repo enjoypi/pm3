@@ -134,3 +134,12 @@ The semantics of the four path classes and the "hidden nesting direction" securi
 ### DTO
 
 - Adding a field to `ProcessView` pushes `DaemonReply::Described` past the clippy `large_enum_variant` threshold → put `#[expect(..., reason = "one reply travels per CLI command")]` on the enum; don't Box just to pass the lint (it would ripple through the whole controller/presenter chain)
+
+### Install backups
+
+- Handover backups land in **`<pm3.home>/install-backups/<old version>/`** (`adapters::install::backup_root`, overridable via `PM3_INSTALL_BACKUPS`, destination `PM3_INSTALL_PATH`; the directory name is the last token of `<old binary> --version`, `unknown` if unreadable); MUST NOT go back to `~/.pm3-install-backups`: the backup contains the old `config.yaml`, and `mkdir` permissions are at the umask's mercy (0775 observed in the wild) → inside `pm3.home` the 0700 layer catches it (backup dir and files get explicit chmod 0700/0600), and it happens to be a sandbox hidden root ⇒ managed services cannot even see the backups. Rolling back means taking the `pm3` binary + unit + config trio from the matching version directory
+
+### Windows units
+
+- The service form is a per-user OnLogon task (no admin needed): the unit is Task 2.0 XML at `~/.pm3/service/<label>.xml`, registered via `schtasks /Create /XML`. **Task Scheduler XML does not support environment variables** → `HOME`/`PATH`/`PM3_*` are set line by line by the sibling `<label>-daemon.cmd` wrapper script (`%` in values is escaped to `%%`), and the script always ends with `exit /b 1` — this is the key to restart semantics: Task Scheduler only restarts on "failure" (RestartOnFailure, minimum interval 1 minute), so always-fail ≈ `always`, at the cost of `on-failure` degrading to `always` on Windows
+- The `UnitKind::WinSchtasks` variant, the XML/wrapper renderers, and the schtasks command builders MUST NOT be gated behind `cfg(windows)`: pure logic compiles cross-platform and unit tests all run on Linux (same pattern as "the systemd renderer is testable on macOS"); `#[cfg]` only appears in host-fact collection (uid/HOME/signals/permission bits) and the transport layer. This keeps the `just cov` gate naturally immune to Windows code

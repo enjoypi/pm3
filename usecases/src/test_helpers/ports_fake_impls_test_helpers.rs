@@ -157,6 +157,11 @@ impl ProcessProbe for FakePorts {
         observed
     }
 
+    async fn wait_group_gone(&self, pgid: u32, timeout_ms: u64) -> bool {
+        let _ = timeout_ms;
+        self.drain_group(pgid)
+    }
+
     async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
         let _ = timeout_ms;
         if self.read(|state| state.slow_wait) {

@@ -183,6 +183,7 @@ async fn evict_pid(
     }
     let fresh = ports.identity(pid).await;
     if matches!(fresh, Liveness::Gone) {
+        force_lingering_group(name, pid, scope, kill_timeout_ms, ports).await;
         return;
     }
     if pid_was_recycled(&fresh, expected) {
@@ -197,6 +198,7 @@ async fn evict_pid(
     log_evict(name, pid, refused.as_deref());
     let liveness = ports.wait_gone(pid, kill_timeout_ms).await;
     if matches!(liveness, Liveness::Gone) {
+        force_lingering_group(name, pid, scope, kill_timeout_ms, ports).await;
         return;
     }
     if pid_was_recycled(&liveness, expected) {
@@ -209,6 +211,27 @@ async fn evict_pid(
         .err()
         .map(|e| e.to_string());
     log_force_evict(name, pid, forced.as_deref());
+}
+
+async fn force_lingering_group(
+    name: &str,
+    pid: u32,
+    scope: SignalScope,
+    kill_timeout_ms: u64,
+    ports: &impl Ports,
+) {
+    if !scope.reaches_the_group() {
+        return;
+    }
+    if ports.wait_group_gone(pid, kill_timeout_ms).await {
+        return;
+    }
+    let forced = ports
+        .force_kill(pid, scope)
+        .await
+        .err()
+        .map(|e| e.to_string());
+    log_lingering_group(name, pid, forced.as_deref());
 }
 
 async fn adopt(table: &mut ProcessTable, name: &str, ports: &impl Ports) -> StartOutcome {
@@ -336,6 +359,27 @@ fn log_evict(app: &str, pid: u32, refused: Option<&str>) {
         pid,
         reason,
         "pm3 cannot stop a stale survivor, so it may outlive its replacement",
+    );
+}
+
+fn log_lingering_group(app: &str, pid: u32, refused: Option<&str>) {
+    let Some(reason) = refused else {
+        tracing::warn!(
+            feature = "resurrect",
+            action = "evict",
+            app,
+            pid,
+            "a child outlived the service leader and still held its resources, so pm3 force killed the whole group before starting the replacement",
+        );
+        return;
+    };
+    tracing::warn!(
+        feature = "resurrect",
+        action = "evict",
+        app,
+        pid,
+        reason,
+        "pm3 cannot force kill a group whose child outlived the leader, so the replacement may fail to claim the resources it needs",
     );
 }
 

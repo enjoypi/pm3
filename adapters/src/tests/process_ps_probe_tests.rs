@@ -404,3 +404,44 @@ async fn malformed_resource_lines_are_skipped_one_by_one() {
         })
     );
 }
+
+#[tokio::test]
+async fn an_empty_group_drains_at_once() {
+    let (_dir, probe) = probe_with("exit 1");
+    assert!(probe.wait_group_gone(7, 60_000).await);
+}
+
+#[tokio::test]
+async fn a_group_still_holding_a_member_does_not_drain() {
+    let (_dir, probe) = probe_with("echo '  99'");
+    assert!(!probe.wait_group_gone(7, 30).await);
+}
+
+#[tokio::test]
+async fn a_group_drains_once_its_last_member_leaves() {
+    let (_dir, probe) = probe_with(concat!(
+        "if [ -f \"$0.asked\" ]; then exit 1; fi\n",
+        "touch \"$0.asked\"\n",
+        "echo '  99'",
+    ));
+    assert!(probe.wait_group_gone(7, 60_000).await);
+}
+
+#[tokio::test]
+async fn a_group_pm3_cannot_probe_is_never_reported_as_drained() {
+    let probe = PsProcessProbe::new(
+        "/nonexistent/pm3-ps".to_string(),
+        PROBE_TIMEOUT_MS,
+        POLL_STEP_MS,
+    );
+    assert!(
+        !probe.wait_group_gone(7, 60_000).await,
+        "an unreadable group must not pass as empty"
+    );
+}
+
+#[tokio::test]
+async fn a_group_probe_stops_when_the_budget_is_already_spent() {
+    let (_dir, probe) = probe_with("echo '  99'");
+    assert!(!probe.wait_group_gone(7, 0).await);
+}
