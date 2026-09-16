@@ -39,6 +39,7 @@ pub use self::{
         enc_file_of, encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file,
         load_enc_file, load_env_file, load_global_env, load_service_file, parse_apps_file,
         parse_env_file, parse_service_file, resolve_checked, service_file_of,
+        warn_misplaced_global_env,
     },
     config::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,

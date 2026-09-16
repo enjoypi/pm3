@@ -18,7 +18,8 @@ const XDG_CONFIG_FALLBACK: &str = "~/.config";
 pub const XDG_STATE_FALLBACK: &str = "~/.local/state";
 const XDG_DATA_FALLBACK: &str = "~/.local/share";
 const RUNTIME_DIR_ROOT: &str = "/run/user";
-const SUN_LEN_LIMIT: usize = 104;
+const SUN_PATH_CAPACITY: usize = 104;
+const LONGEST_SOCKET_PATH: usize = SUN_PATH_CAPACITY - 1;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Pm3Roots {
@@ -81,6 +82,7 @@ pub struct RuntimeSources<'s> {
     pub xdg: Option<&'s str>,
     pub uid: Option<u32>,
     pub state: &'s Path,
+    pub home: Option<&'s str>,
     pub exists: fn(&Path) -> bool,
 }
 
@@ -98,7 +100,7 @@ pub enum PathError {
     NamedHome(String),
 
     #[error(
-        "cannot accept the socket path '{path}': {length} bytes exceeds the {limit} the operating system allows for a unix socket"
+        "cannot accept the socket path '{path}': {length} characters exceeds the {limit} the operating system allows for a unix socket"
     )]
     SocketTooLong {
         path: String,
@@ -166,18 +168,17 @@ fn resolve_xdg_root(
     Ok(expand_home(base, home_env)?.join(PM3_SUBDIR))
 }
 
-#[must_use]
-pub fn resolve_runtime_root(sources: &RuntimeSources<'_>) -> PathBuf {
+pub fn resolve_runtime_root(sources: &RuntimeSources<'_>) -> Result<PathBuf, PathError> {
     if let Some(root) = named(sources.declared) {
-        return PathBuf::from(root);
+        return expand_home(root, sources.home);
     }
     if let Some(root) = named(sources.xdg) {
-        return Path::new(root).join(PM3_SUBDIR);
+        return Ok(expand_home(root, sources.home)?.join(PM3_SUBDIR));
     }
     if let Some(owned) = per_user_runtime_dir(sources.uid, sources.exists) {
-        return owned;
+        return Ok(owned);
     }
-    sources.state.join(RUNTIME_SUBDIR)
+    Ok(sources.state.join(RUNTIME_SUBDIR))
 }
 
 fn per_user_runtime_dir(uid: Option<u32>, exists: fn(&Path) -> bool) -> Option<PathBuf> {
@@ -193,11 +194,11 @@ fn named(value: Option<&str>) -> Option<&str> {
 pub fn check_socket_length(socket: &Path) -> Result<(), PathError> {
     let path = socket.to_string_lossy();
     let length = path.len();
-    if length > SUN_LEN_LIMIT {
+    if length > LONGEST_SOCKET_PATH {
         return Err(PathError::SocketTooLong {
             path: path.into_owned(),
             length,
-            limit: SUN_LEN_LIMIT,
+            limit: LONGEST_SOCKET_PATH,
         });
     }
     Ok(())

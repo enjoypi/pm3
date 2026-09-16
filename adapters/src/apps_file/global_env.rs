@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use usecases::{EnvScope, EnvValue};
 
@@ -30,6 +33,25 @@ pub async fn load_global_env(
     let declared = merge_layers(&plain, opened);
     log_global_env(declared.len());
     Ok(scoped(&declared, EnvScope::Global))
+}
+
+pub async fn warn_misplaced_global_env(config_root: &Path, cfg_dir: &Path) {
+    let Some(stray) = stray_global_env(config_root, cfg_dir) else {
+        return;
+    };
+    for suffix in [ENV_FILE_SUFFIX, ENC_FILE_SUFFIX] {
+        let path = stray.with_extension(suffix);
+        if tokio::fs::metadata(&path).await.is_ok() {
+            log_misplaced_global_env(&path.to_string_lossy(), &config_root.to_string_lossy());
+        }
+    }
+}
+
+fn stray_global_env(config_root: &Path, cfg_dir: &Path) -> Option<PathBuf> {
+    if cfg_dir == config_root {
+        return None;
+    }
+    Some(cfg_dir.join(GLOBAL_ENV_STEM))
 }
 
 fn merge_layers(plain: &[(String, String)], opened: Opened) -> Vec<(String, String)> {
@@ -132,6 +154,16 @@ fn log_sealed_global_env(path: &str) {
         action = "load_global_env",
         path,
         "pm3 left the shared encrypted environment closed because pm3.sops_identity_file names no identity, so every app runs without those values",
+    );
+}
+
+fn log_misplaced_global_env(path: &str, config_root: &str) {
+    tracing::warn!(
+        feature = "service",
+        action = "load_global_env",
+        path,
+        config_root,
+        "pm3 reads the shared environment from its config root, not from pm3.cfg_dir, so this file is ignored and every app runs without those values",
     );
 }
 

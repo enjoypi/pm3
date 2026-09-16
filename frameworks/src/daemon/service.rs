@@ -2,7 +2,7 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use adapters::{
     DaemonHandle, Pm3Paths, SandboxProgramSet, SpecSource, decryptor_env, load_and_parse_config,
-    load_global_env, log_startup_banner, router,
+    load_global_env, log_startup_banner, router, warn_misplaced_global_env,
 };
 use tokio::sync::mpsc;
 
@@ -47,6 +47,7 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
     let home = host_home();
     let Pm3Places { paths, cfg_dir } = resolve_places(&config.pm3, home.as_deref())?;
     ensure_layout(&paths, &cfg_dir).await?;
+    warn_misplaced_global_env(&paths.roots.config, &cfg_dir).await;
     let global_env = load_global_env(&config.pm3, &paths.roots.config, home.as_deref())
         .await
         .map_err(|error| unreadable_global_env(&error))?;

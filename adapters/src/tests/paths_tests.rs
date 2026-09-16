@@ -180,9 +180,57 @@ fn the_runtime_root_prefers_the_explicit_variable() {
         xdg: Some("/x/run"),
         uid: Some(1000),
         state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
         exists: |_| true,
-    });
+    })
+    .expect("an absolute runtime root resolves");
     assert_eq!(root, Path::new("/srv/run"));
+}
+
+#[test]
+fn a_tilde_runtime_root_expands_to_the_home_like_every_other_root() {
+    let root = resolve_runtime_root(&RuntimeSources {
+        declared: Some("~/run"),
+        xdg: None,
+        uid: Some(1000),
+        state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
+        exists: |_| true,
+    })
+    .expect("a tilde runtime root resolves");
+    assert_eq!(
+        root,
+        Path::new("/home/dev/run"),
+        "a relative socket path resolves against each process's cwd, so the CLI and the daemon would disagree"
+    );
+}
+
+#[test]
+fn a_relative_runtime_root_override_is_refused() {
+    let err = resolve_runtime_root(&RuntimeSources {
+        declared: Some("run"),
+        xdg: None,
+        uid: Some(1000),
+        state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
+        exists: |_| true,
+    })
+    .unwrap_err();
+    assert_eq!(err, PathError::NotAbsolute("run".to_string()));
+}
+
+#[test]
+fn a_tilde_xdg_runtime_directory_expands_too() {
+    let root = resolve_runtime_root(&RuntimeSources {
+        declared: None,
+        xdg: Some("~/xdgrun"),
+        uid: Some(1000),
+        state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
+        exists: |_| false,
+    })
+    .expect("a tilde xdg runtime root resolves");
+    assert_eq!(root, Path::new("/home/dev/xdgrun/pm3"));
 }
 
 #[test]
@@ -192,8 +240,10 @@ fn the_runtime_root_takes_the_xdg_runtime_directory_when_it_is_declared() {
         xdg: Some("/x/run"),
         uid: Some(1000),
         state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
         exists: |_| false,
-    });
+    })
+    .expect("the runtime root resolves");
     assert_eq!(root, Path::new("/x/run/pm3"));
 }
 
@@ -204,8 +254,10 @@ fn the_runtime_root_uses_run_user_when_the_kernel_provides_it() {
         xdg: None,
         uid: Some(1000),
         state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
         exists: |_| true,
-    });
+    })
+    .expect("the runtime root resolves");
     assert_eq!(root, Path::new("/run/user/1000/pm3"));
 }
 
@@ -216,8 +268,10 @@ fn the_runtime_root_falls_back_to_the_state_directory_when_run_user_does_not_exi
         xdg: None,
         uid: Some(1000),
         state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
         exists: |_| false,
-    });
+    })
+    .expect("the runtime root resolves");
     assert_eq!(root, Path::new("/s/pm3/run"));
 }
 
@@ -228,8 +282,10 @@ fn the_runtime_root_falls_back_to_the_state_directory_without_a_uid() {
         xdg: None,
         uid: None,
         state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
         exists: |_| true,
-    });
+    })
+    .expect("the runtime root resolves");
     assert_eq!(root, Path::new("/s/pm3/run"));
 }
 
@@ -246,6 +302,29 @@ fn a_socket_path_longer_than_the_unix_limit_is_refused() {
     assert!(
         err.to_string().starts_with("cannot accept the socket path"),
         "got: {err}"
+    );
+}
+
+#[test]
+fn the_longest_bindable_socket_path_is_accepted() {
+    let longest = format!("/{}", "d".repeat(LONGEST_SOCKET_PATH - 1));
+    assert_eq!(
+        longest.len(),
+        LONGEST_SOCKET_PATH,
+        "the fixture pins the edge"
+    );
+    check_socket_length(Path::new(&longest)).expect("the longest bindable path must be accepted");
+}
+
+#[test]
+fn a_socket_path_that_fills_sun_path_leaves_no_room_for_the_terminator() {
+    let full = format!("/{}", "d".repeat(SUN_PATH_CAPACITY - 1));
+    assert_eq!(full.len(), SUN_PATH_CAPACITY, "the fixture pins the edge");
+    let err = check_socket_length(Path::new(&full)).unwrap_err();
+    assert!(
+        matches!(err, PathError::SocketTooLong { length, limit, .. }
+            if length == SUN_PATH_CAPACITY && limit == LONGEST_SOCKET_PATH),
+        "sun_path counts the trailing NUL, so a path filling it cannot bind: {err}"
     );
 }
 

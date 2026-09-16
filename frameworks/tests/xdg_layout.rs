@@ -206,7 +206,7 @@ fn a_runtime_root_that_overflows_the_socket_limit_is_refused() {
     );
     let complaint = String::from_utf8_lossy(&refused.stderr);
     assert!(
-        complaint.contains("exceeds the 104"),
+        complaint.contains("cannot accept the socket path"),
         "the refusal must name the limit, got: {complaint}"
     );
 }
@@ -237,7 +237,7 @@ fn a_daemon_refuses_a_runtime_root_that_overflows_the_socket_limit() {
     let home = split_home();
     let complaint = refuse_with_deep_runtime(&home, &["daemon"]);
     assert!(
-        complaint.contains("exceeds the 104"),
+        complaint.contains("cannot accept the socket path"),
         "the daemon must refuse before binding, got: {complaint}"
     );
 }
@@ -247,7 +247,7 @@ fn startup_refuses_a_runtime_root_that_overflows_the_socket_limit() {
     let home = split_home();
     let complaint = refuse_with_deep_runtime(&home, &["startup", "--dry-run"]);
     assert!(
-        complaint.contains("exceeds the 104"),
+        complaint.contains("cannot accept the socket path"),
         "rendering a unit must refuse the same way, got: {complaint}"
     );
 }

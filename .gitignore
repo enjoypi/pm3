@@ -19,3 +19,4 @@ rustc-ice-*.txt
 .claude.local.md
 
 .debug/
+cov.json

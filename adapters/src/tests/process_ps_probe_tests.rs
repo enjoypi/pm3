@@ -413,8 +413,17 @@ async fn an_empty_group_drains_at_once() {
 
 #[tokio::test]
 async fn a_group_still_holding_a_member_does_not_drain() {
-    let (_dir, probe) = probe_with("echo '  99'");
+    let (_dir, probe) = probe_with("echo '  99 7'");
     assert!(!probe.wait_group_gone(7, 30).await);
+}
+
+#[tokio::test]
+async fn a_member_of_another_group_does_not_keep_this_one_alive() {
+    let (_dir, probe) = probe_with("echo '  99 8'; echo ' 100 9'");
+    assert!(
+        probe.wait_group_gone(7, 60_000).await,
+        "only the pgid column decides membership"
+    );
 }
 
 #[tokio::test]
@@ -422,7 +431,7 @@ async fn a_group_drains_once_its_last_member_leaves() {
     let (_dir, probe) = probe_with(concat!(
         "if [ -f \"$0.asked\" ]; then exit 1; fi\n",
         "touch \"$0.asked\"\n",
-        "echo '  99'",
+        "echo '  99 7'",
     ));
     assert!(probe.wait_group_gone(7, 60_000).await);
 }
@@ -442,6 +451,55 @@ async fn a_group_pm3_cannot_probe_is_never_reported_as_drained() {
 
 #[tokio::test]
 async fn a_group_probe_stops_when_the_budget_is_already_spent() {
-    let (_dir, probe) = probe_with("echo '  99'");
+    let (_dir, probe) = probe_with("echo '  99 7'");
     assert!(!probe.wait_group_gone(7, 0).await);
+}
+
+async fn lead_a_group(script: &str) -> u32 {
+    let mut leader = Command::new("/bin/sh")
+        .args(["-c", script])
+        .process_group(0)
+        .spawn()
+        .expect("should spawn a group leader");
+    let pgid = leader.id().expect("a freshly spawned leader has a pid");
+    leader.wait().await.expect("the leader exits at once");
+    pgid
+}
+
+async fn force_kill_group(pgid: u32) {
+    Command::new("/bin/kill")
+        .args(["-KILL", "--", &format!("-{pgid}")])
+        .output()
+        .await
+        .ok();
+    PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS)
+        .wait_group_gone(pgid, PROBE_TIMEOUT_MS)
+        .await;
+}
+
+#[tokio::test]
+async fn a_real_group_whose_child_outlived_its_leader_does_not_drain() {
+    let pgid = lead_a_group("sleep 30 & exit 0").await;
+
+    let drained = PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS)
+        .wait_group_gone(pgid, 60)
+        .await;
+
+    force_kill_group(pgid).await;
+    assert!(
+        !drained,
+        "the real ps must report the child that outlived the leader, or pm3 never force kills it"
+    );
+}
+
+#[tokio::test]
+async fn a_real_group_that_truly_emptied_drains() {
+    let pgid = lead_a_group("exit 0").await;
+
+    assert!(
+        PsProcessProbe::with_timeout(PROBE_TIMEOUT_MS, POLL_STEP_MS)
+            .wait_group_gone(pgid, 60_000)
+            .await,
+        "a group whose every member left must read as drained"
+    );
 }

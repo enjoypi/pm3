@@ -255,7 +255,10 @@ async fn a_daemon_refuses_a_home_that_overflows_the_socket_limit() {
         .unwrap_err()
         .to_string();
 
-    assert!(err.contains("exceeds the 104"), "got: {err}");
+    assert!(
+        err.contains("cannot accept the socket path"),
+        "got: {err}"
+    );
 }
 
 #[tokio::test]

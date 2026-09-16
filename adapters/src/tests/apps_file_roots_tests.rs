@@ -36,3 +36,19 @@ fn an_identical_root_is_kept_once() {
     let roots = dominant_roots(["/s/pm3".to_string(), "/s/pm3".to_string()]);
     assert_eq!(roots, vec!["/s/pm3".to_string()], "got: {roots:?}");
 }
+
+#[test]
+fn two_spellings_of_one_root_keep_the_first() {
+    let roots = dominant_roots(["/s/pm3/".to_string(), "/s/pm3".to_string()]);
+    assert_eq!(
+        roots,
+        vec!["/s/pm3/".to_string()],
+        "a trailing slash names the same root, so neither spelling may cancel the other: {roots:?}"
+    );
+}
+
+#[test]
+fn a_trailing_slash_still_swallows_a_nested_root() {
+    let roots = dominant_roots(["/s/pm3/".to_string(), "/s/pm3/run".to_string()]);
+    assert_eq!(roots, vec!["/s/pm3/".to_string()], "got: {roots:?}");
+}

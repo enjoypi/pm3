@@ -22,8 +22,7 @@ const SAMPLE_FORMAT: &str = "pid=,pgid=,rss=,pcpu=";
 const PID_SEPARATOR: &str = ",";
 const PID_FLAG: &str = "-p";
 const EVERY_PROCESS_FLAG: &str = "-A";
-const GROUP_FLAG: &str = "-g";
-const GROUP_FORMAT: &str = "pid=";
+const GROUP_FORMAT: &str = "pid=,pgid=";
 const GROUP_ACTION: &str = "probe_group";
 const IDENTITY_ACTION: &str = "probe";
 const MEMORY_ACTION: &str = "probe_memory";
@@ -109,19 +108,12 @@ impl PsProcessProbe {
         self.read_ps(command, joined, action).await
     }
 
-    async fn ask_group(&self, pgid: u32) -> Option<String> {
-        let label = pgid.to_string();
-        let mut command = Command::new(&self.program);
-        command
-            .args([WIDE_FLAG, FORMAT_FLAG, GROUP_FORMAT, GROUP_FLAG])
-            .arg(&label)
-            .env(LOCALE_VARIABLE, FIXED_LOCALE);
-        self.read_ps(command, &label, GROUP_ACTION).await
-    }
-
     async fn group_is_empty(&self, pgid: u32) -> Option<bool> {
-        let stdout = self.ask_group(pgid).await?;
-        Some(count_pids(&stdout) == 0)
+        let label = pgid.to_string();
+        let stdout = self
+            .ask_every_process(GROUP_FORMAT, &label, GROUP_ACTION)
+            .await?;
+        Some(count_group_members(&stdout, pgid) == 0)
     }
 
     async fn read_ps(&self, command: Command, joined: &str, action: &str) -> Option<String> {
@@ -163,11 +155,18 @@ fn unreadable(pids: &[u32]) -> HashMap<u32, Liveness> {
         .collect()
 }
 
-fn count_pids(stdout: &str) -> usize {
+fn count_group_members(stdout: &str, pgid: u32) -> usize {
     stdout
         .lines()
-        .filter(|line| line.trim().parse::<u32>().is_ok())
+        .filter_map(parse_member_row)
+        .filter(|member| *member == pgid)
         .count()
+}
+
+fn parse_member_row(line: &str) -> Option<u32> {
+    let mut fields = line.split_whitespace();
+    let _pid = fields.next()?.parse::<u32>().ok()?;
+    fields.next()?.parse::<u32>().ok()
 }
 
 fn join_pids(pids: &[u32]) -> String {

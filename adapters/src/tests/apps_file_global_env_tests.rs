@@ -345,3 +345,57 @@ async fn a_declared_identity_makes_a_refusal_fatal() {
         "an operator who named an identity meant those values to arrive, got: {err}"
     );
 }
+
+#[test]
+fn a_config_root_that_is_the_service_directory_has_nowhere_to_stray() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    assert!(
+        stray_global_env(dir.path(), dir.path()).is_none(),
+        "one directory cannot hold a misplaced copy of itself"
+    );
+}
+
+#[test]
+fn a_separate_service_directory_is_where_a_shared_file_goes_astray() {
+    let root = Path::new("/c/pm3");
+    let cfg = Path::new("/c/pm3/service");
+    assert_eq!(
+        stray_global_env(root, cfg),
+        Some(cfg.join(GLOBAL_ENV_STEM)),
+        "the operator would naturally drop it beside the service files"
+    );
+}
+
+#[tokio::test]
+async fn a_shared_file_left_in_the_service_directory_is_reported() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cfg = dir.path().join("service");
+    std::fs::create_dir_all(&cfg).expect("create the service directory");
+    std::fs::write(cfg.join(format!("{GLOBAL_ENV_STEM}.{ENV_FILE_SUFFIX}")), "TZ=UTC\n")
+        .expect("write the misplaced shared environment");
+
+    warn_misplaced_global_env(dir.path(), &cfg).await;
+
+    let values = load_global_env(&config(), dir.path(), None)
+        .await
+        .expect("the config root holds no shared environment");
+    assert!(
+        values.is_empty(),
+        "the misplaced file must stay ignored, not silently loaded: {values:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_service_directory_without_a_shared_file_reports_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let cfg = dir.path().join("service");
+    std::fs::create_dir_all(&cfg).expect("create the service directory");
+    warn_misplaced_global_env(dir.path(), &cfg).await;
+}
+
+#[tokio::test]
+async fn a_single_root_layout_reports_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    write(dir.path(), ENV_FILE_SUFFIX, "TZ=UTC\n");
+    warn_misplaced_global_env(dir.path(), dir.path()).await;
+}

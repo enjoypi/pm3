@@ -48,8 +48,9 @@ fn roots_from(pm3: &Pm3Config, sources: &RootSources<'_>) -> Result<Pm3Roots> {
         xdg: sources.xdg_runtime,
         uid: sources.uid,
         state: &state,
+        home: sources.home,
         exists: sources.exists,
-    });
+    })?;
     Ok(Pm3Roots::split(
         resolve_config_root(sources.config, sources.xdg_config, sources.home)?,
         state,

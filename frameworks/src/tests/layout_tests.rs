@@ -449,7 +449,10 @@ fn a_socket_path_past_the_unix_limit_is_refused() {
     let mut config = split_config();
     config.runtime_dir = format!("/{}", "d".repeat(120));
     let err = resolve_places(&config, Some("/home/dev")).unwrap_err();
-    assert!(err.to_string().contains("exceeds the 104"), "got: {err}");
+    assert!(
+        err.to_string().contains("cannot accept the socket path"),
+        "got: {err}"
+    );
 }
 
 #[test]
