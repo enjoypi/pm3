@@ -24,9 +24,9 @@ fn listing_projects_every_record() {
 fn describing_a_known_app_returns_its_view() {
     let mut table = ProcessTable::new();
     table.upsert(spec("api"), 1000);
-    let view = describe_app(&table, &AppSelector::Id(0), 2000).expect("record present");
+    let view = describe_app(&table, &AppSelector::Id(1), 2000).expect("record present");
     assert_eq!(view.name, "api");
-    assert_eq!(view.pm_id, 0);
+    assert_eq!(view.pm_id, 1);
 }
 
 #[test]

@@ -63,7 +63,7 @@ pub use self::{
         tail_lines,
     },
     paths::{
-        CONFIG_FILE, DEFAULT_HOME, PathError, Pm3Paths, Pm3Roots, RuntimeSources,
+        CONFIG_FILE, PM3_SUBDIR, PathError, Pm3Paths, Pm3Roots, RuntimeSources, XDG_STATE_FALLBACK,
         check_socket_length, default_config_path, expand_home, resolve_config_root,
         resolve_data_root, resolve_paths, resolve_runtime_root, resolve_state_root,
     },
@@ -77,7 +77,10 @@ pub use self::{
         render_json_list, render_json_one, render_reply, render_started, render_table,
         unsaved_reason,
     },
-    private_file::{OWNER_ONLY_FILE, append_private, append_private_blocking, write_private},
+    private_file::{
+        OWNER_ONLY_FILE, SWEEP_PROOF_FILE, append_private, append_private_blocking, write_private,
+        write_sweep_proof,
+    },
     process::{
         AdoptedWatch, HostReadyProber, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
         Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,

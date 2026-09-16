@@ -179,6 +179,7 @@ pub fn liveness_watch_list(table: &ProcessTable) -> Vec<LivenessWatch> {
         .records()
         .iter()
         .filter(|record| record.runtime.status == ProcessStatus::Online)
+        .filter(|record| record.spec.autorestart)
         .filter_map(|record| {
             Some(LivenessWatch {
                 name: record.runtime.name.clone(),
@@ -202,4 +203,27 @@ pub const fn record_liveness(
         return false;
     }
     record.runtime.fail_liveness(threshold)
+}
+
+#[must_use]
+pub fn settle_stability(table: &mut ProcessTable, now_ms: u64) -> Vec<String> {
+    let mut settled = Vec::new();
+    for record in table.records_mut() {
+        if !stability_is_settled(record, now_ms) {
+            continue;
+        }
+        record.runtime.settle_stability();
+        settled.push(record.runtime.name.clone());
+    }
+    settled
+}
+
+fn stability_is_settled(record: &ProcessRecord, now_ms: u64) -> bool {
+    if record.runtime.unstable_restarts == 0 {
+        return false;
+    }
+    let Some(elapsed_ms) = record.runtime.elapsed_since_launch_ms(now_ms) else {
+        return false;
+    };
+    elapsed_ms >= record.spec.min_uptime_ms
 }

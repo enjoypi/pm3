@@ -25,11 +25,19 @@ describe("monitor.ts mirrors the rust side", () => {
     );
   });
 
-  test("the default runtime home matches paths.rs", async () => {
+  test("the xdg state fallback matches paths.rs", async () => {
     const paths = await sourceOf("adapters/src/paths.rs");
     const monitor = await sourceOf("dev_scripts/monitor.ts");
-    const home = constantOf(paths, "DEFAULT_HOME").replace("~/", "");
-    expect(monitor).toContain(`const defaultRuntimeHome = "${home}";`);
+    const state = constantOf(paths, "XDG_STATE_FALLBACK").replace("~/", "");
+    expect(monitor).toContain(`const defaultStateHome = "${state}";`);
+  });
+
+  test("the pm3 subdirectory matches paths.rs", async () => {
+    const paths = await sourceOf("adapters/src/paths.rs");
+    const monitor = await sourceOf("dev_scripts/monitor.ts");
+    expect(monitor).toContain(
+      `const pm3Subdir = "${constantOf(paths, "PM3_SUBDIR")}";`,
+    );
   });
 });
 

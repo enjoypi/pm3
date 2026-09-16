@@ -26,7 +26,7 @@ async fn a_stable_crash_schedules_a_restart_after_the_configured_delay() {
         .await
         .expect("exit handled");
     assert_eq!(action, ExitAction::RestartAfter { delay_ms: 250 });
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.restart_time, 1);
     assert_eq!(record.runtime.unstable_restarts, 0);
 }
@@ -45,7 +45,7 @@ async fn repeated_fast_crashes_trip_the_breaker_into_errored() {
         .expect("exit handled");
     assert_eq!(first, ExitAction::RestartAfter { delay_ms: 250 });
 
-    let relaunched = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    let relaunched = table.find_mut(&AppSelector::Id(1)).expect("record present");
     relaunched.runtime.mark_launched(101, 1000);
     relaunched.runtime.mark_online();
 
@@ -58,7 +58,7 @@ async fn repeated_fast_crashes_trip_the_breaker_into_errored() {
             status: ProcessStatus::Errored,
         }
     );
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Errored);
     assert_eq!(record.runtime.unstable_restarts, 2);
 }
@@ -143,7 +143,7 @@ async fn a_signalled_child_without_autorestart_settles_as_errored() {
 async fn an_operator_stop_settles_without_restarting() {
     let ports = FakePorts::new(1000);
     let mut table = running_table(&ports, spec("api")).await;
-    let stopping = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    let stopping = table.find_mut(&AppSelector::Id(1)).expect("record present");
     stopping.runtime.mark_stopping();
     let action = handle_child_exit(&mut table, "api", CRASH, &ports)
         .await
@@ -154,7 +154,7 @@ async fn an_operator_stop_settles_without_restarting() {
             status: ProcessStatus::Stopped,
         }
     );
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.restart_time, 0);
 }
 
@@ -162,14 +162,14 @@ async fn an_operator_stop_settles_without_restarting() {
 async fn an_operator_restart_reschedules_without_delay() {
     let ports = FakePorts::new(1000);
     let mut table = running_table(&ports, spec("api")).await;
-    let restarting = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    let restarting = table.find_mut(&AppSelector::Id(1)).expect("record present");
     restarting.runtime.mark_stopping();
     restarting.runtime.request_restart();
     let action = handle_child_exit(&mut table, "api", CRASH, &ports)
         .await
         .expect("exit handled");
     assert_eq!(action, ExitAction::RestartAfter { delay_ms: 0 });
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert!(!record.runtime.pending_restart);
 }
 
@@ -186,7 +186,7 @@ async fn an_exit_after_a_clock_rollback_does_not_count_as_unstable() {
         .await
         .expect("exit handled");
     assert_eq!(action, ExitAction::RestartAfter { delay_ms: 250 });
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.unstable_restarts, 0);
 }
 
@@ -251,7 +251,7 @@ async fn a_listed_exit_code_settles_as_a_clean_stop() {
             status: ProcessStatus::Stopped,
         }
     );
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.restart_time, 0);
 }
 
@@ -297,7 +297,7 @@ async fn a_supervised_restart_answers_to_the_breaker() {
         ..spec("api")
     };
     let mut table = running_table(&ports, candidate).await;
-    let record = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    let record = table.find_mut(&AppSelector::Id(1)).expect("record present");
     record.runtime.request_supervised_restart();
 
     let action = handle_child_exit(&mut table, "api", CRASH, &ports)
@@ -317,7 +317,7 @@ async fn a_supervised_restart_answers_to_the_breaker() {
 async fn a_supervised_restart_backs_off_like_a_crash() {
     let ports = FakePorts::new(1000);
     let mut table = running_table(&ports, spec("api")).await;
-    let queued = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    let queued = table.find_mut(&AppSelector::Id(1)).expect("record present");
     queued.runtime.request_supervised_restart();
 
     let action = handle_child_exit(&mut table, "api", UNOBSERVED, &ports)
@@ -325,7 +325,7 @@ async fn a_supervised_restart_backs_off_like_a_crash() {
         .expect("exit handled");
 
     assert_eq!(action, ExitAction::RestartAfter { delay_ms: 250 });
-    let settled = table.find(&AppSelector::Id(0)).expect("record present");
+    let settled = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(settled.runtime.restart_time, 1, "the tally must move");
 }
 
@@ -337,7 +337,7 @@ async fn a_user_restart_still_bypasses_the_breaker() {
         ..spec("api")
     };
     let mut table = running_table(&ports, candidate).await;
-    let record = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    let record = table.find_mut(&AppSelector::Id(1)).expect("record present");
     record.runtime.request_restart();
 
     let action = handle_child_exit(&mut table, "api", UNOBSERVED, &ports)

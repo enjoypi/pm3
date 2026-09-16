@@ -193,3 +193,12 @@ pub fn log_liveness_failure(app: &str, threshold: u32) {
         "pm3 restarts a service whose liveness probe kept failing",
     );
 }
+
+pub fn log_stability_settled(app: &str) {
+    tracing::info!(
+        feature = "supervisor",
+        action = "settle_stability",
+        app,
+        "pm3 clears the unstable restart tally of a service that has stayed up",
+    );
+}

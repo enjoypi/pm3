@@ -60,7 +60,7 @@ async fn a_socket_path_blocked_by_a_directory_is_reported() {
 }
 
 #[tokio::test]
-async fn a_bound_socket_is_owner_only() {
+async fn a_bound_socket_is_owner_only_and_carries_the_sticky_bit() {
     let dir = temp_dir();
     let path = dir.path().join("pm3.sock");
     let outcome = bind_uds(&path, ACCEPT_RETRY_MS).await.expect("should bind");
@@ -69,8 +69,11 @@ async fn a_bound_socket_is_owner_only() {
         .expect("stat the socket")
         .permissions()
         .mode()
-        & 0o777;
-    assert_eq!(mode, 0o600, "got: {mode:o}");
+        & 0o7777;
+    assert_eq!(
+        mode, 0o1600,
+        "a swept socket would let the CLI launch a second daemon, got: {mode:o}"
+    );
 }
 
 #[tokio::test]

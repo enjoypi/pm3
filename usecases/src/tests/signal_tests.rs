@@ -10,7 +10,7 @@ use crate::{
 async fn signalling_a_running_app_delivers_to_its_process_group() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    let outcome = signal_app(&mut table, &AppSelector::Id(0), "hup", &ports)
+    let outcome = signal_app(&mut table, &AppSelector::Id(1), "hup", &ports)
         .await
         .expect("should signal");
     assert_eq!(
@@ -42,7 +42,7 @@ async fn signalling_a_settled_app_reports_not_running() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     table.upsert(spec("api"), 1000);
-    let err = signal_app(&mut table, &AppSelector::Id(0), "HUP", &ports)
+    let err = signal_app(&mut table, &AppSelector::Id(1), "HUP", &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
@@ -54,7 +54,7 @@ async fn signalling_reports_not_running_when_the_pid_is_gone() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
     ports.kill_silently(100);
-    let err = signal_app(&mut table, &AppSelector::Id(0), "HUP", &ports)
+    let err = signal_app(&mut table, &AppSelector::Id(1), "HUP", &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
@@ -66,7 +66,7 @@ async fn signalling_reports_not_running_when_the_pid_is_unreadable() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
     ports.break_probe_for(100);
-    let err = signal_app(&mut table, &AppSelector::Id(0), "HUP", &ports)
+    let err = signal_app(&mut table, &AppSelector::Id(1), "HUP", &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
@@ -78,7 +78,7 @@ async fn signalling_reports_not_running_when_the_pid_was_recycled() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
     ports.seed_live(100, "somebody-elses-process");
-    let err = signal_app(&mut table, &AppSelector::Id(0), "HUP", &ports)
+    let err = signal_app(&mut table, &AppSelector::Id(1), "HUP", &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
@@ -89,7 +89,7 @@ async fn signalling_reports_not_running_when_the_pid_was_recycled() {
 async fn an_unknown_signal_name_is_rejected() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    let err = signal_app(&mut table, &AppSelector::Id(0), "KILL9", &ports)
+    let err = signal_app(&mut table, &AppSelector::Id(1), "KILL9", &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::InvalidSignal(_)), "got: {err}");
@@ -101,7 +101,7 @@ async fn a_delivery_failure_propagates() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
     ports.fail_signal_for(100);
-    let err = signal_app(&mut table, &AppSelector::Id(0), "HUP", &ports)
+    let err = signal_app(&mut table, &AppSelector::Id(1), "HUP", &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::Signal(_)), "got: {err}");
@@ -111,12 +111,12 @@ async fn a_delivery_failure_propagates() {
 async fn a_service_mid_stop_can_still_be_signalled() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    let stopping = table.find_mut(&AppSelector::Id(0)).expect("record present");
+    let stopping = table.find_mut(&AppSelector::Id(1)).expect("record present");
     stopping.runtime.mark_stopping();
-    let outcome = signal_app(&mut table, &AppSelector::Id(0), "USR2", &ports)
+    let outcome = signal_app(&mut table, &AppSelector::Id(1), "USR2", &ports)
         .await
         .expect("a stopping service still has a live pid");
     assert_eq!(outcome.signal, "USR2");
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
 }

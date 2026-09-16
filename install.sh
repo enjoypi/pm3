@@ -65,9 +65,26 @@ if [ "$os" = "Linux" ] && ! command -v bwrap >/dev/null 2>&1; then
     warn "缺 bwrap（bubblewrap）：默认沙箱起不来；安装 bubblewrap 或把 config.yaml 的 sandbox.mode 改为 danger-full-access"
 fi
 
-default_cfg="${PM3_HOME:-$HOME/.pm3}/config.yaml"
+existing_cfg() {
+    if [ -n "${PM3_HOME:-}" ]; then
+        echo "$PM3_HOME/config.yaml"
+        return
+    fi
+    if [ -n "${PM3_CONFIG_DIR:-}" ]; then
+        echo "$PM3_CONFIG_DIR/config.yaml"
+        return
+    fi
+    xdg_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/pm3/config.yaml"
+    if [ -f "$xdg_cfg" ]; then
+        echo "$xdg_cfg"
+        return
+    fi
+    echo "$HOME/.pm3/config.yaml"
+}
+
+default_cfg=$(existing_cfg)
 if [ -f "$default_cfg" ]; then
-    "$tmp/pm3" install
+    "$tmp/pm3" --config "$default_cfg" install
 else
     "$tmp/pm3" --config "$tmp/config.yaml" install
 fi

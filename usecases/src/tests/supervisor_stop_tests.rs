@@ -69,7 +69,7 @@ async fn a_save_failure_after_the_stop_signal_still_arms_the_force_kill() {
     ports.fail_save();
     let (outcome, effects) = supervisor
         .handle(
-            SupervisionRequest::Stop(AppSelector::Id(0)),
+            SupervisionRequest::Stop(AppSelector::Id(1)),
             &NoResolver,
             &ports,
         )
@@ -85,7 +85,7 @@ async fn a_save_failure_after_the_delete_signal_still_arms_the_force_kill() {
     ports.fail_save();
     let (outcome, effects) = supervisor
         .handle(
-            SupervisionRequest::Delete(AppSelector::Id(0)),
+            SupervisionRequest::Delete(AppSelector::Id(1)),
             &NoResolver,
             &ports,
         )
@@ -101,7 +101,7 @@ async fn a_failed_delete_keeps_the_draining_record_tracked() {
     ports.fail_save();
     let (outcome, _effects) = supervisor
         .handle(
-            SupervisionRequest::Delete(AppSelector::Id(0)),
+            SupervisionRequest::Delete(AppSelector::Id(1)),
             &NoResolver,
             &ports,
         )
@@ -109,7 +109,7 @@ async fn a_failed_delete_keeps_the_draining_record_tracked() {
     assert!(outcome.is_err());
     let record = supervisor
         .table
-        .find(&AppSelector::Id(0))
+        .find(&AppSelector::Id(1))
         .expect("a service whose deletion was not persisted must stay tracked");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
 }
@@ -153,7 +153,7 @@ async fn a_force_kill_for_a_replaced_instance_still_fires_when_the_token_matches
     ports.make_stubborn(100);
     let (outcome, effects) = supervisor
         .handle(
-            SupervisionRequest::Delete(AppSelector::Id(0)),
+            SupervisionRequest::Delete(AppSelector::Id(1)),
             &NoResolver,
             &ports,
         )
@@ -175,7 +175,7 @@ async fn a_force_kill_for_a_replaced_instance_without_a_token_stays_dropped() {
     let mut supervisor = running_supervisor(&ports).await;
     let (outcome, effects) = supervisor
         .handle(
-            SupervisionRequest::Delete(AppSelector::Id(0)),
+            SupervisionRequest::Delete(AppSelector::Id(1)),
             &NoResolver,
             &ports,
         )
@@ -198,7 +198,7 @@ async fn a_refused_stop_signal_arms_no_force_kill() {
     ports.fail_signal_for(100);
     let (outcome, effects) = supervisor
         .handle(
-            SupervisionRequest::Stop(AppSelector::Id(0)),
+            SupervisionRequest::Stop(AppSelector::Id(1)),
             &NoResolver,
             &ports,
         )
@@ -207,7 +207,7 @@ async fn a_refused_stop_signal_arms_no_force_kill() {
     assert!(!arms_force_kill(&effects, 100), "got: {effects:?}");
     let record = supervisor
         .table
-        .find(&AppSelector::Id(0))
+        .find(&AppSelector::Id(1))
         .expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Online);
 }

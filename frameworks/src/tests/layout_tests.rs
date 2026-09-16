@@ -206,6 +206,23 @@ async fn the_pid_file_records_this_process() {
     assert_eq!(recorded, std::process::id().to_string());
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn the_pid_file_carries_the_sticky_bit() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let paths = resolve_paths(Pm3Roots::single(dir.path()));
+    write_pid_file(&paths).await.expect("should write");
+    let mode = std::fs::metadata(&paths.pid_file)
+        .expect("stat the pid file")
+        .permissions()
+        .mode()
+        & 0o7777;
+    assert_eq!(
+        mode, 0o1600,
+        "a pid file swept out from under a live daemon reads as no daemon, got: {mode:o}"
+    );
+}
+
 #[tokio::test]
 async fn a_blocked_pid_path_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");

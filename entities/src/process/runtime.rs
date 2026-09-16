@@ -129,6 +129,10 @@ impl ProcessRuntime {
         }
     }
 
+    pub const fn settle_stability(&mut self) {
+        self.unstable_restarts = 0;
+    }
+
     pub const fn request_restart(&mut self) {
         self.pending_restart = true;
     }

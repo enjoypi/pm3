@@ -8,7 +8,7 @@ use std::{
 use adapters::{
     Pm3Config, Pm3Paths, Pm3Roots, RuntimeSources, check_socket_length, expand_home, pm3_variables,
     resolve_config_root, resolve_data_root, resolve_paths, resolve_runtime_root,
-    resolve_state_root, runtime_dir_of, write_private,
+    resolve_state_root, runtime_dir_of, write_sweep_proof,
 };
 
 use crate::{Error, Result};
@@ -272,7 +272,7 @@ async fn create_secret_file(path: &Path, secret: &str) -> std::io::Result<()> {
 
 pub async fn write_pid_file(paths: &Pm3Paths) -> Result<()> {
     let pid = std::process::id().to_string();
-    write_private(&paths.pid_file, &pid)
+    write_sweep_proof(&paths.pid_file, &pid)
         .await
         .map_err(|e| layout_error(&paths.pid_file, &e))
 }

@@ -11,12 +11,11 @@ pub(crate) const DAEMON_LOG_FILE: &str = "pm3.log";
 pub const LOGS_DIR: &str = "logs";
 pub const APPS_DIR: &str = "apps";
 pub const BACKUPS_DIR: &str = "install-backups";
-pub const DEFAULT_HOME: &str = "~/.pm3";
 
-const PM3_SUBDIR: &str = "pm3";
+pub const PM3_SUBDIR: &str = "pm3";
 const RUNTIME_SUBDIR: &str = "run";
 const XDG_CONFIG_FALLBACK: &str = "~/.config";
-const XDG_STATE_FALLBACK: &str = "~/.local/state";
+pub const XDG_STATE_FALLBACK: &str = "~/.local/state";
 const XDG_DATA_FALLBACK: &str = "~/.local/share";
 const RUNTIME_DIR_ROOT: &str = "/run/user";
 const SUN_LEN_LIMIT: usize = 104;

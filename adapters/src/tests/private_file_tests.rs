@@ -1,14 +1,17 @@
 #![cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
 
 use super::*;
 
 fn mode_of(path: &Path) -> u32 {
+    full_mode_of(path) & 0o777
+}
+
+fn full_mode_of(path: &Path) -> u32 {
     std::fs::metadata(path)
         .expect("the file should exist")
         .permissions()
         .mode()
-        & 0o777
+        & 0o7777
 }
 
 #[tokio::test]
@@ -91,4 +94,27 @@ async fn a_handle_that_refuses_the_bytes_surfaces_as_an_error() {
         fill(File::from_std(readable), b"spill").await.is_err(),
         "a refused write must reach the caller instead of passing for a saved file"
     );
+}
+
+#[tokio::test]
+async fn a_sweep_proof_file_is_owner_only_and_carries_the_sticky_bit() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("pm3.pid");
+    write_sweep_proof(&path, "4242")
+        .await
+        .expect("should write");
+    let mode = full_mode_of(&path);
+    assert_eq!(
+        mode, SWEEP_PROOF_FILE,
+        "systemd-tmpfiles skips a sticky runtime file, got: {mode:o}"
+    );
+    assert_eq!(std::fs::read_to_string(&path).expect("should read"), "4242");
+}
+
+#[tokio::test]
+async fn a_sweep_proof_file_refuses_a_missing_directory() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("absent").join("pm3.pid");
+    let err = write_sweep_proof(&path, "4242").await.unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }

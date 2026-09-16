@@ -17,7 +17,7 @@ use crate::layout::owner_uid_of;
 use crate::layout::pipe_name_of;
 
 #[cfg(unix)]
-const OWNER_ONLY_SOCKET: u32 = 0o600;
+const OWNER_ONLY_SOCKET: u32 = adapters::SWEEP_PROOF_FILE;
 
 #[cfg(unix)]
 pub type Pm3Listener = OwnerOnlyListener;

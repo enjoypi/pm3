@@ -1,9 +1,10 @@
 use crate::{
     Ports,
-    query::{liveness_watch_list, record_liveness},
+    persist::save_table,
+    query::{liveness_watch_list, record_liveness, settle_stability},
     supervision::SupervisionEffect,
     supervisor::Supervisor,
-    supervisor_log::log_liveness_failure,
+    supervisor_log::{log_failure, log_liveness_failure, log_stability_settled},
 };
 
 #[expect(
@@ -33,7 +34,21 @@ impl Supervisor {
                 self.hand_liveness_to_the_breaker(&watch.name);
             }
         }
+        self.settle_the_stable(ports).await;
         effects
+    }
+
+    async fn settle_the_stable(&mut self, ports: &impl Ports) {
+        let settled = settle_stability(&mut self.table, ports.now_ms());
+        if settled.is_empty() {
+            return;
+        }
+        for name in &settled {
+            log_stability_settled(name);
+        }
+        if let Err(error) = save_table(&self.table, ports).await {
+            log_failure("settle_stability", "-", &error);
+        }
     }
 
     fn hand_liveness_to_the_breaker(&mut self, name: &str) {

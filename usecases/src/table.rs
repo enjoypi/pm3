@@ -5,30 +5,24 @@ use crate::{UsecaseError, record::ProcessRecord, selector::AppSelector};
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProcessTable {
     records: Vec<ProcessRecord>,
-    next_pm_id: u32,
     boot: Option<String>,
 }
+
+const LOWEST_PM_ID: u32 = 1;
 
 impl ProcessTable {
     #[must_use]
     pub const fn new() -> Self {
         Self {
             records: Vec::new(),
-            next_pm_id: 0,
             boot: None,
         }
     }
 
     #[must_use]
-    pub fn from_records(records: Vec<ProcessRecord>) -> Self {
-        let next_pm_id = records
-            .iter()
-            .map(|record| record.runtime.pm_id)
-            .max()
-            .map_or(0, |highest| highest.saturating_add(1));
+    pub const fn from_records(records: Vec<ProcessRecord>) -> Self {
         Self {
             records,
-            next_pm_id,
             boot: None,
         }
     }
@@ -36,6 +30,10 @@ impl ProcessTable {
     #[must_use]
     pub const fn records(&self) -> &[ProcessRecord] {
         self.records.as_slice()
+    }
+
+    pub const fn records_mut(&mut self) -> &mut [ProcessRecord] {
+        self.records.as_mut_slice()
     }
 
     #[must_use]
@@ -78,11 +76,29 @@ impl ProcessTable {
             existing.spec = spec;
             return existing.runtime.pm_id;
         }
-        let pm_id = self.next_pm_id;
-        self.next_pm_id = pm_id.saturating_add(1);
+        let pm_id = self.lowest_free_pm_id();
         let runtime = ProcessRuntime::new(pm_id, spec.name.clone(), now_ms);
         self.records.push(ProcessRecord { spec, runtime });
         pm_id
+    }
+
+    fn lowest_free_pm_id(&self) -> u32 {
+        let mut taken: Vec<u32> = self
+            .records
+            .iter()
+            .map(|record| record.runtime.pm_id)
+            .collect();
+        taken.sort_unstable();
+        let mut candidate = LOWEST_PM_ID;
+        for used in taken {
+            if used > candidate {
+                break;
+            }
+            if used == candidate {
+                candidate = candidate.saturating_add(1);
+            }
+        }
+        candidate
     }
 
     pub fn remove(&mut self, selector: &AppSelector) -> Option<ProcessRecord> {

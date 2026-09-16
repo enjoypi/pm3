@@ -112,7 +112,7 @@ fn an_identity_token_is_read_back_from_its_record() {
 #[test]
 fn a_record_that_never_launched_has_no_identity_token() {
     let table = ProcessTable::from_records(vec![plain("api", 0)]);
-    assert!(identity_token_of(&table, &AppSelector::Id(0)).is_none());
+    assert!(identity_token_of(&table, &AppSelector::Id(1)).is_none());
 }
 
 #[test]
@@ -329,4 +329,65 @@ fn a_liveness_verdict_for_a_missing_record_trips_nothing() {
         &crate::ports::Readiness::Failed("down".to_string()),
         1
     ));
+}
+
+#[test]
+fn a_service_that_declined_autorestart_is_not_watched_for_liveness() {
+    let mut record = probed("api", 1, 4242, 8080);
+    record.spec.autorestart = false;
+    let table = ProcessTable::from_records(vec![record]);
+    assert!(
+        liveness_watch_list(&table).is_empty(),
+        "pm3 must not kill a service the operator asked it not to heal"
+    );
+}
+
+fn flapping(name: &str, unstable_restarts: u32, started_at_ms: u64) -> ProcessRecord {
+    let mut record = probed(name, 1, 4242, 8080);
+    record.runtime.unstable_restarts = unstable_restarts;
+    record.runtime.started_at_ms = Some(started_at_ms);
+    record
+}
+
+#[test]
+fn a_service_that_has_stayed_up_loses_its_unstable_tally() {
+    let mut table = ProcessTable::from_records(vec![flapping("api", 17, 1000)]);
+    let settled = settle_stability(&mut table, 1000 + 1000);
+    assert_eq!(settled, vec!["api".to_string()], "got: {settled:?}");
+    let record = table.find_by_name("api").expect("record present");
+    assert_eq!(record.runtime.unstable_restarts, 0);
+}
+
+#[test]
+fn a_service_still_inside_its_min_uptime_keeps_its_unstable_tally() {
+    let mut table = ProcessTable::from_records(vec![flapping("api", 17, 1000)]);
+    let settled = settle_stability(&mut table, 1000 + 999);
+    assert!(settled.is_empty(), "got: {settled:?}");
+    let record = table.find_by_name("api").expect("record present");
+    assert_eq!(record.runtime.unstable_restarts, 17);
+}
+
+#[test]
+fn a_service_that_never_flapped_is_left_untouched() {
+    let mut table = ProcessTable::from_records(vec![flapping("api", 0, 1000)]);
+    assert!(settle_stability(&mut table, 1000 + 5000).is_empty());
+}
+
+#[test]
+fn a_settled_service_keeps_its_unstable_tally_as_the_record_of_why_it_stopped() {
+    let mut record = flapping("api", 17, 1000);
+    record.runtime.status = ProcessStatus::Errored;
+    let mut table = ProcessTable::from_records(vec![record]);
+    assert!(
+        settle_stability(&mut table, 1000 + 5000).is_empty(),
+        "an errored service is not running, so nothing has stabilised"
+    );
+}
+
+#[test]
+fn a_service_that_never_launched_reports_no_elapsed_time_to_settle() {
+    let mut record = flapping("api", 17, 1000);
+    record.runtime.started_at_ms = None;
+    let mut table = ProcessTable::from_records(vec![record]);
+    assert!(settle_stability(&mut table, 1000 + 5000).is_empty());
 }

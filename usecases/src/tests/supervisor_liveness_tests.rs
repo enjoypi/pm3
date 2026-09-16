@@ -176,3 +176,78 @@ async fn a_service_without_a_probe_is_never_sampled() {
 
     assert_eq!(status_of(&supervisor, "plain"), ProcessStatus::Online);
 }
+
+#[tokio::test]
+async fn a_sample_clears_the_unstable_tally_of_a_service_that_has_stayed_up() {
+    let ports = FakePorts::new(1000);
+    let mut supervisor = supervisor();
+    start_watched(&mut supervisor, &ports, "api").await;
+    supervisor
+        .table
+        .find_by_name_mut("api")
+        .expect("record present")
+        .runtime
+        .unstable_restarts = 17;
+
+    let settled = FakePorts::new(1000 + 5000);
+    supervisor
+        .on_liveness_sample(INTERVAL_MS, THRESHOLD, &settled)
+        .await;
+
+    let record = supervisor
+        .table
+        .find_by_name("api")
+        .expect("record present");
+    assert_eq!(
+        record.runtime.unstable_restarts, 0,
+        "a service healthy past its min uptime is no longer flapping"
+    );
+    assert_eq!(
+        settled.save_count(),
+        1,
+        "the cleared tally must reach the dump"
+    );
+}
+
+#[tokio::test]
+async fn a_sample_that_settles_nothing_writes_no_dump() {
+    let ports = FakePorts::new(1000);
+    let mut supervisor = supervisor();
+    start_watched(&mut supervisor, &ports, "api").await;
+    let quiet = FakePorts::new(1000 + 5000);
+
+    supervisor
+        .on_liveness_sample(INTERVAL_MS, THRESHOLD, &quiet)
+        .await;
+
+    assert_eq!(
+        quiet.save_count(),
+        0,
+        "an idle tick must not churn the dump"
+    );
+}
+
+#[tokio::test]
+async fn a_failure_to_persist_a_cleared_tally_still_leaves_it_cleared() {
+    let ports = FakePorts::new(1000);
+    let mut supervisor = supervisor();
+    start_watched(&mut supervisor, &ports, "api").await;
+    supervisor
+        .table
+        .find_by_name_mut("api")
+        .expect("record present")
+        .runtime
+        .unstable_restarts = 17;
+
+    let stuck = FakePorts::new(1000 + 5000);
+    stuck.fail_save();
+    supervisor
+        .on_liveness_sample(INTERVAL_MS, THRESHOLD, &stuck)
+        .await;
+
+    let record = supervisor
+        .table
+        .find_by_name("api")
+        .expect("record present");
+    assert_eq!(record.runtime.unstable_restarts, 0);
+}

@@ -8,10 +8,10 @@ fn a_new_table_holds_no_records() {
 }
 
 #[test]
-fn upsert_assigns_process_ids_from_zero_upwards() {
+fn upsert_assigns_process_ids_from_one_upwards() {
     let mut table = ProcessTable::new();
-    assert_eq!(table.upsert(spec("api"), 1000), 0);
-    assert_eq!(table.upsert(spec("web"), 1000), 1);
+    assert_eq!(table.upsert(spec("api"), 1000), 1);
+    assert_eq!(table.upsert(spec("web"), 1000), 2);
     assert_eq!(table.records().len(), 2);
 }
 
@@ -47,34 +47,59 @@ fn upsert_keeps_runtime_state_when_replacing_a_spec() {
 }
 
 #[test]
-fn new_ids_continue_past_the_highest_existing_id() {
+fn a_deleted_id_is_handed_out_again() {
     let mut table = ProcessTable::from_records(Vec::new());
     table.upsert(spec("a"), 1000);
     table.upsert(spec("b"), 1000);
-    table.remove(&AppSelector::Id(0));
-    assert_eq!(table.upsert(spec("c"), 1000), 2);
+    table.remove(&AppSelector::Id(1));
+    assert_eq!(
+        table.upsert(spec("c"), 1000),
+        1,
+        "the gap the deletion left is the lowest free id"
+    );
 }
 
 #[test]
-fn removing_the_highest_id_does_not_hand_it_out_again() {
+fn removing_the_highest_id_hands_it_out_again() {
     let mut table = ProcessTable::new();
     table.upsert(spec("a"), 1000);
     table.upsert(spec("b"), 1000);
-    table.remove(&AppSelector::Id(1));
+    table.remove(&AppSelector::Id(2));
     assert_eq!(table.upsert(spec("c"), 1000), 2);
 }
 
 #[test]
-fn a_table_restored_from_records_continues_past_their_highest_id() {
+fn a_table_restored_from_records_fills_the_gap_below_their_highest_id() {
     let mut table = ProcessTable::from_records(vec![record_with_id("a", 4)]);
-    assert_eq!(table.upsert(spec("b"), 1000), 5);
+    assert_eq!(
+        table.upsert(spec("b"), 1000),
+        1,
+        "a sparse dump must not push new services to the end"
+    );
+}
+
+#[test]
+fn a_dense_table_hands_out_the_id_above_its_highest() {
+    let mut table = ProcessTable::from_records(vec![
+        record_with_id("a", 1),
+        record_with_id("b", 2),
+        record_with_id("c", 3),
+    ]);
+    assert_eq!(table.upsert(spec("d"), 1000), 4);
+}
+
+#[test]
+fn an_unsorted_dump_still_yields_the_lowest_free_id() {
+    let mut table =
+        ProcessTable::from_records(vec![record_with_id("c", 3), record_with_id("a", 1)]);
+    assert_eq!(table.upsert(spec("b"), 1000), 2);
 }
 
 #[test]
 fn find_locates_a_record_by_id() {
     let mut table = ProcessTable::new();
     table.upsert(spec("api"), 1000);
-    let found = table.find(&AppSelector::Id(0)).expect("record present");
+    let found = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(found.runtime.name, "api");
 }
 
@@ -120,4 +145,14 @@ fn dependency_nodes_feed_the_topological_sort() {
     table.upsert(spec("api"), 1000);
     let order = topo_sort(&table.dependency_nodes()).expect("acyclic");
     assert_eq!(order, vec!["api", "web"]);
+}
+
+#[test]
+fn an_id_below_the_floor_left_by_an_older_dump_is_stepped_over() {
+    let mut table = ProcessTable::from_records(vec![record_with_id("legacy", 0)]);
+    assert_eq!(
+        table.upsert(spec("fresh"), 1000),
+        1,
+        "a dump written before ids started at one must not collide with the floor"
+    );
 }

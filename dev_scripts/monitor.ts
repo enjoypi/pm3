@@ -3,9 +3,12 @@ import { join } from "node:path";
 type MonitorKind = "business" | "crash";
 
 const daemonLogFile = "pm3.log";
-const defaultRuntimeHome = ".pm3";
+const defaultStateHome = ".local/state";
+const pm3Subdir = "pm3";
 const serviceLogVariable = "SERVICE_LOG";
 const homeVariable = "PM3_HOME";
+const stateVariable = "PM3_STATE_DIR";
+const xdgStateVariable = "XDG_STATE_HOME";
 const userHomeVariable = "HOME";
 
 const patternByKind: Record<MonitorKind, RegExp> = {
@@ -15,23 +18,42 @@ const patternByKind: Record<MonitorKind, RegExp> = {
     /panicked at|stack backtrace|fatal runtime error|stack overflow|SIGABRT|SIGSEGV|thread .* panicked/u,
 };
 
+function named(
+  env: (name: string) => string | undefined,
+  variable: string,
+): string | undefined {
+  const value = env(variable);
+  if (value === undefined || value.length === 0) {
+    return undefined;
+  }
+  return value;
+}
+
 export function resolveServiceLog(
   env: (name: string) => string | undefined,
 ): string {
-  const override = env(serviceLogVariable);
-  if (override !== undefined && override.length > 0) {
+  const override = named(env, serviceLogVariable);
+  if (override !== undefined) {
     return override;
   }
-  const pm3Home = env(homeVariable);
-  if (pm3Home !== undefined && pm3Home.length > 0) {
+  const pm3Home = named(env, homeVariable);
+  if (pm3Home !== undefined) {
     return join(pm3Home, daemonLogFile);
   }
-  const userHome = env(userHomeVariable);
-  if (userHome !== undefined && userHome.length > 0) {
-    return join(userHome, defaultRuntimeHome, daemonLogFile);
+  const stateDir = named(env, stateVariable);
+  if (stateDir !== undefined) {
+    return join(stateDir, daemonLogFile);
+  }
+  const xdgState = named(env, xdgStateVariable);
+  if (xdgState !== undefined) {
+    return join(xdgState, pm3Subdir, daemonLogFile);
+  }
+  const userHome = named(env, userHomeVariable);
+  if (userHome !== undefined) {
+    return join(userHome, defaultStateHome, pm3Subdir, daemonLogFile);
   }
   throw new Error(
-    "cannot locate the pm3 daemon log: set SERVICE_LOG, PM3_HOME or HOME",
+    "cannot locate the pm3 daemon log: set SERVICE_LOG, PM3_HOME, PM3_STATE_DIR, XDG_STATE_HOME or HOME",
   );
 }
 

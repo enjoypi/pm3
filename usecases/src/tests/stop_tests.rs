@@ -17,12 +17,12 @@ fn stopped_names(stopped: &[StopOutcome]) -> Vec<String> {
 async fn stopping_a_running_app_sends_sigterm_and_marks_it_stopping() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    let outcome = stop_app(&mut table, &AppSelector::Id(0), &ports)
+    let outcome = stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("stop should succeed");
     assert_eq!(outcome.force_kill_pid, Some(100));
     assert_eq!(ports.terminated(), vec![100]);
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
     assert_eq!(record.runtime.pid, Some(100));
 }
@@ -67,7 +67,7 @@ async fn a_broken_dependency_graph_still_signals_the_survivors() {
 async fn a_handover_names_the_service_that_is_still_draining() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    stop_app(&mut table, &AppSelector::Id(0), &ports)
+    stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("stop should succeed");
 
@@ -82,7 +82,7 @@ async fn a_handover_names_the_service_that_is_still_draining() {
 async fn a_handover_keeps_a_draining_service_stopping_so_the_next_daemon_can_settle_it() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    stop_app(&mut table, &AppSelector::Id(0), &ports)
+    stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("stop should succeed");
 
@@ -90,7 +90,7 @@ async fn a_handover_keeps_a_draining_service_stopping_so_the_next_daemon_can_set
         .await
         .expect("a handover should succeed");
 
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
 }
 
@@ -98,7 +98,7 @@ async fn a_handover_keeps_a_draining_service_stopping_so_the_next_daemon_can_set
 async fn a_handover_keeps_the_pid_of_a_draining_service() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    stop_app(&mut table, &AppSelector::Id(0), &ports)
+    stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("stop should succeed");
 
@@ -106,7 +106,7 @@ async fn a_handover_keeps_the_pid_of_a_draining_service() {
         .await
         .expect("a handover should succeed");
 
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.pid, Some(100));
 }
 
@@ -162,14 +162,14 @@ async fn a_running_record_without_a_pid_settles_as_stopped() {
 async fn stopping_an_app_that_is_already_stopping_keeps_its_pid() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    stop_app(&mut table, &AppSelector::Id(0), &ports)
+    stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("first stop should succeed");
-    let outcome = stop_app(&mut table, &AppSelector::Id(0), &ports)
+    let outcome = stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("second stop should succeed");
     assert_eq!(outcome.force_kill_pid, Some(100));
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.pid, Some(100));
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
 }
@@ -189,7 +189,7 @@ async fn a_signal_failure_propagates() {
     let ports = FakePorts::new(1000);
     ports.fail_signal_for(100);
     let mut table = started_table(&ports).await;
-    let err = stop_app(&mut table, &AppSelector::Id(0), &ports)
+    let err = stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::Signal(_)), "got: {err}");
@@ -200,7 +200,7 @@ async fn a_persistence_failure_propagates() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
     ports.fail_save();
-    let err = stop_app(&mut table, &AppSelector::Id(0), &ports)
+    let err = stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
@@ -259,7 +259,7 @@ async fn a_refused_signal_still_marks_the_service_stopping_so_its_exit_is_not_a_
 
     stop_all_apps(&mut table, &ports).await;
 
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
     let exit = ExitOutcome::Signalled;
     let action = handle_child_exit(&mut table, "api", exit, &ports)
@@ -280,7 +280,7 @@ async fn a_persistence_failure_while_stopping_everything_still_reports_the_stopp
     ports.fail_save();
     let stopped = stop_all_apps(&mut table, &ports).await;
     assert_eq!(stopped_names(&stopped), vec!["api".to_string()]);
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
 }
 
@@ -288,7 +288,7 @@ async fn a_persistence_failure_while_stopping_everything_still_reports_the_stopp
 async fn stopping_persists_the_table() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    stop_app(&mut table, &AppSelector::Id(0), &ports)
+    stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("stop should succeed");
     assert_eq!(ports.save_count(), 2);
@@ -298,15 +298,15 @@ async fn stopping_persists_the_table() {
 async fn stopping_a_service_cancels_a_queued_restart() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+    restart_app(&mut table, &AppSelector::Id(1), LOGS_DIR, &ports)
         .await
         .expect("restart should succeed");
 
-    stop_app(&mut table, &AppSelector::Id(0), &ports)
+    stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("stop should succeed");
 
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert!(!record.runtime.pending_restart);
 }
 
@@ -314,10 +314,10 @@ async fn stopping_a_service_cancels_a_queued_restart() {
 async fn a_stopped_service_stays_down_when_the_draining_process_finally_exits() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+    restart_app(&mut table, &AppSelector::Id(1), LOGS_DIR, &ports)
         .await
         .expect("restart should succeed");
-    stop_app(&mut table, &AppSelector::Id(0), &ports)
+    stop_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("stop should succeed");
 
@@ -338,12 +338,12 @@ async fn a_stopped_service_stays_down_when_the_draining_process_finally_exits() 
 async fn stopping_everything_cancels_a_queued_restart() {
     let ports = FakePorts::new(1000);
     let mut table = started_table(&ports).await;
-    restart_app(&mut table, &AppSelector::Id(0), LOGS_DIR, &ports)
+    restart_app(&mut table, &AppSelector::Id(1), LOGS_DIR, &ports)
         .await
         .expect("restart should succeed");
 
     stop_all_apps(&mut table, &ports).await;
 
-    let record = table.find(&AppSelector::Id(0)).expect("record present");
+    let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert!(!record.runtime.pending_restart);
 }
