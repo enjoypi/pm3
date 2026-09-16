@@ -331,7 +331,7 @@ fn validate_rejects_a_zero_liveness_threshold() {
     );
 }
 
-#[path = "config_schema_sandbox_tests.rs"]
+#[path = "config_validate_sandbox_tests.rs"]
 mod sandbox_roots;
 
 #[derive(serde::Deserialize)]

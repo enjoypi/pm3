@@ -283,5 +283,5 @@ fn validate_rejects_a_service_label_with_a_control_character() {
     );
 }
 
-#[path = "config_schema_render_tests.rs"]
+#[path = "config_validate_render_tests.rs"]
 mod render;

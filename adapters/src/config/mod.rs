@@ -1,6 +1,7 @@
 mod app;
 mod loader;
 mod schema;
+mod validate;
 
 pub use self::{
     app::{
@@ -11,7 +12,7 @@ pub use self::{
     schema::{
         AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config,
         RESTART_CONDITION_ALWAYS, RESTART_CONDITION_ON_FAILURE, RestartConfig, STOP_SIGNAL_TERM,
-        SandboxConfig, ServiceConfig, TelemetryConfig, validate_config, validate_pm3_config,
-        validate_telemetry_config,
+        SandboxConfig, ServiceConfig, TelemetryConfig,
     },
+    validate::{validate_config, validate_pm3_config, validate_telemetry_config},
 };
