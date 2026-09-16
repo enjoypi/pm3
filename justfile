@@ -30,13 +30,9 @@ check-windows:
     cargo check {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc
     cargo clippy {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc --no-deps -- -D warnings
 
-[doc("裸 nextest，不含覆盖率门禁；日常验收用 just cov；跑前跑后自动 reap 泄漏的 e2e daemon")]
+[doc("nextest；覆盖率门禁走 /rust-cov-100；跑前跑后自动 reap 泄漏的 e2e daemon")]
 test *args:
     bun dev_scripts/reap.ts; cargo nextest run {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status
-
-[doc("覆盖率门禁：四指标 + lcov 真值 plate + 生产文件完整性自检；--fresh 清 workspace 重算；跑前跑后自动 reap 泄漏的 e2e daemon")]
-cov *args:
-    bun dev_scripts/cov.ts "$@"
 
 [doc("装到真机：opt-level 3 构建后交给 pm3 install（备份、原子换二进制、重装 unit、核对接管）")]
 install:
