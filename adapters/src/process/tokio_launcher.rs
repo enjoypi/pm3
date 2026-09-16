@@ -143,7 +143,7 @@ async fn open_for_append(app: &str, path: &str) -> Result<File, LaunchError> {
 }
 
 #[cfg(test)]
-#[path = "../test_helpers/process_tokio_launcher_test_helpers.rs"]
+#[path = "../test_helpers/process_tokio_launcher_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/process_tokio_launcher_tests.rs"]

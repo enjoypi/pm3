@@ -46,7 +46,10 @@ fn health_mark(view: &ProcessViewDto) -> Option<String> {
 }
 
 const fn tripped(view: &ProcessViewDto) -> bool {
-    view.max_restarts > 0 && view.unstable_restarts >= view.max_restarts
+    if view.max_restarts == 0 {
+        return false;
+    }
+    view.unstable_restarts >= view.max_restarts
 }
 
 fn sandbox_marks(view: &ProcessViewDto) -> Vec<String> {

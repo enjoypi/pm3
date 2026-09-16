@@ -498,5 +498,5 @@ pub async fn started_table(ports: &FakePorts) -> ProcessTable {
     table
 }
 
-#[path = "ports_fake_impls_test_helpers.rs"]
+#[path = "ports_fake_impls_fixture_tests.rs"]
 mod impls;

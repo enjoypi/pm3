@@ -170,7 +170,10 @@ fn log_undelivered_signal(
 }
 
 fn is_signalable(pid: u32) -> bool {
-    pid >= LOWEST_SIGNALABLE_PID && i32::try_from(pid).is_ok()
+    if pid < LOWEST_SIGNALABLE_PID {
+        return false;
+    }
+    i32::try_from(pid).is_ok()
 }
 
 #[cfg(unix)]

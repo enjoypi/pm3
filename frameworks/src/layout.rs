@@ -205,7 +205,10 @@ const PIPE_SECRET_LEN: usize = 32;
 #[cfg(windows)]
 #[must_use]
 pub fn is_pipe_secret(secret: &str) -> bool {
-    secret.len() == PIPE_SECRET_LEN && secret.bytes().all(|byte| byte.is_ascii_hexdigit())
+    if secret.len() != PIPE_SECRET_LEN {
+        return false;
+    }
+    secret.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[cfg(windows)]

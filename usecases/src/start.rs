@@ -161,7 +161,10 @@ fn defer_one(
 
 fn awaits_ready(table: &ProcessTable, name: &str) -> bool {
     table.find_by_name(name).is_some_and(|record| {
-        record.spec.ready_probe.is_some() && record.runtime.status == ProcessStatus::Launching
+        if record.spec.ready_probe.is_none() {
+            return false;
+        }
+        record.runtime.status == ProcessStatus::Launching
     })
 }
 

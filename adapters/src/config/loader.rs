@@ -167,7 +167,7 @@ fn find_unnested_close(line: &str) -> Option<usize> {
 }
 
 #[cfg(test)]
-#[path = "../test_helpers/config_test_helpers.rs"]
+#[path = "../test_helpers/config_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/config_tests.rs"]

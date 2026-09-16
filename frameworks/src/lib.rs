@@ -134,10 +134,10 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
-#[path = "../test_support/daemon_fixture.rs"]
+#[path = "../test_support/daemon_fixture_tests.rs"]
 pub(crate) mod daemon_fixture;
 #[cfg(test)]
-#[path = "../test_support/config_fixtures.rs"]
+#[path = "../test_support/config_fixture_tests.rs"]
 pub(crate) mod test_support;
 #[cfg(test)]
 #[path = "tests/lib_tests.rs"]

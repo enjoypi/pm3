@@ -227,7 +227,16 @@ fn takeover_satisfied(
     filed: Option<u32>,
     healthy: bool,
 ) -> bool {
-    status == UnitStatus::Running && healthy && supervised.is_some() && supervised == filed
+    if status != UnitStatus::Running {
+        return false;
+    }
+    if !healthy {
+        return false;
+    }
+    if supervised.is_none() {
+        return false;
+    }
+    supervised == filed
 }
 
 fn log_step(action: &'static str, from: &Path, to: &Path) {

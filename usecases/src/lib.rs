@@ -138,7 +138,7 @@ impl UsecaseError {
 pub type Result<T> = std::result::Result<T, UsecaseError>;
 
 #[cfg(test)]
-#[path = "test_helpers/ports_test_helpers.rs"]
+#[path = "test_helpers/ports_fixture_tests.rs"]
 pub(crate) mod ports_test_helpers;
 #[cfg(test)]
 #[path = "tests/lib_tests.rs"]

@@ -143,7 +143,10 @@ impl AppSpec {
 
     #[must_use]
     pub const fn is_scheduled_task(&self) -> bool {
-        self.schedule.is_some() && !self.autorestart
+        if self.autorestart {
+            return false;
+        }
+        self.schedule.is_some()
     }
     #[must_use]
     pub fn declared_env_count(&self) -> usize {
@@ -198,7 +201,10 @@ pub fn validate_app_name(name: &str) -> Result<(), SpecError> {
 
 #[must_use]
 pub const fn is_name_letter(letter: char) -> bool {
-    letter.is_ascii_alphanumeric() || matches!(letter, '-' | '_' | '.')
+    if letter.is_ascii_alphanumeric() {
+        return true;
+    }
+    matches!(letter, '-' | '_' | '.')
 }
 
 pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
@@ -258,7 +264,7 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
 }
 
 #[cfg(test)]
-#[path = "../test_helpers/process_spec_test_helpers.rs"]
+#[path = "../test_helpers/process_spec_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/process_spec_tests.rs"]

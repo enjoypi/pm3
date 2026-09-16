@@ -20,9 +20,12 @@ pub(super) fn dominant_roots(candidates: impl IntoIterator<Item = String>) -> Ve
 }
 
 fn covered_by_another(root: &str, roots: &[String]) -> bool {
-    roots
-        .iter()
-        .any(|other| other != root && covers_path(other, root))
+    roots.iter().any(|other| {
+        if other == root {
+            return false;
+        }
+        covers_path(other, root)
+    })
 }
 
 #[cfg(test)]

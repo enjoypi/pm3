@@ -481,7 +481,7 @@ fn parse_read(scope: &str, raw: &str) -> Result<ReadScope, AppsFileError> {
 }
 
 #[cfg(test)]
-#[path = "../test_helpers/apps_file_test_helpers.rs"]
+#[path = "../test_helpers/apps_file_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/apps_file_tests.rs"]

@@ -40,7 +40,7 @@ pub fn show_config(path: &str) -> Result<String> {
 }
 
 #[cfg(test)]
-#[path = "../test_helpers/config_app_test_helpers.rs"]
+#[path = "../test_helpers/config_app_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/config_app_tests.rs"]

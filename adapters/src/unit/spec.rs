@@ -179,9 +179,21 @@ pub fn parse_linger_state(exit_success: bool, stdout: &str) -> LingerState {
 #[must_use]
 pub fn parse_run_state(kind: UnitKind, exit_success: bool, stdout: &str) -> bool {
     match kind {
-        UnitKind::Launchd => exit_success && stdout.contains(LAUNCHD_PID_KEY),
+        UnitKind::Launchd => {
+            if exit_success {
+                stdout.contains(LAUNCHD_PID_KEY)
+            } else {
+                false
+            }
+        }
         UnitKind::Systemd => stdout.trim() == SYSTEMD_ACTIVE,
-        UnitKind::WinSchtasks => exit_success && stdout.contains(SCHTASKS_RUNNING),
+        UnitKind::WinSchtasks => {
+            if exit_success {
+                stdout.contains(SCHTASKS_RUNNING)
+            } else {
+                false
+            }
+        }
     }
 }
 

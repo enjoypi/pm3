@@ -49,7 +49,13 @@ fn validate_derived_root(field: &'static str, value: &str) -> Result<(), ConfigE
 }
 
 fn derivable_root(value: &str) -> bool {
-    value.is_empty() || value.starts_with('/') || value.starts_with('~')
+    if value.is_empty() {
+        return true;
+    }
+    if value.starts_with('/') {
+        return true;
+    }
+    value.starts_with('~')
 }
 
 fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {
@@ -277,7 +283,7 @@ pub fn validate_telemetry_config(t: &TelemetryConfig) -> Result<(), ConfigError>
 }
 
 #[cfg(test)]
-#[path = "../test_helpers/config_schema_test_helpers.rs"]
+#[path = "../test_helpers/config_schema_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/config_validate_tests.rs"]

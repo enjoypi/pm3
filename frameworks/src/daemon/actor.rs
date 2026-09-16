@@ -244,7 +244,7 @@ mod lifecycle_tests;
 #[path = "../tests/daemon_actor_shared_tests.rs"]
 mod shared;
 #[cfg(test)]
-#[path = "../test_helpers/daemon_actor_test_helpers.rs"]
+#[path = "../test_helpers/daemon_actor_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/daemon_actor_tests.rs"]

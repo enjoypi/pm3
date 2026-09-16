@@ -66,7 +66,7 @@ pub fn init_telemetry(cfg: &TelemetryConfig, sink: LogSink) -> Result<(), Teleme
 }
 
 #[cfg(test)]
-#[path = "test_helpers/telemetry_test_helpers.rs"]
+#[path = "test_helpers/telemetry_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "tests/telemetry_tests.rs"]

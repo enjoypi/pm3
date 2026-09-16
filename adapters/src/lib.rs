@@ -117,26 +117,26 @@ pub enum AdapterError {
 pub type Result<T> = std::result::Result<T, AdapterError>;
 
 #[cfg(test)]
-#[path = "../test_support/apps_sections.rs"]
+#[path = "../test_support/apps_sections_fixture_tests.rs"]
 pub(crate) mod apps_sections;
 #[cfg(test)]
-#[path = "../test_support/config_sections.rs"]
+#[path = "../test_support/config_sections_fixture_tests.rs"]
 pub(crate) mod config_sections;
 #[cfg(test)]
-#[path = "../test_support/process_records.rs"]
+#[path = "../test_support/process_records_fixture_tests.rs"]
 pub(crate) mod process_records;
 #[cfg(test)]
-#[path = "../test_support/process_views.rs"]
+#[path = "../test_support/process_views_fixture_tests.rs"]
 pub(crate) mod process_views;
 #[cfg(test)]
-#[path = "../test_support/response_body.rs"]
+#[path = "../test_support/response_body_fixture_tests.rs"]
 pub(crate) mod response_body;
 #[cfg(test)]
-#[path = "../test_support/service_fixtures.rs"]
+#[path = "../test_support/service_fixture_tests.rs"]
 pub(crate) mod service_fixtures;
 #[cfg(test)]
-#[path = "../test_support/spec_sources.rs"]
+#[path = "../test_support/spec_sources_fixture_tests.rs"]
 pub(crate) mod spec_sources;
 #[cfg(test)]
-#[path = "../test_support/unit_specs.rs"]
+#[path = "../test_support/unit_specs_fixture_tests.rs"]
 pub(crate) mod unit_specs;

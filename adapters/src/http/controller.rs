@@ -251,7 +251,7 @@ const fn usecase_status(error: &UsecaseError) -> StatusCode {
 }
 
 #[cfg(test)]
-#[path = "../test_helpers/http_controller_test_helpers.rs"]
+#[path = "../test_helpers/http_controller_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "../tests/http_controller_tests.rs"]

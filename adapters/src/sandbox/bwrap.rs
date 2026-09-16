@@ -98,7 +98,10 @@ fn nested_in<'r>(hidden: &[&'r str], granted: &[&str]) -> Vec<&'r str> {
 }
 
 fn encloses(root: &str, path: &str) -> bool {
-    covers_path(root, path) && normalize_root(root) != path
+    if !covers_path(root, path) {
+        return false;
+    }
+    normalize_root(root) != path
 }
 
 fn shallowest_first(roots: Vec<&str>) -> Vec<&str> {

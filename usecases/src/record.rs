@@ -109,7 +109,7 @@ fn masked_entry(entry: &EnvValue) -> EnvDisplay {
 }
 
 #[cfg(test)]
-#[path = "test_helpers/record_test_helpers.rs"]
+#[path = "test_helpers/record_fixture_tests.rs"]
 mod test_helpers;
 #[cfg(test)]
 #[path = "tests/record_tests.rs"]

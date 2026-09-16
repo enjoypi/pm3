@@ -35,7 +35,10 @@ fn is_managed_log(name: &OsStr) -> bool {
     let Some(text) = name.to_str() else {
         return false;
     };
-    text.ends_with(log_paths::STDOUT_SUFFIX) || text.ends_with(log_paths::STDERR_SUFFIX)
+    if text.ends_with(log_paths::STDOUT_SUFFIX) {
+        return true;
+    }
+    text.ends_with(log_paths::STDERR_SUFFIX)
 }
 
 async fn rotate_if_oversized(

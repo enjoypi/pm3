@@ -45,7 +45,11 @@ pub async fn run_logs(
 ) -> Result<Option<String>> {
     let session = open_session(config)?;
     let targets = resolve_targets(&session, &request.names, request.err, request.all)?;
-    let strict = targets.len() == 1 && !request.all;
+    let strict = if request.all {
+        false
+    } else {
+        targets.len() == 1
+    };
     if request.action == LogAction::Clear {
         return clear_targets(&targets, strict).await.map(Some);
     }
@@ -74,7 +78,7 @@ fn resolve_targets(
     all: bool,
 ) -> Result<Vec<LogTarget>> {
     let names = resolve_names(session, names)?;
-    let verbatim = names.len() == 1 && !all;
+    let verbatim = if all { false } else { names.len() == 1 };
     let logs_dir = session.paths.logs_dir.to_string_lossy();
     let mut targets = Vec::new();
     for name in &names {

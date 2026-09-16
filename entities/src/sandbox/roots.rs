@@ -10,6 +10,13 @@ pub fn normalize_root(root: &str) -> &str {
     }
 }
 
+fn ends_at_boundary(rest: &str) -> bool {
+    if rest.is_empty() {
+        return true;
+    }
+    rest.starts_with('/')
+}
+
 #[must_use]
 pub fn covers_path(parent: &str, child: &str) -> bool {
     let parent = normalize_root(parent);
@@ -18,7 +25,7 @@ pub fn covers_path(parent: &str, child: &str) -> bool {
     }
     normalize_root(child)
         .strip_prefix(parent)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        .is_some_and(ends_at_boundary)
 }
 
 #[cfg(test)]

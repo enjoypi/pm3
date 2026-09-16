@@ -52,7 +52,13 @@ impl Pm3Roots {
 
     #[must_use]
     pub fn is_single(&self) -> bool {
-        self.config == self.state && self.state == self.runtime && self.runtime == self.data
+        if self.config != self.state {
+            return false;
+        }
+        if self.state != self.runtime {
+            return false;
+        }
+        self.runtime == self.data
     }
 }
 

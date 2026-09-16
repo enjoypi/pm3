@@ -187,12 +187,26 @@ fn split_pair(
     Ok((key, quoting.read(raw_value)))
 }
 
+const fn is_env_key_head(first: char) -> bool {
+    if first.is_ascii_alphabetic() {
+        return true;
+    }
+    first == '_'
+}
+
+const fn is_env_key_letter(letter: char) -> bool {
+    if letter.is_ascii_alphanumeric() {
+        return true;
+    }
+    letter == '_'
+}
+
 fn is_env_key(key: &str) -> bool {
     let mut letters = key.chars();
-    letters
-        .next()
-        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
-        && letters.all(|letter| letter.is_ascii_alphanumeric() || letter == '_')
+    if !letters.next().is_some_and(is_env_key_head) {
+        return false;
+    }
+    letters.all(is_env_key_letter)
 }
 
 fn unquote(home: Option<&str>, raw: &str) -> String {
@@ -227,7 +241,7 @@ fn expand_bare_home(home: &str, text: &str) -> String {
 }
 
 fn continues_a_name(rest: &str) -> bool {
-    rest.starts_with(|letter: char| letter.is_ascii_alphanumeric() || letter == '_')
+    rest.starts_with(is_env_key_letter)
 }
 
 fn fenced(raw: &str, fence: char) -> Option<&str> {

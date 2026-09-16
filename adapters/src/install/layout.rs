@@ -42,7 +42,10 @@ pub fn parse_version_output(stdout: &str) -> Option<&str> {
 }
 
 fn is_usable(version: &str) -> bool {
-    !version.is_empty() && version.chars().all(is_name_letter)
+    if version.is_empty() {
+        return false;
+    }
+    version.chars().all(is_name_letter)
 }
 
 #[cfg(test)]
