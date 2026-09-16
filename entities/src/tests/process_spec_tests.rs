@@ -58,6 +58,24 @@ fn validate_rejects_a_name_that_would_shadow_an_encrypted_environment() {
 }
 
 #[test]
+fn validate_rejects_the_daemon_config_file_name() {
+    let err = validate_app_name("config").unwrap_err();
+    assert_eq!(err, SpecError::ReservedFileName("config".to_string()));
+}
+
+#[test]
+fn validate_rejects_the_global_environment_file_name() {
+    let err = validate_app_name("pm3").unwrap_err();
+    assert_eq!(err, SpecError::ReservedFileName("pm3".to_string()));
+}
+
+#[test]
+fn validate_accepts_a_name_that_merely_starts_with_a_reserved_word() {
+    validate_app_name("configurator").expect("only the exact name is reserved");
+    validate_app_name("pm3-agent").expect("only the exact name is reserved");
+}
+
+#[test]
 fn validate_accepts_a_name_that_merely_holds_enc() {
     validate_app_name("enc.api").expect("only the tail is reserved");
 }
@@ -282,6 +300,7 @@ fn every_spec_error_renders_a_message() {
         SpecError::DottedName(".api".to_string()),
         SpecError::ReservedName("all".to_string()),
         SpecError::EncryptedName("api.enc".to_string()),
+        SpecError::ReservedFileName("config".to_string()),
         SpecError::UnsafeName {
             name: "my app".to_string(),
             character: ' ',

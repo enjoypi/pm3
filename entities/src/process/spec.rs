@@ -9,6 +9,7 @@ use crate::sandbox::{PolicyError, SandboxPolicy, validate_policy};
 
 pub const RESERVED_ALL_SELECTOR: &str = "all";
 pub const RESERVED_ENCRYPTED_SUFFIX: &str = ".enc";
+pub const RESERVED_FILE_NAMES: [&str; 2] = ["config", "pm3"];
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum EnvOrigin {
@@ -78,6 +79,11 @@ pub enum SpecError {
         "cannot accept app name '{0}' ending in '.enc': its service file would be the encrypted environment of another app"
     )]
     EncryptedName(String),
+
+    #[error(
+        "cannot accept app name '{0}': pm3 keeps that file name for its own configuration in the same directory"
+    )]
+    ReservedFileName(String),
 
     #[error(
         "cannot accept app name '{name}': '{character}' is not allowed, use letters, digits, '-', '_' or '.'"
@@ -166,6 +172,9 @@ pub fn validate_app_name(name: &str) -> Result<(), SpecError> {
     }
     if name == RESERVED_ALL_SELECTOR {
         return Err(SpecError::ReservedName(name.to_string()));
+    }
+    if RESERVED_FILE_NAMES.contains(&name) {
+        return Err(SpecError::ReservedFileName(name.to_string()));
     }
     if name.ends_with(RESERVED_ENCRYPTED_SUFFIX) {
         return Err(SpecError::EncryptedName(name.to_string()));
