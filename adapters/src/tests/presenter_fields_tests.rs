@@ -87,11 +87,11 @@ fn a_clock_without_an_instant_is_missing() {
 }
 
 #[test]
-fn a_clock_carries_the_offset_that_reads_it() {
+fn a_clock_reads_as_a_bare_wall_time() {
     let shown = format_clock(Some(0));
     assert!(
-        shown.contains('+') || shown.contains('-'),
-        "a bare wall clock is unreadable across time zones: {shown}"
+        shown.contains(':') && !shown.contains('+'),
+        "the listing header carries the offset so every row can stay short: {shown}"
     );
 }
 
@@ -144,4 +144,35 @@ fn an_unsampled_process_shows_no_cpu() {
 fn cpu_tenths_are_rendered_as_a_percentage() {
     assert_eq!(format_cpu(Some(7)), "0.7%");
     assert_eq!(format_cpu(Some(150)), "15.0%");
+}
+
+#[test]
+fn the_sandbox_flags_name_every_write_scope() {
+    assert_eq!(
+        format_sandbox_flags("danger-full-access", "minimal", true),
+        "F-N"
+    );
+    assert_eq!(
+        format_sandbox_flags("workspace-write", "minimal", false),
+        "W--"
+    );
+    assert_eq!(format_sandbox_flags("read-only", "minimal", false), "---");
+}
+
+#[test]
+fn the_sandbox_flags_name_a_full_read_scope() {
+    assert_eq!(format_sandbox_flags("read-only", "full", false), "-R-");
+}
+
+#[test]
+fn the_restart_column_names_a_recent_count() {
+    assert_eq!(format_restarts(3), "3");
+    assert_eq!(format_restarts(0), MISSING);
+}
+
+#[test]
+fn the_resources_read_as_one_cell() {
+    assert_eq!(format_resources(Some(1536), Some(7)), "1.5M/0.7%");
+    assert_eq!(format_resources(None, Some(7)), MISSING);
+    assert_eq!(format_resources(Some(512), None), "512K/-");
 }

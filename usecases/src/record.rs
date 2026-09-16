@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use entities::{AppSpec, EnvOrigin, ProcessRuntime, ProcessStatus};
+use entities::{
+    AppSpec, EnvOrigin, EnvScope, EnvValue, ProcessRuntime, ProcessStatus, mask_secret,
+};
 
 use crate::ports::ResourceSample;
 
@@ -11,19 +13,31 @@ pub struct ProcessRecord {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EnvDisplay {
+    pub key: String,
+    pub value: String,
+    pub scope: EnvScope,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessView {
     pub pm_id: u32,
     pub name: String,
     pub pid: Option<u32>,
     pub status: ProcessStatus,
     pub restart_time: u32,
+    pub unstable_restarts: u32,
+    pub max_restarts: u32,
+    pub autorestart: bool,
     pub uptime_ms: Option<u64>,
     pub next_fire_ms: Option<u64>,
     pub schedule: Option<String>,
     pub sandbox_mode: String,
+    pub sandbox_read: String,
     pub sandbox_network: bool,
     pub env_origin: EnvOrigin,
     pub env_declared: usize,
+    pub env: Vec<EnvDisplay>,
     pub script: String,
     pub args: Vec<String>,
     pub cwd: String,
@@ -53,13 +67,18 @@ impl ProcessRecord {
             pid: self.runtime.pid,
             status: self.runtime.status,
             restart_time: self.runtime.restart_time,
+            unstable_restarts: self.runtime.unstable_restarts,
+            max_restarts: self.spec.max_restarts,
+            autorestart: self.spec.autorestart,
             uptime_ms: self.runtime.uptime_ms(now_ms),
             next_fire_ms: None,
             schedule: self.spec.schedule.clone(),
             sandbox_mode: self.spec.sandbox.mode.as_str().to_string(),
+            sandbox_read: self.spec.sandbox.read.as_str().to_string(),
             sandbox_network: self.spec.sandbox.network,
             env_origin: self.spec.env_origin,
             env_declared: self.spec.declared_env_count(),
+            env: masked_environment(&self.spec.env),
             script: self.spec.script.clone(),
             args: self.spec.args.clone(),
             cwd: self.spec.cwd.clone(),
@@ -74,6 +93,18 @@ impl ProcessRecord {
             rss_kib: None,
             cpu_tenths: None,
         }
+    }
+}
+
+fn masked_environment(env: &[EnvValue]) -> Vec<EnvDisplay> {
+    env.iter().map(masked_entry).collect()
+}
+
+fn masked_entry(entry: &EnvValue) -> EnvDisplay {
+    EnvDisplay {
+        key: entry.key.clone(),
+        value: mask_secret(&entry.value),
+        scope: entry.scope,
     }
 }
 

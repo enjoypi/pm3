@@ -269,7 +269,10 @@ fn list_answers_to_its_pm2_aliases() {
         assert!(
             matches!(
                 parse(&["pm3", alias]).command,
-                Commands::List { json: false }
+                Commands::List {
+                    json: false,
+                    full: false
+                }
             ),
             "{alias} should parse as list"
         );
@@ -404,7 +407,10 @@ fn describe_takes_a_selector() {
 fn list_takes_no_argument() {
     assert!(matches!(
         parse(&["pm3", "list"]).command,
-        Commands::List { json: false }
+        Commands::List {
+            json: false,
+            full: false
+        }
     ));
 }
 

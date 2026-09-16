@@ -104,6 +104,13 @@ pub enum Commands {
     List {
         #[arg(long, help = "Print the listing as JSON")]
         json: bool,
+
+        #[arg(
+            long,
+            short = 'f',
+            help = "Show every column, including the pid and the sandbox"
+        )]
+        full: bool,
     },
 
     #[command(about = "Show or stream app logs")]
@@ -312,7 +319,7 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
         Commands::Describe { selector, json } => commands::describe_app(&config, &selector, json)
             .await
             .map(Some),
-        Commands::List { json } => commands::list_apps(&config, json).await.map(Some),
+        Commands::List { json, full } => commands::list_apps(&config, json, full).await.map(Some),
         Commands::Logs(args) => run_logs_command(&config, args).await,
         Commands::Config { command } => run_config(&config, &command).map(Some),
         Commands::Startup {

@@ -11,5 +11,5 @@ pub use self::{
         encode_start_request,
     },
     routes::{APPS_PATH, HEALTH_PATH, REQUEST_ID_HEADER, SERVICES_STOP_ALL_PATH, router},
-    view_dto::ProcessViewDto,
+    view_dto::{EnvDisplayDto, ProcessViewDto},
 };

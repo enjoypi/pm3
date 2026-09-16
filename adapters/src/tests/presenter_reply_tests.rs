@@ -70,7 +70,10 @@ fn a_list_reply_renders_the_table() {
     let reply = SupervisionReply::Listed(vec![running_view(0, "web")]);
     assert_eq!(
         render_reply(&reply),
-        render_table(&[running_view(0, "web")])
+        render_table(
+            &[crate::http::ProcessViewDto::from(&running_view(0, "web"))],
+            crate::presenter::Listing::Compact
+        )
     );
 }
 

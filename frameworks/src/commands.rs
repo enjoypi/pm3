@@ -159,14 +159,19 @@ fn log_undecided_start(error: &Error) {
     );
 }
 
-pub async fn list_apps(config_path: &str, json: bool) -> Result<String> {
+pub async fn list_apps(config_path: &str, json: bool, full: bool) -> Result<String> {
     let session = prepared_session(config_path).await?;
     let reply = ask(&session, "GET", APPS_PATH, None).await?;
-    Ok(if json {
-        adapters::render_json_list(&reply.views)
-    } else {
-        reply.report
-    })
+    if json {
+        return Ok(adapters::render_json_list(&reply.views));
+    }
+    if full {
+        return Ok(adapters::render_table(
+            &reply.views,
+            adapters::Listing::Full,
+        ));
+    }
+    Ok(reply.report)
 }
 
 pub async fn describe_app(config_path: &str, selector: &str, json: bool) -> Result<String> {

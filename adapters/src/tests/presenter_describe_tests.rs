@@ -39,7 +39,10 @@ fn describe_reports_the_uptime() {
 
 #[test]
 fn describe_reports_the_restart_count() {
-    assert_eq!(value_of(&running_view(0, "web"), "restarts"), "2");
+    assert_eq!(
+        value_of(&running_view(0, "web"), "restarts"),
+        crate::process_views::RESTART_TIME.to_string()
+    );
 }
 
 #[test]
@@ -93,13 +96,13 @@ fn describe_marks_an_empty_list_as_missing() {
 
 #[test]
 fn every_field_gets_its_own_line() {
-    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 17);
+    assert_eq!(render_describe(&running_view(0, "web")).lines().count(), 18);
 }
 
 #[test]
 fn labels_are_padded_to_the_longest_one() {
     let rendered = render_describe(&running_view(7, "web"));
-    let gap = " ".repeat("writable roots".len() - "id".len() + LABEL_GAP.len());
+    let gap = " ".repeat("unstable restarts".len() - "id".len() + LABEL_GAP.len());
     assert!(rendered.contains(&format!("id{gap}7")), "got: {rendered}");
 }
 
@@ -167,4 +170,119 @@ fn describe_counts_a_single_value_in_the_singular() {
 #[test]
 fn describe_reports_an_empty_environment_as_none_declared() {
     assert_eq!(value_of(&running_view(0, "web"), "env"), "plain (0 values)");
+}
+
+fn shown(key: &str, value: &str, scope: usecases::EnvScope) -> usecases::EnvDisplay {
+    usecases::EnvDisplay {
+        key: key.to_string(),
+        value: usecases::mask_secret(value),
+        scope,
+    }
+}
+
+#[test]
+fn describe_lists_every_environment_variable() {
+    let view = crate::process_views::view_with_env(
+        0,
+        "web",
+        vec![
+            shown(
+                "CF_API_TOKEN",
+                "abcdefghijklmnopqrstuvwxyz",
+                usecases::EnvScope::App,
+            ),
+            shown("TZ", "UTC", usecases::EnvScope::Global),
+        ],
+    );
+    let rendered = render_describe(&view);
+    assert!(rendered.contains("env CF_API_TOKEN"), "got: {rendered}");
+    assert!(rendered.contains("env TZ"), "got: {rendered}");
+}
+
+#[test]
+fn describe_labels_each_variable_with_its_source() {
+    let view = crate::process_views::view_with_env(
+        0,
+        "web",
+        vec![
+            shown("HOME", "/home/dev", usecases::EnvScope::Injected),
+            shown("TZ", "UTC", usecases::EnvScope::Global),
+            shown("PORT", "8080", usecases::EnvScope::App),
+        ],
+    );
+    let rendered = render_describe(&view);
+    for label in ["(pm3)", "(global)", "(app)"] {
+        assert!(rendered.contains(label), "missing {label} in: {rendered}");
+    }
+}
+
+#[test]
+fn describe_shows_only_the_ends_of_a_long_value() {
+    let view = crate::process_views::view_with_env(
+        0,
+        "web",
+        vec![shown(
+            "CF_API_TOKEN",
+            "abcdefghijklmnopqrstuvwxyz",
+            usecases::EnvScope::App,
+        )],
+    );
+    let rendered = render_describe(&view);
+    assert!(rendered.contains("abcd..wxyz 26"), "got: {rendered}");
+    assert!(
+        !rendered.contains("abcdefghijkl"),
+        "the middle never leaves the daemon, got: {rendered}"
+    );
+}
+
+#[test]
+fn describe_hides_every_character_of_a_short_value() {
+    let view = crate::process_views::view_with_env(
+        0,
+        "web",
+        vec![shown("PORT", "8080", usecases::EnvScope::App)],
+    );
+    let rendered = render_describe(&view);
+    assert!(rendered.contains("env PORT  .. 4"), "got: {rendered}");
+}
+
+#[test]
+fn describe_says_nothing_extra_when_an_app_declares_no_environment() {
+    let rendered = render_describe(&running_view(0, "web"));
+    assert!(
+        !rendered.contains("(app)"),
+        "an app without values gets no block, got: {rendered}"
+    );
+}
+
+#[test]
+fn describe_keeps_the_fixed_rows_aligned_when_a_variable_name_is_long() {
+    let view = crate::process_views::view_with_env(
+        0,
+        "web",
+        vec![shown(
+            "A_VERY_LONG_VARIABLE_NAME_INDEED",
+            "8080",
+            usecases::EnvScope::App,
+        )],
+    );
+    let rendered = render_describe(&view);
+    let gap = " ".repeat("unstable restarts".len() - "id".len() + LABEL_GAP.len());
+    assert!(
+        rendered.contains(&format!("id{gap}0")),
+        "the env block aligns on its own, got: {rendered}"
+    );
+}
+
+#[test]
+fn describe_reports_both_restart_counters() {
+    let view = running_view(0, "web");
+    assert_eq!(
+        value_of(&view, "unstable restarts"),
+        crate::process_views::UNSTABLE_RESTARTS.to_string()
+    );
+    assert_eq!(
+        value_of(&view, "restarts"),
+        crate::process_views::RESTART_TIME.to_string()
+    );
 }

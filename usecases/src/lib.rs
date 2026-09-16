@@ -29,8 +29,9 @@ pub use entities::{
     PolicyError, ProcessIdentity, ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe,
     RestartDecision, RestartPolicy, RuntimeError, SandboxMode, SandboxPolicy, SignalNameError,
     SpecError, VALID_SIGNALS, covers_path, decide_memory_verdict, decide_restart, is_name_letter,
-    merge_environment, normalize_root, parse_memory_limit, parse_signal_name, root_is_forbidden,
-    topo_sort, validate_app_name, validate_forbidden_roots, validate_policy, validate_spec,
+    mask_secret, merge_environment, normalize_root, parse_memory_limit, parse_signal_name,
+    root_is_forbidden, topo_sort, validate_app_name, validate_forbidden_roots, validate_policy,
+    validate_spec,
 };
 use thiserror::Error;
 
@@ -50,7 +51,7 @@ pub use self::{
         armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,
         running_pids, schedule_of, unsettled_count,
     },
-    record::{ProcessRecord, ProcessView},
+    record::{EnvDisplay, ProcessRecord, ProcessView},
     reset::reset_app,
     restart::{RestartOutcome, restart_app},
     resurrect::resurrect,

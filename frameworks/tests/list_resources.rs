@@ -21,9 +21,11 @@ fn the_listing_reports_memory_and_cpu_for_a_running_service() {
         .find(|line| line.contains("web"))
         .expect("web should be listed");
     let cells: Vec<&str> = row.split_whitespace().collect();
-    let rss = cells.get(6).expect("rss column present");
+    let resources = cells.get(5).expect("the resources share one column");
+    let (rss, cpu) = resources
+        .split_once('/')
+        .unwrap_or_else(|| panic!("got: {resources}"));
     assert!(rss.ends_with('K') || rss.ends_with('M'), "got: {rss}");
-    let cpu = cells.get(7).expect("cpu column present");
     assert!(cpu.ends_with('%'), "got: {cpu}");
     shutdown_daemon(&home);
 }
@@ -42,5 +44,29 @@ fn the_listing_renders_json_when_asked() {
     assert!(shown.contains("\"env_origin\":\"plain\""), "got: {shown}");
     let described = stdout_of(&pm3(&home, &["describe", "web", "--json"]));
     assert!(described.starts_with('{'), "got: {described}");
+    shutdown_daemon(&home);
+}
+
+#[test]
+fn the_full_listing_adds_the_pid_and_the_sandbox() {
+    let home = home();
+    let apps = sleeper_apps(&home, "web");
+    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+    wait_for_listing(&home, "web");
+
+    let shown = stdout_of(&pm3(&home, &["list", "--full"]));
+
+    assert!(shown.contains("pid"), "got: {shown}");
+    assert!(shown.contains("box"), "got: {shown}");
+    let row = shown
+        .lines()
+        .find(|line| line.contains("web"))
+        .expect("web should be listed");
+    let cells: Vec<&str> = row.split_whitespace().collect();
+    assert!(
+        cells[2].parse::<u32>().is_ok(),
+        "the full listing names the pid: {cells:?}"
+    );
     shutdown_daemon(&home);
 }

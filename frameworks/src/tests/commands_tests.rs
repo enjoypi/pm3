@@ -41,7 +41,7 @@ async fn sleeping_returns_after_the_requested_delay() {
 #[tokio::test]
 async fn listing_an_empty_daemon_reports_that_nothing_runs() {
     let fixture = running_daemon().await;
-    let listed = list_apps(&fixture.config_path, false)
+    let listed = list_apps(&fixture.config_path, false, false)
         .await
         .expect("should list");
     assert!(listed.contains("no apps"), "got: {listed}");
@@ -287,7 +287,11 @@ async fn a_refused_request_carries_the_daemon_reason() {
 
 #[tokio::test]
 async fn listing_without_a_config_fails() {
-    assert!(list_apps("/nonexistent/pm3.yaml", false).await.is_err());
+    assert!(
+        list_apps("/nonexistent/pm3.yaml", false, false)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -313,7 +317,7 @@ async fn a_blocked_home_stops_a_command() {
     std::fs::write(&blocked, "occupied").expect("occupy the parent");
     let home = blocked.join("home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
-    let err = list_apps(config.to_str().expect("path"), false)
+    let err = list_apps(config.to_str().expect("path"), false, false)
         .await
         .unwrap_err()
         .to_string();
@@ -325,7 +329,7 @@ async fn a_daemon_that_never_comes_up_stops_a_command() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
     let config = crate::test_support::write_impatient_config(dir.path(), &home.to_string_lossy());
-    let err = list_apps(config.to_str().expect("path"), false)
+    let err = list_apps(config.to_str().expect("path"), false, false)
         .await
         .unwrap_err()
         .to_string();
@@ -339,7 +343,7 @@ async fn a_daemon_that_disappears_after_the_probe_stops_a_command() {
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
     let answering = crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock"));
-    let err = list_apps(config.to_str().expect("path"), false)
+    let err = list_apps(config.to_str().expect("path"), false, false)
         .await
         .unwrap_err()
         .to_string();
@@ -363,7 +367,7 @@ async fn listing_with_json_renders_the_structured_views() {
     start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
-    let listed = list_apps(&fixture.config_path, true)
+    let listed = list_apps(&fixture.config_path, true, false)
         .await
         .expect("should list");
     assert!(listed.contains("\"name\":\"web\""), "got: {listed}");

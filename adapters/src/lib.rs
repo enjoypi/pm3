@@ -20,15 +20,15 @@ pub mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
-    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, EnvOrigin,
-    ExitOutcome, FingerprintError, Fingerprinter, HandoverComparison, LaunchError, LaunchSpec,
-    LaunchedProcess, Liveness, LogRotateError, LogRotator, LogStream, Ports, ProcessLauncher,
-    ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness,
-    ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy,
-    Scheduler, ServiceSnapshot, SignalError, SignalScope, Signaler, SpecError, SpecResolveError,
-    StartKind, StartOutcome, StartSettlement, StrandedProcess, SupervisionEffect,
-    SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand,
-    compare_handover, describe_handover, log_path, settle_start, validate_app_name,
+    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, EnvDisplay,
+    EnvOrigin, ExitOutcome, FingerprintError, Fingerprinter, HandoverComparison, LaunchError,
+    LaunchSpec, LaunchedProcess, Liveness, LogRotateError, LogRotator, LogStream, Ports,
+    ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView,
+    ReadScope, Readiness, ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxError,
+    SandboxMode, SandboxPolicy, Scheduler, ServiceSnapshot, SignalError, SignalScope, Signaler,
+    SpecError, SpecResolveError, StartKind, StartOutcome, StartSettlement, StrandedProcess,
+    SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor,
+    WrappedCommand, compare_handover, describe_handover, log_path, settle_start, validate_app_name,
 };
 
 pub use self::{
@@ -49,9 +49,10 @@ pub use self::{
     },
     exit_status::{UNKNOWN_EXIT_CODE, describe_refusal, exit_code_of},
     http::{
-        APPS_PATH, HEALTH_OK, HEALTH_PATH, HealthDto, ProcessViewDto, REQUEST_ID_HEADER,
-        ReplyDecodeError, ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto, app_action_path,
-        app_path, decode_reply, encode_signal_request, encode_start_request, router,
+        APPS_PATH, EnvDisplayDto, HEALTH_OK, HEALTH_PATH, HealthDto, ProcessViewDto,
+        REQUEST_ID_HEADER, ReplyDecodeError, ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto,
+        app_action_path, app_path, decode_reply, encode_signal_request, encode_start_request,
+        router,
     },
     install::{
         InstallError, back_up, backup_name, backup_root, binary_version, destination_of,
@@ -71,9 +72,10 @@ pub use self::{
         dump_snapshot, encode_states,
     },
     presenter::{
-        DAEMON_NOT_RUNNING, EMPTY_NOTICE, NOTHING_STARTED, affected_service, already_running_names,
-        render_daemon_gone, render_daemon_stopped, render_describe, render_json_list,
-        render_json_one, render_reply, render_started, render_table, unsaved_reason,
+        DAEMON_NOT_RUNNING, EMPTY_NOTICE, Listing, NOTHING_STARTED, affected_service,
+        already_running_names, render_daemon_gone, render_daemon_stopped, render_describe,
+        render_json_list, render_json_one, render_reply, render_started, render_table,
+        unsaved_reason,
     },
     private_file::{OWNER_ONLY_FILE, append_private, append_private_blocking, write_private},
     process::{

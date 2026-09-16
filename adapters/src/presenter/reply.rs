@@ -1,6 +1,11 @@
-use usecases::{StartKind, StartOutcome, SupervisionReply};
+use usecases::{ProcessView, StartKind, StartOutcome, SupervisionReply};
 
-use super::{describe::render_describe, fields::format_pid, table::render_table};
+use super::{
+    describe::render_describe,
+    fields::format_pid,
+    table::{Listing, render_table},
+};
+use crate::http::ProcessViewDto;
 
 pub const NOTHING_STARTED: &str = "no apps were started";
 pub const NOTHING_TO_STOP: &str = "no services were running";
@@ -105,7 +110,7 @@ pub fn render_reply(reply: &SupervisionReply) -> String {
             reason,
             unsaved,
         } => render_started(outcomes, reason.as_deref(), unsaved.as_deref()),
-        SupervisionReply::Listed(views) => render_table(views),
+        SupervisionReply::Listed(views) => render_table(&dtos_of(views), Listing::Compact),
         SupervisionReply::Described(view) => render_describe(view),
         SupervisionReply::Stopped { name } => format!("stopped {name}"),
         SupervisionReply::Restarted { name } => format!("restarted {name}"),
@@ -172,6 +177,10 @@ fn describe_start(outcome: &StartOutcome) -> String {
         Sk::Deferred => format!("queued {name} until its dependency becomes ready"),
     };
     format!("{headline} (id {pm_id}, pid {pid_text})")
+}
+
+fn dtos_of(views: &[ProcessView]) -> Vec<ProcessViewDto> {
+    views.iter().map(ProcessViewDto::from).collect()
 }
 
 #[cfg(test)]

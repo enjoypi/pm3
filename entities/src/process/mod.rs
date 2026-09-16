@@ -4,6 +4,7 @@ mod limits;
 mod ready;
 mod restart;
 mod runtime;
+mod secret;
 mod signal;
 mod spec;
 mod status;
@@ -15,6 +16,7 @@ pub use self::{
     ready::{ReadyProbe, validate_liveness_probe, validate_probe},
     restart::{RestartDecision, RestartPolicy, decide_restart},
     runtime::{ProcessIdentity, ProcessRuntime, RuntimeError},
+    secret::{ELIDED, MIN_MASKABLE_CHARS, mask_secret},
     signal::{SignalNameError, VALID_SIGNALS, parse_signal_name},
     spec::{
         AppSpec, EnvOrigin, RESERVED_ALL_SELECTOR, RESERVED_ENCRYPTED_SUFFIX, SpecError,

@@ -55,8 +55,12 @@ fn a_scheduled_task_is_registered_without_running() {
     );
 
     let row = task_row(&home);
-    assert_eq!(field_of(&row, 3), "stopped", "got row: {row}");
-    assert_eq!(field_of(&row, 2), "-", "a pending task holds no pid: {row}");
+    assert_eq!(field_of(&row, 2), "stopped", "got row: {row}");
+    assert_eq!(
+        field_of(&row, 5),
+        "-",
+        "a pending task reports no resources: {row}"
+    );
     shutdown_daemon(&home);
 }
 
@@ -66,10 +70,10 @@ fn a_scheduled_task_advertises_its_next_fire() {
     let started = start_task(&home, "* * * * *", &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
 
-    let next = field_of(&task_row(&home), 8);
+    let next = field_of(&task_row(&home), 6);
     assert!(
-        next.contains(':') && (next.contains('+') || next.contains('-')),
-        "the next column should read as HH:MM±HH:MM, got: {next}"
+        next.contains(':'),
+        "the next column reads as HH:MM, the header carries the offset, got: {next}"
     );
     assert_eq!(described(&home, "schedule"), "* * * * *");
     assert!(
@@ -84,12 +88,12 @@ fn stopping_a_scheduled_task_clears_its_next_fire() {
     let home = home();
     let started = start_task(&home, "* * * * *", &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
-    assert_ne!(field_of(&task_row(&home), 8), "-");
+    assert_ne!(field_of(&task_row(&home), 6), "-");
 
     let stopped = pm3(&home, &["stop", TASK]);
     assert!(stopped.status.success(), "{}", stderr_of(&stopped));
     assert_eq!(
-        field_of(&task_row(&home), 8),
+        field_of(&task_row(&home), 6),
         "-",
         "a stopped task must drop its timer"
     );

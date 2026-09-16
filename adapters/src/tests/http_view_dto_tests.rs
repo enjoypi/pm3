@@ -8,7 +8,14 @@ fn the_dto_mirrors_the_view_field_by_field() {
     assert_eq!(dto.name, "web");
     assert_eq!(dto.pid, Some(crate::process_views::RUNNING_PID));
     assert_eq!(dto.status, "online");
-    assert_eq!(dto.restart_time, 2);
+    assert_eq!(dto.restart_time, crate::process_views::RESTART_TIME);
+    assert_eq!(
+        dto.unstable_restarts,
+        crate::process_views::UNSTABLE_RESTARTS
+    );
+    assert_eq!(dto.max_restarts, crate::process_views::MAX_RESTARTS);
+    assert!(dto.autorestart);
+    assert_eq!(dto.sandbox_read, "minimal");
     assert_eq!(dto.uptime_ms, Some(5000));
     assert_eq!(dto.next_fire_ms, None);
     assert_eq!(dto.schedule, None);
@@ -57,4 +64,32 @@ fn the_dto_carries_how_many_values_were_declared() {
         ..running_view(0, "web")
     };
     assert_eq!(ProcessViewDto::from(&view).env_declared, 3);
+}
+
+#[test]
+fn the_serialized_dto_carries_no_cleartext_value() {
+    let secret = "abcdefghijklmnopqrstuvwxyz";
+    let view = crate::process_views::view_with_env(
+        0,
+        "web",
+        vec![usecases::EnvDisplay {
+            key: "CF_API_TOKEN".to_string(),
+            value: usecases::mask_secret(secret),
+            scope: usecases::EnvScope::App,
+        }],
+    );
+    let json = serde_json::to_string(&ProcessViewDto::from(&view)).expect("serialize");
+    assert!(
+        !json.contains(secret),
+        "the middle of a value never leaves the daemon: {json}"
+    );
+    assert!(json.contains("abcd..wxyz 26"), "got: {json}");
+    assert!(!json.contains("\"env\":"), "got: {json}");
+}
+
+#[test]
+fn an_app_without_values_omits_the_environment_field() {
+    let dto = ProcessViewDto::from(&running_view(0, "web"));
+    let json = serde_json::to_string(&dto).expect("serialize");
+    assert!(!json.contains("env_masked"), "got: {json}");
 }

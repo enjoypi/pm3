@@ -25,6 +25,10 @@ pub enum SupervisionRequest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one reply travels per CLI command; boxing a describe would ripple through the whole presenter chain"
+)]
 pub enum SupervisionReply {
     Started {
         outcomes: Vec<StartOutcome>,

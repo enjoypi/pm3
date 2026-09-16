@@ -3,12 +3,12 @@ pub mod sandbox;
 
 pub use self::{
     process::{
-        AppSpec, DependencyError, DependencyNode, EnvOrigin, EnvScope, EnvValue, MemoryVerdict,
-        ProcessIdentity, ProcessRuntime, ProcessStatus, RESERVED_ALL_SELECTOR,
-        RESERVED_ENCRYPTED_SUFFIX, ReadyProbe, RestartDecision, RestartPolicy, RuntimeError,
-        SignalNameError, SpecError, VALID_SIGNALS, decide_memory_verdict, decide_restart,
-        is_name_letter, merge_environment, parse_memory_limit, parse_signal_name, topo_sort,
-        validate_app_name, validate_spec,
+        AppSpec, DependencyError, DependencyNode, ELIDED, EnvOrigin, EnvScope, EnvValue,
+        MIN_MASKABLE_CHARS, MemoryVerdict, ProcessIdentity, ProcessRuntime, ProcessStatus,
+        RESERVED_ALL_SELECTOR, RESERVED_ENCRYPTED_SUFFIX, ReadyProbe, RestartDecision,
+        RestartPolicy, RuntimeError, SignalNameError, SpecError, VALID_SIGNALS,
+        decide_memory_verdict, decide_restart, is_name_letter, mask_secret, merge_environment,
+        parse_memory_limit, parse_signal_name, topo_sort, validate_app_name, validate_spec,
     },
     sandbox::{
         PolicyError, ReadScope, SandboxMode, SandboxPolicy, covers_path, normalize_root,
