@@ -23,10 +23,20 @@ fn enc_path(dir: &tempfile::TempDir) -> std::path::PathBuf {
     path
 }
 
+fn decryptor<'d>(program: &'d str, extra_env: &'d [(String, String)]) -> Decryptor<'d> {
+    Decryptor {
+        program,
+        identity: IDENTITY,
+        search_path: SEARCH_PATH,
+        timeout_ms: TIMEOUT_MS,
+        extra_env,
+    }
+}
+
 async fn decrypted(body: &str) -> Result<String, EncFileError> {
     let (dir, program) = scripted(body);
     let path = enc_path(&dir);
-    load_enc_file(&program, &path, IDENTITY, SEARCH_PATH, TIMEOUT_MS).await
+    load_enc_file(&decryptor(&program, &[]), &path).await
 }
 
 #[test]
@@ -87,7 +97,7 @@ async fn the_identity_reaches_the_decryptor_in_both_shapes() {
 async fn the_encrypted_path_reaches_the_decryptor() {
     let (dir, program) = scripted("printf 'SEEN=%s\\n' \"$4\"");
     let path = enc_path(&dir);
-    let text = load_enc_file(&program, &path, IDENTITY, SEARCH_PATH, TIMEOUT_MS)
+    let text = load_enc_file(&decryptor(&program, &[]), &path)
         .await
         .expect("the stub should decrypt");
     assert_eq!(
@@ -101,15 +111,9 @@ async fn the_encrypted_path_reaches_the_decryptor() {
 async fn a_missing_decryptor_is_reported_as_unavailable() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = enc_path(&dir);
-    let refusal = load_enc_file(
-        "/nonexistent/pm3-sops",
-        &path,
-        IDENTITY,
-        SEARCH_PATH,
-        TIMEOUT_MS,
-    )
-    .await
-    .expect_err("a missing decryptor should be refused");
+    let refusal = load_enc_file(&decryptor("/nonexistent/pm3-sops", &[]), &path)
+        .await
+        .expect_err("a missing decryptor should be refused");
     assert!(
         matches!(refusal, EncFileError::Unavailable { .. }),
         "a decryptor that cannot be spawned is Unavailable, got {refusal:?}"
@@ -120,9 +124,15 @@ async fn a_missing_decryptor_is_reported_as_unavailable() {
 async fn a_stalled_decryptor_is_reported_as_stalled() {
     let (dir, program) = scripted("sleep 5");
     let path = enc_path(&dir);
-    let refusal = load_enc_file(&program, &path, IDENTITY, SEARCH_PATH, 50)
-        .await
-        .expect_err("a stalled decryptor should be refused");
+    let refusal = load_enc_file(
+        &Decryptor {
+            timeout_ms: 50,
+            ..decryptor(&program, &[])
+        },
+        &path,
+    )
+    .await
+    .expect_err("a stalled decryptor should be refused");
     assert!(
         matches!(refusal, EncFileError::Stalled { .. }),
         "a decryptor past its deadline is Stalled, got {refusal:?}"
@@ -171,7 +181,7 @@ async fn a_non_utf8_payload_is_refused() {
 async fn a_refusal_names_the_file_it_could_not_decrypt() {
     let (dir, program) = scripted("exit 1");
     let path = enc_path(&dir);
-    let refusal = load_enc_file(&program, &path, IDENTITY, SEARCH_PATH, TIMEOUT_MS)
+    let refusal = load_enc_file(&decryptor(&program, &[]), &path)
         .await
         .expect_err("a non-zero exit should be refused");
     assert!(
@@ -256,5 +266,36 @@ fn a_service_name_can_never_shadow_an_encrypted_sidecar() {
         shadow.is_err(),
         "no service file may land on {}, got {shadow:?}",
         sidecar.display()
+    );
+}
+
+#[tokio::test]
+async fn extra_variables_reach_the_decryptor_beside_the_identity() {
+    let (dir, program) =
+        scripted("printf 'SEEN=%s IDENTITY=%s\\n' \"$XDG_CONFIG_HOME\" \"$SOPS_AGE_KEY_FILE\"");
+    let path = enc_path(&dir);
+    let extra = vec![("XDG_CONFIG_HOME".to_string(), "/srv/cfg".to_string())];
+    let text = load_enc_file(&decryptor(&program, &extra), &path)
+        .await
+        .expect("the stub should decrypt");
+    assert_eq!(
+        text,
+        format!("SEEN=/srv/cfg IDENTITY={IDENTITY}\n"),
+        "an extra variable never displaces the identity"
+    );
+}
+
+#[tokio::test]
+async fn an_extra_variable_cannot_shadow_the_identity() {
+    let (dir, program) = scripted("printf 'IDENTITY=%s\\n' \"$SOPS_AGE_KEY_FILE\"");
+    let path = enc_path(&dir);
+    let extra = vec![("SOPS_AGE_KEY_FILE".to_string(), "/evil/key".to_string())];
+    let text = load_enc_file(&decryptor(&program, &extra), &path)
+        .await
+        .expect("the stub should decrypt");
+    assert_eq!(
+        text,
+        format!("IDENTITY={IDENTITY}\n"),
+        "pm3 decides the identity, so no shared file can redirect it"
     );
 }

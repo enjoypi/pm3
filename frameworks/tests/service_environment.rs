@@ -324,6 +324,7 @@ fn a_sidecar_pm3_never_opened_is_visible_in_the_listing() {
         ),
     )
     .expect("forget the identity");
+    std::fs::write(decryptor_veto(&home), "veto\n").expect("make the decryptor refuse");
 
     let started = start_reporter(&home);
     assert!(started.status.success(), "{}", stdout_of(&started));

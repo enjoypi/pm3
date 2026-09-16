@@ -80,33 +80,38 @@ pub async fn enc_file_present(path: &Path) -> Result<bool, EncFileError> {
     }
 }
 
-pub async fn load_enc_file(
-    program: &str,
-    path: &Path,
-    identity: &str,
-    search_path: &str,
-    timeout_ms: u64,
-) -> Result<String, EncFileError> {
+pub struct Decryptor<'d> {
+    pub program: &'d str,
+    pub identity: &'d str,
+    pub search_path: &'d str,
+    pub timeout_ms: u64,
+    pub extra_env: &'d [(String, String)],
+}
+
+pub async fn load_enc_file(decryptor: &Decryptor<'_>, path: &Path) -> Result<String, EncFileError> {
     let shown = path.to_string_lossy().into_owned();
-    let mut command = Command::new(program);
+    let mut command = Command::new(decryptor.program);
+    command.env_clear();
+    for (key, value) in decryptor.extra_env {
+        command.env(key, value);
+    }
     command
-        .env_clear()
-        .env(SSH_IDENTITY_VARIABLE, identity)
-        .env(AGE_IDENTITY_VARIABLE, identity)
-        .env(PATH_VARIABLE, search_path)
+        .env(SSH_IDENTITY_VARIABLE, decryptor.identity)
+        .env(AGE_IDENTITY_VARIABLE, decryptor.identity)
+        .env(PATH_VARIABLE, decryptor.search_path)
         .arg(DECRYPT_FLAG)
         .arg(OUTPUT_TYPE_FLAG)
         .arg(OUTPUT_TYPE)
         .arg(path);
     let started = Instant::now();
-    let outcome = capture_timed(command, timeout_ms).await;
+    let outcome = capture_timed(command, decryptor.timeout_ms).await;
     let duration_ms = started.elapsed().as_millis();
     let output = match outcome {
         CommandOutcome::Stalled => {
             return Err(refused(
                 EncFileError::Stalled {
                     path: shown,
-                    timeout_ms,
+                    timeout_ms: decryptor.timeout_ms,
                 },
                 duration_ms,
             ));
@@ -114,7 +119,7 @@ pub async fn load_enc_file(
         CommandOutcome::SpawnFailed(error) => {
             return Err(refused(
                 EncFileError::Unavailable {
-                    program: program.to_string(),
+                    program: decryptor.program.to_string(),
                     path: shown,
                     reason: error.to_string(),
                 },

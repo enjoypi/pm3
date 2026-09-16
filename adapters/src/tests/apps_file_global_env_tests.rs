@@ -78,13 +78,13 @@ async fn an_unparsable_shared_environment_is_reported() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn a_sealed_shared_environment_falls_back_to_the_plain_one() {
+async fn an_undecryptable_sidecar_without_an_identity_falls_back_to_the_plain_one() {
     let dir = tempfile::tempdir().expect("temp dir");
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
     write(dir.path(), ENV_FILE_SUFFIX, "TZ=UTC\n");
     let values = load_global_env(&config(), dir.path(), None)
         .await
-        .expect("a sealed sidecar must not stop pm3");
+        .expect("without a declared identity pm3 only tries, it does not insist");
     assert_eq!(
         values,
         vec![EnvValue::global("TZ", "UTC")],
@@ -207,5 +207,141 @@ async fn a_shared_sidecar_that_cannot_be_stat_ed_is_reported() {
     assert!(
         err.contains("cannot reach") || err.contains("Not a directory"),
         "got: {err}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_plain_layer_hands_its_xdg_values_to_the_decryptor() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut config = config();
+    with_decryptor(
+        &mut config,
+        dir.path(),
+        "printf 'SEEN=%s\\n' \"$XDG_CONFIG_HOME\"",
+    );
+    write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
+    write(
+        dir.path(),
+        ENV_FILE_SUFFIX,
+        "XDG_CONFIG_HOME=/srv/config\nTZ=UTC\n",
+    );
+
+    let values = load_global_env(&config, dir.path(), None)
+        .await
+        .expect("the shared environment should load");
+
+    assert!(
+        values.contains(&EnvValue::global("SEEN", "/srv/config")),
+        "the decryptor must see the plain layer's xdg values, got: {values:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_opened_shared_value_wins_over_the_plain_one() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut config = config();
+    with_decryptor(&mut config, dir.path(), "printf 'TZ=Asia/Shanghai\\n'");
+    write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
+    write(dir.path(), ENV_FILE_SUFFIX, "TZ=UTC\nLANG=C\n");
+
+    let values = load_global_env(&config, dir.path(), None)
+        .await
+        .expect("the shared environment should load");
+
+    assert!(
+        values.contains(&EnvValue::global("TZ", "Asia/Shanghai")),
+        "the encrypted layer owns a key it declares, got: {values:?}"
+    );
+    assert!(
+        values.contains(&EnvValue::global("LANG", "C")),
+        "a plain-only key survives, got: {values:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_sidecar_opens_with_the_xdg_values_from_the_plain_layer() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut config = config();
+    with_decryptor(
+        &mut config,
+        dir.path(),
+        "printf 'TOKEN=%s\\n' \"$XDG_CONFIG_HOME\"",
+    );
+    config.sops_identity_file = String::new();
+    write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
+    write(dir.path(), ENV_FILE_SUFFIX, "XDG_CONFIG_HOME=/srv/cfg\n");
+
+    let values = load_global_env(&config, dir.path(), None)
+        .await
+        .expect("a decryptor that finds its own key needs no declared identity");
+
+    assert!(
+        values.contains(&EnvValue::global("XDG_CONFIG_HOME", "/srv/cfg")),
+        "the plain layer still stands on its own, got: {values:?}"
+    );
+    assert!(
+        values.contains(&EnvValue::global("TOKEN", "/srv/cfg")),
+        "the decryptor saw the plain layer's xdg values even without an identity, got: {values:?}"
+    );
+}
+
+#[test]
+fn the_decryptor_environment_keeps_only_the_xdg_values() {
+    let global = vec![
+        EnvValue::global("XDG_CONFIG_HOME", "/srv/cfg"),
+        EnvValue::global("TZ", "UTC"),
+        EnvValue::global("XDG_DATA_HOME", "/srv/data"),
+    ];
+    let kept = decryptor_env(&global);
+    assert_eq!(
+        kept,
+        vec![
+            ("XDG_CONFIG_HOME".to_string(), "/srv/cfg".to_string()),
+            ("XDG_DATA_HOME".to_string(), "/srv/data".to_string()),
+        ],
+        "only the values that tell a program where to look travel to the decryptor, got: {kept:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_decryptor_that_needs_no_identity_still_hands_over_its_values() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut config = config();
+    with_decryptor(&mut config, dir.path(), "printf 'TZ=UTC\\n'");
+    config.sops_identity_file = String::new();
+    write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
+
+    let values = load_global_env(&config, dir.path(), None)
+        .await
+        .expect("a decryptor that finds its own key needs no declared identity");
+
+    assert_eq!(
+        values,
+        vec![EnvValue::global("TZ", "UTC")],
+        "got: {values:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_declared_identity_makes_a_refusal_fatal() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut config = config();
+    with_decryptor(&mut config, dir.path(), "exit 1");
+    write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
+    write(dir.path(), ENV_FILE_SUFFIX, "TZ=UTC\n");
+
+    let err = load_global_env(&config, dir.path(), None)
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        err.contains("cannot decrypt"),
+        "an operator who named an identity meant those values to arrive, got: {err}"
     );
 }

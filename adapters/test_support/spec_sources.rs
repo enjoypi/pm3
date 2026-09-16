@@ -39,6 +39,7 @@ pub fn spec_source_in(root: &Path) -> SpecSource {
         logs_dir,
         tmp_dir: None,
         global_env: Vec::new(),
+        decryptor_env: Vec::new(),
     }
 }
 

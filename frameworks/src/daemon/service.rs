@@ -1,8 +1,8 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use adapters::{
-    DaemonHandle, Pm3Paths, SandboxProgramSet, SpecSource, load_and_parse_config, load_global_env,
-    log_startup_banner, router,
+    DaemonHandle, Pm3Paths, SandboxProgramSet, SpecSource, decryptor_env, load_and_parse_config,
+    load_global_env, log_startup_banner, router,
 };
 use tokio::sync::mpsc;
 
@@ -72,6 +72,7 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
         host_home: home,
         logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: std::env::var(TMPDIR_VARIABLE).ok(),
+        decryptor_env: decryptor_env(&global_env),
         global_env,
     };
     let served = serve_supervised(specs, &paths, listener, shutdown).await;

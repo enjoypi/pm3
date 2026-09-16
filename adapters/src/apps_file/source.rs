@@ -6,7 +6,7 @@ use usecases::{
 };
 
 use super::{
-    enc_file::{ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
+    enc_file::{Decryptor, ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
     env_file::{ENV_FILE_SUFFIX, load_env_file, parse_env_text},
     file::{AppsFileError, SpecDefaults, SpecRoots, load_service_file, resolve_checked},
     global_env::scoped,
@@ -30,6 +30,7 @@ pub struct SpecSource {
     pub logs_dir: String,
     pub tmp_dir: Option<String>,
     pub global_env: Vec<EnvValue>,
+    pub decryptor_env: Vec<(String, String)>,
 }
 
 impl SpecSource {
@@ -82,17 +83,21 @@ impl SpecSource {
         service: &Path,
         name: &str,
     ) -> Result<Environment, AppsFileError> {
+        let plain = self.plain_environment(service).await?;
         let (origin, declared) = match self.decrypt_environment(service).await? {
             Secrets::Opened(text) => (
                 EnvOrigin::Encrypted,
-                app_values(&parse_env_text(
-                    &text.path,
-                    self.host_home.as_deref(),
-                    &text.body,
-                )?),
+                merge_environment(&[
+                    &plain,
+                    &app_values(&parse_env_text(
+                        &text.path,
+                        self.host_home.as_deref(),
+                        &text.body,
+                    )?),
+                ]),
             ),
-            Secrets::Sealed => (EnvOrigin::Sealed, self.plain_environment(service).await?),
-            Secrets::Absent => (EnvOrigin::Plain, self.plain_environment(service).await?),
+            Secrets::Sealed => (EnvOrigin::Sealed, plain),
+            Secrets::Absent => (EnvOrigin::Plain, plain),
         };
         let values = merge_environment(&[
             &injected_home(self.host_home.as_deref()),
@@ -118,18 +123,26 @@ impl SpecSource {
         if !enc_file_present(&path).await? {
             return Ok(Secrets::Absent);
         }
-        if self.config.sops_identity_file.is_empty() {
-            log_unopened_secrets(&path.to_string_lossy());
-            return Ok(Secrets::Sealed);
-        }
-        let body = load_enc_file(
-            &self.config.sops_program,
+        let declared_identity = !self.config.sops_identity_file.is_empty();
+        let opened = load_enc_file(
+            &Decryptor {
+                program: &self.config.sops_program,
+                identity: &self.config.sops_identity_file,
+                search_path: &self.config.search_path,
+                timeout_ms: self.config.sops_timeout_ms,
+                extra_env: &self.decryptor_env,
+            },
             &path,
-            &self.config.sops_identity_file,
-            &self.config.search_path,
-            self.config.sops_timeout_ms,
         )
-        .await?;
+        .await;
+        let body = match opened {
+            Ok(text) => text,
+            Err(error) if declared_identity => return Err(error.into()),
+            Err(_error) => {
+                log_unopened_secrets(&path.to_string_lossy());
+                return Ok(Secrets::Sealed);
+            }
+        };
         Ok(Secrets::Opened(Decrypted {
             path: path.to_string_lossy().into_owned(),
             body,
