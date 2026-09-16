@@ -6,11 +6,16 @@ pub enum ConfigError {
     #[error("cannot parse config: {0}")]
     ParseError(String),
 
-    #[error("cannot accept empty pm3.home")]
+    #[error("cannot accept pm3.home: must be absolute, start with '~', or be empty to derive it")]
     InvalidHome,
 
-    #[error("cannot accept empty pm3.cfg_dir")]
+    #[error(
+        "cannot accept pm3.cfg_dir: must be absolute, start with '~', or be empty to follow the config root"
+    )]
     InvalidCfgDir,
+
+    #[error("cannot accept {field}: must be absolute, start with '~', or be empty to derive it")]
+    InvalidRoot { field: &'static str },
 
     #[error("cannot accept pm3.kill_timeout_ms {0}: must be >= 1")]
     InvalidKillTimeout(u64),
@@ -140,6 +145,12 @@ pub struct AppConfig {
 pub struct Pm3Config {
     pub home: String,
     pub cfg_dir: String,
+    #[serde(default)]
+    pub state_dir: String,
+    #[serde(default)]
+    pub runtime_dir: String,
+    #[serde(default)]
+    pub data_dir: String,
     pub search_path: String,
     pub stop_signal: String,
     pub kill_timeout_ms: u64,

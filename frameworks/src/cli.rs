@@ -5,7 +5,7 @@ use clap::{Args, CommandFactory as _, Parser, Subcommand};
 
 use crate::{
     Error, Result, commands,
-    layout::{host_home, host_pm3_home},
+    layout::{host_home, host_pm3_config_dir, host_pm3_home, xdg_config_env},
     prompt,
     service::ServiceAction,
 };
@@ -48,7 +48,7 @@ Options:
     help_template = HELP_TEMPLATE
 )]
 pub struct Cli {
-    #[arg(long, global = true, default_value_t = default_config(host_pm3_home().as_deref(), host_home().as_deref()))]
+    #[arg(long, global = true, default_value_t = default_config(host_pm3_home().as_deref(), host_pm3_config_dir().as_deref(), xdg_config_env(), host_home().as_deref()))]
     pub config: String,
 
     #[command(subcommand)]
@@ -378,8 +378,13 @@ async fn run_auto_start(
 }
 
 #[must_use]
-pub fn default_config(pm3_home_env: Option<&str>, home_env: Option<&str>) -> String {
-    default_config_path(pm3_home_env, home_env).map_or_else(
+pub fn default_config(
+    pm3_home_env: Option<&str>,
+    pm3_config_env: Option<&str>,
+    xdg_config_env: Option<&str>,
+    home_env: Option<&str>,
+) -> String {
+    default_config_path(pm3_home_env, pm3_config_env, xdg_config_env, home_env).map_or_else(
         |_unresolved| CONFIG_FILE.to_string(),
         |path| path.to_string_lossy().into_owned(),
     )

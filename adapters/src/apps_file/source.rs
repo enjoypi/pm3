@@ -8,7 +8,7 @@ use usecases::{
 use super::{
     enc_file::{ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
     env_file::{ENV_FILE_SUFFIX, load_env_file, parse_env_text},
-    file::{AppsFileError, SpecDefaults, load_service_file, resolve_checked},
+    file::{AppsFileError, SpecDefaults, SpecRoots, load_service_file, resolve_checked},
 };
 use crate::config::Pm3Config;
 
@@ -21,6 +21,10 @@ pub struct SpecSource {
     pub cfg_dir: PathBuf,
     pub config: Pm3Config,
     pub home_dir: String,
+    pub apps_dir: String,
+    pub state_dir: String,
+    pub runtime_dir: String,
+    pub data_dir: String,
     pub host_home: Option<String>,
     pub logs_dir: String,
     pub tmp_dir: Option<String>,
@@ -30,10 +34,16 @@ impl SpecSource {
     pub fn defaults(&self) -> Result<SpecDefaults<'_>, AppsFileError> {
         SpecDefaults::from_config(
             &self.config,
-            &self.home_dir,
-            self.cfg_dir.to_str().unwrap_or_default(),
-            &self.logs_dir,
-            self.tmp_dir.as_deref(),
+            SpecRoots {
+                home_dir: &self.home_dir,
+                cfg_dir: self.cfg_dir.to_str().unwrap_or_default(),
+                apps_dir: &self.apps_dir,
+                state_dir: &self.state_dir,
+                runtime_dir: &self.runtime_dir,
+                data_dir: &self.data_dir,
+                logs_dir: &self.logs_dir,
+                tmp_dir: self.tmp_dir.as_deref(),
+            },
         )
     }
 

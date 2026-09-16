@@ -1,7 +1,7 @@
 #![cfg(unix)]
 use std::time::Duration;
 
-use adapters::resolve_paths;
+use adapters::{Pm3Roots, resolve_paths};
 
 use super::*;
 use crate::{
@@ -71,7 +71,7 @@ async fn a_blocked_home_stops_the_daemon() {
 async fn a_socket_path_blocked_by_a_directory_stops_the_daemon() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
-    let paths = resolve_paths(&home);
+    let paths = resolve_paths(Pm3Roots::single(&home));
     std::fs::create_dir_all(&paths.logs_dir).expect("prepare the home");
     std::fs::create_dir(&paths.socket).expect("occupy the socket path");
     let config = write_config(dir.path(), &home.to_string_lossy());
@@ -88,7 +88,7 @@ async fn a_daemon_that_cannot_decrypt_an_environment_refuses_to_take_over() {
 
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
-    let paths = resolve_paths(&home);
+    let paths = resolve_paths(Pm3Roots::single(&home));
     let cfg_dir = home.join("service");
     std::fs::create_dir_all(&paths.logs_dir).expect("prepare the home");
     std::fs::create_dir_all(&cfg_dir).expect("prepare the service directory");
@@ -130,7 +130,7 @@ async fn a_daemon_that_cannot_decrypt_an_environment_refuses_to_take_over() {
 async fn a_second_daemon_on_a_live_socket_exits_quietly() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
-    let paths = resolve_paths(&home);
+    let paths = resolve_paths(Pm3Roots::single(&home));
     std::fs::create_dir_all(&paths.logs_dir).expect("prepare the home");
     let _held = tokio::net::UnixListener::bind(&paths.socket).expect("bind the first daemon");
     let config = write_config(dir.path(), &home.to_string_lossy());
@@ -143,7 +143,7 @@ async fn a_second_daemon_on_a_live_socket_exits_quietly() {
 async fn a_blocked_pid_path_stops_the_daemon() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
-    let paths = resolve_paths(&home);
+    let paths = resolve_paths(Pm3Roots::single(&home));
     std::fs::create_dir_all(&paths.logs_dir).expect("prepare the home");
     std::fs::create_dir(&paths.pid_file).expect("occupy the pid path");
     let config = write_config(dir.path(), &home.to_string_lossy());
@@ -158,7 +158,7 @@ async fn a_blocked_pid_path_stops_the_daemon() {
 async fn a_running_daemon_serves_and_cleans_up_after_itself() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
-    let paths = resolve_paths(&home);
+    let paths = resolve_paths(Pm3Roots::single(&home));
     let config = write_config(dir.path(), &home.to_string_lossy());
     let config_path = config.to_str().expect("path").to_string();
     let (shutdown, wait) = tokio::sync::oneshot::channel::<()>();
@@ -189,7 +189,7 @@ async fn a_running_daemon_serves_and_cleans_up_after_itself() {
 async fn a_running_daemon_answers_a_list_request() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
-    let paths = resolve_paths(&home);
+    let paths = resolve_paths(Pm3Roots::single(&home));
     let config = write_config(dir.path(), &home.to_string_lossy());
     let config_path = config.to_str().expect("path").to_string();
     let (shutdown, wait) = tokio::sync::oneshot::channel::<()>();
@@ -241,4 +241,19 @@ async fn a_relative_service_directory_stops_the_daemon() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("must be absolute"), "got: {err}");
+}
+
+#[tokio::test]
+async fn a_daemon_refuses_a_home_that_overflows_the_socket_limit() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let deep = dir.path().join("d".repeat(120));
+    let config_path = write_config(dir.path(), &deep.to_string_lossy());
+    let signals = ShutdownSignals::register().expect("register the shutdown handlers");
+
+    let err = run_daemon_with_signals(&config_path.to_string_lossy(), Ok(signals))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("exceeds the 104"), "got: {err}");
 }

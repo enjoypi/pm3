@@ -1,6 +1,9 @@
 pm3:
-  home: "${PM3_HOME:-~/.pm3}"
-  cfg_dir: "${PM3_CFG_DIR:-~/.config/pm3}"
+  home: "${PM3_HOME:-}"
+  cfg_dir: "${PM3_CFG_DIR:-}"
+  state_dir: "${PM3_STATE_DIR:-}"
+  runtime_dir: "${PM3_RUNTIME_DIR:-}"
+  data_dir: "${PM3_DATA_DIR:-}"
   search_path: "${PM3_SEARCH_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
   stop_signal: "TERM"
   kill_timeout_ms: 1600

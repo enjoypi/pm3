@@ -176,3 +176,22 @@ fn environment_placeholders_are_substituted_before_parsing() {
     let cfg = load_and_parse_config(path.to_str().expect("path")).expect("should succeed");
     assert_eq!(cfg.pm3.home, "/tmp/pm3-default");
 }
+
+#[test]
+fn parse_config_derives_the_roots_of_a_config_written_before_they_existed() {
+    let yaml = format!(
+        "{}{}",
+        pm3_section("/srv/pm3", 1600, "workspace-write"),
+        telemetry_section("info"),
+    );
+    let parsed = parse_config(&yaml).expect("an older config still parses");
+    assert!(
+        parsed.pm3.state_dir.is_empty(),
+        "pm3 derives the state root"
+    );
+    assert!(
+        parsed.pm3.runtime_dir.is_empty(),
+        "pm3 derives the runtime root"
+    );
+    assert!(parsed.pm3.data_dir.is_empty(), "pm3 derives the data root");
+}

@@ -30,6 +30,10 @@ pub fn spec_source_in(root: &Path) -> SpecSource {
     SpecSource {
         cfg_dir,
         config,
+        apps_dir: home_dir.clone(),
+        state_dir: home_dir.clone(),
+        runtime_dir: home_dir.clone(),
+        data_dir: home_dir.clone(),
         home_dir,
         host_home: Some(HOST_HOME.to_string()),
         logs_dir,

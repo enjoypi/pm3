@@ -5,7 +5,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use adapters::resolve_paths;
+use adapters::{Pm3Roots, resolve_paths};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::UnixListener,
@@ -26,7 +26,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().expect("temp dir");
-    let paths = resolve_paths(dir.path());
+    let paths = resolve_paths(Pm3Roots::single(dir.path()));
     let config_path = crate::test_support::write_config(dir.path(), &paths.root.to_string_lossy())
         .to_string_lossy()
         .into_owned();

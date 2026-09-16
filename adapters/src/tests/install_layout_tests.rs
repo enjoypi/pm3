@@ -40,15 +40,15 @@ fn a_declared_backup_root_wins() {
 }
 
 #[test]
-fn an_empty_backup_root_lives_under_the_pm3_home() {
-    let root = backup_root(Some(""), std::path::Path::new("/home/dev/.pm3"));
-    assert_eq!(root, std::path::Path::new("/home/dev/.pm3/install-backups"));
+fn an_empty_backup_root_falls_back_to_the_data_directory() {
+    let root = backup_root(Some(""), std::path::Path::new("/d/pm3/install-backups"));
+    assert_eq!(root, std::path::Path::new("/d/pm3/install-backups"));
 }
 
 #[test]
-fn an_undeclared_backup_root_lives_under_the_pm3_home() {
-    let root = backup_root(None, std::path::Path::new("/home/dev/.pm3"));
-    assert_eq!(root, std::path::Path::new("/home/dev/.pm3/install-backups"));
+fn an_undeclared_backup_root_falls_back_to_the_data_directory() {
+    let root = backup_root(None, std::path::Path::new("/d/pm3/install-backups"));
+    assert_eq!(root, std::path::Path::new("/d/pm3/install-backups"));
 }
 
 #[test]

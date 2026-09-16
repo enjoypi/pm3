@@ -230,6 +230,9 @@ fn every_error_variant_renders_a_message() {
     let errors = [
         ConfigError::InvalidHome,
         ConfigError::InvalidCfgDir,
+        ConfigError::InvalidRoot {
+            field: "pm3.state_dir",
+        },
         ConfigError::InvalidKillTimeout(0),
         ConfigError::InvalidStartTimeout(0),
         ConfigError::InvalidDrainTimeout(0),
@@ -291,9 +294,16 @@ fn every_error_variant_renders_a_message() {
 }
 
 #[test]
-fn validate_rejects_an_empty_cfg_dir() {
+fn validate_accepts_an_empty_cfg_dir_because_it_follows_the_config_root() {
     let mut cfg = valid_config();
     cfg.pm3.cfg_dir = String::new();
+    validate_config(&cfg).expect("an empty cfg_dir follows the config root");
+}
+
+#[test]
+fn validate_rejects_a_relative_cfg_dir() {
+    let mut cfg = valid_config();
+    cfg.pm3.cfg_dir = "service".to_string();
     let err = validate_config(&cfg).unwrap_err();
     assert!(matches!(err, ConfigError::InvalidCfgDir), "got: {err}");
 }

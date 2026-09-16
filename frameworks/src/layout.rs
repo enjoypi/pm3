@@ -1,9 +1,14 @@
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use adapters::{
-    Pm3Config, Pm3Paths, expand_home, pm3_variables, resolve_paths, runtime_dir_of, write_private,
+    Pm3Config, Pm3Paths, Pm3Roots, RuntimeSources, check_socket_length, expand_home, pm3_variables,
+    resolve_config_root, resolve_data_root, resolve_paths, resolve_runtime_root,
+    resolve_state_root, runtime_dir_of, write_private,
 };
 
 use crate::{Error, Result};
@@ -14,13 +19,111 @@ const RUNTIME_DIR_VARIABLE: &str = "XDG_RUNTIME_DIR";
 #[cfg(unix)]
 const OWN_PROCESS_DIR: &str = "/proc/self";
 
-pub fn resolve_layout(pm3: &Pm3Config, home_env: Option<&str>) -> Result<Pm3Paths> {
-    let root = expand_home(&pm3.home, home_env)?;
-    Ok(resolve_paths(&root))
+pub struct RootSources<'s> {
+    pub pm3_home: Option<&'s str>,
+    pub config: Option<&'s str>,
+    pub state: Option<&'s str>,
+    pub runtime: Option<&'s str>,
+    pub data: Option<&'s str>,
+    pub xdg_config: Option<&'s str>,
+    pub xdg_state: Option<&'s str>,
+    pub xdg_runtime: Option<&'s str>,
+    pub xdg_data: Option<&'s str>,
+    pub home: Option<&'s str>,
+    pub uid: Option<u32>,
+    pub exists: fn(&Path) -> bool,
+}
+
+fn roots_from(pm3: &Pm3Config, sources: &RootSources<'_>) -> Result<Pm3Roots> {
+    if let Some(root) = overriding(sources.pm3_home, &pm3.home) {
+        return Ok(Pm3Roots::single(&expand_home(root, sources.home)?));
+    }
+    let state = resolve_state_root(
+        overriding(sources.state, &pm3.state_dir),
+        sources.xdg_state,
+        sources.home,
+    )?;
+    let runtime = resolve_runtime_root(&RuntimeSources {
+        declared: overriding(sources.runtime, &pm3.runtime_dir),
+        xdg: sources.xdg_runtime,
+        uid: sources.uid,
+        state: &state,
+        exists: sources.exists,
+    });
+    Ok(Pm3Roots::split(
+        resolve_config_root(sources.config, sources.xdg_config, sources.home)?,
+        state,
+        runtime,
+        resolve_data_root(
+            overriding(sources.data, &pm3.data_dir),
+            sources.xdg_data,
+            sources.home,
+        )?,
+    ))
+}
+
+fn resolve_roots(pm3: &Pm3Config, home_env: Option<&str>) -> Result<Pm3Roots> {
+    let declared_home = host_pm3_home();
+    let declared_config = host_pm3_config_dir();
+    let declared_state = host_pm3_state_dir();
+    let declared_runtime = host_pm3_runtime_dir();
+    let declared_data = host_pm3_data_dir();
+    roots_from(
+        pm3,
+        &RootSources {
+            pm3_home: declared_home.as_deref(),
+            config: declared_config.as_deref(),
+            state: declared_state.as_deref(),
+            runtime: declared_runtime.as_deref(),
+            data: declared_data.as_deref(),
+            xdg_config: xdg_config_env(),
+            xdg_state: xdg_state_env(),
+            xdg_runtime: xdg_runtime_env(),
+            xdg_data: xdg_data_env(),
+            home: home_env,
+            uid: host_uid(home_env),
+            exists: directory_exists,
+        },
+    )
+}
+
+fn overriding<'v>(declared: Option<&'v str>, configured: &'v str) -> Option<&'v str> {
+    if let Some(value) = named(declared.unwrap_or_default()) {
+        return Some(value);
+    }
+    named(configured)
+}
+
+fn directory_exists(path: &Path) -> bool {
+    path.is_dir()
+}
+
+const fn named(value: &str) -> Option<&str> {
+    if value.is_empty() {
+        return None;
+    }
+    Some(value)
 }
 
 pub fn resolve_cfg_dir(pm3: &Pm3Config, home_env: Option<&str>) -> Result<PathBuf> {
-    Ok(expand_home(&pm3.cfg_dir, home_env)?)
+    Ok(resolve_places(pm3, home_env)?.cfg_dir)
+}
+
+#[derive(Debug)]
+pub struct Pm3Places {
+    pub paths: Pm3Paths,
+    pub cfg_dir: PathBuf,
+}
+
+pub fn resolve_places(pm3: &Pm3Config, home_env: Option<&str>) -> Result<Pm3Places> {
+    let roots = resolve_roots(pm3, home_env)?;
+    let cfg_dir = match named(&pm3.cfg_dir) {
+        Some(declared) => expand_home(declared, home_env)?,
+        None => roots.config.clone(),
+    };
+    let paths = resolve_paths(roots);
+    check_socket_length(&paths.socket)?;
+    Ok(Pm3Places { paths, cfg_dir })
 }
 
 pub fn canonicalize<F: FnOnce(String) -> Error>(path: &str, wrap: F) -> Result<PathBuf> {
@@ -28,23 +131,31 @@ pub fn canonicalize<F: FnOnce(String) -> Error>(path: &str, wrap: F) -> Result<P
 }
 
 pub async fn ensure_layout(paths: &Pm3Paths, cfg_dir: &Path) -> Result<()> {
-    prepare_home(&paths.root).await?;
-    tokio::fs::create_dir_all(&paths.logs_dir)
-        .await
-        .map_err(|e| layout_error(&paths.logs_dir, &e))?;
-    restrict_to_owner(&paths.logs_dir).await;
-    tokio::fs::create_dir_all(cfg_dir)
-        .await
-        .map_err(|e| layout_error(cfg_dir, &e))?;
-    restrict_to_owner(cfg_dir).await;
+    for root in owned_directories(paths, cfg_dir) {
+        prepare_directory(root).await?;
+    }
     Ok(())
 }
 
-async fn prepare_home(root: &Path) -> Result<()> {
-    tokio::fs::create_dir_all(root)
+fn owned_directories<'p>(paths: &'p Pm3Paths, cfg_dir: &'p Path) -> Vec<&'p Path> {
+    let mut wanted = vec![
+        paths.roots.state.as_path(),
+        paths.roots.config.as_path(),
+        paths.roots.runtime.as_path(),
+        paths.roots.data.as_path(),
+        paths.logs_dir.as_path(),
+        paths.apps_dir.as_path(),
+        cfg_dir,
+    ];
+    wanted.dedup();
+    wanted
+}
+
+async fn prepare_directory(path: &Path) -> Result<()> {
+    tokio::fs::create_dir_all(path)
         .await
-        .map_err(|e| layout_error(root, &e))?;
-    restrict_to_owner(root).await;
+        .map_err(|e| layout_error(path, &e))?;
+    restrict_to_owner(path).await;
     Ok(())
 }
 
@@ -195,6 +306,37 @@ fn log_stuck_removal(path: &Path, reason: &str) {
 }
 
 #[must_use]
+pub fn xdg_config_env() -> Option<&'static str> {
+    xdg_value(&XDG_CONFIG)
+}
+
+#[must_use]
+pub fn xdg_state_env() -> Option<&'static str> {
+    xdg_value(&XDG_STATE)
+}
+
+#[must_use]
+pub fn xdg_data_env() -> Option<&'static str> {
+    xdg_value(&XDG_DATA)
+}
+
+#[must_use]
+pub fn xdg_runtime_env() -> Option<&'static str> {
+    xdg_value(&XDG_RUNTIME)
+}
+
+fn xdg_value(cell: &'static LazyLock<Option<String>>) -> Option<&'static str> {
+    cell.as_deref().filter(|text| !text.is_empty())
+}
+
+static XDG_CONFIG: LazyLock<Option<String>> =
+    LazyLock::new(|| std::env::var("XDG_CONFIG_HOME").ok());
+static XDG_STATE: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("XDG_STATE_HOME").ok());
+static XDG_DATA: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("XDG_DATA_HOME").ok());
+static XDG_RUNTIME: LazyLock<Option<String>> =
+    LazyLock::new(|| std::env::var(RUNTIME_DIR_VARIABLE).ok());
+
+#[must_use]
 pub fn host_home() -> Option<String> {
     home_of(std::env::var("HOME").ok())
 }
@@ -222,6 +364,26 @@ fn host_profile_home() -> Option<String> {
 #[must_use]
 pub fn host_pm3_home() -> Option<String> {
     std::env::var("PM3_HOME").ok()
+}
+
+#[must_use]
+pub fn host_pm3_state_dir() -> Option<String> {
+    std::env::var("PM3_STATE_DIR").ok()
+}
+
+#[must_use]
+pub fn host_pm3_runtime_dir() -> Option<String> {
+    std::env::var("PM3_RUNTIME_DIR").ok()
+}
+
+#[must_use]
+pub fn host_pm3_data_dir() -> Option<String> {
+    std::env::var("PM3_DATA_DIR").ok()
+}
+
+#[must_use]
+pub fn host_pm3_config_dir() -> Option<String> {
+    std::env::var("PM3_CONFIG_DIR").ok()
 }
 
 #[must_use]

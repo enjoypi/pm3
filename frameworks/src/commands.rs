@@ -12,9 +12,7 @@ use crate::{
     Error, Result,
     client::{ClientError, OK_STATUS, UdsClient},
     daemon::{DaemonLaunch, ensure_daemon_running},
-    layout::{
-        canonicalize, ensure_layout, host_home, read_pid_file, resolve_cfg_dir, resolve_layout,
-    },
+    layout::{Pm3Places, canonicalize, ensure_layout, host_home, read_pid_file, resolve_places},
     telemetry::init_cli_telemetry,
 };
 
@@ -59,8 +57,7 @@ pub fn open_session(config_path: &str) -> Result<Session> {
     let config = load_and_parse_config(config_path)?;
     init_cli_telemetry(&config.telemetry);
     let home = host_home();
-    let paths = resolve_layout(&config.pm3, home.as_deref())?;
-    let cfg_dir = resolve_cfg_dir(&config.pm3, home.as_deref())?;
+    let Pm3Places { paths, cfg_dir } = resolve_places(&config.pm3, home.as_deref())?;
     Ok(Session {
         config,
         config_path: config_path.to_string(),

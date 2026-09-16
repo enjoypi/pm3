@@ -40,6 +40,9 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
     Pm3Config {
         home: home.to_string(),
         cfg_dir: format!("{home}/service"),
+        state_dir: String::new(),
+        runtime_dir: String::new(),
+        data_dir: String::new(),
         search_path: SERVICE_SEARCH_PATH.to_string(),
         stop_signal: STOP_SIGNAL.to_string(),
         kill_timeout_ms: KILL_TIMEOUT_MS,

@@ -10,7 +10,7 @@ use usecases::{
     parse_memory_limit, validate_forbidden_roots, validate_spec,
 };
 
-use super::roots::dedup_roots;
+use super::roots::{dedup_roots, dominant_roots};
 use crate::{
     config::{ConfigLoadError, Pm3Config, RestartConfig, substitute_env_vars},
     program::resolve_program,
@@ -85,17 +85,48 @@ pub struct ReadyProbeEntry {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct SpecRoots<'d> {
+    pub home_dir: &'d str,
+    pub cfg_dir: &'d str,
+    pub apps_dir: &'d str,
+    pub state_dir: &'d str,
+    pub runtime_dir: &'d str,
+    pub data_dir: &'d str,
+    pub logs_dir: &'d str,
+    pub tmp_dir: Option<&'d str>,
+}
+
+impl<'d> SpecRoots<'d> {
+    #[must_use]
+    pub const fn single(home_dir: &'d str, cfg_dir: &'d str, logs_dir: &'d str) -> Self {
+        Self {
+            home_dir,
+            cfg_dir,
+            apps_dir: home_dir,
+            state_dir: home_dir,
+            runtime_dir: home_dir,
+            data_dir: home_dir,
+            logs_dir,
+            tmp_dir: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_tmp(mut self, tmp_dir: Option<&'d str>) -> Self {
+        self.tmp_dir = tmp_dir;
+        self
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct SpecDefaults<'d> {
     pub restart: RestartConfig,
     pub sandbox_mode: SandboxMode,
     pub sandbox_read: ReadScope,
     pub sandbox_network: bool,
     pub forbidden_writable_roots: &'d [String],
-    pub home_dir: &'d str,
-    pub cfg_dir: &'d str,
+    pub roots: SpecRoots<'d>,
     pub search_path: &'d str,
-    pub logs_dir: &'d str,
-    pub tmp_dir: Option<&'d str>,
 }
 
 #[derive(Debug, Error)]
@@ -159,13 +190,7 @@ pub enum AppsFileError {
 }
 
 impl<'d> SpecDefaults<'d> {
-    pub fn from_config(
-        pm3: &'d Pm3Config,
-        home_dir: &'d str,
-        cfg_dir: &'d str,
-        logs_dir: &'d str,
-        tmp_dir: Option<&'d str>,
-    ) -> Result<Self, AppsFileError> {
+    pub fn from_config(pm3: &'d Pm3Config, roots: SpecRoots<'d>) -> Result<Self, AppsFileError> {
         let sandbox_mode = parse_mode(DEFAULTS_SCOPE, &pm3.sandbox.mode)?;
         let sandbox_read = parse_read(DEFAULTS_SCOPE, &pm3.sandbox.read)?;
         Ok(Self {
@@ -174,11 +199,8 @@ impl<'d> SpecDefaults<'d> {
             sandbox_read,
             sandbox_network: pm3.sandbox.network,
             forbidden_writable_roots: &pm3.sandbox.forbidden_writable_roots,
-            home_dir,
-            cfg_dir,
+            roots,
             search_path: &pm3.search_path,
-            logs_dir,
-            tmp_dir,
         })
     }
 }
@@ -298,7 +320,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
 
 fn working_directory(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> String {
     entry.cwd.clone().unwrap_or_else(|| {
-        Path::new(defaults.home_dir)
+        Path::new(defaults.roots.apps_dir)
             .join(&entry.name)
             .to_string_lossy()
             .into_owned()
@@ -402,11 +424,17 @@ fn invalid_ready_probe(app: &str, reason: &str) -> AppsFileError {
 }
 
 fn pm3_owned_roots(defaults: &SpecDefaults<'_>) -> Vec<String> {
-    let candidates = [defaults.home_dir, defaults.cfg_dir]
-        .into_iter()
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string);
-    dedup_roots(candidates)
+    let candidates = [
+        defaults.roots.home_dir,
+        defaults.roots.cfg_dir,
+        defaults.roots.state_dir,
+        defaults.roots.runtime_dir,
+        defaults.roots.data_dir,
+    ]
+    .into_iter()
+    .filter(|value| !value.is_empty())
+    .map(ToString::to_string);
+    dominant_roots(candidates)
 }
 
 fn default_writable_roots(
@@ -420,7 +448,7 @@ fn default_writable_roots(
     let hidden = pm3_owned_roots(defaults);
     let candidates = [
         Some(cwd),
-        Some(defaults.logs_dir),
+        Some(defaults.roots.logs_dir),
         tmp_root(defaults, &hidden),
     ]
     .into_iter()
@@ -431,7 +459,7 @@ fn default_writable_roots(
 }
 
 fn tmp_root<'d>(defaults: &SpecDefaults<'d>, hidden: &[String]) -> Option<&'d str> {
-    let tmp = defaults.tmp_dir?;
+    let tmp = defaults.roots.tmp_dir?;
     if hidden.iter().any(|root| covers_path(tmp, root)) {
         return None;
     }

@@ -29,8 +29,12 @@ pub fn pm3_config(sandbox_mode: &str) -> Pm3Config {
 static FIXTURE_CONFIG: std::sync::LazyLock<Pm3Config> =
     std::sync::LazyLock::new(|| pm3_config(SandboxMode::WorkspaceWrite.as_str()));
 
+pub fn fixture_roots() -> SpecRoots<'static> {
+    SpecRoots::single(HOME_DIR, CFG_DIR, LOGS_DIR).with_tmp(Some(TMP_DIR))
+}
+
 pub fn defaults() -> SpecDefaults<'static> {
-    SpecDefaults::from_config(&FIXTURE_CONFIG, HOME_DIR, CFG_DIR, LOGS_DIR, Some(TMP_DIR))
+    SpecDefaults::from_config(&FIXTURE_CONFIG, fixture_roots())
         .expect("fixture defaults should build")
 }
 

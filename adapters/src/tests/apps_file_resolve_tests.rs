@@ -78,8 +78,7 @@ fn a_declared_writable_root_stays_out_of_the_derived_set() {
 fn spec_defaults_reads_the_pm3_sandbox_section() {
     let mut pm3 = pm3_config(SandboxMode::WorkspaceWrite.as_str());
     pm3.sandbox.network = true;
-    let defaults = SpecDefaults::from_config(&pm3, HOME_DIR, CFG_DIR, LOGS_DIR, Some(TMP_DIR))
-        .expect("should build");
+    let defaults = SpecDefaults::from_config(&pm3, fixture_roots()).expect("should build");
     assert_eq!(defaults.sandbox_mode, SandboxMode::WorkspaceWrite);
     assert!(defaults.sandbox_network);
     assert_eq!(defaults.restart.max_restarts, pm3.restart.max_restarts);
@@ -89,7 +88,7 @@ fn spec_defaults_reads_the_pm3_sandbox_section() {
 fn spec_defaults_rejects_an_unknown_configured_sandbox_mode() {
     let mut pm3 = pm3_config(SandboxMode::WorkspaceWrite.as_str());
     pm3.sandbox.mode = "yolo".to_string();
-    let err = SpecDefaults::from_config(&pm3, HOME_DIR, CFG_DIR, LOGS_DIR, Some(TMP_DIR))
+    let err = SpecDefaults::from_config(&pm3, fixture_roots())
         .unwrap_err()
         .to_string();
     assert!(
@@ -222,7 +221,7 @@ fn resolve_specs_keep_the_pm3_directories_out_of_every_sandbox() {
 fn spec_defaults_rejects_an_unknown_configured_read_scope() {
     let mut pm3 = pm3_config(SandboxMode::WorkspaceWrite.as_str());
     pm3.sandbox.read = "everything".to_string();
-    let err = SpecDefaults::from_config(&pm3, HOME_DIR, CFG_DIR, LOGS_DIR, Some(TMP_DIR))
+    let err = SpecDefaults::from_config(&pm3, fixture_roots())
         .unwrap_err()
         .to_string();
     assert!(

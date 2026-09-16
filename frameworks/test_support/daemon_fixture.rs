@@ -1,7 +1,7 @@
 #![cfg(unix)]
 use std::{path::PathBuf, sync::Mutex, time::Duration};
 
-use adapters::{LogStream, Pm3Paths, log_path, resolve_paths};
+use adapters::{LogStream, Pm3Paths, Pm3Roots, log_path, resolve_paths};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     sync::oneshot,
@@ -28,7 +28,7 @@ pub struct Fixture {
 pub async fn running_daemon() -> Fixture {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");
-    let paths = resolve_paths(&home);
+    let paths = resolve_paths(Pm3Roots::single(&home));
     let config_path = write_config(dir.path(), &home.to_string_lossy())
         .to_string_lossy()
         .into_owned();

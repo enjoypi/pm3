@@ -44,6 +44,9 @@ pub fn valid_pm3_config() -> Pm3Config {
     Pm3Config {
         home: "/tmp/pm3-fixture".to_string(),
         cfg_dir: "/tmp/pm3-fixture/service".to_string(),
+        state_dir: String::new(),
+        runtime_dir: String::new(),
+        data_dir: String::new(),
         search_path: "/usr/bin:/bin".to_string(),
         stop_signal: STOP_SIGNAL_TERM.to_string(),
         kill_timeout_ms: 1600,

@@ -25,17 +25,31 @@ pub fn validate_pm3_config(pm3: &Pm3Config) -> Result<(), ConfigError> {
 }
 
 fn validate_paths(pm3: &Pm3Config) -> Result<(), ConfigError> {
-    if pm3.home.is_empty() {
+    if !derivable_root(&pm3.home) {
         return Err(ConfigError::InvalidHome);
     }
-    if pm3.cfg_dir.is_empty() {
+    if !derivable_root(&pm3.cfg_dir) {
         return Err(ConfigError::InvalidCfgDir);
     }
+    validate_derived_root("pm3.state_dir", &pm3.state_dir)?;
+    validate_derived_root("pm3.runtime_dir", &pm3.runtime_dir)?;
+    validate_derived_root("pm3.data_dir", &pm3.data_dir)?;
     if pm3.search_path.is_empty() {
         return Err(ConfigError::InvalidSearchPath);
     }
     reject_line_break("pm3.home", &pm3.home)?;
     reject_line_break("pm3.search_path", &pm3.search_path)
+}
+
+fn validate_derived_root(field: &'static str, value: &str) -> Result<(), ConfigError> {
+    if derivable_root(value) {
+        return Ok(());
+    }
+    Err(ConfigError::InvalidRoot { field })
+}
+
+fn derivable_root(value: &str) -> bool {
+    value.is_empty() || value.starts_with('/') || value.starts_with('~')
 }
 
 fn validate_budgets(pm3: &Pm3Config) -> Result<(), ConfigError> {

@@ -5,7 +5,6 @@ use usecases::is_name_letter;
 use super::InstallError;
 
 const DEFAULT_DESTINATION: &str = ".local/bin/pm3";
-const BACKUP_DIRECTORY: &str = "install-backups";
 const UNKNOWN_VERSION: &str = "unknown";
 
 pub fn destination_of(
@@ -21,10 +20,10 @@ pub fn destination_of(
 }
 
 #[must_use]
-pub fn backup_root(declared: Option<&str>, pm3_home: &Path) -> PathBuf {
+pub fn backup_root(declared: Option<&str>, backups_dir: &Path) -> PathBuf {
     match declared {
         Some(path) if !path.is_empty() => PathBuf::from(path),
-        _ => pm3_home.join(BACKUP_DIRECTORY),
+        _ => backups_dir.to_path_buf(),
     }
 }
 

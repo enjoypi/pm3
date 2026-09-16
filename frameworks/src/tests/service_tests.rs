@@ -258,3 +258,83 @@ fn a_relative_pm3_home_stops_the_session() {
 
 #[path = "service_render_tests.rs"]
 mod render;
+
+#[test]
+fn a_session_pins_the_resolved_roots_into_the_unit_environment() {
+    let fixture = fixture(TRUE_PROGRAM);
+    let home = home_of(&fixture);
+    let context = context(&fixture, UnitKind::Systemd, &home);
+
+    let session =
+        open_service_session(&fixture.config_path, &context).expect("the session should open");
+
+    let names: Vec<&str> = session
+        .spec
+        .pm3_env
+        .iter()
+        .map(|(name, _value)| name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "PM3_CONFIG_DIR",
+            "PM3_DATA_DIR",
+            "PM3_RUNTIME_DIR",
+            "PM3_STATE_DIR"
+        ],
+        "the unit must hand the daemon the roots the cli resolved, sorted so reconcile stays quiet"
+    );
+}
+
+#[test]
+fn a_session_replaces_an_inherited_root_variable_with_the_resolved_one() {
+    let fixture = fixture(TRUE_PROGRAM);
+    let home = home_of(&fixture);
+    let mut context = context(&fixture, UnitKind::Systemd, &home);
+    context.pm3_env = vec![("PM3_STATE_DIR".to_string(), "/stale".to_string())];
+
+    let session =
+        open_service_session(&fixture.config_path, &context).expect("the session should open");
+
+    let state = session
+        .spec
+        .pm3_env
+        .iter()
+        .find(|(name, _value)| name == "PM3_STATE_DIR")
+        .map(|(_name, value)| value.as_str());
+    assert_ne!(
+        state,
+        Some("/stale"),
+        "an inherited value must not shadow the root this session resolved"
+    );
+}
+
+#[test]
+fn a_session_refuses_a_home_that_overflows_the_socket_limit() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let deep = dir.path().join("d".repeat(120));
+    let config_path = write_config(dir.path(), &deep.to_string_lossy());
+    let programs = UnitProgramSet {
+        launchctl: TRUE_PROGRAM.to_string(),
+        systemctl: TRUE_PROGRAM.to_string(),
+        loginctl: TRUE_PROGRAM.to_string(),
+        schtasks: TRUE_PROGRAM.to_string(),
+        runtime_dir: None,
+        uid: None,
+    };
+    let context = ServiceContext {
+        programs: Some(&programs),
+        kind: UnitKind::Systemd,
+        pm3_env: Vec::new(),
+        home_env: Some("/home/dev"),
+        runtime_dir: None,
+        uid: None,
+        binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
+    };
+
+    let err = open_service_session(&config_path.to_string_lossy(), &context)
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("exceeds the 104"), "got: {err}");
+}

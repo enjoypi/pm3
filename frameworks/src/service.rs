@@ -2,19 +2,25 @@ use std::path::{Path, PathBuf};
 
 use adapters::{
     AppConfig, Pm3Paths, UnitKind, UnitProgramSet, UnitSpec, install_unit, load_config_file,
-    status_report, uninstall_unit, unit_dir_of,
+    pm3_variables, status_report, uninstall_unit, unit_dir_of,
 };
 
 use crate::{
     Error, Result,
     layout::{
-        canonicalize, ensure_layout, host_home, host_pm3_env, host_runtime_dir, host_uid,
-        resolve_cfg_dir, resolve_layout,
+        Pm3Places, canonicalize, ensure_layout, host_home, host_pm3_env, host_runtime_dir,
+        host_uid, resolve_places,
     },
     telemetry::init_cli_telemetry,
 };
 
 const OWNER_ONLY_UMASK: u32 = 0o077;
+const ROOT_VARIABLES: [&str; 4] = [
+    "PM3_CONFIG_DIR",
+    "PM3_STATE_DIR",
+    "PM3_RUNTIME_DIR",
+    "PM3_DATA_DIR",
+];
 
 #[cfg(target_os = "macos")]
 pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
@@ -94,8 +100,7 @@ pub fn open_service_session(
     let absolute = canonical_config_path(config_path)?;
     let loaded = load_config_file(&absolute.to_string_lossy())?;
     init_cli_telemetry(&loaded.config.telemetry);
-    let paths = resolve_layout(&loaded.config.pm3, context.home_env)?;
-    let cfg_dir = resolve_cfg_dir(&loaded.config.pm3, context.home_env)?;
+    let Pm3Places { paths, cfg_dir } = resolve_places(&loaded.config.pm3, context.home_env)?;
     let spec = build_spec(&loaded.config, &paths, context)?;
     let programs = UnitProgramSet::from_config(
         &loaded.config.pm3.service,
@@ -136,6 +141,27 @@ async fn install(
     .await?)
 }
 
+fn resolved_roots_env(inherited: &[(String, String)], paths: &Pm3Paths) -> Vec<(String, String)> {
+    let mut kept: Vec<(String, String)> = inherited
+        .iter()
+        .filter(|(name, _value)| !ROOT_VARIABLES.contains(&name.as_str()))
+        .cloned()
+        .collect();
+    kept.extend(root_variables(paths));
+    kept
+}
+
+fn root_variables(paths: &Pm3Paths) -> Vec<(String, String)> {
+    [
+        (ROOT_VARIABLES[0], &paths.roots.config),
+        (ROOT_VARIABLES[1], &paths.roots.state),
+        (ROOT_VARIABLES[2], &paths.roots.runtime),
+        (ROOT_VARIABLES[3], &paths.roots.data),
+    ]
+    .into_iter()
+    .map(|(name, root)| (name.to_string(), root.to_string_lossy().into_owned()))
+    .collect()
+}
 fn build_spec(
     config: &AppConfig,
     paths: &Pm3Paths,
@@ -169,7 +195,7 @@ fn build_spec(
         log_path,
         search_path,
         home: home_dir,
-        pm3_env: context.pm3_env.clone(),
+        pm3_env: pm3_variables(resolved_roots_env(&context.pm3_env, paths)),
         restart_delay_secs,
         restart_condition,
         umask: OWNER_ONLY_UMASK,

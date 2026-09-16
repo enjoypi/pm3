@@ -16,8 +16,7 @@ use super::{
 use crate::{
     Error, Result,
     layout::{
-        clear_runtime_files, ensure_layout, host_home, resolve_cfg_dir, resolve_layout,
-        write_pid_file,
+        Pm3Places, clear_runtime_files, ensure_layout, host_home, resolve_places, write_pid_file,
     },
     sandbox_probe::detect_host_backend,
     server::serve_listener,
@@ -46,8 +45,7 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
     init_telemetry(&config.telemetry, LogSink::Stdout)
         .expect("internal error: load_and_parse_config validated log_level and log_format");
     let home = host_home();
-    let paths = resolve_layout(&config.pm3, home.as_deref())?;
-    let cfg_dir = resolve_cfg_dir(&config.pm3, home.as_deref())?;
+    let Pm3Places { paths, cfg_dir } = resolve_places(&config.pm3, home.as_deref())?;
     ensure_layout(&paths, &cfg_dir).await?;
     let BindOutcome::Bound(listener) =
         bind_uds(&paths.socket, config.pm3.daemon_poll_interval_ms).await?
@@ -64,6 +62,10 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
         cfg_dir,
         config: config.pm3.clone(),
         home_dir: paths.root.to_string_lossy().into_owned(),
+        apps_dir: paths.apps_dir.to_string_lossy().into_owned(),
+        state_dir: paths.roots.state.to_string_lossy().into_owned(),
+        runtime_dir: paths.roots.runtime.to_string_lossy().into_owned(),
+        data_dir: paths.roots.data.to_string_lossy().into_owned(),
         host_home: home,
         logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: std::env::var(TMPDIR_VARIABLE).ok(),

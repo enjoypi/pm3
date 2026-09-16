@@ -1,8 +1,8 @@
 use std::{fmt::Write as _, path::PathBuf, time::Duration};
 
 use adapters::{
-    AppSelector, DaemonCommand, Pm3Paths, SupervisionOutcome, SupervisionRequest, resolve_paths,
-    service_file_of,
+    AppSelector, DaemonCommand, Pm3Paths, Pm3Roots, SupervisionOutcome, SupervisionRequest,
+    resolve_paths, service_file_of,
 };
 use tokio::sync::oneshot;
 
@@ -56,7 +56,7 @@ fn built_harness_with_rotate(
     log_rotate_interval_ms: u64,
 ) -> Harness {
     let dir = tempfile::tempdir().expect("temp dir");
-    let paths = resolve_paths(dir.path());
+    let paths = resolve_paths(Pm3Roots::single(dir.path()));
     std::fs::create_dir_all(&paths.logs_dir).expect("create the log directory");
     let cfg_dir = dir.path().join("service");
     std::fs::create_dir_all(&cfg_dir).expect("create the service directory");
@@ -69,6 +69,10 @@ fn built_harness_with_rotate(
         cfg_dir: cfg_dir.clone(),
         config,
         home_dir: paths.root.to_string_lossy().into_owned(),
+        apps_dir: paths.apps_dir.to_string_lossy().into_owned(),
+        state_dir: paths.roots.state.to_string_lossy().into_owned(),
+        runtime_dir: paths.roots.runtime.to_string_lossy().into_owned(),
+        data_dir: paths.roots.data.to_string_lossy().into_owned(),
         host_home: None,
         logs_dir: paths.logs_dir.to_string_lossy().into_owned(),
         tmp_dir: None,

@@ -2,7 +2,7 @@ use usecases::{ReadScope, SandboxMode};
 
 use super::*;
 use crate::{
-    SpecDefaults,
+    SpecDefaults, SpecRoots,
     config_sections::{pm3_section, telemetry_section},
     load_service_file, parse_config, parse_service_file, resolve_checked,
 };
@@ -186,10 +186,11 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
     let config = parse_config(&yaml).expect("the fixture config should parse");
     let defaults = SpecDefaults::from_config(
         &config.pm3,
-        "/tmp/pm3-fixture",
-        "/tmp/pm3-fixture-cfg",
-        "/tmp/pm3-fixture/logs",
-        None,
+        SpecRoots::single(
+            "/tmp/pm3-fixture",
+            "/tmp/pm3-fixture-cfg",
+            "/tmp/pm3-fixture/logs",
+        ),
     )
     .expect("the fixture defaults should build");
     let mut asked = request(&[]);

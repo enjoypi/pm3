@@ -8,9 +8,16 @@ fn validate_accepts_valid_config() {
 }
 
 #[test]
-fn validate_rejects_empty_home() {
+fn validate_accepts_an_empty_home_because_pm3_derives_it() {
     let mut cfg = valid_config();
     cfg.pm3.home = String::new();
+    validate_config(&cfg).expect("an empty home means the xdg layout");
+}
+
+#[test]
+fn validate_rejects_a_relative_home() {
+    let mut cfg = valid_config();
+    cfg.pm3.home = "pm3-data".to_string();
     let err = validate_config(&cfg).unwrap_err();
     assert!(matches!(err, ConfigError::InvalidHome), "got: {err}");
 }
@@ -285,3 +292,43 @@ fn validate_rejects_a_service_label_with_a_control_character() {
 
 #[path = "config_validate_render_tests.rs"]
 mod render;
+
+#[test]
+fn validate_rejects_a_relative_state_root() {
+    let mut cfg = valid_config();
+    cfg.pm3.state_dir = "state".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidRoot { field } if field == "pm3.state_dir"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_relative_runtime_root() {
+    let mut cfg = valid_config();
+    cfg.pm3.runtime_dir = "run".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidRoot { field } if field == "pm3.runtime_dir"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_rejects_a_relative_data_root() {
+    let mut cfg = valid_config();
+    cfg.pm3.data_dir = "share".to_string();
+    let err = validate_config(&cfg).unwrap_err();
+    assert!(
+        matches!(err, ConfigError::InvalidRoot { field } if field == "pm3.data_dir"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validate_accepts_a_tilde_state_root() {
+    let mut cfg = valid_config();
+    cfg.pm3.state_dir = "~/.local/state/pm3".to_string();
+    validate_config(&cfg).expect("a tilde root is derived against the home");
+}

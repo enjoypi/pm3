@@ -69,7 +69,7 @@ pub async fn run_install(
     let programs = context.programs.as_ref().unwrap_or(&session.programs);
 
     let before = dump_snapshot(&session.paths.dump_file).await?;
-    let root = backup_root(context.backups_env.as_deref(), &session.paths.root);
+    let root = backup_root(context.backups_env.as_deref(), &session.paths.backups_dir);
     let stamp = backup_name(
         binary_version(&destination, session.command_timeout_ms)
             .await
