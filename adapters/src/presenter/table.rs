@@ -10,7 +10,7 @@ use crate::http::ProcessViewDto;
 pub const EMPTY_NOTICE: &str = "no apps are managed by pm3";
 
 const COLUMN_GAP: &str = " ";
-const COMPACT_COLUMNS: usize = 8;
+const COMPACT_COLUMNS: usize = 9;
 const FULL_COLUMNS: usize = 10;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -54,6 +54,7 @@ fn headers(listing: Listing) -> Vec<String> {
             "uptime".to_string(),
             "rss/cpu".to_string(),
             next,
+            "box".to_string(),
             String::new(),
         ],
         Listing::Full => vec![
@@ -81,14 +82,12 @@ fn row_of(view: &ProcessViewDto, listing: Listing) -> Vec<String> {
     cells.push(format_uptime(view.uptime_ms));
     cells.push(format_resources(view.rss_kib, view.cpu_tenths));
     cells.push(format_clock(view.next_fire_ms));
-    if listing == Listing::Full {
-        cells.push(format_sandbox_flags(
-            &view.sandbox_mode,
-            &view.sandbox_read,
-            view.sandbox_network,
-        ));
-    }
-    cells.push(format_notice(view, listing));
+    cells.push(format_sandbox_flags(
+        &view.sandbox_mode,
+        &view.sandbox_read,
+        view.sandbox_network,
+    ));
+    cells.push(format_notice(view));
     cells
 }
 

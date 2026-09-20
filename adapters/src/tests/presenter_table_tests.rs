@@ -33,6 +33,10 @@ fn body_cells(views: &[ProcessViewDto]) -> Vec<String> {
         .collect()
 }
 
+fn compact_box(view: ProcessViewDto) -> String {
+    body_cells(&[view]).get(7).cloned().expect("box column")
+}
+
 fn online(pm_id: u32, name: &str) -> ProcessViewDto {
     dto(&running_view(pm_id, name))
 }
@@ -43,16 +47,17 @@ fn an_empty_table_explains_that_nothing_is_managed() {
 }
 
 #[test]
-fn the_compact_header_leaves_the_pid_and_the_sandbox_out() {
+fn the_compact_header_leaves_the_pid_out_and_keeps_the_sandbox() {
     let header = compact(&[online(0, "web")])
         .first()
         .cloned()
         .expect("header row");
-    for column in ["id", "name", "status", "↺", "uptime", "rss/cpu", "next"] {
+    for column in [
+        "id", "name", "status", "↺", "uptime", "rss/cpu", "next", "box",
+    ] {
         assert!(header.contains(column), "missing {column} in: {header}");
     }
     assert!(!header.contains("pid"), "got: {header}");
-    assert!(!header.contains("box"), "got: {header}");
 }
 
 #[test]
@@ -170,12 +175,11 @@ fn a_flapping_app_names_its_recent_restarts() {
 }
 
 #[test]
-fn the_compact_listing_reports_a_sandbox_that_leaves_the_defaults() {
+fn the_compact_listing_reports_full_access_in_the_box() {
     let mut view = online(7, "web");
     view.sandbox_mode = "danger-full-access".to_string();
     view.sandbox_network = true;
-    let row = compact(&[view]).remove(1);
-    assert!(row.contains("full"), "got: {row}");
+    assert_eq!(compact_box(view), "F-N");
 }
 
 #[test]
@@ -183,26 +187,29 @@ fn the_compact_listing_stays_quiet_about_a_default_sandbox() {
     let mut view = online(7, "web");
     view.sandbox_network = true;
     view.unstable_restarts = 0;
-    let row = compact(&[view]).remove(1);
+    let row = compact(std::slice::from_ref(&view)).remove(1);
+    assert_eq!(compact_box(view), "W-N");
     assert!(!row.contains("nonet"), "got: {row}");
     assert!(!row.contains("read:full"), "got: {row}");
 }
 
 #[test]
-fn a_confined_app_without_network_says_so() {
+fn a_confined_app_without_network_uses_an_empty_network_flag() {
     let mut view = online(7, "web");
     view.sandbox_network = false;
-    let row = compact(&[view]).remove(1);
-    assert!(row.contains("nonet"), "got: {row}");
+    let row = compact(std::slice::from_ref(&view)).remove(1);
+    assert_eq!(compact_box(view), "W--");
+    assert!(!row.contains("nonet"), "got: {row}");
 }
 
 #[test]
-fn a_full_read_scope_says_so() {
+fn a_full_read_scope_sets_the_read_flag() {
     let mut view = online(7, "web");
     view.sandbox_read = "full".to_string();
     view.sandbox_network = true;
-    let row = compact(&[view]).remove(1);
-    assert!(row.contains("read:full"), "got: {row}");
+    let row = compact(std::slice::from_ref(&view)).remove(1);
+    assert_eq!(compact_box(view), "WRN");
+    assert!(!row.contains("read:full"), "got: {row}");
 }
 
 #[test]
@@ -253,12 +260,16 @@ fn the_full_listing_renders_the_sandbox_flags() {
 }
 
 #[test]
-fn a_read_only_app_says_so_in_the_notice_column() {
+fn a_read_only_app_uses_an_empty_write_flag() {
     let mut view = online(7, "web");
     view.sandbox_mode = "read-only".to_string();
     view.sandbox_network = true;
-    let row = compact(&[view]).remove(1);
-    assert!(row.contains("ro"), "got: {row}");
+    let row = compact(std::slice::from_ref(&view)).remove(1);
+    assert_eq!(compact_box(view), "--N");
+    assert!(
+        !row.split_whitespace().any(|cell| cell == "ro"),
+        "got: {row}"
+    );
 }
 
 #[test]
