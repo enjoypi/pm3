@@ -53,7 +53,7 @@ fn the_compact_header_leaves_the_pid_out_and_keeps_the_sandbox() {
         .cloned()
         .expect("header row");
     for column in [
-        "id", "name", "status", "↺", "uptime", "rss/cpu", "next", "box",
+        "id", "name", "status", "↺", "uptime", "rss/cpu", "next", "W/R/N",
     ] {
         assert!(header.contains(column), "missing {column} in: {header}");
     }
@@ -67,7 +67,7 @@ fn the_full_header_adds_the_pid_and_the_sandbox() {
         .cloned()
         .expect("header row");
     assert!(header.contains("pid"), "got: {header}");
-    assert!(header.contains("box"), "got: {header}");
+    assert!(header.contains("W/R/N"), "got: {header}");
 }
 
 #[test]
@@ -179,7 +179,7 @@ fn the_compact_listing_reports_full_access_in_the_box() {
     let mut view = online(7, "web");
     view.sandbox_mode = "danger-full-access".to_string();
     view.sandbox_network = true;
-    assert_eq!(compact_box(view), "F-N");
+    assert_eq!(compact_box(view), "F/-/N");
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn the_compact_listing_stays_quiet_about_a_default_sandbox() {
     view.sandbox_network = true;
     view.unstable_restarts = 0;
     let row = compact(std::slice::from_ref(&view)).remove(1);
-    assert_eq!(compact_box(view), "W-N");
+    assert_eq!(compact_box(view), "W/-/N");
     assert!(!row.contains("nonet"), "got: {row}");
     assert!(!row.contains("read:full"), "got: {row}");
 }
@@ -198,7 +198,7 @@ fn a_confined_app_without_network_uses_an_empty_network_flag() {
     let mut view = online(7, "web");
     view.sandbox_network = false;
     let row = compact(std::slice::from_ref(&view)).remove(1);
-    assert_eq!(compact_box(view), "W--");
+    assert_eq!(compact_box(view), "W/-/-");
     assert!(!row.contains("nonet"), "got: {row}");
 }
 
@@ -208,7 +208,7 @@ fn a_full_read_scope_sets_the_read_flag() {
     view.sandbox_read = "full".to_string();
     view.sandbox_network = true;
     let row = compact(std::slice::from_ref(&view)).remove(1);
-    assert_eq!(compact_box(view), "WRN");
+    assert_eq!(compact_box(view), "W/R/N");
     assert!(!row.contains("read:full"), "got: {row}");
 }
 
@@ -256,7 +256,7 @@ fn the_full_listing_renders_the_sandbox_flags() {
     view.sandbox_network = true;
     let rows = full(&[view]);
     let cells: Vec<&str> = rows[1].split_whitespace().collect();
-    assert_eq!(cells[8], "W-N", "got: {cells:?}");
+    assert_eq!(cells[8], "W/-/N", "got: {cells:?}");
 }
 
 #[test]
@@ -265,7 +265,7 @@ fn a_read_only_app_uses_an_empty_write_flag() {
     view.sandbox_mode = "read-only".to_string();
     view.sandbox_network = true;
     let row = compact(std::slice::from_ref(&view)).remove(1);
-    assert_eq!(compact_box(view), "--N");
+    assert_eq!(compact_box(view), "-/-/N");
     assert!(
         !row.split_whitespace().any(|cell| cell == "ro"),
         "got: {row}"

@@ -162,7 +162,7 @@ pub fn format_sandbox_flags(mode: &str, read: &str, network: bool) -> String {
     let write = write_flag(mode);
     let scope = read_flag(read);
     let net = network_flag(network);
-    format!("{write}{scope}{net}")
+    format!("{write}/{scope}/{net}")
 }
 
 fn write_flag(mode: &str) -> &'static str {

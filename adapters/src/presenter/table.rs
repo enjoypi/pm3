@@ -54,7 +54,7 @@ fn headers(listing: Listing) -> Vec<String> {
             "uptime".to_string(),
             "rss/cpu".to_string(),
             next,
-            "box".to_string(),
+            "W/R/N".to_string(),
             String::new(),
         ],
         Listing::Full => vec![
@@ -66,7 +66,7 @@ fn headers(listing: Listing) -> Vec<String> {
             "uptime".to_string(),
             "rss/cpu".to_string(),
             next,
-            "box".to_string(),
+            "W/R/N".to_string(),
             String::new(),
         ],
     }

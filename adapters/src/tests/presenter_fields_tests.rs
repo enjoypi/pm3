@@ -150,18 +150,18 @@ fn cpu_tenths_are_rendered_as_a_percentage() {
 fn the_sandbox_flags_name_every_write_scope() {
     assert_eq!(
         format_sandbox_flags("danger-full-access", "minimal", true),
-        "F-N"
+        "F/-/N"
     );
     assert_eq!(
         format_sandbox_flags("workspace-write", "minimal", false),
-        "W--"
+        "W/-/-"
     );
-    assert_eq!(format_sandbox_flags("read-only", "minimal", false), "---");
+    assert_eq!(format_sandbox_flags("read-only", "minimal", false), "-/-/-");
 }
 
 #[test]
 fn the_sandbox_flags_name_a_full_read_scope() {
-    assert_eq!(format_sandbox_flags("read-only", "full", false), "-R-");
+    assert_eq!(format_sandbox_flags("read-only", "full", false), "-/R/-");
 }
 
 #[test]
