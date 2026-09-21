@@ -34,13 +34,45 @@ check-windows:
 test *args:
     bun dev_scripts/reap.ts; cargo nextest run {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status
 
-[doc("装到真机：opt-level 3 构建后交给 pm3 install（备份、原子换二进制、重装 unit、核对接管）")]
+[doc("装到真机：opt-level 3 构建，有 pm3-local 身份则签名（TCC 授权跨重装稳定），再交给 pm3 install")]
 install:
     CARGO_PROFILE_RELEASE_OPT_LEVEL=3 cargo build {{ cargo_locked }} -p frameworks --release
+    src=target/release/pm3; \
+    if command -v security >/dev/null 2>&1 && security find-identity -p codesigning | rg -q pm3-local; then \
+    src=target/release/pm3.signed; \
+    if [ ! -f "$src" ] || [ ! -f "$src.src" ] || ! cmp -s target/release/pm3 "$src.src"; then \
+    cp target/release/pm3 "$src.src"; \
+    cp "$src.src" "$src"; \
+    codesign --force --sign "pm3-local" --identifier com.enjoypi.pm3 "$src"; \
+    fi; \
+    else \
+    echo "just install: 无 pm3-local 签名身份（just signing-identity 生成），二进制保持 ad-hoc 签名，TCC 授权将随 cdhash 失效" >&2; \
+    fi; \
     cfg="${PM3_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pm3}/config.yaml"; \
     [ -f "$cfg" ] || cfg="${PM3_HOME:-$HOME/.pm3}/config.yaml"; \
     [ -f "$cfg" ] || { echo "just install: 找不到真机 config.yaml，MUST NOT 用仓内那份（它的 roots 全为空）" >&2; exit 1; }; \
-    target/release/pm3 --config "$cfg" install target/release/pm3
+    target/release/pm3 --config "$cfg" install "$src"
+
+[doc("一次性：生成 pm3-local 自签名证书导入 login keychain；本机与 CI MUST 共用同一把")]
+signing-identity:
+    if security find-identity -p codesigning | rg -q pm3-local; then \
+    security find-identity -p codesigning | rg pm3-local; \
+    echo "signing-identity: pm3-local 已存在，无需重建"; \
+    exit 0; \
+    fi
+    tmp=$(mktemp -d); \
+    trap 'rm -rf "$tmp"' EXIT; \
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+    -subj "/CN=pm3-local" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,digitalSignature" \
+    -addext "extendedKeyUsage=codeSigning" \
+    -keyout "$tmp/pm3-local.key" -out "$tmp/pm3-local.crt"; \
+    openssl pkcs12 -export -legacy -out "$tmp/pm3-local.p12" \
+    -inkey "$tmp/pm3-local.key" -in "$tmp/pm3-local.crt" -passout pass:pm3-local; \
+    security import "$tmp/pm3-local.p12" -k "$HOME/Library/Keychains/login.keychain-db" -P pm3-local -T /usr/bin/codesign; \
+    security find-identity -p codesigning | rg pm3-local
+    @echo "signing-identity: 已导入 login keychain；首次签名若弹钥匙串授权请选「始终允许」。CI 用同一把：钥匙串访问导出 p12，配 secrets PM3_CODESIGN_P12（base64）与 PM3_CODESIGN_P12_PASSWORD"
 
 [doc("tail 服务日志并过滤：crash 匹配 panic 与致命信号，business 匹配 error 与 WARN/ERROR")]
 monitor kind:

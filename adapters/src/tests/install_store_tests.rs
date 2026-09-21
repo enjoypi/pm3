@@ -16,6 +16,90 @@ fn mode_of(path: &Path) -> u32 {
 }
 
 #[tokio::test]
+async fn a_binary_matching_the_destination_is_detected() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let source = dir.path().join("new-pm3");
+    let destination = dir.path().join("pm3");
+    std::fs::write(&source, "same bytes").expect("write source");
+    std::fs::write(&destination, "same bytes").expect("write destination");
+    assert!(
+        binary_matches(&source, &destination)
+            .await
+            .expect("the comparison succeeds")
+    );
+}
+
+#[tokio::test]
+async fn a_different_binary_does_not_match() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let source = dir.path().join("new-pm3");
+    let destination = dir.path().join("pm3");
+    std::fs::write(&source, "new bytes").expect("write source");
+    std::fs::write(&destination, "old bytes").expect("write destination");
+    assert!(
+        !binary_matches(&source, &destination)
+            .await
+            .expect("the comparison succeeds")
+    );
+}
+
+#[tokio::test]
+async fn a_missing_destination_never_matches() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let source = dir.path().join("new-pm3");
+    std::fs::write(&source, "bytes").expect("write source");
+    assert!(
+        !binary_matches(&source, &dir.path().join("missing"))
+            .await
+            .expect("a missing destination is not an error")
+    );
+}
+
+#[tokio::test]
+async fn a_destination_occupied_by_a_directory_does_not_match() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let source = dir.path().join("new-pm3");
+    let destination = dir.path().join("pm3");
+    std::fs::write(&source, "bytes").expect("write source");
+    std::fs::create_dir(&destination).expect("a directory occupies the destination");
+    assert!(
+        !binary_matches(&source, &destination)
+            .await
+            .expect("a directory is not the current binary")
+    );
+}
+
+#[tokio::test]
+async fn a_missing_source_is_an_error() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let destination = dir.path().join("pm3");
+    std::fs::write(&destination, "bytes").expect("write destination");
+    let error = binary_matches(&dir.path().join("missing"), &destination)
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().starts_with("cannot replace '"),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn an_unreadable_destination_is_an_error() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let source = dir.path().join("new-pm3");
+    let destination = dir.path().join("pm3");
+    std::fs::write(&source, "bytes").expect("write source");
+    std::fs::write(&destination, "bytes").expect("write destination");
+    std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(0o000))
+        .expect("lock the destination");
+    let error = binary_matches(&source, &destination).await.unwrap_err();
+    assert!(
+        error.to_string().starts_with("cannot replace '"),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
 async fn a_backup_copies_every_existing_file_into_a_private_stamp_dir() {
     let dir = tempfile::tempdir().expect("temp dir");
     let binary = dir.path().join("pm3");

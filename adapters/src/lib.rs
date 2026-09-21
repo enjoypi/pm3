@@ -56,8 +56,8 @@ pub use self::{
         router,
     },
     install::{
-        InstallError, back_up, backup_name, backup_root, binary_version, destination_of,
-        parse_version_output, replace_binary,
+        InstallError, back_up, backup_name, backup_root, binary_matches, binary_version,
+        destination_of, parse_version_output, replace_binary,
     },
     logs::{
         CopyTruncateRotator, LogClearError, LogFollower, LogReadError, clear_log, read_tail,

@@ -58,7 +58,7 @@ fn the_full_listing_adds_the_pid_and_the_sandbox() {
     let shown = stdout_of(&pm3(&home, &["list", "--full"]));
 
     assert!(shown.contains("pid"), "got: {shown}");
-    assert!(shown.contains("box"), "got: {shown}");
+    assert!(shown.contains("W/R/N"), "got: {shown}");
     let row = shown
         .lines()
         .find(|line| line.contains("web"))

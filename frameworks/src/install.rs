@@ -5,9 +5,9 @@ use std::{
 };
 
 use adapters::{
-    UnitKind, UnitProgramSet, UnitStatus, back_up, backup_name, backup_root, binary_version,
-    compare_handover, describe_handover, destination_of, dump_snapshot, hand_back_to_manager,
-    query_status, query_supervised_pid, replace_binary, write_targets,
+    UnitKind, UnitProgramSet, UnitStatus, back_up, backup_name, backup_root, binary_matches,
+    binary_version, compare_handover, describe_handover, destination_of, dump_snapshot,
+    hand_back_to_manager, query_status, query_supervised_pid, replace_binary, write_targets,
 };
 
 use crate::{
@@ -76,9 +76,13 @@ pub async fn run_install(
             .as_deref(),
     );
     let targets = write_targets(&session.spec);
-    let backup = back_up(std::slice::from_ref(&destination), &root, &stamp).await?;
-    replace_binary(&source, &destination).await?;
-    back_up(&targets, &root, &stamp).await?;
+    if binary_matches(&source, &destination).await? {
+        emit(&format!("binary unchanged, kept {}", destination.display()));
+    } else {
+        back_up(std::slice::from_ref(&destination), &root, &stamp).await?;
+        replace_binary(&source, &destination).await?;
+    }
+    let backup = back_up(&targets, &root, &stamp).await?;
     emit(&format!("backed up {}", backup.display()));
     log_step("swap", &source, &destination);
 

@@ -22,6 +22,24 @@ pub async fn back_up(paths: &[PathBuf], root: &Path, stamp: &str) -> Result<Path
     Ok(dir)
 }
 
+pub async fn binary_matches(source: &Path, destination: &Path) -> Result<bool, InstallError> {
+    let incoming = tokio::fs::read(source)
+        .await
+        .map_err(|error| InstallError::replace_io(source, &error))?;
+    match tokio::fs::read(destination).await {
+        Ok(installed) => Ok(incoming == installed),
+        Err(error) => {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                return Ok(false);
+            }
+            if error.kind() == std::io::ErrorKind::IsADirectory {
+                return Ok(false);
+            }
+            Err(InstallError::replace_io(destination, &error))
+        }
+    }
+}
+
 pub async fn replace_binary(source: &Path, destination: &Path) -> Result<(), InstallError> {
     if let Some(parent) = destination.parent() {
         tokio::fs::create_dir_all(parent)

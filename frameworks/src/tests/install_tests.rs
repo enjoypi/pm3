@@ -350,5 +350,39 @@ async fn an_install_reports_a_config_it_cannot_load() {
     );
 }
 
+#[tokio::test]
+async fn an_install_with_an_identical_binary_keeps_it_and_skips_its_backup() {
+    let fixture = systemd_fixture(HEALTHY_SYSTEMD);
+    let source = seed_source(&fixture);
+    std::fs::create_dir_all(fixture.destination.parent().expect("the dest dir"))
+        .expect("prepare the dest dir");
+    std::fs::write(&fixture.destination, "new binary").expect("seed the identical binary");
+    seed_pid_file(&fixture);
+    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let lines = std::sync::Mutex::new(Vec::new());
+    let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
+
+    run_install(
+        &fixture.config_path,
+        Some(source),
+        &context(&fixture, UnitKind::Systemd, None),
+        &emit,
+    )
+    .await
+    .expect("the install should succeed");
+    server.abort();
+
+    assert_eq!(
+        std::fs::read_to_string(&fixture.destination).expect("read the destination"),
+        "new binary"
+    );
+    assert!(
+        !stamp_dir(&fixture).join("pm3").exists(),
+        "the identical binary is not backed up"
+    );
+    let output = lines.lock().expect("lock").join("\n");
+    assert!(output.contains("binary unchanged"), "got: {output}");
+}
+
 #[path = "install_backup_tests.rs"]
 mod backup;
