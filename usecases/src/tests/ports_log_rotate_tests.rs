@@ -20,5 +20,5 @@ async fn the_fake_rotates_nothing() {
         .rotate_logs("/logs", 100)
         .await
         .expect("should rotate");
-    assert!(rotated.is_empty());
+    assert_eq!(rotated, []);
 }

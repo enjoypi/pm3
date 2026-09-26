@@ -16,7 +16,7 @@ fn memory_limited_apps(home: &common::Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: hog\n    script: {PM3}\n    cwd: \"{cwd}\"\n    max_memory: \"1K\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
+            "apps:\n  - name: hog\n    script: {PM3}\n    cwd: '{cwd}'\n    max_memory: \"1K\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
         ),
     )
 }

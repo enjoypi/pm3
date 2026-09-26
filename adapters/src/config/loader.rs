@@ -66,7 +66,7 @@ fn classify_env_var(
     read: Result<String, env::VarError>,
 ) -> Result<Option<String>, ConfigLoadError> {
     match read {
-        Ok(value) => Ok(Some(value)),
+        Ok(value) => Ok(Some(crate::portable_path(&value))),
         Err(env::VarError::NotPresent) => Ok(None),
         Err(env::VarError::NotUnicode(_)) => Err(ConfigLoadError::EnvVarNotUnicode {
             name: name.to_string(),

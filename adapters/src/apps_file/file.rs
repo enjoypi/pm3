@@ -319,12 +319,13 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
 }
 
 fn working_directory(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> String {
-    entry.cwd.clone().unwrap_or_else(|| {
+    let cwd = entry.cwd.clone().unwrap_or_else(|| {
         Path::new(defaults.roots.apps_dir)
             .join(&entry.name)
             .to_string_lossy()
             .into_owned()
-    })
+    });
+    crate::portable_path(&cwd)
 }
 
 fn resolve_sandbox(

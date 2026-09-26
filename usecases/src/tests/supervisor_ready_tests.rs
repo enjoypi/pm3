@@ -101,7 +101,7 @@ async fn a_probe_passing_marks_the_service_online() {
         .await;
 
     assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Online);
-    assert!(effects.is_empty());
+    assert_eq!(effects, []);
 }
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn a_ready_event_with_a_stale_generation_is_dropped() {
     let effects = supervisor.on_ready("web", 999, &ports).await;
 
     assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Launching);
-    assert!(effects.is_empty());
+    assert_eq!(effects, []);
 }
 
 #[tokio::test]
@@ -127,7 +127,7 @@ async fn a_ready_event_for_a_service_no_longer_launching_is_dropped() {
     let effects = supervisor.on_ready("web", generation, &ports).await;
 
     assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Online);
-    assert!(effects.is_empty());
+    assert_eq!(effects, []);
 }
 
 #[tokio::test]
@@ -211,7 +211,7 @@ async fn a_timeout_with_a_stale_generation_is_dropped() {
         .await;
 
     assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Launching);
-    assert!(effects.is_empty());
+    assert_eq!(effects, []);
 }
 
 #[tokio::test]
@@ -227,7 +227,7 @@ async fn a_timeout_for_a_service_no_longer_launching_is_dropped() {
         .await;
 
     assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Online);
-    assert!(effects.is_empty());
+    assert_eq!(effects, []);
 }
 
 async fn start_batch(
@@ -311,5 +311,5 @@ async fn an_ordinary_read_failure_still_lets_the_daemon_serve() {
         .await
         .expect("a broken state file is survivable");
 
-    assert!(effects.is_empty(), "got: {effects:?}");
+    assert_eq!(effects, [], "got: {effects:?}");
 }

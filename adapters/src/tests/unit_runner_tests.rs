@@ -86,7 +86,7 @@ async fn an_optional_step_that_succeeds_skips_nothing() {
     let skipped = execute_plan(&try_step_of(TRUE_PROGRAM), TIMEOUT_MS)
         .await
         .expect("a clean exit should finish the plan");
-    assert!(skipped.is_empty(), "got: {skipped:?}");
+    assert_eq!(skipped, Vec::<String>::new(), "got: {skipped:?}");
 }
 
 #[tokio::test]

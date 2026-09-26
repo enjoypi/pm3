@@ -7,6 +7,7 @@ fn programs() -> SandboxProgramSet {
     }
 }
 
+#[cfg(unix)]
 fn found(backend: SandboxBackend) -> HostSandbox {
     HostSandbox {
         backend,
@@ -14,6 +15,7 @@ fn found(backend: SandboxBackend) -> HostSandbox {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn a_present_backend_is_selected() {
     assert!(probe_backend(&|backend| Some(found(backend))).is_some());
@@ -24,6 +26,7 @@ fn no_backend_is_selected_when_none_is_installed() {
     assert!(probe_backend(&|_backend| None).is_none());
 }
 
+#[cfg(unix)]
 #[test]
 fn a_resolved_backend_carries_the_absolute_program_path() {
     let host = probe_backend(&|backend| {
@@ -36,6 +39,7 @@ fn a_resolved_backend_carries_the_absolute_program_path() {
     assert_eq!(host.program, "/opt/pm3/bin/sandbox");
 }
 
+#[cfg(unix)]
 #[test]
 fn the_host_offers_a_usable_sandbox_backend() {
     assert!(
@@ -46,4 +50,19 @@ fn the_host_offers_a_usable_sandbox_backend() {
         .is_some(),
         "macOS needs /usr/bin/sandbox-exec, Linux needs bubblewrap on pm3.search_path"
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_offers_no_sandbox_backend_even_when_one_could_resolve() {
+    assert!(
+        probe_backend(&|backend| {
+            Some(HostSandbox {
+                backend,
+                program: "C:/pm3/sandbox.exe".to_string(),
+            })
+        })
+        .is_none()
+    );
+    assert!(detect_host_backend(&programs(), "C:/Windows/System32").is_none());
 }

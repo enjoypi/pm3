@@ -5,7 +5,10 @@ use crate::{UnitKind, unit_specs::spec_for};
 
 #[test]
 fn the_task_registers_a_logon_trigger_for_the_wrapper() {
-    let xml = render_task_xml(&spec_for(UnitKind::WinSchtasks, Path::new("/home/dev")));
+    let xml = crate::portable_path(&render_task_xml(&spec_for(
+        UnitKind::WinSchtasks,
+        Path::new("/home/dev"),
+    )));
     assert!(xml.contains("<LogonTrigger>"));
     assert!(xml.contains("<Description>pm3-test</Description>"));
     assert!(xml.contains("<Command>/home/dev/.pm3/service/pm3-test-daemon.cmd</Command>"));
@@ -83,7 +86,10 @@ fn the_wrapper_exports_home_path_and_the_sorted_pm3_environment() {
 
 #[test]
 fn the_wrapper_runs_the_daemon_and_always_reports_failure() {
-    let wrapper = render_wrapper(&spec_for(UnitKind::WinSchtasks, Path::new("/home/dev")));
+    let wrapper = crate::portable_path(&render_wrapper(&spec_for(
+        UnitKind::WinSchtasks,
+        Path::new("/home/dev"),
+    )));
     assert!(wrapper.contains(
         "\"/usr/local/bin/pm3\" daemon --config \"/home/dev/.pm3/config.yaml\" >> \"/home/dev/.pm3/pm3.log\" 2>&1\r\n"
     ));
@@ -96,4 +102,34 @@ fn percent_signs_in_values_are_doubled_for_batch_files() {
     spec.search_path = "C:\\100%.bin".to_string();
     let wrapper = render_wrapper(&spec);
     assert!(wrapper.contains("set \"PATH=C:\\100%%.bin\"\r\n"));
+}
+
+#[test]
+fn the_task_declares_the_utf16_task_scheduler_reads() {
+    let xml = render_task_xml(&spec_for(UnitKind::WinSchtasks, Path::new("/home/dev")));
+    assert!(
+        xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n"),
+        "schtasks /XML refuses a UTF-8 declaration with 'cannot switch encoding': {xml}"
+    );
+}
+
+#[test]
+fn a_task_file_goes_to_disk_as_utf16_with_a_byte_order_mark() {
+    let xml = render_task_xml(&spec_for(UnitKind::WinSchtasks, Path::new("/home/dev")));
+    let bytes = encode_for_disk(&xml);
+    assert_eq!(bytes[..2], [0xFF, 0xFE]);
+    let (pairs, rest) = bytes[2..].as_chunks::<2>();
+    assert_eq!(
+        rest,
+        <&[u8]>::default(),
+        "utf-16 is written in whole code units"
+    );
+    let units: Vec<u16> = pairs.iter().copied().map(u16::from_le_bytes).collect();
+    assert_eq!(String::from_utf16(&units).expect("valid utf-16"), xml);
+}
+
+#[test]
+fn any_other_unit_file_goes_to_disk_as_utf8() {
+    let wrapper = render_wrapper(&spec_for(UnitKind::WinSchtasks, Path::new("/home/dev")));
+    assert_eq!(encode_for_disk(&wrapper), wrapper.as_bytes());
 }

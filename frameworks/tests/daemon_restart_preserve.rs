@@ -24,7 +24,7 @@ fn start_sleeper(home: &Home) -> u32 {
     let apps = write_apps(
         home,
         &format!(
-            "apps:\n  - name: {SERVICE}\n    script: {}\n    cwd: \"{cwd}\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n",
+            "apps:\n  - name: {SERVICE}\n    script: {}\n    cwd: '{cwd}'\n    args:\n      - \"__sleep\"\n      - \"30000\"\n",
             common::PM3
         ),
     );
@@ -180,7 +180,7 @@ fn a_service_whose_program_changed_is_restarted_by_the_new_daemon() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: {SERVICE}\n    script: {}\n    cwd: \"{cwd}\"\n",
+            "apps:\n  - name: {SERVICE}\n    script: {}\n    cwd: '{cwd}'\n",
             script.display()
         ),
     );

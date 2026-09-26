@@ -18,7 +18,7 @@ fn ordered_apps(home: &Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"echo web >> ./{ORDER_FILE}; sleep 30\"\n  - name: db\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"echo db >> ./{ORDER_FILE}; sleep 30\"\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"echo web >> ./{ORDER_FILE}; sleep 30\"\n  - name: db\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"echo db >> ./{ORDER_FILE}; sleep 30\"\n"
         ),
     )
 }
@@ -28,7 +28,7 @@ fn cyclic_apps(home: &Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n  - name: db\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    depends_on:\n      - web\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n  - name: db\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - web\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
         ),
     )
 }
@@ -108,7 +108,7 @@ fn an_unknown_dependency_is_refused() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    depends_on:\n      - ghost\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - ghost\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);

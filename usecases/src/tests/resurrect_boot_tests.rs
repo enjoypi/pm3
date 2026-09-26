@@ -62,7 +62,7 @@ async fn a_service_caught_mid_shutdown_before_a_reboot_is_never_signalled() {
     record.runtime.status = ProcessStatus::Stopping;
     ports.seed_stored(vec![record]);
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -75,7 +75,7 @@ async fn a_stranded_pid_recorded_before_a_reboot_is_never_signalled() {
     }]);
     ports.seed_live(SURVIVOR_PID, &live_token(SURVIVOR_PID));
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]

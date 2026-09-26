@@ -1,4 +1,5 @@
 use super::*;
+use crate::platform::{SHELL, SHELL_FLAG, SLEEPER};
 
 #[tokio::test]
 async fn the_supervisor_keeps_running_when_the_command_queue_closes() {
@@ -98,7 +99,7 @@ async fn a_confined_app_is_refused_when_no_sandbox_backend_exists() {
     let mut harness = harness();
     let cwd = workspace_of(&harness);
     let body = format!(
-        "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n"
+        "name: web\nscript: '{SHELL}'\ncwd: '{cwd}'\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{SLEEPER}'\nsandbox:\n  mode: workspace-write\n"
     );
     std::fs::write(
         service_file_of(&harness.cfg_dir, "web").expect("a safe service name"),
@@ -151,7 +152,7 @@ async fn a_writable_root_that_does_not_exist_is_kept_verbatim() {
     let mut harness = harness();
     let cwd = workspace_of(&harness);
     let body = format!(
-        "name: web\nscript: /bin/sh\ncwd: \"{cwd}\"\nargs:\n  - \"-c\"\n  - \"sleep 30\"\nsandbox:\n  mode: workspace-write\n  writable_roots:\n    - /nonexistent/pm3-root\n"
+        "name: web\nscript: '{SHELL}'\ncwd: '{cwd}'\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{SLEEPER}'\nsandbox:\n  mode: workspace-write\n  writable_roots:\n    - /nonexistent/pm3-root\n"
     );
     std::fs::write(
         service_file_of(&harness.cfg_dir, "web").expect("a safe service name"),
@@ -210,7 +211,7 @@ async fn restarting_an_app_reads_its_declaration_again() {
     start_one(&mut harness, "web", SLEEPER).await;
     std::fs::write(
         adapters::service_file_of(&harness.cfg_dir, "web").expect("a safe service name"),
-        "name: web\nscript: /bin/sh\nenv:\n  TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
+        format!("name: web\nscript: '{SHELL}'\nenv:\n  TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n"),
     )
     .expect("rewrite the service file");
     let refused = harness

@@ -78,6 +78,20 @@ impl KillSignaler {
         })
     }
 
+    #[cfg(windows)]
+    fn ends_the_tree(&self, signal: &str, pid: u32) -> Result<(), SignalError> {
+        if signal == FORCE_SIGNAL || signal == self.stop_signal {
+            return Ok(());
+        }
+        Err(SignalError::Delivery {
+            pid,
+            reason: format!(
+                "windows has no SIG{signal}: only {} and {FORCE_SIGNAL} end the process tree",
+                self.stop_signal
+            ),
+        })
+    }
+
     fn stalled(&self, pid: u32) -> SignalError {
         SignalError::Delivery {
             pid,
@@ -112,6 +126,8 @@ impl Signaler for KillSignaler {
         }
         #[cfg(not(unix))]
         let _ = scope;
+        #[cfg(windows)]
+        self.ends_the_tree(signal, pid)?;
         self.signal(signal, &pid.to_string(), pid).await
     }
 }
@@ -184,3 +200,6 @@ fn group_target(pid: u32) -> String {
 #[cfg(test)]
 #[path = "../tests/process_kill_signaler_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "../tests/process_kill_signaler_windows_tests.rs"]
+mod windows_tests;

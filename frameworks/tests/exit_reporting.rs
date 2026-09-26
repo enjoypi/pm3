@@ -22,7 +22,7 @@ fn an_exit_is_recorded_at_info_with_the_code_the_child_returned() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: quitter\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    autorestart: false\n    args:\n      - \"-c\"\n      - \"exit 7\"\n"
+            "apps:\n  - name: quitter\n    script: /bin/sh\n    cwd: '{cwd}'\n    autorestart: false\n    args:\n      - \"-c\"\n      - \"exit 7\"\n"
         ),
     );
     start_apps(&home, &apps);

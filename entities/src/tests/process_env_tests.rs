@@ -44,7 +44,7 @@ fn merging_keeps_every_distinct_key_in_ascending_order() {
 #[test]
 fn merging_no_layer_yields_nothing() {
     let merged = merge_environment(&[]);
-    assert!(merged.is_empty(), "got: {merged:?}");
+    assert_eq!(merged, [], "got: {merged:?}");
 }
 
 #[test]

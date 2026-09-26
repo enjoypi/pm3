@@ -64,7 +64,7 @@ fn with_decryptor(home: &Home, token: &str) {
     let patched = text.replacen(
         "pm3:\n",
         &format!(
-            "pm3:\n  sops_identity_file: \"{}\"\n  sops_program: \"{}\"\n  sops_timeout_ms: 2000\n",
+            "pm3:\n  sops_identity_file: '{}'\n  sops_program: '{}'\n  sops_timeout_ms: 2000\n",
             identity.to_string_lossy(),
             program.to_string_lossy()
         ),
@@ -272,7 +272,7 @@ fn a_decryptor_that_fails_stops_the_takeover_instead_of_evicting() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: {NAME}\n    script: {PM3}\n    cwd: \"{}\"\n    args:\n      - \"__sleep\"\n      - \"120000\"\n",
+            "apps:\n  - name: {NAME}\n    script: {PM3}\n    cwd: '{}'\n    args:\n      - \"__sleep\"\n      - \"120000\"\n",
             home.root.to_string_lossy()
         ),
     );
@@ -317,7 +317,7 @@ fn a_sidecar_pm3_never_opened_is_visible_in_the_listing() {
         &home.config,
         text.replace(
             &format!(
-                "sops_identity_file: \"{}/age-key\"",
+                "sops_identity_file: '{}/age-key'",
                 home.root.to_string_lossy()
             ),
             "sops_identity_file: \"\"",

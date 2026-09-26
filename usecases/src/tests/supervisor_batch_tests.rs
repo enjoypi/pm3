@@ -167,7 +167,10 @@ async fn delete_all_removes_every_app() {
         )
         .await;
     assert_eq!(reply_names(&outcome), ["api", "web"]);
-    assert!(supervisor.table.names_in_table_order().is_empty());
+    assert_eq!(
+        supervisor.table.names_in_table_order(),
+        Vec::<String>::new()
+    );
 }
 
 #[tokio::test]

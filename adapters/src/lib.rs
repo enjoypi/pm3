@@ -65,8 +65,9 @@ pub use self::{
     },
     paths::{
         CONFIG_FILE, PM3_SUBDIR, PathError, Pm3Paths, Pm3Roots, RuntimeSources, XDG_STATE_FALLBACK,
-        check_socket_length, default_config_path, expand_home, resolve_config_root,
-        resolve_data_root, resolve_paths, resolve_runtime_root, resolve_state_root,
+        check_socket_length, default_config_path, expand_home, portable_path, portable_real_path,
+        resolve_config_root, resolve_data_root, resolve_paths, resolve_runtime_root,
+        resolve_state_root,
     },
     persistence::{
         DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state,
@@ -83,7 +84,7 @@ pub use self::{
         write_sweep_proof,
     },
     process::{
-        AdoptedWatch, HostReadyProber, KillSignaler, PS_PROGRAM, PollCadence, PsProcessProbe,
+        AdoptedWatch, HostProcessProbe, HostReadyProber, KillSignaler, PollCadence,
         Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
     },
     program::{
@@ -126,6 +127,9 @@ pub(crate) mod apps_sections;
 #[cfg(test)]
 #[path = "../test_support/config_sections_fixture_tests.rs"]
 pub(crate) mod config_sections;
+#[cfg(test)]
+#[path = "../test_support/platform_fixture_tests.rs"]
+pub(crate) mod platform;
 #[cfg(test)]
 #[path = "../test_support/process_records_fixture_tests.rs"]
 pub(crate) mod process_records;

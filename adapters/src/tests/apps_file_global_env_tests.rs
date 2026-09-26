@@ -23,7 +23,7 @@ async fn a_missing_shared_environment_hands_out_nothing() {
     let values = load_global_env(&config(), dir.path(), None)
         .await
         .expect("a missing shared environment is fine");
-    assert!(values.is_empty(), "got: {values:?}");
+    assert_eq!(values, [], "got: {values:?}");
 }
 
 #[tokio::test]
@@ -196,8 +196,7 @@ async fn an_opened_shared_environment_that_will_not_parse_is_reported() {
 #[tokio::test]
 async fn a_shared_sidecar_that_cannot_be_stat_ed_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let blocked = dir.path().join("blocked");
-    std::fs::write(&blocked, "not a directory").expect("occupy the config root");
+    let blocked = crate::platform::unreachable_parent(dir.path());
 
     let err = load_global_env(&config(), &blocked, None)
         .await
@@ -205,7 +204,7 @@ async fn a_shared_sidecar_that_cannot_be_stat_ed_is_reported() {
         .to_string();
 
     assert!(
-        err.contains("cannot reach") || err.contains("Not a directory"),
+        err.starts_with("cannot read the environment file"),
         "got: {err}"
     );
 }
@@ -371,8 +370,11 @@ async fn a_shared_file_left_in_the_service_directory_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
     let cfg = dir.path().join("service");
     std::fs::create_dir_all(&cfg).expect("create the service directory");
-    std::fs::write(cfg.join(format!("{GLOBAL_ENV_STEM}.{ENV_FILE_SUFFIX}")), "TZ=UTC\n")
-        .expect("write the misplaced shared environment");
+    std::fs::write(
+        cfg.join(format!("{GLOBAL_ENV_STEM}.{ENV_FILE_SUFFIX}")),
+        "TZ=UTC\n",
+    )
+    .expect("write the misplaced shared environment");
 
     warn_misplaced_global_env(dir.path(), &cfg).await;
 

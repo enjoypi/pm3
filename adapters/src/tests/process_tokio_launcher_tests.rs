@@ -10,7 +10,7 @@ fn temp_dir() -> TempDir {
 async fn spawn_reports_the_child_pid() {
     let dir = temp_dir();
     let launcher = TokioProcessLauncher::default();
-    let spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
+    let spec = echo_spec(dir.path(), "hello");
     let process = launcher.spawn(&spec).await.expect("should spawn");
     assert!(process.pid > 0, "got: {}", process.pid);
 }
@@ -18,17 +18,17 @@ async fn spawn_reports_the_child_pid() {
 #[tokio::test]
 async fn spawn_redirects_stdout_to_the_log_file() {
     let dir = temp_dir();
-    let spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
+    let spec = echo_spec(dir.path(), "hello");
     run_to_completion(&spec).await.expect("should reap");
-    assert_eq!(read_log(dir.path(), OUT_LOG).await, "hello\n");
+    assert_eq!(read_log(dir.path(), OUT_LOG).await, format!("hello{EOL}"));
 }
 
 #[tokio::test]
 async fn spawn_redirects_stderr_to_the_log_file() {
     let dir = temp_dir();
-    let spec = spec_in(dir.path(), SHELL_PROGRAM, &["-c", "echo oops >&2"]);
+    let spec = shell_spec(dir.path(), "echo oops >&2", "(echo oops)1>&2");
     run_to_completion(&spec).await.expect("should reap");
-    assert_eq!(read_log(dir.path(), ERR_LOG).await, "oops\n");
+    assert_eq!(read_log(dir.path(), ERR_LOG).await, format!("oops{EOL}"));
 }
 
 #[tokio::test]
@@ -37,40 +37,50 @@ async fn spawn_appends_to_an_existing_log_file() {
     tokio::fs::write(dir.path().join(OUT_LOG), "earlier\n")
         .await
         .expect("seed the log");
-    let spec = spec_in(dir.path(), ECHO_PROGRAM, &["later"]);
+    let spec = echo_spec(dir.path(), "later");
     run_to_completion(&spec).await.expect("should reap");
-    assert_eq!(read_log(dir.path(), OUT_LOG).await, "earlier\nlater\n");
+    assert_eq!(
+        read_log(dir.path(), OUT_LOG).await,
+        format!("earlier\nlater{EOL}")
+    );
 }
 
 #[tokio::test]
 async fn spawn_passes_the_declared_environment() {
     let dir = temp_dir();
-    let mut spec = spec_in(
+    let mut spec = shell_spec(
         dir.path(),
-        SHELL_PROGRAM,
-        &["-c", "echo $PM3_LAUNCHER_PROBE"],
+        "echo $PM3_LAUNCHER_PROBE",
+        "echo %PM3_LAUNCHER_PROBE%",
     );
     spec.env = vec![("PM3_LAUNCHER_PROBE".to_string(), "visible".to_string())];
     run_to_completion(&spec).await.expect("should reap");
-    assert_eq!(read_log(dir.path(), OUT_LOG).await, "visible\n");
+    assert_eq!(read_log(dir.path(), OUT_LOG).await, format!("visible{EOL}"));
 }
 
 #[tokio::test]
 async fn spawn_hides_every_variable_the_spec_did_not_declare() {
     let dir = temp_dir();
-    let spec = spec_in(dir.path(), SHELL_PROGRAM, &["-c", "echo \"[$HOME]\""]);
+    let spec = shell_spec(
+        dir.path(),
+        "echo \"[$HOME]\"",
+        "if defined HOME (echo [set]) else (echo [])",
+    );
     run_to_completion(&spec).await.expect("should reap");
-    assert_eq!(read_log(dir.path(), OUT_LOG).await, "[]\n");
+    assert_eq!(read_log(dir.path(), OUT_LOG).await, format!("[]{EOL}"));
 }
 
 #[tokio::test]
 async fn spawn_runs_in_the_requested_directory() {
     let dir = temp_dir();
     let expected = dir.path().canonicalize().expect("canonical temp dir");
-    let spec = spec_in(dir.path(), PWD_PROGRAM, &[]);
+    let spec = shell_spec(dir.path(), "pwd", "cd");
     run_to_completion(&spec).await.expect("should reap");
     let printed = read_log(dir.path(), OUT_LOG).await;
-    assert_eq!(printed.trim_end(), text(&expected));
+    assert_eq!(
+        crate::portable_path(printed.trim_end()),
+        crate::portable_real_path(&expected)
+    );
 }
 
 #[tokio::test]
@@ -86,7 +96,7 @@ async fn spawn_reports_a_missing_program() {
 async fn spawn_reports_an_unopenable_stdout_log() {
     let dir = temp_dir();
     let launcher = TokioProcessLauncher::default();
-    let mut spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
+    let mut spec = echo_spec(dir.path(), "hello");
     spec.stdout_path = text(&dir.path().join("absent").join(OUT_LOG));
     let err = launcher.spawn(&spec).await.unwrap_err().to_string();
     assert!(err.contains("cannot open log file"), "got: {err}");
@@ -96,7 +106,7 @@ async fn spawn_reports_an_unopenable_stdout_log() {
 async fn spawn_reports_an_unopenable_stderr_log() {
     let dir = temp_dir();
     let launcher = TokioProcessLauncher::default();
-    let mut spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
+    let mut spec = echo_spec(dir.path(), "hello");
     spec.stderr_path = text(&dir.path().join("absent").join(ERR_LOG));
     let err = launcher.spawn(&spec).await.unwrap_err().to_string();
     assert!(err.contains(ERR_LOG), "got: {err}");
@@ -105,7 +115,7 @@ async fn spawn_reports_an_unopenable_stderr_log() {
 #[tokio::test]
 async fn wait_reports_a_clean_exit() {
     let dir = temp_dir();
-    let spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
+    let spec = echo_spec(dir.path(), "hello");
     let outcome = run_to_completion(&spec).await.expect("should reap");
     assert_eq!(outcome, ExitOutcome::Code(0));
 }
@@ -113,16 +123,17 @@ async fn wait_reports_a_clean_exit() {
 #[tokio::test]
 async fn wait_reports_a_failing_exit_code() {
     let dir = temp_dir();
-    let spec = spec_in(dir.path(), SHELL_PROGRAM, &["-c", "exit 3"]);
+    let spec = shell_spec(dir.path(), "exit 3", "exit 3");
     let outcome = run_to_completion(&spec).await.expect("should reap");
     assert_eq!(outcome, ExitOutcome::Code(3));
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn wait_reports_no_code_for_a_signalled_child() {
     let dir = temp_dir();
     let launcher = TokioProcessLauncher::default();
-    let spec = spec_in(dir.path(), SHELL_PROGRAM, &["-c", "sleep 30"]);
+    let spec = shell_spec(dir.path(), "sleep 30", "");
     let process = launcher.spawn(&spec).await.expect("should spawn");
     let killed = tokio::process::Command::new("/bin/kill")
         .args(["-KILL", &process.pid.to_string()])
@@ -137,18 +148,18 @@ async fn wait_reports_no_code_for_a_signalled_child() {
 #[tokio::test]
 async fn a_launcher_tracks_nothing_before_it_spawns() {
     let launcher = TokioProcessLauncher::default();
-    assert!(launcher.tracked_pids().await.is_empty());
+    assert_eq!(launcher.tracked_pids().await, Vec::<u32>::new());
 }
 
 #[tokio::test]
 async fn a_spawned_child_is_tracked_until_it_is_reaped() {
     let dir = temp_dir();
     let launcher = TokioProcessLauncher::default();
-    let spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
+    let spec = echo_spec(dir.path(), "hello");
     let process = launcher.spawn(&spec).await.expect("should spawn");
     assert_eq!(launcher.tracked_pids().await, vec![process.pid]);
     launcher.wait(process.pid).await.expect("reap");
-    assert!(launcher.tracked_pids().await.is_empty());
+    assert_eq!(launcher.tracked_pids().await, Vec::<u32>::new());
 }
 
 #[tokio::test]
@@ -161,8 +172,31 @@ async fn wait_reports_nothing_for_an_untracked_pid() {
 async fn wait_forgets_a_child_once_reaped() {
     let dir = temp_dir();
     let launcher = TokioProcessLauncher::default();
-    let spec = spec_in(dir.path(), ECHO_PROGRAM, &["hello"]);
+    let spec = echo_spec(dir.path(), "hello");
     let process = launcher.spawn(&spec).await.expect("should spawn");
     launcher.wait(process.pid).await.expect("first reap");
     assert!(launcher.wait(process.pid).await.is_none());
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn spawn_keeps_the_system_root_windows_needs_to_load_anything() {
+    let dir = temp_dir();
+    let spec = shell_spec(dir.path(), "", "echo [%SystemRoot%]");
+    run_to_completion(&spec).await.expect("should reap");
+    let expected = std::env::var("SystemRoot").expect("windows always has a SystemRoot");
+    assert_eq!(
+        read_log(dir.path(), OUT_LOG).await,
+        format!("[{expected}]{EOL}")
+    );
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_declared_value_wins_over_the_inherited_system_root() {
+    let dir = temp_dir();
+    let mut spec = shell_spec(dir.path(), "", "echo [%SystemDrive%]");
+    spec.env = vec![("SystemDrive".to_string(), "Z:".to_string())];
+    run_to_completion(&spec).await.expect("should reap");
+    assert_eq!(read_log(dir.path(), OUT_LOG).await, format!("[Z:]{EOL}"));
 }

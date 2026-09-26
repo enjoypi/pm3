@@ -8,7 +8,7 @@ mod common;
 
 use std::process::Output;
 
-use self::common::{Home, PM3, SERVICE_LABEL, home, stdout_of};
+use self::common::{Home, PM3, SERVICE_LABEL, home, stderr_of, stdout_of};
 
 fn pm3_as_user(home: &Home, args: &[&str]) -> Output {
     std::process::Command::new(PM3)
@@ -41,7 +41,12 @@ fn a_dry_run_install_prints_the_task_xml_and_the_wrapper() {
 fn a_service_install_registers_the_task_and_uninstall_removes_it() {
     let home = home();
     let installed = pm3_as_user(&home, &["startup"]);
-    assert!(installed.status.success(), "{}", stdout_of(&installed));
+    assert!(
+        installed.status.success(),
+        "{}{}",
+        stdout_of(&installed),
+        stderr_of(&installed)
+    );
 
     let registered = std::process::Command::new("schtasks")
         .args(["/Query", "/TN", SERVICE_LABEL])

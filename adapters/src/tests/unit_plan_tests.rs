@@ -28,6 +28,7 @@ fn described(steps: &[UnitStep]) -> Vec<String> {
             UnitStep::Run(command) => format!("run {}", command.args.join(" ")),
             UnitStep::TryRun(command) => format!("try {}", command.args.join(" ")),
         })
+        .map(|shown| crate::portable_path(&shown))
         .collect()
 }
 

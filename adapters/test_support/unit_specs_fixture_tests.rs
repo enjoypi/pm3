@@ -60,12 +60,45 @@ pub fn program_set_for_user(program: &str, uid: u32, runtime_dir: &str) -> UnitP
     }
 }
 
+#[cfg(unix)]
 pub fn fake_program(dir: &Path, name: &str, script: &str) -> String {
     let path = dir.join(name);
     let body = format!("#!/bin/sh\n{script}\n");
     std::fs::write(&path, body).expect("internal error: the fake program directory is writable");
-    #[cfg(unix)]
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
         .expect("internal error: the fake program was just created");
     path.to_string_lossy().into_owned()
+}
+
+#[cfg(unix)]
+pub fn fake_program_for(dir: &Path, name: &str, unix: &str, _windows: &str) -> String {
+    fake_program(dir, name, unix)
+}
+
+#[cfg(windows)]
+pub fn fake_program_for(dir: &Path, name: &str, _unix: &str, windows: &str) -> String {
+    let path = dir.join(format!("{name}.cmd"));
+    let body = format!("@echo off\r\n{windows}\r\n");
+    std::fs::write(&path, body).expect("internal error: the fake program directory is writable");
+    path.to_string_lossy().into_owned()
+}
+
+#[cfg(unix)]
+pub fn true_program(_dir: &Path) -> String {
+    "/usr/bin/true".to_string()
+}
+
+#[cfg(windows)]
+pub fn true_program(dir: &Path) -> String {
+    fake_program_for(dir, "true", "", "exit /b 0")
+}
+
+#[cfg(unix)]
+pub fn false_program(_dir: &Path) -> String {
+    "/usr/bin/false".to_string()
+}
+
+#[cfg(windows)]
+pub fn false_program(dir: &Path) -> String {
+    fake_program_for(dir, "false", "", "exit /b 1")
 }

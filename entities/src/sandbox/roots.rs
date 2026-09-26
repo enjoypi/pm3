@@ -10,6 +10,21 @@ pub fn normalize_root(root: &str) -> &str {
     }
 }
 
+#[cfg(not(windows))]
+#[must_use]
+pub fn is_absolute_path(path: &str) -> bool {
+    path.starts_with('/')
+}
+
+#[cfg(windows)]
+#[must_use]
+pub fn is_absolute_path(path: &str) -> bool {
+    if path.starts_with('/') {
+        return true;
+    }
+    matches!(path.as_bytes(), [drive, b':', b'/', ..] if drive.is_ascii_alphabetic())
+}
+
 fn ends_at_boundary(rest: &str) -> bool {
     if rest.is_empty() {
         return true;

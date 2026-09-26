@@ -1,5 +1,15 @@
 use super::*;
 
+#[cfg(not(windows))]
+fn abs(path: &str) -> String {
+    path.to_string()
+}
+
+#[cfg(windows)]
+fn abs(path: &str) -> String {
+    format!("C:{path}")
+}
+
 #[test]
 fn the_default_config_lives_in_the_config_root_without_a_pm3_home() {
     let path = default_config_path(None, None, None, Some("/home/u"))
@@ -9,9 +19,9 @@ fn the_default_config_lives_in_the_config_root_without_a_pm3_home() {
 
 #[test]
 fn a_pm3_home_in_the_environment_keeps_the_single_root_layout() {
-    let path = default_config_path(Some("/srv/pm3"), None, None, Some("/home/u"))
+    let path = default_config_path(Some(&abs("/srv/pm3")), None, None, Some("/home/u"))
         .expect("the default config path resolves");
-    assert_eq!(path, Path::new("/srv/pm3/config.yaml"));
+    assert_eq!(path, Path::new(&abs("/srv/pm3/config.yaml")));
 }
 
 #[test]
@@ -23,9 +33,9 @@ fn an_empty_pm3_home_falls_back_to_the_config_root() {
 
 #[test]
 fn a_config_directory_variable_moves_the_default_config() {
-    let path = default_config_path(None, Some("/srv/cfg"), None, Some("/home/u"))
+    let path = default_config_path(None, Some(&abs("/srv/cfg")), None, Some("/home/u"))
         .expect("the default config path resolves");
-    assert_eq!(path, Path::new("/srv/cfg/config.yaml"));
+    assert_eq!(path, Path::new(&abs("/srv/cfg/config.yaml")));
 }
 
 #[test]
@@ -38,8 +48,8 @@ fn the_default_config_needs_a_home_environment() {
 
 #[test]
 fn an_absolute_home_is_kept_as_is() {
-    let resolved = expand_home("/srv/pm3", None).expect("absolute paths need no environment");
-    assert_eq!(resolved, Path::new("/srv/pm3"));
+    let resolved = expand_home(&abs("/srv/pm3"), None).expect("absolute paths need no environment");
+    assert_eq!(resolved, Path::new(&abs("/srv/pm3")));
 }
 
 #[test]
@@ -136,16 +146,24 @@ fn the_split_layout_puts_every_file_under_the_root_that_owns_it() {
 
 #[test]
 fn the_config_root_prefers_the_explicit_variable_over_the_xdg_one() {
-    let root = resolve_config_root(Some("/srv/cfg"), Some("/x/config"), Some("/home/u"))
-        .expect("an absolute override resolves");
-    assert_eq!(root, Path::new("/srv/cfg"), "no pm3 suffix on an override");
+    let root = resolve_config_root(
+        Some(&abs("/srv/cfg")),
+        Some(&abs("/x/config")),
+        Some("/home/u"),
+    )
+    .expect("an absolute override resolves");
+    assert_eq!(
+        root,
+        Path::new(&abs("/srv/cfg")),
+        "no pm3 suffix on an override"
+    );
 }
 
 #[test]
 fn the_config_root_takes_the_xdg_variable_when_pm3_names_none() {
-    let root = resolve_config_root(None, Some("/x/config"), Some("/home/u"))
+    let root = resolve_config_root(None, Some(&abs("/x/config")), Some("/home/u"))
         .expect("the xdg variable resolves");
-    assert_eq!(root, Path::new("/x/config/pm3"));
+    assert_eq!(root, Path::new(&abs("/x/config/pm3")));
 }
 
 #[test]
@@ -175,16 +193,18 @@ fn an_empty_variable_counts_as_unset() {
 
 #[test]
 fn the_runtime_root_prefers_the_explicit_variable() {
+    let declared = abs("/srv/run");
+    let xdg = abs("/x/run");
     let root = resolve_runtime_root(&RuntimeSources {
-        declared: Some("/srv/run"),
-        xdg: Some("/x/run"),
+        declared: Some(&declared),
+        xdg: Some(&xdg),
         uid: Some(1000),
         state: Path::new("/s/pm3"),
         home: Some("/home/dev"),
         exists: |_| true,
     })
     .expect("an absolute runtime root resolves");
-    assert_eq!(root, Path::new("/srv/run"));
+    assert_eq!(root, Path::new(&declared));
 }
 
 #[test]
@@ -235,16 +255,17 @@ fn a_tilde_xdg_runtime_directory_expands_too() {
 
 #[test]
 fn the_runtime_root_takes_the_xdg_runtime_directory_when_it_is_declared() {
+    let xdg = abs("/x/run");
     let root = resolve_runtime_root(&RuntimeSources {
         declared: None,
-        xdg: Some("/x/run"),
+        xdg: Some(&xdg),
         uid: Some(1000),
         state: Path::new("/s/pm3"),
         home: Some("/home/dev"),
         exists: |_| false,
     })
     .expect("the runtime root resolves");
-    assert_eq!(root, Path::new("/x/run/pm3"));
+    assert_eq!(root, Path::new(&abs("/x/run/pm3")));
 }
 
 #[test]

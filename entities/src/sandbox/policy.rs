@@ -216,7 +216,7 @@ fn validate_roots(
         if root.is_empty() {
             return Err(empty());
         }
-        if !root.starts_with('/') {
+        if !super::is_absolute_path(root) {
             return Err(relative(root.clone()));
         }
     }

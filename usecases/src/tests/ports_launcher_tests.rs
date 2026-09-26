@@ -52,7 +52,7 @@ async fn a_launcher_tracks_the_pids_it_handed_out() {
 #[tokio::test]
 async fn a_launcher_that_handed_out_nothing_tracks_nothing() {
     let ports = crate::ports_test_helpers::FakePorts::new(1000);
-    assert!(ports.tracked_pids().await.is_empty());
+    assert_eq!(ports.tracked_pids().await, []);
 }
 
 #[test]

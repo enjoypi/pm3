@@ -3,12 +3,11 @@ use adapters::NOTHING_INSTALLED;
 use adapters::UnitProgramSet;
 
 use super::*;
-use crate::test_support::{
-    SERVICE_LABEL, SERVICE_RESTART_DELAY_SECS, SERVICE_SEARCH_PATH, write_config,
+use crate::{
+    platform::{abs, false_program, true_program},
+    test_support::{SERVICE_LABEL, SERVICE_RESTART_DELAY_SECS, SERVICE_SEARCH_PATH, write_config},
 };
 
-const TRUE_PROGRAM: &str = "/usr/bin/true";
-const FALSE_PROGRAM: &str = "/usr/bin/false";
 const MISSING_PROGRAM: &str = "/nonexistent/pm3-service-manager";
 
 struct Fixture {
@@ -45,13 +44,13 @@ fn context<'c>(fixture: &'c Fixture, kind: UnitKind, home: &'c str) -> ServiceCo
         home_env: Some(home),
         runtime_dir: None,
         uid: None,
-        binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
+        binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     }
 }
 
 #[test]
 fn a_session_hands_the_host_session_to_the_service_manager() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let context = ServiceContext {
         programs: None,
@@ -60,7 +59,7 @@ fn a_session_hands_the_host_session_to_the_service_manager() {
         home_env: Some(&home),
         runtime_dir: Some("/run/user/4242".to_string()),
         uid: Some(4242),
-        binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
+        binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
 
     let session =
@@ -127,7 +126,7 @@ fn install_unit(fixture: &Fixture, kind: UnitKind) {
 
 #[test]
 fn the_spec_carries_absolute_paths_and_the_daemon_invocation() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
@@ -145,7 +144,7 @@ fn the_spec_carries_absolute_paths_and_the_daemon_invocation() {
 
 #[test]
 fn the_spec_takes_the_label_and_search_path_from_the_config() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
@@ -158,7 +157,7 @@ fn the_spec_takes_the_label_and_search_path_from_the_config() {
 
 #[test]
 fn the_spec_takes_the_restart_delay_from_the_config() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
@@ -170,7 +169,7 @@ fn the_spec_takes_the_restart_delay_from_the_config() {
 
 #[test]
 fn a_missing_home_stops_the_session() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let context = ServiceContext {
         programs: Some(&fixture.programs),
         kind: UnitKind::Launchd,
@@ -178,7 +177,7 @@ fn a_missing_home_stops_the_session() {
         home_env: None,
         runtime_dir: None,
         uid: None,
-        binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
+        binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
     let err = open_service_session(&fixture.config_path, &context)
         .unwrap_err()
@@ -188,7 +187,7 @@ fn a_missing_home_stops_the_session() {
 
 #[test]
 fn a_binary_that_cannot_be_located_stops_the_session() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let context = ServiceContext {
         programs: Some(&fixture.programs),
@@ -213,7 +212,7 @@ fn a_binary_that_cannot_be_located_stops_the_session() {
 
 #[test]
 fn a_config_path_that_leads_nowhere_stops_the_session() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let err = open_service_session(
         "/nonexistent/pm3-service.yaml",
@@ -229,7 +228,7 @@ fn a_config_path_that_leads_nowhere_stops_the_session() {
 
 #[test]
 fn an_unreadable_config_stops_the_session() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let broken = fixture.dir.path().join("broken.yaml");
     std::fs::write(&broken, "pm3: [not, a, mapping]\n").expect("write a broken config");
@@ -244,7 +243,7 @@ fn an_unreadable_config_stops_the_session() {
 
 #[test]
 fn a_relative_pm3_home_stops_the_session() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let config = write_config(fixture.dir.path(), "relative/home");
     let err = open_service_session(
@@ -261,7 +260,7 @@ mod render;
 
 #[test]
 fn a_session_pins_the_resolved_roots_into_the_unit_environment() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let context = context(&fixture, UnitKind::Systemd, &home);
 
@@ -288,7 +287,7 @@ fn a_session_pins_the_resolved_roots_into_the_unit_environment() {
 
 #[test]
 fn a_session_replaces_an_inherited_root_variable_with_the_resolved_one() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let mut context = context(&fixture, UnitKind::Systemd, &home);
     context.pm3_env = vec![("PM3_STATE_DIR".to_string(), "/stale".to_string())];
@@ -309,16 +308,17 @@ fn a_session_replaces_an_inherited_root_variable_with_the_resolved_one() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_session_refuses_a_home_that_overflows_the_socket_limit() {
     let dir = tempfile::tempdir().expect("temp dir");
     let deep = dir.path().join("d".repeat(120));
     let config_path = write_config(dir.path(), &deep.to_string_lossy());
     let programs = UnitProgramSet {
-        launchctl: TRUE_PROGRAM.to_string(),
-        systemctl: TRUE_PROGRAM.to_string(),
-        loginctl: TRUE_PROGRAM.to_string(),
-        schtasks: TRUE_PROGRAM.to_string(),
+        launchctl: true_program(),
+        systemctl: true_program(),
+        loginctl: true_program(),
+        schtasks: true_program(),
         runtime_dir: None,
         uid: None,
     };
@@ -329,7 +329,7 @@ fn a_session_refuses_a_home_that_overflows_the_socket_limit() {
         home_env: Some("/home/dev"),
         runtime_dir: None,
         uid: None,
-        binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
+        binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
 
     let err = open_service_session(&config_path.to_string_lossy(), &context)

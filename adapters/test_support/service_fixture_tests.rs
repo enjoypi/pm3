@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use crate::service::{InlineStart, PreparedService, ServiceContext, prepare_inline};
 
 pub const NAME: &str = "sleeper";
-pub const SHELL: &str = "/bin/sh";
-pub const SEARCH_PATH: &str = "/usr/bin:/bin";
+pub use crate::platform::{SEARCH_PATH, SHELL, SHELL_NAME};
 pub const FAKE_HOME: &str = "/home/dev";
 
 pub struct Home {

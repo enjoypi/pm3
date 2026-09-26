@@ -30,7 +30,7 @@ fn sort(entries: &[(&str, &[&str])]) -> Result<Vec<String>, DependencyError> {
 #[test]
 fn empty_graph_sorts_to_empty_order() {
     let order = sort(&[]).expect("empty graph is acyclic");
-    assert!(order.is_empty(), "got: {order:?}");
+    assert_eq!(order, Vec::<String>::new(), "got: {order:?}");
 }
 
 #[test]

@@ -85,7 +85,10 @@ async fn starting_apps_names_the_ones_that_were_already_running() {
 #[tokio::test]
 async fn a_reply_that_started_nothing_names_nothing_as_already_running() {
     let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
-    assert!(reply_of(&exchange.body).already_running.is_empty());
+    assert_eq!(
+        reply_of(&exchange.body).already_running,
+        Vec::<String>::new()
+    );
 }
 
 #[tokio::test]
@@ -381,7 +384,7 @@ async fn describing_an_app_carries_the_structured_view() {
 #[tokio::test]
 async fn an_action_reply_carries_no_views() {
     let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
-    assert!(reply_of(&exchange.body).views.is_empty());
+    assert_eq!(reply_of(&exchange.body).views, []);
     assert!(
         !exchange.body.contains("\"views\""),
         "an empty view list stays off the wire: {}",

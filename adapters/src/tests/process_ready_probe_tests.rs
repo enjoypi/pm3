@@ -1,7 +1,7 @@
 use super::*;
+use crate::platform::{SEARCH_PATH, SHELL, shell_args};
 
 const TIMEOUT_MS: u64 = 500;
-const SEARCH_PATH: &str = "/usr/bin:/bin";
 
 fn exec_probe(command: &[&str]) -> ReadyProbe {
     ReadyProbe::Exec {
@@ -9,17 +9,23 @@ fn exec_probe(command: &[&str]) -> ReadyProbe {
     }
 }
 
+fn shell_probe(unix: &str, windows: &str) -> ReadyProbe {
+    let mut command = vec![SHELL.to_string()];
+    command.extend(shell_args(unix, windows));
+    ReadyProbe::Exec { command }
+}
+
 #[tokio::test]
 async fn an_exec_probe_passes_when_the_command_succeeds() {
     let prober = HostReadyProber::new(TIMEOUT_MS, SEARCH_PATH.to_string());
-    let probe = exec_probe(&["/usr/bin/true"]);
+    let probe = shell_probe("exit 0", "exit 0");
     assert_eq!(prober.check_ready(&probe).await, Readiness::Ready);
 }
 
 #[tokio::test]
 async fn an_exec_probe_stays_pending_when_the_command_fails() {
     let prober = HostReadyProber::new(TIMEOUT_MS, SEARCH_PATH.to_string());
-    let probe = exec_probe(&["/usr/bin/false"]);
+    let probe = shell_probe("exit 1", "exit 1");
     assert_eq!(prober.check_ready(&probe).await, Readiness::Pending);
 }
 
@@ -42,8 +48,31 @@ async fn an_exec_probe_without_a_command_fails_fast() {
 #[tokio::test]
 async fn an_exec_probe_stays_pending_when_the_command_overruns() {
     let prober = HostReadyProber::new(30, SEARCH_PATH.to_string());
-    let probe = exec_probe(&["/bin/sleep", "5"]);
+    let probe = shell_probe("sleep 5", "ping -n 6 127.0.0.1 >NUL");
     assert_eq!(prober.check_ready(&probe).await, Readiness::Pending);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn an_exec_probe_finds_a_bare_program_on_the_search_path() {
+    let prober = HostReadyProber::new(5_000, SEARCH_PATH.to_string());
+    let probe = exec_probe(&[crate::platform::SHELL_NAME, "/C", "exit 0"]);
+    assert_eq!(prober.check_ready(&probe).await, Readiness::Ready);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn an_exec_probe_fails_fast_when_the_program_cannot_start() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = dir.path().join("probe-broken.exe");
+    std::fs::write(&program, "not a portable executable").expect("write the probe program");
+    let prober = HostReadyProber::new(
+        TIMEOUT_MS,
+        crate::portable_path(&dir.path().to_string_lossy()),
+    );
+    let probe = exec_probe(&["probe-broken.exe"]);
+    let outcome = prober.check_ready(&probe).await;
+    assert!(matches!(outcome, Readiness::Failed(_)), "got: {outcome:?}");
 }
 
 #[cfg(unix)]

@@ -31,7 +31,7 @@ async fn append(path: &Path, content: &[u8]) {
 
 #[test]
 fn tail_lines_reports_nothing_for_empty_content() {
-    assert!(tail_lines("", 10).is_empty());
+    assert_eq!(tail_lines("", 10), Vec::<&str>::new());
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn tail_lines_reports_only_the_last_lines() {
 
 #[test]
 fn tail_lines_reports_nothing_when_asked_for_none() {
-    assert!(tail_lines(THREE_LINES, 0).is_empty());
+    assert_eq!(tail_lines(THREE_LINES, 0), Vec::<&str>::new());
 }
 
 #[test]
@@ -72,11 +72,9 @@ async fn read_tail_reports_the_last_lines_of_a_log() {
 #[tokio::test]
 async fn read_tail_reports_nothing_for_an_empty_log() {
     let (_dir, path) = temp_log(b"");
-    assert!(
-        read_tail(&path, 5, MAX_READ)
-            .await
-            .expect("should read")
-            .is_empty()
+    assert_eq!(
+        read_tail(&path, 5, MAX_READ).await.expect("should read"),
+        Vec::<String>::new()
     );
 }
 
@@ -96,12 +94,9 @@ async fn following_skips_the_content_written_before_it_started() {
     let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
         .await
         .expect("should start");
-    assert!(
-        follower
-            .poll_appended()
-            .await
-            .expect("should poll")
-            .is_empty()
+    assert_eq!(
+        follower.poll_appended().await.expect("should poll"),
+        Vec::<String>::new()
     );
 }
 
@@ -134,12 +129,9 @@ async fn following_withholds_a_line_without_its_newline() {
         .await
         .expect("should start");
     append(&path, b"halfway").await;
-    assert!(
-        follower
-            .poll_appended()
-            .await
-            .expect("should poll")
-            .is_empty()
+    assert_eq!(
+        follower.poll_appended().await.expect("should poll"),
+        Vec::<String>::new()
     );
 }
 
@@ -164,12 +156,9 @@ async fn following_reports_nothing_when_the_log_has_not_grown() {
         .expect("should start");
     append(&path, b"one\n").await;
     follower.poll_appended().await.expect("first poll");
-    assert!(
-        follower
-            .poll_appended()
-            .await
-            .expect("second poll")
-            .is_empty()
+    assert_eq!(
+        follower.poll_appended().await.expect("second poll"),
+        Vec::<String>::new()
     );
 }
 
@@ -271,24 +260,45 @@ async fn following_keeps_a_multi_byte_character_split_across_two_polls() {
         .expect("should start");
     let hanzi = "中".as_bytes();
     append(&path, &hanzi[..1]).await;
-    assert!(
+    assert_eq!(
         follower
             .poll_appended()
             .await
-            .expect("a partial character must not abort the follow")
-            .is_empty()
+            .expect("a partial character must not abort the follow"),
+        Vec::<String>::new()
     );
     append(&path, &[hanzi[1], hanzi[2], b'\n']).await;
     let lines = follower.poll_appended().await.expect("should read");
     assert_eq!(lines, vec!["中".to_string()]);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn following_reports_a_log_it_cannot_read() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut follower = LogFollower::start_at_end(dir.path(), MAX_PENDING)
         .await
         .expect("a directory opens like a file on linux");
+    let err = follower.poll_appended().await.unwrap_err().to_string();
+    assert!(err.contains("cannot read log file"), "got: {err}");
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn following_reports_a_log_it_cannot_read() {
+    let (_dir, path) = temp_log(THREE_LINES.as_bytes());
+    let mut follower = LogFollower::start_at_end(&path, MAX_PENDING)
+        .await
+        .expect("should start");
+    let mut holder = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("open a second handle");
+    std::io::Seek::seek(&mut holder, std::io::SeekFrom::End(0)).expect("seek to the end");
+    std::io::Write::write_all(&mut holder, b"more\n").expect("append past the offset");
+    holder
+        .lock()
+        .expect("windows locks are mandatory for other handles");
     let err = follower.poll_appended().await.unwrap_err().to_string();
     assert!(err.contains("cannot read log file"), "got: {err}");
 }
@@ -369,8 +379,7 @@ async fn a_conditional_follow_opens_an_existing_log() {
 #[tokio::test]
 async fn a_conditional_follow_still_fails_when_the_log_cannot_be_read() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let blocker = dir.path().join("blocker");
-    std::fs::write(&blocker, b"file").expect("write the blocker");
+    let blocker = crate::platform::unreachable_parent(dir.path());
     let outcome =
         LogFollower::start_at_end_if_exists(&blocker.join("web-out.log"), MAX_PENDING).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
@@ -390,8 +399,7 @@ async fn a_strict_follow_still_reports_a_missing_log_as_an_error() {
 #[tokio::test]
 async fn a_strict_follow_fails_when_the_log_cannot_be_read() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let blocker = dir.path().join("blocker");
-    std::fs::write(&blocker, b"file").expect("write the blocker");
+    let blocker = crate::platform::unreachable_parent(dir.path());
     let outcome = LogFollower::start_at_end(&blocker.join("web-out.log"), MAX_PENDING).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }

@@ -21,7 +21,7 @@ fn probe_app(home: &Home, name: &str, script: &str) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: {name}\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    autorestart: false\n    args:\n      - \"-c\"\n      - \"{script}\"\n"
+            "apps:\n  - name: {name}\n    script: /bin/sh\n    cwd: '{cwd}'\n    autorestart: false\n    args:\n      - \"-c\"\n      - \"{script}\"\n"
         ),
     )
 }

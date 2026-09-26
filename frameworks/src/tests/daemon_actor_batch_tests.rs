@@ -168,7 +168,7 @@ async fn a_start_the_daemon_cannot_record_reports_the_persistence_failure() {
     };
 
     assert_eq!(outcomes.len(), 1);
-    assert!(refused.is_empty(), "the service did start");
+    assert_eq!(refused, Vec::<String>::new(), "the service did start");
     assert!(
         unsaved.is_some(),
         "a dump pm3 cannot write must be reported to the caller"

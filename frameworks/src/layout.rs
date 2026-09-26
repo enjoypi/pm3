@@ -5,10 +5,12 @@ use std::{
     sync::LazyLock,
 };
 
+#[cfg(unix)]
+use adapters::check_socket_length;
 use adapters::{
-    Pm3Config, Pm3Paths, Pm3Roots, RuntimeSources, check_socket_length, expand_home, pm3_variables,
-    resolve_config_root, resolve_data_root, resolve_paths, resolve_runtime_root,
-    resolve_state_root, runtime_dir_of, write_sweep_proof,
+    Pm3Config, Pm3Paths, Pm3Roots, RuntimeSources, expand_home, pm3_variables, resolve_config_root,
+    resolve_data_root, resolve_paths, resolve_runtime_root, resolve_state_root, runtime_dir_of,
+    write_sweep_proof,
 };
 
 use crate::{Error, Result};
@@ -123,6 +125,7 @@ pub fn resolve_places(pm3: &Pm3Config, home_env: Option<&str>) -> Result<Pm3Plac
         None => roots.config.clone(),
     };
     let paths = resolve_paths(roots);
+    #[cfg(unix)]
     check_socket_length(&paths.socket)?;
     Ok(Pm3Places { paths, cfg_dir })
 }

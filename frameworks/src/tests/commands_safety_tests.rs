@@ -1,5 +1,6 @@
 #![cfg(unix)]
 use super::*;
+use crate::platform::{SHELL, SHELL_FLAG, SLEEPER};
 
 #[tokio::test]
 async fn a_half_started_batch_keeps_the_service_file_of_what_started() {
@@ -42,7 +43,7 @@ fn half_startable_apps_file(fixture: &Fixture) -> (String, PathBuf) {
     let unrunnable = fixture.dir.path().join("not-executable");
     std::fs::write(&unrunnable, "").expect("write a file nobody can execute");
     let body = format!(
-        "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n  - name: broken\n    script: \"{}\"\n    cwd: \"{cwd}\"\n    depends_on:\n      - web\n",
+        "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n  - name: broken\n    script: '{}'\n    cwd: '{cwd}'\n    depends_on:\n      - web\n",
         unrunnable.display()
     );
     let apps_file = crate::test_support::write_apps_file(fixture.dir.path(), &body);

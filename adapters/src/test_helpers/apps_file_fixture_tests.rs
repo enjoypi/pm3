@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub const APP_NAME: &str = "web";
-pub const SCRIPT: &str = "/bin/sh";
+pub const SCRIPT: &str = crate::platform::SHELL;
 pub const CWD: &str = "/srv/web";
 pub const HOME_DIR: &str = "/tmp/pm3-fixture";
 pub const CFG_DIR: &str = "/tmp/pm3-fixture-cfg";

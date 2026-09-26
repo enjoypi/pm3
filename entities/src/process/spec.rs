@@ -212,7 +212,7 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
     if spec.script.trim().is_empty() {
         return Err(SpecError::EmptyScript(spec.name.clone()));
     }
-    if !spec.cwd.starts_with('/') {
+    if !crate::is_absolute_path(&spec.cwd) {
         return Err(SpecError::RelativeCwd {
             app: spec.name.clone(),
             cwd: spec.cwd.clone(),

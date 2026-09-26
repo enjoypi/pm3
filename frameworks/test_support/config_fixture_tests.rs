@@ -102,8 +102,8 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
 pub fn config_yaml(home: &str) -> String {
     format!(
         r#"pm3:
-  home: "{home}"
-  cfg_dir: "{home}/service"
+  home: '{home}'
+  cfg_dir: '{home}/service'
   search_path: "{SERVICE_SEARCH_PATH}"
   stop_signal: "{STOP_SIGNAL}"
   kill_timeout_ms: {KILL_TIMEOUT_MS}
@@ -172,8 +172,8 @@ pub fn write_config(dir: &Path, home: &str) -> PathBuf {
 pub fn write_config_with_cfg_dir(dir: &Path, home: &str, cfg_dir: &str) -> PathBuf {
     let path = dir.join("config.yaml");
     let yaml = config_yaml(home).replace(
-        &format!("cfg_dir: \"{home}/service\""),
-        &format!("cfg_dir: \"{cfg_dir}\""),
+        &format!("cfg_dir: '{home}/service'"),
+        &format!("cfg_dir: '{cfg_dir}'"),
     );
     std::fs::write(&path, yaml).expect("write the pm3 config");
     path
@@ -185,7 +185,7 @@ pub fn write_config_with_decryptor(dir: &Path, home: &str, program: &str) -> Pat
     let yaml = config_yaml(home).replace(
         &format!("request_body_limit_bytes: {BODY_LIMIT_BYTES}"),
         &format!(
-            "request_body_limit_bytes: {BODY_LIMIT_BYTES}\n  sops_identity_file: \"{home}/age-key\"\n  sops_program: \"{program}\""
+            "request_body_limit_bytes: {BODY_LIMIT_BYTES}\n  sops_identity_file: '{home}/age-key'\n  sops_program: '{program}'"
         ),
     );
     std::fs::write(&path, yaml).expect("write the pm3 config");

@@ -7,7 +7,10 @@ use crate::{
 };
 
 fn rendered() -> String {
-    render_plist(&spec_for(UnitKind::Launchd, Path::new("/home/dev")))
+    crate::portable_path(&render_plist(&spec_for(
+        UnitKind::Launchd,
+        Path::new("/home/dev"),
+    )))
 }
 
 #[test]

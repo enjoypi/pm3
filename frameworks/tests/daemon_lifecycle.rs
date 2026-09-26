@@ -131,7 +131,7 @@ fn a_writable_root_that_does_not_exist_yet_is_accepted() {
     let apps = self::common::write_apps(
         &home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n    sandbox:\n      mode: danger-full-access\n      writable_roots:\n        - /nonexistent/pm3-root\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n    sandbox:\n      mode: danger-full-access\n      writable_roots:\n        - /nonexistent/pm3-root\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
@@ -153,7 +153,7 @@ fn a_shutdown_force_kills_a_service_that_ignores_the_stop_signal() {
     let apps = self::common::write_apps(
         &home,
         &format!(
-            "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
+            "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
@@ -188,7 +188,7 @@ fn a_plain_kill_spares_online_services_but_sweeps_a_stuck_stopping_one() {
     let stubborn_apps = self::common::write_apps(
         &home,
         &format!(
-            "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
+            "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
         ),
     );
     let stubborn_started = pm3(&home, &["start", stubborn_apps.to_str().expect("path")]);
@@ -228,7 +228,7 @@ fn the_all_selector_applies_to_every_app() {
     let apps = self::common::write_apps(
         &home,
         &format!(
-            "apps:\n  - name: web\n    script: {pm3_bin}\n    cwd: \"{cwd}\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n  - name: api\n    script: {pm3_bin}\n    cwd: \"{cwd}\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
+            "apps:\n  - name: web\n    script: {pm3_bin}\n    cwd: '{cwd}'\n    args:\n      - \"__sleep\"\n      - \"30000\"\n  - name: api\n    script: {pm3_bin}\n    cwd: '{cwd}'\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);

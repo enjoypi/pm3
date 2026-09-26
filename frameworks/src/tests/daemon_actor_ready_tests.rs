@@ -1,9 +1,14 @@
 use super::*;
+use crate::platform::{SHELL, SHELL_FLAG, SLEEPER};
+
+fn shell_probe(code: u8) -> String {
+    format!("  exec:\n    - '{SHELL}'\n    - \"{SHELL_FLAG}\"\n    - \"exit {code}\"")
+}
 
 fn probing_service(harness: &Harness, name: &str, probe: &str, listen_timeout_ms: u64) {
     let cwd = workspace_of(harness);
     let body = format!(
-        "name: {name}\nscript: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nlisten_timeout_ms: {listen_timeout_ms}\nready_probe:\n{probe}\nargs:\n  - \"-c\"\n  - \"sleep 30\"\n"
+        "name: {name}\nscript: '{SHELL}'\ncwd: '{cwd}'\nautorestart: true\nlisten_timeout_ms: {listen_timeout_ms}\nready_probe:\n{probe}\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{SLEEPER}'\n"
     );
     std::fs::write(
         service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
@@ -15,7 +20,7 @@ fn probing_service(harness: &Harness, name: &str, probe: &str, listen_timeout_ms
 fn dependent_service(harness: &Harness, name: &str, depends_on: &str) {
     let cwd = workspace_of(harness);
     let body = format!(
-        "name: {name}\nscript: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\ndepends_on:\n  - {depends_on}\nargs:\n  - \"-c\"\n  - \"sleep 30\"\n"
+        "name: {name}\nscript: '{SHELL}'\ncwd: '{cwd}'\nautorestart: true\ndepends_on:\n  - {depends_on}\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{SLEEPER}'\n"
     );
     std::fs::write(
         service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
@@ -37,7 +42,7 @@ async fn start(harness: &mut Harness, services: &[&str]) -> SupervisionReply {
 #[tokio::test]
 async fn a_service_with_a_passing_probe_becomes_online() {
     let mut harness = harness();
-    probing_service(&harness, "web", "  exec:\n    - \"/usr/bin/true\"", 5000);
+    probing_service(&harness, "web", &shell_probe(0), 5000);
     start(&mut harness, &["web"]).await;
     assert_eq!(status_of(&mut harness, "web").await, "launching");
 
@@ -74,7 +79,7 @@ async fn a_missing_probe_command_fails_the_service_fast() {
 #[tokio::test]
 async fn a_service_that_never_answers_is_stopped_after_its_timeout() {
     let mut harness = harness();
-    probing_service(&harness, "web", "  exec:\n    - \"/usr/bin/false\"", 300);
+    probing_service(&harness, "web", &shell_probe(1), 300);
     start(&mut harness, &["web"]).await;
 
     let event = next_event(&mut harness.events).await;
@@ -93,7 +98,7 @@ async fn a_service_that_never_answers_is_stopped_after_its_timeout() {
 #[tokio::test]
 async fn a_dependent_service_waits_for_its_dependency_to_become_ready() {
     let mut harness = harness();
-    probing_service(&harness, "db", "  exec:\n    - \"/usr/bin/true\"", 5000);
+    probing_service(&harness, "db", &shell_probe(0), 5000);
     dependent_service(&harness, "web", "db");
     let reply = start(&mut harness, &["db", "web"]).await;
     let SupervisionReply::Started {
@@ -102,7 +107,7 @@ async fn a_dependent_service_waits_for_its_dependency_to_become_ready() {
     else {
         panic!("start should answer with a start summary")
     };
-    assert!(refused.is_empty(), "got: {refused:?}");
+    assert_eq!(*refused, Vec::<String>::new(), "got: {refused:?}");
     assert_eq!(outcomes.len(), 2);
     assert_eq!(status_of(&mut harness, "db").await, "launching");
     assert_eq!(status_of(&mut harness, "web").await, "stopped");
@@ -117,7 +122,7 @@ async fn a_dependent_service_waits_for_its_dependency_to_become_ready() {
 #[tokio::test]
 async fn a_dependency_that_never_becomes_ready_cancels_its_waiter() {
     let mut harness = harness();
-    probing_service(&harness, "db", "  exec:\n    - \"/usr/bin/false\"", 300);
+    probing_service(&harness, "db", &shell_probe(1), 300);
     dependent_service(&harness, "web", "db");
     start(&mut harness, &["db", "web"]).await;
     assert_eq!(status_of(&mut harness, "web").await, "stopped");
@@ -134,7 +139,7 @@ async fn a_dependency_that_never_becomes_ready_cancels_its_waiter() {
 #[tokio::test]
 async fn stopping_a_service_mid_probe_cancels_the_watch() {
     let mut harness = harness();
-    probing_service(&harness, "web", "  exec:\n    - \"/usr/bin/false\"", 30000);
+    probing_service(&harness, "web", &shell_probe(1), 30000);
     start(&mut harness, &["web"]).await;
     assert_eq!(status_of(&mut harness, "web").await, "launching");
 
@@ -153,7 +158,7 @@ async fn stopping_a_service_mid_probe_cancels_the_watch() {
 #[tokio::test]
 async fn a_resurrected_probe_service_rewaits_readiness_before_going_online() {
     let mut origin = harness();
-    probing_service(&origin, "web", "  exec:\n    - \"/usr/bin/true\"", 5000);
+    probing_service(&origin, "web", &shell_probe(0), 5000);
     start(&mut origin, &["web"]).await;
     let mut revived = harness();
     std::fs::copy(&origin.paths.dump_file, &revived.paths.dump_file).expect("copy the dump");
@@ -179,7 +184,7 @@ async fn a_resurrected_probe_service_rewaits_readiness_before_going_online() {
 #[tokio::test]
 async fn a_failed_probe_settlement_survives_a_save_failure() {
     let mut harness = harness();
-    probing_service(&harness, "web", "  exec:\n    - \"/usr/bin/false\"", 300);
+    probing_service(&harness, "web", &shell_probe(1), 300);
     start(&mut harness, &["web"]).await;
     let event = next_event(&mut harness.events).await;
     harness.daemon.apply(event).await;

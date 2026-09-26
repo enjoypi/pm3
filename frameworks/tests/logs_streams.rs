@@ -15,7 +15,7 @@ fn chatty_apps(home: &common::Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"echo web-out; echo web-err >&2; exec sleep 30\"\n  - name: api\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"echo api-out; echo api-err >&2; exec sleep 30\"\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"echo web-out; echo web-err >&2; exec sleep 30\"\n  - name: api\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"echo api-out; echo api-err >&2; exec sleep 30\"\n"
         ),
     )
 }

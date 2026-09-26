@@ -18,6 +18,8 @@ const XDG_CONFIG_FALLBACK: &str = "~/.config";
 pub const XDG_STATE_FALLBACK: &str = "~/.local/state";
 const XDG_DATA_FALLBACK: &str = "~/.local/share";
 const RUNTIME_DIR_ROOT: &str = "/run/user";
+#[cfg(windows)]
+const VERBATIM_PREFIX: &str = r"\\?\";
 const SUN_PATH_CAPACITY: usize = 104;
 const LONGEST_SOCKET_PATH: usize = SUN_PATH_CAPACITY - 1;
 
@@ -189,6 +191,31 @@ fn per_user_runtime_dir(uid: Option<u32>, exists: fn(&Path) -> bool) -> Option<P
 
 fn named(value: Option<&str>) -> Option<&str> {
     value.filter(|text| !text.is_empty())
+}
+
+#[cfg(not(windows))]
+#[must_use]
+pub fn portable_path(path: &str) -> String {
+    path.to_string()
+}
+
+#[cfg(windows)]
+#[must_use]
+pub fn portable_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+#[cfg(not(windows))]
+#[must_use]
+pub fn portable_real_path(resolved: &Path) -> String {
+    resolved.to_string_lossy().into_owned()
+}
+
+#[cfg(windows)]
+#[must_use]
+pub fn portable_real_path(resolved: &Path) -> String {
+    let shown = resolved.to_string_lossy();
+    portable_path(shown.strip_prefix(VERBATIM_PREFIX).unwrap_or(&shown))
 }
 
 pub fn check_socket_length(socket: &Path) -> Result<(), PathError> {

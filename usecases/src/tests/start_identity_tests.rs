@@ -95,7 +95,7 @@ async fn an_unconfined_app_runs_without_a_sandbox_wrapper() {
     let launched = ports.spawned();
     let launch = launched.first().expect("one spawn recorded");
     assert_eq!(launch.program, "/usr/bin/true");
-    assert!(launch.args.is_empty());
+    assert_eq!(launch.args, Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -167,7 +167,7 @@ async fn a_scheduled_one_shot_app_is_registered_without_spawning() {
     };
     let report = start_apps(&mut table, &[task], LOGS_DIR, &ports).await;
     assert_eq!(report.outcomes[0].kind, StartKind::Scheduled);
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
     let record = table
         .find(&AppSelector::Name("sweep".to_string()))
         .expect("record present");
@@ -196,7 +196,10 @@ fn a_scheduled_registration_needs_no_watching() {
 fn a_batch_that_fully_started_refuses_nothing() {
     let requested = vec!["api".to_string(), "web".to_string()];
     let outcomes = vec![outcome_named("api"), outcome_named("web")];
-    assert!(refused_services(&requested, &outcomes).is_empty());
+    assert_eq!(
+        refused_services(&requested, &outcomes),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
@@ -278,7 +281,7 @@ async fn a_service_whose_dependency_has_no_probe_starts_right_away() {
             .iter()
             .all(|outcome| outcome.kind == StartKind::Spawned)
     );
-    assert!(report.pending.is_empty());
+    assert_eq!(report.pending, []);
 }
 
 #[test]

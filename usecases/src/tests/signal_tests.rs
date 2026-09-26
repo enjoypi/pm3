@@ -46,7 +46,7 @@ async fn signalling_a_settled_app_reports_not_running() {
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
-    assert!(ports.delivered().is_empty());
+    assert_eq!(ports.delivered(), []);
 }
 
 #[tokio::test]
@@ -58,7 +58,7 @@ async fn signalling_reports_not_running_when_the_pid_is_gone() {
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
-    assert!(ports.delivered().is_empty());
+    assert_eq!(ports.delivered(), []);
 }
 
 #[tokio::test]
@@ -70,7 +70,7 @@ async fn signalling_reports_not_running_when_the_pid_is_unreadable() {
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
-    assert!(ports.delivered().is_empty());
+    assert_eq!(ports.delivered(), []);
 }
 
 #[tokio::test]
@@ -82,7 +82,7 @@ async fn signalling_reports_not_running_when_the_pid_was_recycled() {
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::NotRunning(_)), "got: {err}");
-    assert!(ports.delivered().is_empty());
+    assert_eq!(ports.delivered(), []);
 }
 
 #[tokio::test]
@@ -93,7 +93,7 @@ async fn an_unknown_signal_name_is_rejected() {
         .await
         .unwrap_err();
     assert!(matches!(err, UsecaseError::InvalidSignal(_)), "got: {err}");
-    assert!(ports.delivered().is_empty());
+    assert_eq!(ports.delivered(), []);
 }
 
 #[tokio::test]

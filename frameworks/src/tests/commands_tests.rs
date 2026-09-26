@@ -1,6 +1,9 @@
 #![cfg(unix)]
 use super::*;
-use crate::daemon_fixture::{Fixture, running_daemon, sleeper_apps_file, stop_daemon};
+use crate::{
+    daemon_fixture::{Fixture, running_daemon, sleeper_apps_file, stop_daemon},
+    platform::{SHELL, SHELL_FLAG, SLEEPER},
+};
 
 #[test]
 fn a_missing_apps_file_cannot_be_resolved() {
@@ -70,7 +73,12 @@ async fn restarting_an_unchanged_apps_file_reports_no_config_change() {
     let again = start_apps(&fixture.config_path, &apps_file, false)
         .await
         .expect("should start");
-    assert!(again.changed.is_empty(), "got: {:?}", again.changed);
+    assert_eq!(
+        again.changed,
+        Vec::<String>::new(),
+        "got: {:?}",
+        again.changed
+    );
     assert!(
         again.response.contains("already running"),
         "got: {}",
@@ -90,7 +98,7 @@ async fn restarting_a_changed_apps_file_reports_the_changed_app() {
     std::fs::write(
         &apps_file,
         format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 60\"\n"
+            "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n"
         ),
     )
     .expect("edit the apps file");

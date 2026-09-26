@@ -28,7 +28,7 @@ fn resolve_with(
     path_env: Option<&str>,
     accepts: impl Fn(&Path) -> bool,
 ) -> Option<PathBuf> {
-    if program.starts_with('/') {
+    if usecases::is_absolute_path(program) {
         return accepts(Path::new(program)).then(|| PathBuf::from(program));
     }
     let directories = path_env?;

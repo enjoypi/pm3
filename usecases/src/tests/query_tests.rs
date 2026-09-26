@@ -5,7 +5,7 @@ use crate::ports_test_helpers::spec;
 
 #[test]
 fn listing_an_empty_table_yields_no_views() {
-    assert!(list_apps(&ProcessTable::new(), 1000).is_empty());
+    assert_eq!(list_apps(&ProcessTable::new(), 1000), []);
 }
 
 #[test]

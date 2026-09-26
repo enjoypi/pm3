@@ -125,7 +125,7 @@ pub fn service_with_script(harness: &Harness, name: &str, script: &str, depends_
         format!("depends_on:\n{deps}")
     };
     let service =
-        format!("name: {name}\nscript: \"{script}\"\ncwd: \"{cwd}\"\nautorestart: false\n{listed}");
+        format!("name: {name}\nscript: '{script}'\ncwd: '{cwd}'\nautorestart: false\n{listed}");
     std::fs::write(
         service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
         service,

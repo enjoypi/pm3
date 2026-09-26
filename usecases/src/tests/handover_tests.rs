@@ -12,8 +12,8 @@ fn a_service_missing_after_the_handover_is_lost() {
     let before = vec![row("api", Some(10))];
     let comparison = compare_handover(&before, &[]);
     assert_eq!(comparison.lost, vec!["api".to_owned()]);
-    assert!(comparison.adopted.is_empty());
-    assert!(comparison.restarted.is_empty());
+    assert_eq!(comparison.adopted, Vec::<String>::new());
+    assert_eq!(comparison.restarted, Vec::<String>::new());
 }
 
 #[test]
@@ -54,7 +54,8 @@ fn a_service_that_lost_its_pid_is_reported_lost() {
     let after = vec![row("api", None)];
     let comparison = compare_handover(&before, &after);
     assert_eq!(comparison.lost, vec!["api".to_string()]);
-    assert!(comparison.adopted.is_empty() && comparison.restarted.is_empty());
+    assert_eq!(comparison.adopted, Vec::<String>::new());
+    assert_eq!(comparison.restarted, Vec::<String>::new());
 }
 
 #[test]

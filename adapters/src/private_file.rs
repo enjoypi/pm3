@@ -11,12 +11,16 @@ pub const OWNER_ONLY_FILE: u32 = 0o600;
 pub const SWEEP_PROOF_FILE: u32 = 0o1600;
 
 pub async fn write_private(path: &Path, contents: &str) -> Result<()> {
+    write_private_bytes(path, contents.as_bytes()).await
+}
+
+pub async fn write_private_bytes(path: &Path, contents: &[u8]) -> Result<()> {
     let file = private_options()
         .write(true)
         .truncate(true)
         .open(path)
         .await?;
-    fill(file, contents.as_bytes()).await
+    fill(file, contents).await
 }
 
 pub async fn write_sweep_proof(path: &Path, contents: &str) -> Result<()> {

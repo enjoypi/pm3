@@ -75,7 +75,8 @@ pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFutur
         tmp_dir: std::env::var(TMPDIR_VARIABLE).ok(),
         decryptor_env: decryptor_env(&global_env),
         global_env,
-    };
+    }
+    .with_portable_roots();
     let served = serve_supervised(specs, &paths, listener, shutdown).await;
     clear_runtime_files(&paths).await;
     served

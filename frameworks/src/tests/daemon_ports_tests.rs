@@ -5,7 +5,10 @@ use adapters::{
 };
 
 use super::*;
-use crate::test_support::pm3_config_with_home;
+use crate::{
+    platform::{SHELL, SHELL_FLAG, SLEEPER},
+    test_support::pm3_config_with_home,
+};
 
 const EPOCH_2023_MS: u64 = 1_700_000_000_000;
 
@@ -43,12 +46,13 @@ fn spec_source_in(dir: &Path) -> SpecSource {
         global_env: Vec::new(),
         decryptor_env: Vec::new(),
     }
+    .with_portable_roots()
 }
 
 fn register_service(dir: &Path, name: &str) {
     std::fs::write(
         service_file_of(&dir.join("service"), name).expect("a safe service name"),
-        format!("name: {name}\nscript: /bin/echo\n"),
+        format!("name: {name}\nscript: '{SHELL}'\n"),
     )
     .expect("write the service file");
 }
@@ -121,38 +125,38 @@ async fn the_dump_store_rejoins_the_saved_state_with_its_service_file() {
 async fn a_spawned_child_is_tracked_and_reaped() {
     let dir = tempfile::tempdir().expect("temp dir");
     let ports = ports_in(dir.path());
-    let spec = launch_spec(dir.path(), "/bin/echo", &["hello"]);
+    let spec = launch_spec(dir.path(), SHELL, &[SHELL_FLAG, "echo hello"]);
     let process = ports.spawn(&spec).await.expect("spawn");
     assert_eq!(ports.tracked_pids().await, vec![process.pid]);
     let outcome = ports.wait(process.pid, None).await.expect("reap");
     assert_eq!(outcome, ExitOutcome::Code(0));
-    assert!(ports.tracked_pids().await.is_empty());
+    assert_eq!(ports.tracked_pids().await, Vec::<u32>::new());
 }
 
 #[tokio::test]
 async fn terminating_a_child_stops_it() {
     let dir = tempfile::tempdir().expect("temp dir");
     let ports = ports_in(dir.path());
-    let spec = launch_spec(dir.path(), "/bin/sh", &["-c", "sleep 30"]);
+    let spec = launch_spec(dir.path(), SHELL, &[SHELL_FLAG, SLEEPER]);
     let process = ports.spawn(&spec).await.expect("spawn");
     ports
         .terminate(process.pid, SignalScope::ProcessGroup)
         .await
         .expect("terminate");
     let outcome = ports.wait(process.pid, None).await.expect("reap");
-    assert_eq!(outcome, ExitOutcome::Signalled);
+    assert_eq!(outcome, crate::platform::KILLED);
 }
 
 #[tokio::test]
 async fn force_killing_a_child_stops_it() {
     let dir = tempfile::tempdir().expect("temp dir");
     let ports = ports_in(dir.path());
-    let spec = launch_spec(dir.path(), "/bin/sh", &["-c", "sleep 30"]);
+    let spec = launch_spec(dir.path(), SHELL, &[SHELL_FLAG, SLEEPER]);
     let process = ports.spawn(&spec).await.expect("spawn");
     ports
         .force_kill(process.pid, SignalScope::ProcessGroup)
         .await
         .expect("force kill");
     let outcome = ports.wait(process.pid, None).await.expect("reap");
-    assert_eq!(outcome, ExitOutcome::Signalled);
+    assert_eq!(outcome, crate::platform::KILLED);
 }

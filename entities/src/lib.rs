@@ -11,7 +11,7 @@ pub use self::{
         parse_memory_limit, parse_signal_name, topo_sort, validate_app_name, validate_spec,
     },
     sandbox::{
-        PolicyError, ReadScope, SandboxMode, SandboxPolicy, covers_path, normalize_root,
-        root_is_forbidden, validate_forbidden_roots, validate_policy,
+        PolicyError, ReadScope, SandboxMode, SandboxPolicy, covers_path, is_absolute_path,
+        normalize_root, root_is_forbidden, validate_forbidden_roots, validate_policy,
     },
 };

@@ -117,7 +117,7 @@ async fn a_handover_names_no_service_while_everything_runs() {
     let draining = persist_for_handover(&table, &ports)
         .await
         .expect("a handover should succeed");
-    assert!(draining.is_empty());
+    assert_eq!(draining, Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -138,7 +138,7 @@ async fn stopping_an_already_stopped_app_sends_no_signal() {
         .await
         .expect("stop should succeed");
     assert_eq!(outcome.force_kill_pid, None);
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -236,7 +236,7 @@ async fn stopping_everything_reports_nothing_when_all_apps_are_settled() {
     let mut table = ProcessTable::new();
     table.upsert(spec("api"), 1000);
     let stopped = stop_all_apps(&mut table, &ports).await;
-    assert!(stopped.is_empty());
+    assert_eq!(stopped, []);
 }
 
 #[tokio::test]

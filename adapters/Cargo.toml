@@ -24,3 +24,6 @@ tokio = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 tower = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+sysinfo = { workspace = true }

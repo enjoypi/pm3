@@ -59,7 +59,7 @@ async fn a_pid_recycled_after_the_verdict_is_spared_the_signal() {
         "got: {:?}",
         ports.terminated()
     );
-    assert!(ports.force_killed().is_empty());
+    assert_eq!(ports.force_killed(), []);
     assert_eq!(ports.spawned_names(), vec!["api"]);
 }
 
@@ -125,7 +125,7 @@ async fn a_replacement_waits_for_the_stale_survivor_to_leave() {
     ports.seed_stored(vec![record]);
     resurrected(&ports).await;
     assert_eq!(ports.waited(), vec![SURVIVOR_PID]);
-    assert!(ports.force_killed().is_empty());
+    assert_eq!(ports.force_killed(), []);
 }
 
 #[tokio::test]
@@ -155,7 +155,7 @@ async fn a_refused_force_kill_does_not_block_the_replacement() {
     ports.make_stubborn(SURVIVOR_PID);
     ports.fail_force_kill_for(SURVIVOR_PID);
     resurrected(&ports).await;
-    assert!(ports.force_killed().is_empty());
+    assert_eq!(ports.force_killed(), []);
     assert_eq!(ports.spawned_names(), vec!["api"]);
 }
 
@@ -165,7 +165,7 @@ async fn a_survivor_that_already_left_is_not_signalled_again() {
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.kill_silently(SURVIVOR_PID);
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -191,8 +191,8 @@ async fn a_digest_read_failure_keeps_the_confirmed_survivor_running() {
         .await
         .expect("resurrect should succeed");
     assert_eq!(outcomes[0].kind, StartKind::Adopted);
-    assert!(ports.spawned_names().is_empty());
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -205,7 +205,7 @@ async fn a_service_that_must_respawn_without_a_sandbox_is_skipped() {
     let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("an unwrappable service must not abort the whole recovery");
-    assert!(outcomes.is_empty());
+    assert_eq!(outcomes, []);
 }
 
 #[tokio::test]

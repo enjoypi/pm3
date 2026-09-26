@@ -1,4 +1,5 @@
 use super::*;
+use crate::platform::{SHELL, shell_args};
 
 #[test]
 fn a_silent_refusal_falls_back_to_the_exit_code() {
@@ -13,15 +14,20 @@ fn a_noisy_refusal_reports_what_the_program_said() {
     );
 }
 
-#[tokio::test]
-async fn a_clean_exit_reports_zero() {
-    let status = tokio::process::Command::new("/usr/bin/true")
+async fn clean_exit() -> ExitStatus {
+    tokio::process::Command::new(SHELL)
+        .args(shell_args("exit 0", "exit 0"))
         .status()
         .await
-        .expect("should run /usr/bin/true");
-    assert_eq!(exit_code_of(&status), 0);
+        .expect("should run the shell")
 }
 
+#[tokio::test]
+async fn a_clean_exit_reports_zero() {
+    assert_eq!(exit_code_of(&clean_exit().await), 0);
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn a_process_killed_by_a_signal_has_no_code() {
     let status = tokio::process::Command::new("/bin/sh")
@@ -34,13 +40,10 @@ async fn a_process_killed_by_a_signal_has_no_code() {
 
 #[tokio::test]
 async fn a_clean_exit_becomes_a_reported_code() {
-    let status = tokio::process::Command::new("/usr/bin/true")
-        .status()
-        .await
-        .expect("should run /usr/bin/true");
-    assert_eq!(exit_outcome_of(status), ExitOutcome::Code(0));
+    assert_eq!(exit_outcome_of(clean_exit().await), ExitOutcome::Code(0));
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn an_exit_by_signal_becomes_a_failure_pm3_can_see() {
     let status = tokio::process::Command::new("/bin/sh")

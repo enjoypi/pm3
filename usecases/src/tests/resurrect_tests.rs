@@ -89,8 +89,8 @@ async fn an_empty_state_file_revives_nothing() {
     let outcomes = resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
-    assert!(outcomes.is_empty());
-    assert!(table.records().is_empty());
+    assert_eq!(outcomes, []);
+    assert_eq!(table.records(), []);
 }
 
 #[tokio::test]
@@ -115,7 +115,7 @@ async fn apps_caught_mid_shutdown_are_settled_rather_than_started_again() {
     resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -138,8 +138,8 @@ async fn apps_that_were_stopped_stay_stopped_but_remain_known() {
     let outcomes = resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
-    assert!(outcomes.is_empty());
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(outcomes, []);
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
     assert_eq!(table.records().len(), 1);
 }
 
@@ -151,7 +151,7 @@ async fn errored_apps_are_not_revived() {
     resurrect(&mut table, LOGS_DIR, KILL_TIMEOUT_MS, &ports)
         .await
         .expect("resurrect should succeed");
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -227,7 +227,11 @@ async fn an_untouched_survivor_is_reclaimed_instead_of_restarted() {
         .await
         .expect("resurrect should succeed");
     assert_eq!(outcomes[0].kind, StartKind::Adopted);
-    assert!(ports.spawned_names().is_empty(), "nothing should respawn");
+    assert_eq!(
+        ports.spawned_names(),
+        Vec::<String>::new(),
+        "nothing should respawn"
+    );
 }
 
 #[tokio::test]
@@ -284,7 +288,7 @@ async fn a_pid_that_already_left_mid_shutdown_is_not_signalled_again() {
     ports.seed_stored(vec![record]);
     ports.hide_from_probe(SURVIVOR_PID);
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -295,7 +299,7 @@ async fn a_pid_the_kernel_reused_mid_shutdown_is_spared() {
     ports.seed_stored(vec![record]);
     ports.seed_live(SURVIVOR_PID, "some other process");
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -317,7 +321,7 @@ async fn a_record_without_a_pid_mid_shutdown_signals_nothing() {
     record.runtime.pid = None;
     ports.seed_stored(vec![record]);
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -327,7 +331,7 @@ async fn a_survivor_caught_mid_shutdown_is_not_started_again() {
     record.runtime.status = ProcessStatus::Stopping;
     ports.seed_stored(vec![record]);
     resurrected(&ports).await;
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
 }
 
 #[tokio::test]

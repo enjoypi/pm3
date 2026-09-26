@@ -34,6 +34,24 @@ pub struct SpecSource {
 }
 
 impl SpecSource {
+    #[must_use]
+    pub fn with_portable_roots(mut self) -> Self {
+        for root in [
+            &mut self.home_dir,
+            &mut self.apps_dir,
+            &mut self.state_dir,
+            &mut self.runtime_dir,
+            &mut self.data_dir,
+            &mut self.logs_dir,
+        ] {
+            *root = crate::portable_path(root);
+        }
+        self.cfg_dir = PathBuf::from(crate::portable_path(&self.cfg_dir.to_string_lossy()));
+        self.host_home = self.host_home.as_deref().map(crate::portable_path);
+        self.tmp_dir = self.tmp_dir.as_deref().map(crate::portable_path);
+        self
+    }
+
     pub fn defaults(&self) -> Result<SpecDefaults<'_>, AppsFileError> {
         SpecDefaults::from_config(
             &self.config,

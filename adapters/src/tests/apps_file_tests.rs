@@ -17,9 +17,14 @@ fn parse_apps_file_reads_a_minimal_entry() {
 fn parse_apps_file_defaults_every_optional_field_of_a_minimal_entry() {
     let apps = parse_apps_file(&minimal_yaml()).expect("should parse");
     let entry = apps.apps.first().expect("one entry");
-    assert!(entry.args.is_empty(), "got: {:?}", entry.args);
+    assert_eq!(entry.args, Vec::<String>::new(), "got: {:?}", entry.args);
     assert!(entry.rejected_env.is_none());
-    assert!(entry.depends_on.is_empty(), "got: {:?}", entry.depends_on);
+    assert_eq!(
+        entry.depends_on,
+        Vec::<String>::new(),
+        "got: {:?}",
+        entry.depends_on
+    );
     assert_eq!(entry.autorestart, None);
     assert_eq!(entry.min_uptime_ms, None);
     assert_eq!(entry.max_restarts, None);

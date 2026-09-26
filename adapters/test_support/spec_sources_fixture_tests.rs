@@ -8,14 +8,14 @@ use crate::{
     parse_config,
 };
 
-pub const SERVICE_SCRIPT: &str = "/bin/sh";
+pub const SERVICE_SCRIPT: &str = crate::platform::SHELL;
 pub const HOST_HOME: &str = "/home/dev";
 pub const SANDBOX_MODE: &str = SandboxMode::WorkspaceWrite.as_str();
 
 const KILL_TIMEOUT_MS: u64 = 1600;
 
 pub fn spec_source_in(root: &Path) -> SpecSource {
-    let home_dir = root.to_string_lossy().into_owned();
+    let home_dir = crate::portable_path(&root.to_string_lossy());
     let cfg_dir = root.join("service");
     std::fs::create_dir_all(&cfg_dir).expect("create the service directory");
     let yaml = format!(
@@ -26,7 +26,7 @@ pub fn spec_source_in(root: &Path) -> SpecSource {
     let config = parse_config(&yaml)
         .expect("the fixture config should parse")
         .pm3;
-    let logs_dir = root.join("logs").to_string_lossy().into_owned();
+    let logs_dir = format!("{home_dir}/logs");
     SpecSource {
         cfg_dir,
         config,
@@ -76,7 +76,7 @@ pub fn with_decryptor(source: &mut SpecSource, body: &str) {
 }
 
 pub fn service_yaml(name: &str) -> String {
-    format!("name: \"{name}\"\nscript: \"{SERVICE_SCRIPT}\"\n")
+    format!("name: \"{name}\"\nscript: '{SERVICE_SCRIPT}'\n")
 }
 
 pub fn with_global_env(source: &mut SpecSource, declared: &[(&str, &str)]) {

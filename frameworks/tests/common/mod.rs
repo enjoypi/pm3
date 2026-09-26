@@ -220,8 +220,8 @@ pub fn config_yaml(
     let service = service_yaml(tunables.wait_for_network);
     format!(
         r#"pm3:
-  home: "{home}"
-  cfg_dir: "{home}/service"
+  home: '{home}'
+  cfg_dir: '{home}/service'
   search_path: "/usr/bin:/bin:/opt/homebrew/bin"
   stop_signal: "TERM"
   kill_timeout_ms: 400
@@ -312,7 +312,7 @@ pub fn sleeper_apps(home: &Home, name: &str) -> PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: {name}\n    script: {PM3}\n    cwd: \"{cwd}\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
+            "apps:\n  - name: {name}\n    script: {PM3}\n    cwd: '{cwd}'\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
         ),
     )
 }

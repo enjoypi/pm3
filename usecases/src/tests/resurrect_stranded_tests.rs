@@ -26,7 +26,7 @@ async fn a_survivor_pm3_can_no_longer_manage_is_never_revived() {
     let ports = FakePorts::new(1000);
     ports.seed_stranded(vec![stranded(&ports)]);
     let table = resurrected(&ports).await;
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
     assert!(table.find(&AppSelector::Name("api".to_string())).is_none());
 }
 
@@ -37,7 +37,7 @@ async fn a_stranded_pid_that_already_left_is_not_signalled() {
     ports.hide_from_probe(SURVIVOR_PID);
     ports.seed_stranded(vec![orphan]);
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -47,7 +47,7 @@ async fn a_stranded_pid_the_kernel_reused_is_spared() {
     ports.seed_live(SURVIVOR_PID, "some other process");
     ports.seed_stranded(vec![orphan]);
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]
@@ -59,7 +59,7 @@ async fn a_stranded_record_without_a_pid_signals_nothing() {
         token: None,
     }]);
     resurrected(&ports).await;
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]

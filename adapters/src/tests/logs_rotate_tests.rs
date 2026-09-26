@@ -39,7 +39,7 @@ async fn a_log_inside_the_limit_is_left_alone() {
         .rotate_logs(&logs_dir, 1024)
         .await
         .expect("should rotate");
-    assert!(rotated.is_empty());
+    assert_eq!(rotated, Vec::<RotatedLog>::new());
     assert_eq!(
         std::fs::metadata(dir.path().join("web-out.log"))
             .expect("stat")
@@ -68,7 +68,7 @@ async fn files_that_are_not_service_logs_are_not_touched() {
         .rotate_logs(&logs_dir, 1024)
         .await
         .expect("should rotate");
-    assert!(rotated.is_empty());
+    assert_eq!(rotated, Vec::<RotatedLog>::new());
 }
 
 #[tokio::test]

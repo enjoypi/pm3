@@ -11,7 +11,7 @@ use usecases::{Liveness, ProcessProbe as _, SignalScope};
 use super::*;
 
 const POLL_STEP_MS: u64 = 20;
-use crate::{config::STOP_SIGNAL_TERM, process::ps_probe::PsProcessProbe};
+use crate::{config::STOP_SIGNAL_TERM, process::HostProcessProbe};
 
 const MISSING_PID: u32 = 2_147_483_647;
 const BROADCAST_PID: u32 = u32::MAX;
@@ -67,7 +67,7 @@ async fn announced_pid(child: &mut Child) -> u32 {
 }
 
 async fn outlives_its_group(pid: u32) -> bool {
-    let probe = PsProcessProbe::with_timeout(SIGNAL_TIMEOUT_MS, POLL_STEP_MS);
+    let probe = HostProcessProbe::with_timeout(SIGNAL_TIMEOUT_MS, POLL_STEP_MS);
     for _poll in 0..DEATH_POLLS {
         if probe.identity(pid).await == Liveness::Gone {
             return false;

@@ -4,7 +4,7 @@ use super::{test_helpers::*, *};
 
 #[test]
 fn a_new_table_holds_no_records() {
-    assert!(ProcessTable::new().records().is_empty());
+    assert_eq!(ProcessTable::new().records(), []);
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn remove_returns_the_dropped_record() {
         .remove(&AppSelector::Name("api".to_string()))
         .expect("record present");
     assert_eq!(removed.runtime.name, "api");
-    assert!(table.records().is_empty());
+    assert_eq!(table.records(), []);
 }
 
 #[test]

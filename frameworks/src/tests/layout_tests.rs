@@ -1,12 +1,12 @@
 use super::*;
-use crate::test_support::pm3_config_with_home;
+use crate::{platform::abs, test_support::pm3_config_with_home};
 
 #[test]
 fn an_absolute_home_becomes_the_layout_root() {
-    let paths = resolve_places(&pm3_config_with_home("/srv/pm3"), None)
+    let paths = resolve_places(&pm3_config_with_home(&abs("/srv/pm3")), None)
         .expect("should resolve")
         .paths;
-    assert_eq!(paths.socket, Path::new("/srv/pm3/pm3.sock"));
+    assert_eq!(paths.socket, Path::new(&abs("/srv/pm3/pm3.sock")));
 }
 
 #[test]
@@ -288,7 +288,7 @@ async fn a_runtime_file_that_cannot_be_removed_only_warns() {
 
 #[test]
 fn the_service_directory_comes_from_the_config() {
-    let mut config = pm3_config_with_home("/srv/pm3");
+    let mut config = pm3_config_with_home(&abs("/srv/pm3"));
     config.cfg_dir = "~/.config/pm3".to_string();
     let resolved = resolve_cfg_dir(&config, Some("/home/dev")).expect("tilde expands");
     assert_eq!(resolved, std::path::Path::new("/home/dev/.config/pm3"));
@@ -296,7 +296,7 @@ fn the_service_directory_comes_from_the_config() {
 
 #[test]
 fn a_relative_service_directory_is_rejected() {
-    let mut config = pm3_config_with_home("/srv/pm3");
+    let mut config = pm3_config_with_home(&abs("/srv/pm3"));
     config.cfg_dir = "relative/service".to_string();
     let err = resolve_cfg_dir(&config, Some("/home/dev"))
         .unwrap_err()
@@ -386,23 +386,23 @@ async fn a_lost_create_race_reads_the_winners_secret() {
 
 #[test]
 fn a_declared_cfg_dir_survives_the_config_root_variable() {
-    let mut config = pm3_config_with_home("/srv/pm3");
-    config.cfg_dir = "/srv/pm3/service".to_string();
+    let mut config = pm3_config_with_home(&abs("/srv/pm3"));
+    config.cfg_dir = abs("/srv/pm3/service");
     let cfg_dir = resolve_cfg_dir(&config, None).expect("the cfg dir should resolve");
     assert_eq!(
         cfg_dir,
-        Path::new("/srv/pm3/service"),
+        Path::new(&abs("/srv/pm3/service")),
         "the config root and the service directory are different settings"
     );
 }
 
 fn split_config() -> adapters::Pm3Config {
-    let mut config = pm3_config_with_home("/srv/pm3");
+    let mut config = pm3_config_with_home(&abs("/srv/pm3"));
     config.home = String::new();
     config.cfg_dir = String::new();
-    config.state_dir = "/s/pm3".to_string();
-    config.runtime_dir = "/r/pm3".to_string();
-    config.data_dir = "/d/pm3".to_string();
+    config.state_dir = abs("/s/pm3");
+    config.runtime_dir = abs("/r/pm3");
+    config.data_dir = abs("/d/pm3");
     config
 }
 
@@ -411,10 +411,10 @@ fn an_empty_home_derives_the_split_layout_from_the_configured_roots() {
     let paths = resolve_places(&split_config(), Some("/home/dev"))
         .expect("should resolve")
         .paths;
-    assert_eq!(paths.dump_file, Path::new("/s/pm3/dump.yaml"));
-    assert_eq!(paths.socket, Path::new("/r/pm3/pm3.sock"));
-    assert_eq!(paths.backups_dir, Path::new("/d/pm3/install-backups"));
-    assert_eq!(paths.apps_dir, Path::new("/s/pm3/apps"));
+    assert_eq!(paths.dump_file, Path::new(&abs("/s/pm3/dump.yaml")));
+    assert_eq!(paths.socket, Path::new(&abs("/r/pm3/pm3.sock")));
+    assert_eq!(paths.backups_dir, Path::new(&abs("/d/pm3/install-backups")));
+    assert_eq!(paths.apps_dir, Path::new(&abs("/s/pm3/apps")));
 }
 
 #[test]
@@ -444,6 +444,18 @@ fn a_relative_home_is_refused() {
     assert!(err.to_string().contains("must be absolute"), "got: {err}");
 }
 
+#[cfg(windows)]
+#[test]
+fn a_long_runtime_root_is_fine_because_the_pipe_name_is_a_fixed_length_hash() {
+    let mut config = split_config();
+    config.runtime_dir = abs(&format!("/{}", "d".repeat(120)));
+    let paths = resolve_places(&config, Some("/home/dev"))
+        .expect("windows names the pipe by hash, so the root may be long")
+        .paths;
+    assert!(paths.socket.to_string_lossy().len() > 120);
+}
+
+#[cfg(unix)]
 #[test]
 fn a_socket_path_past_the_unix_limit_is_refused() {
     let mut config = split_config();
@@ -478,7 +490,7 @@ fn an_empty_runtime_root_falls_back_to_the_state_root() {
         .expect("should resolve")
         .paths;
     assert!(
-        paths.socket.starts_with("/run/user") || paths.socket.starts_with("/s/pm3/run"),
+        paths.socket.starts_with("/run/user") || paths.socket.starts_with(abs("/s/pm3/run")),
         "the runtime root follows the xdg rules, got {}",
         paths.socket.to_string_lossy()
     );
@@ -502,7 +514,7 @@ fn bare_sources(home: Option<&str>) -> RootSources<'_> {
 }
 
 fn derived_config() -> adapters::Pm3Config {
-    let mut config = pm3_config_with_home("/srv/pm3");
+    let mut config = pm3_config_with_home(&abs("/srv/pm3"));
     config.home = String::new();
     config.cfg_dir = String::new();
     config
@@ -550,8 +562,9 @@ fn a_relative_config_root_variable_is_refused_while_deriving() {
 #[test]
 fn a_pm3_home_variable_wins_over_every_derived_root() {
     let mut sources = bare_sources(Some("/home/dev"));
-    sources.pm3_home = Some("/srv/pm3");
+    let home = abs("/srv/pm3");
+    sources.pm3_home = Some(&home);
     let roots = roots_from(&derived_config(), &sources).expect("the single root resolves");
-    assert_eq!(roots.state, Path::new("/srv/pm3"));
-    assert_eq!(roots.runtime, Path::new("/srv/pm3"));
+    assert_eq!(roots.state, Path::new(&abs("/srv/pm3")));
+    assert_eq!(roots.runtime, Path::new(&abs("/srv/pm3")));
 }

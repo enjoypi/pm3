@@ -27,7 +27,7 @@ const FIXTURE_TOKEN: &str = "Tue Jul 28 14:06:28 2026";
 
 struct Fixture {
     dir: tempfile::TempDir,
-    probe: Arc<PsProcessProbe>,
+    probe: Arc<HostProcessProbe>,
     watch: Arc<AdoptedWatch>,
 }
 
@@ -50,7 +50,7 @@ fn fixture() -> Fixture {
     .expect("should write a fake ps");
     fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
         .expect("should make the fake ps executable");
-    let probe = Arc::new(PsProcessProbe::new(
+    let probe = Arc::new(HostProcessProbe::new(
         script.to_string_lossy().into_owned(),
         PROBE_TIMEOUT_MS,
         POLL_STEP_MS,
@@ -82,7 +82,7 @@ fn fixture_that_answers_once(first_answer: &str) -> Fixture {
         .expect("should make the fake ps executable");
     Fixture {
         dir,
-        probe: Arc::new(PsProcessProbe::new(
+        probe: Arc::new(HostProcessProbe::new(
             script.to_string_lossy().into_owned(),
             PROBE_TIMEOUT_MS,
             POLL_STEP_MS,
@@ -251,7 +251,7 @@ async fn an_adopted_process_stops_being_tracked_once_it_leaves() {
         CADENCE,
     )
     .await;
-    assert!(launcher.tracked_pids().await.is_empty());
+    assert_eq!(launcher.tracked_pids().await, Vec::<u32>::new());
 }
 
 #[tokio::test]

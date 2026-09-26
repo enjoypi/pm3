@@ -9,7 +9,7 @@ use crate::{
 
 const NAME: &str = "mihomo-rule";
 const PROGRAM: &str = "/opt/homebrew/bin/mihomo";
-const INSTALLED_PROGRAM: &str = "/bin/sh";
+const INSTALLED_PROGRAM: &str = crate::platform::SHELL;
 const CWD: &str = "/home/dev/.pm3/mihomo-rule";
 
 const HOME: &str = "/home/dev";
@@ -168,7 +168,7 @@ fn an_encoded_app_with_no_collections_still_reads_back() {
         "empty collections must be omitted: {yaml}"
     );
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
-    assert!(reparsed.args.is_empty());
+    assert_eq!(reparsed.args, Vec::<String>::new());
     assert!(reparsed.rejected_env.is_none());
 }
 
@@ -216,14 +216,14 @@ async fn a_home_placeholder_expands_when_the_config_file_is_loaded() {
         .expect("the config file should load");
     let expected = format!(
         "{}/work",
-        std::env::var("HOME").expect("tests always run with HOME")
+        crate::portable_path(&std::env::var("HOME").expect("tests always run with HOME"))
     );
     assert_eq!(loaded.cwd.as_deref(), Some(expected.as_str()));
 }
 
 #[test]
 fn identical_text_has_no_diff() {
-    assert!(diff_lines("a\nb\n", "a\nb\n").is_empty());
+    assert_eq!(diff_lines("a\nb\n", "a\nb\n"), Vec::<String>::new());
 }
 
 #[test]
@@ -359,7 +359,7 @@ async fn a_dollar_sign_in_an_argument_survives_loading_the_service_file() {
 
 #[tokio::test]
 async fn a_home_placeholder_inside_an_argument_still_expands() {
-    let home = std::env::var("HOME").expect("tests always run with HOME");
+    let home = crate::portable_path(&std::env::var("HOME").expect("tests always run with HOME"));
     let args = [format!("{home}/data"), "$LITERAL".to_string()];
     let dir = tempfile::tempdir().expect("temp dir");
     let path = dir.path().join("mihomo-rule.yaml");

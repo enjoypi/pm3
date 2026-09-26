@@ -12,6 +12,7 @@ use crate::{
     Result,
     client::UdsClient,
     daemon::run_daemon_with_shutdown,
+    platform::{SHELL, SHELL_FLAG, SLEEPER},
     test_support::{REQUEST_TIMEOUT_MS, write_apps_file, write_config},
 };
 
@@ -76,7 +77,7 @@ pub async fn stop_daemon(fixture: Fixture) {
 pub fn sleeper_apps_file(fixture: &Fixture) -> String {
     let cwd = fixture.paths.root.to_string_lossy();
     let body = format!(
-        "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
+        "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n"
     );
     write_apps_file(fixture.dir.path(), &body)
         .to_string_lossy()

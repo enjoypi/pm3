@@ -8,7 +8,23 @@ pub struct LoadedConfig {
 }
 
 pub fn parse_config(yaml: &str) -> std::result::Result<AppConfig, ConfigError> {
-    serde_yaml2::from_str(yaml).map_err(|e| ConfigError::ParseError(e.to_string()))
+    serde_yaml2::from_str(yaml)
+        .map(portable_roots)
+        .map_err(|e| ConfigError::ParseError(e.to_string()))
+}
+
+fn portable_roots(mut config: AppConfig) -> AppConfig {
+    let pm3 = &mut config.pm3;
+    for root in [
+        &mut pm3.home,
+        &mut pm3.cfg_dir,
+        &mut pm3.state_dir,
+        &mut pm3.runtime_dir,
+        &mut pm3.data_dir,
+    ] {
+        *root = crate::portable_path(root);
+    }
+    config
 }
 
 pub fn load_config_file(path: &str) -> Result<LoadedConfig> {

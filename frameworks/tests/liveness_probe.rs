@@ -16,7 +16,7 @@ fn unreachable_probe_apps(home: &common::Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: deaf\n    script: {PM3}\n    cwd: \"{cwd}\"\n    liveness_tcp: \"127.0.0.1:1\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
+            "apps:\n  - name: deaf\n    script: {PM3}\n    cwd: '{cwd}'\n    liveness_tcp: \"127.0.0.1:1\"\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
         ),
     )
 }

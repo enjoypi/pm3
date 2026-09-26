@@ -15,7 +15,7 @@ fn half_startable_apps(home: &Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n  - name: broken\n    script: \"{}\"\n    cwd: \"{cwd}\"\n    depends_on:\n      - web\n",
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n  - name: broken\n    script: '{}'\n    cwd: '{cwd}'\n    depends_on:\n      - web\n",
             unrunnable.display()
         ),
     )
@@ -73,7 +73,7 @@ fn a_service_name_that_escapes_the_service_directory_is_refused() {
     let cwd = home.root.to_string_lossy();
     let apps = write_apps(
         &home,
-        &format!("apps:\n  - name: ../escape\n    script: /bin/sh\n    cwd: \"{cwd}\"\n"),
+        &format!("apps:\n  - name: ../escape\n    script: /bin/sh\n    cwd: '{cwd}'\n"),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
     assert!(!started.status.success(), "{}", stdout_of(&started));
@@ -91,7 +91,7 @@ fn an_apps_file_that_names_the_same_service_twice_is_refused() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
@@ -110,7 +110,7 @@ fn a_start_the_daemon_cannot_record_fails_but_keeps_the_service_file() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
         ),
     );
     pm3(&home, &["list"]);

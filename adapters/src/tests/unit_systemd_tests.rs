@@ -6,8 +6,16 @@ use crate::{
     unit_specs::{MAX_TASKS, PM3_HOME_VALUE, PM3_HOME_VARIABLE, spec_for},
 };
 
+fn portable(path: &Path) -> std::path::PathBuf {
+    crate::portable_path(&path.to_string_lossy()).into()
+}
+
 fn rendered() -> String {
-    render_unit(&spec_for(UnitKind::Systemd, Path::new("/home/dev")))
+    let mut spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
+    spec.config_path = portable(&spec.config_path);
+    spec.working_directory = portable(&spec.working_directory);
+    spec.log_path = portable(&spec.log_path);
+    render_unit(&spec)
 }
 
 #[test]

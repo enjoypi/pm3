@@ -9,7 +9,10 @@ async fn an_inline_request_writes_one_config_file() {
     assert_eq!(written.reconciled, Reconciled::Stale);
     let contents = std::fs::read_to_string(&written.path).expect("read the config file");
     assert!(contents.contains("name: \"sleeper\""), "got: {contents}");
-    assert!(contents.contains(SHELL), "got: {contents}");
+    assert!(
+        contents.contains(&SHELL.replace('\\', r"\\")),
+        "got: {contents}"
+    );
 }
 
 #[tokio::test]
@@ -23,12 +26,15 @@ async fn an_inline_request_leaves_the_working_directory_to_the_daemon() {
 #[tokio::test]
 async fn a_bare_program_is_stored_without_resolving_it() {
     let home = home();
-    let path = prepare_inline(&context(&home), &request("sh", &[], None, false))
+    let path = prepare_inline(&context(&home), &request(SHELL_NAME, &[], None, false))
         .await
         .expect("the inline request should resolve")
         .path;
     let written = std::fs::read_to_string(&path).expect("read the config file");
-    assert!(written.contains("script: \"sh\""), "got: {written}");
+    assert!(
+        written.contains(&format!("script: \"{SHELL_NAME}\"")),
+        "got: {written}"
+    );
 }
 
 #[tokio::test]
@@ -78,7 +84,9 @@ async fn splitting_an_apps_file_folds_the_service_cwd_token() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n    args:\n      - \"PM3_SERVICE_CWD/data\"\n",
+        &format!(
+            "apps:\n  - name: web\n    script: {SHELL}\n    args:\n      - \"PM3_SERVICE_CWD/data\"\n"
+        ),
     );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -164,7 +172,10 @@ async fn force_overwrites_a_changed_config() {
     std::fs::write(&path, "apps: []\n").expect("edit the config file");
     prepared(&home, true).await;
     let written = std::fs::read_to_string(&path).expect("read the config file");
-    assert!(written.contains(SHELL), "got: {written}");
+    assert!(
+        written.contains(&SHELL.replace('\\', r"\\")),
+        "got: {written}"
+    );
 }
 
 #[tokio::test]
@@ -191,7 +202,7 @@ async fn an_apps_file_is_split_into_one_config_file_per_app() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n  - name: db\n    script: {SHELL}\n"),
     );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -204,14 +215,22 @@ async fn an_apps_file_is_split_into_one_config_file_per_app() {
 #[tokio::test]
 async fn splitting_an_unchanged_apps_file_reports_no_changes() {
     let home = home();
-    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
+    let apps_file = write_apps_file(
+        &home,
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n"),
+    );
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split again");
-    assert!(split.changed.is_empty(), "got: {:?}", split.changed);
+    assert_eq!(
+        split.changed,
+        Vec::<String>::new(),
+        "got: {:?}",
+        split.changed
+    );
 }
 
 #[tokio::test]
@@ -219,7 +238,9 @@ async fn splitting_folds_the_home_out_of_every_app() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"/home/dev/web\"\n    args:\n      - \"/home/dev/app.js\"\n",
+        &format!(
+            "apps:\n  - name: web\n    script: {SHELL}\n    cwd: \"/home/dev/web\"\n    args:\n      - \"/home/dev/app.js\"\n"
+        ),
     );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -244,7 +265,10 @@ async fn splitting_an_unreadable_apps_file_is_reported() {
 #[tokio::test]
 async fn splitting_over_a_changed_config_needs_force() {
     let home = home();
-    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
+    let apps_file = write_apps_file(
+        &home,
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n"),
+    );
     std::fs::write(home.cfg_dir.join("web.yaml"), "apps: []\n").expect("seed a conflict");
     let err = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -258,7 +282,7 @@ async fn undoing_a_fresh_split_removes_every_file_it_wrote() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n  - name: db\n    script: {SHELL}\n"),
     );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -271,7 +295,10 @@ async fn undoing_a_fresh_split_removes_every_file_it_wrote() {
 #[tokio::test]
 async fn undoing_a_forced_split_restores_the_previous_config() {
     let home = home();
-    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
+    let apps_file = write_apps_file(
+        &home,
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n"),
+    );
     let service = home.cfg_dir.join("web.yaml");
     std::fs::write(&service, "apps: []\n").expect("seed the previous config");
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), true)
@@ -289,7 +316,7 @@ async fn an_undo_that_cannot_reach_its_file_leaves_the_rest_of_the_rollback_runn
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n  - name: db\n    script: {SHELL}\n"),
     );
     let split = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -305,7 +332,10 @@ async fn an_undo_that_cannot_reach_its_file_leaves_the_rest_of_the_rollback_runn
 #[tokio::test]
 async fn undoing_an_unchanged_split_touches_nothing() {
     let home = home();
-    let apps_file = write_apps_file(&home, "apps:\n  - name: web\n    script: /bin/sh\n");
+    let apps_file = write_apps_file(
+        &home,
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n"),
+    );
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
         .expect("the apps file should split");
@@ -324,7 +354,7 @@ async fn a_split_that_hits_a_conflict_rolls_back_what_it_already_wrote() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n  - name: db\n    script: /bin/sh\n",
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n  - name: db\n    script: {SHELL}\n"),
     );
     std::fs::write(home.cfg_dir.join("db.yaml"), "apps: []\n").expect("seed a conflict");
     let err = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
@@ -372,7 +402,9 @@ async fn splitting_an_apps_file_folds_home_out_of_the_writable_roots() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n    sandbox:\n      writable_roots:\n        - \"/home/dev/prj\"\n",
+        &format!(
+            "apps:\n  - name: web\n    script: {SHELL}\n    sandbox:\n      writable_roots:\n        - \"/home/dev/prj\"\n"
+        ),
     );
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -387,7 +419,9 @@ async fn splitting_an_apps_file_that_declares_an_environment_is_refused() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n    env:\n      TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
+        &format!(
+            "apps:\n  - name: web\n    script: {SHELL}\n    env:\n      TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n"
+        ),
     );
     let refused = split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await
@@ -406,7 +440,7 @@ async fn splitting_an_apps_file_leaves_a_sandbox_without_roots_alone() {
     let home = home();
     let apps_file = write_apps_file(
         &home,
-        "apps:\n  - name: web\n    script: /bin/sh\n    sandbox:\n      network: true\n",
+        &format!("apps:\n  - name: web\n    script: {SHELL}\n    sandbox:\n      network: true\n"),
     );
     split_apps_file(&context(&home), &apps_file.to_string_lossy(), false)
         .await

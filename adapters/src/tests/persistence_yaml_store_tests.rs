@@ -117,7 +117,10 @@ async fn load_expands_the_service_cwd_placeholder() {
     write_service_file(
         &fixture.source,
         "web",
-        "name: \"web\"\nscript: \"/bin/sh\"\nargs:\n  - \"${PM3_SERVICE_CWD}\"\n",
+        &format!(
+            "name: \"web\"\nscript: '{}'\nargs:\n  - \"${{PM3_SERVICE_CWD}}\"\n",
+            crate::platform::SHELL
+        ),
     );
     fixture
         .store
@@ -201,7 +204,7 @@ async fn load_strands_an_app_without_a_service_file() {
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
-    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.records, [], "got: {loaded:?}");
     assert_eq!(
         loaded.stranded,
         vec![StrandedProcess {
@@ -223,7 +226,7 @@ async fn load_strands_an_app_whose_service_file_is_broken() {
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
-    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.records, [], "got: {loaded:?}");
     assert_eq!(loaded.stranded.len(), 1);
 }
 
@@ -238,7 +241,7 @@ async fn load_strands_an_app_whose_environment_file_is_broken() {
         .await
         .expect("save");
     let loaded = fixture.store.load().await.expect("load");
-    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.records, [], "got: {loaded:?}");
     assert_eq!(loaded.stranded[0].pid, Some(SAMPLE_PID));
 }
 
@@ -283,7 +286,7 @@ async fn load_strands_an_app_whose_writable_root_links_into_a_hidden_root() {
         .await
         .expect("save");
     let loaded = store.load().await.expect("load");
-    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.records, [], "got: {loaded:?}");
     assert_eq!(
         loaded.stranded,
         vec![StrandedProcess {
@@ -337,7 +340,7 @@ async fn load_strands_a_record_with_an_unknown_status() {
         .await
         .expect("write");
     let loaded = fixture.store.load().await.expect("load");
-    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.records, [], "got: {loaded:?}");
     assert_eq!(
         loaded.stranded,
         vec![StrandedProcess {
@@ -361,7 +364,7 @@ async fn load_strands_a_running_record_without_a_pid() {
         .await
         .expect("write");
     let loaded = fixture.store.load().await.expect("load");
-    assert!(loaded.records.is_empty(), "got: {loaded:?}");
+    assert_eq!(loaded.records, [], "got: {loaded:?}");
     assert_eq!(
         loaded.stranded,
         vec![StrandedProcess {
@@ -456,7 +459,7 @@ async fn a_snapshot_of_a_missing_dump_is_empty() {
     let snapshot = dump_snapshot(&dir.path().join("dump.yaml"))
         .await
         .expect("a missing dump is not an error");
-    assert!(snapshot.is_empty());
+    assert_eq!(snapshot, []);
 }
 
 #[tokio::test]

@@ -19,7 +19,7 @@ fn probed_apps(
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    listen_timeout_ms: {listen_timeout_ms}\n    ready_probe:\n      exec:\n{probe_args}\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n"
+            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    listen_timeout_ms: {listen_timeout_ms}\n    ready_probe:\n      exec:\n{probe_args}\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n"
         ),
     )
 }
@@ -54,7 +54,7 @@ fn a_dependent_app_starts_after_its_dependency_is_ready() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: db\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    listen_timeout_ms: 8000\n    ready_probe:\n      exec:\n        - \"/bin/sh\"\n        - \"-c\"\n        - \"sleep 1\"\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n  - name: web\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n"
+            "apps:\n  - name: db\n    script: /bin/sh\n    cwd: '{cwd}'\n    listen_timeout_ms: 8000\n    ready_probe:\n      exec:\n        - \"/bin/sh\"\n        - \"-c\"\n        - \"sleep 1\"\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);

@@ -7,12 +7,14 @@ use adapters::{
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::test_support::{SANDBOX_MODE, pm3_config_with_home, write_apps_file};
+use crate::{
+    platform::{SHELL, SHELL_FLAG},
+    test_support::{SANDBOX_MODE, pm3_config_with_home, write_apps_file},
+};
 
 pub const CHANNEL_DEPTH: usize = 16;
 pub const EVENT_BUDGET: Duration = Duration::from_secs(5);
-pub const SLEEPER: &str = "sleep 30";
-pub const CRASHER: &str = "exit 1";
+pub use crate::platform::{CRASHER, SLEEPER};
 
 pub struct Harness {
     pub dir: tempfile::TempDir,
@@ -78,7 +80,8 @@ fn built_harness_with_rotate(
         tmp_dir: None,
         global_env: Vec::new(),
         decryptor_env: Vec::new(),
-    };
+    }
+    .with_portable_roots();
     let ports = Arc::new(DaemonPorts::new(
         paths.dump_file.clone(),
         specs.clone(),
@@ -108,7 +111,7 @@ pub fn apps_file_without_restart(harness: &Harness, name: &str, script: &str) ->
 pub fn scheduled_apps_file(harness: &Harness, name: &str, script: &str, cron: &str) -> PathBuf {
     let cwd = workspace_of(harness);
     let fields = format!(
-        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: false\nschedule: \"{cron}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
+        "script: '{SHELL}'\ncwd: '{cwd}'\nautorestart: false\nschedule: \"{cron}\"\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{script}'\n"
     );
     write_both(harness, name, &fields)
 }
@@ -121,7 +124,7 @@ pub fn scheduled_online_apps_file(
 ) -> PathBuf {
     let cwd = workspace_of(harness);
     let fields = format!(
-        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nschedule: \"{cron}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
+        "script: '{SHELL}'\ncwd: '{cwd}'\nautorestart: true\nschedule: \"{cron}\"\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{script}'\n"
     );
     write_both(harness, name, &fields)
 }
@@ -129,7 +132,7 @@ pub fn scheduled_online_apps_file(
 fn written_apps_file(harness: &Harness, name: &str, script: &str, autorestart: bool) -> PathBuf {
     let cwd = workspace_of(harness);
     let fields = format!(
-        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: {autorestart}\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
+        "script: '{SHELL}'\ncwd: '{cwd}'\nautorestart: {autorestart}\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{script}'\n"
     );
     write_both(harness, name, &fields)
 }
@@ -177,7 +180,7 @@ pub fn selector(name: &str) -> AppSelector {
 pub fn capped_apps_file(harness: &Harness, name: &str, script: &str, max_memory: &str) -> PathBuf {
     let cwd = workspace_of(harness);
     let fields = format!(
-        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nmax_memory: \"{max_memory}\"\nargs:\n  - \"-c\"\n  - \"{script}\"\n"
+        "script: '{SHELL}'\ncwd: '{cwd}'\nautorestart: true\nmax_memory: \"{max_memory}\"\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{script}'\n"
     );
     write_both(harness, name, &fields)
 }
@@ -185,7 +188,7 @@ pub fn capped_apps_file(harness: &Harness, name: &str, script: &str, max_memory:
 pub fn clean_exit_apps_file(harness: &Harness, name: &str, code: i32) -> PathBuf {
     let cwd = workspace_of(harness);
     let fields = format!(
-        "script: /bin/sh\ncwd: \"{cwd}\"\nautorestart: true\nmin_uptime_ms: 50\nmax_restarts: 1\nstop_exit_codes:\n  - {code}\nargs:\n  - \"-c\"\n  - \"exit {code}\"\n"
+        "script: '{SHELL}'\ncwd: '{cwd}'\nautorestart: true\nmin_uptime_ms: 50\nmax_restarts: 1\nstop_exit_codes:\n  - {code}\nargs:\n  - \"{SHELL_FLAG}\"\n  - \"exit {code}\"\n"
     );
     write_both(harness, name, &fields)
 }

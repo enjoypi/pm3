@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn a_status_query_reports_a_service_that_was_never_installed() {
-    let fixture = fixture(FALSE_PROGRAM);
+    let fixture = fixture(&false_program());
     let home = home_of(&fixture);
     let report = dispatch_service(
         &fixture.config_path,
@@ -32,7 +32,7 @@ async fn a_status_query_that_cannot_reach_the_manager_is_reported() {
 
 #[tokio::test]
 async fn a_broken_config_stops_a_service_command() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let err = dispatch_service(
         "/nonexistent/pm3-service.yaml",
@@ -50,7 +50,7 @@ async fn a_broken_config_stops_a_service_command() {
 
 #[tokio::test]
 async fn an_install_writes_the_unit_under_the_given_home() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let command = ServiceAction::Install {
         dry_run: false,
@@ -74,7 +74,7 @@ async fn an_install_writes_the_unit_under_the_given_home() {
 
 #[tokio::test]
 async fn an_install_settles_the_config_into_the_pm3_home() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let settled = installed_config(&fixture, UnitKind::Systemd, &home)
         .await
@@ -87,7 +87,7 @@ async fn an_install_settles_the_config_into_the_pm3_home() {
 
 #[tokio::test]
 async fn a_schtasks_install_writes_the_task_xml_and_the_wrapper() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let report = install_with(&fixture, UnitKind::WinSchtasks, &home, false)
         .await
@@ -106,7 +106,7 @@ async fn a_schtasks_install_writes_the_task_xml_and_the_wrapper() {
 
 #[tokio::test]
 async fn an_install_points_the_unit_at_the_settled_config() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let session = open_service_session(
         &fixture.config_path,
@@ -118,7 +118,7 @@ async fn an_install_points_the_unit_at_the_settled_config() {
 
 #[tokio::test]
 async fn an_install_over_a_changed_config_needs_force() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     seed_settled_config(&fixture, UnitKind::Systemd, &home, "pm3: {}\n");
     let err = install_with(&fixture, UnitKind::Systemd, &home, false)
@@ -130,7 +130,7 @@ async fn an_install_over_a_changed_config_needs_force() {
 
 #[tokio::test]
 async fn force_replaces_a_changed_config() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     seed_settled_config(&fixture, UnitKind::Systemd, &home, "pm3: {}\n");
     install_with(&fixture, UnitKind::Systemd, &home, true)
@@ -144,7 +144,7 @@ async fn force_replaces_a_changed_config() {
 
 #[tokio::test]
 async fn a_second_install_of_the_same_config_is_accepted() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     installed_config(&fixture, UnitKind::Systemd, &home)
         .await
@@ -156,7 +156,7 @@ async fn a_second_install_of_the_same_config_is_accepted() {
 
 #[tokio::test]
 async fn a_dry_run_install_writes_nothing() {
-    let fixture = fixture(FALSE_PROGRAM);
+    let fixture = fixture(&false_program());
     let home = home_of(&fixture);
     let command = ServiceAction::Install {
         dry_run: true,
@@ -178,7 +178,7 @@ async fn a_dry_run_install_writes_nothing() {
 
 #[tokio::test]
 async fn an_install_that_the_manager_refuses_is_reported() {
-    let fixture = fixture(FALSE_PROGRAM);
+    let fixture = fixture(&false_program());
     let home = home_of(&fixture);
     let command = ServiceAction::Install {
         dry_run: false,
@@ -202,10 +202,10 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
     std::fs::write(&home, "blocked").expect("occupy the pm3 home");
     let config = write_config(dir.path(), &home.to_string_lossy());
     let programs = UnitProgramSet {
-        launchctl: TRUE_PROGRAM.to_string(),
-        systemctl: TRUE_PROGRAM.to_string(),
-        loginctl: TRUE_PROGRAM.to_string(),
-        schtasks: TRUE_PROGRAM.to_string(),
+        launchctl: true_program(),
+        systemctl: true_program(),
+        loginctl: true_program(),
+        schtasks: true_program(),
         runtime_dir: None,
         uid: None,
     };
@@ -217,7 +217,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
         home_env: Some(&fake_home),
         runtime_dir: None,
         uid: None,
-        binary: Ok(PathBuf::from("/usr/local/bin/pm3")),
+        binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
     let command = ServiceAction::Install {
         dry_run: false,
@@ -232,7 +232,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
 
 #[tokio::test]
 async fn an_uninstall_removes_the_unit_it_installed() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     install_unit(&fixture, UnitKind::Launchd);
     let command = ServiceAction::Uninstall { dry_run: false };
@@ -251,7 +251,7 @@ mod status;
 
 #[tokio::test]
 async fn an_install_renders_the_network_wait_into_the_unit() {
-    let fixture = fixture(TRUE_PROGRAM);
+    let fixture = fixture(&true_program());
     let home = home_of(&fixture);
     let yaml = crate::test_support::config_yaml(&fixture.dir.path().join("home").to_string_lossy())
         .replace("wait_for_network: false", "wait_for_network: true");

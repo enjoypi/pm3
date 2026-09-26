@@ -140,7 +140,7 @@ async fn a_force_kill_stops_a_tracked_app() {
     let pid = started.pid.expect("a pid");
     harness.daemon.on_force_kill("web", 1, pid, None).await;
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
-    assert_eq!(outcome, ExitOutcome::Signalled);
+    assert_eq!(outcome, crate::platform::KILLED);
 }
 
 #[tokio::test]
@@ -172,7 +172,7 @@ async fn a_force_kill_with_the_matching_token_stops_the_app() {
         .on_force_kill("web", 1, pid, Some(&token))
         .await;
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
-    assert_eq!(outcome, ExitOutcome::Signalled);
+    assert_eq!(outcome, crate::platform::KILLED);
 }
 
 #[tokio::test]

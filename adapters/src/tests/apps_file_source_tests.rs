@@ -18,6 +18,52 @@ fn fixture() -> Fixture {
 }
 
 #[test]
+fn portable_roots_leave_forward_slash_paths_alone() {
+    let fixture = fixture();
+    let before = fixture.source.home_dir.clone();
+    let source = fixture.source.with_portable_roots();
+    assert_eq!(source.home_dir, before);
+    assert_eq!(source.logs_dir, format!("{before}/logs"));
+}
+
+#[cfg(windows)]
+#[test]
+fn portable_roots_turn_every_windows_root_into_forward_slashes() {
+    let mut source = fixture().source;
+    source.home_dir = r"C:\pm3".to_string();
+    source.apps_dir = r"C:\pm3\apps".to_string();
+    source.state_dir = r"C:\pm3\state".to_string();
+    source.runtime_dir = r"C:\pm3\run".to_string();
+    source.data_dir = r"C:\pm3\data".to_string();
+    source.logs_dir = r"C:\pm3\logs".to_string();
+    source.cfg_dir = PathBuf::from(r"C:\pm3\service");
+    source.host_home = Some(r"C:\Users\dev".to_string());
+    source.tmp_dir = Some(r"C:\Temp".to_string());
+    let source = source.with_portable_roots();
+    assert_eq!(
+        [
+            source.home_dir.as_str(),
+            &source.apps_dir,
+            &source.state_dir,
+            &source.runtime_dir,
+            &source.data_dir,
+            &source.logs_dir,
+        ],
+        [
+            "C:/pm3",
+            "C:/pm3/apps",
+            "C:/pm3/state",
+            "C:/pm3/run",
+            "C:/pm3/data",
+            "C:/pm3/logs"
+        ]
+    );
+    assert_eq!(source.cfg_dir, PathBuf::from("C:/pm3/service"));
+    assert_eq!(source.host_home.as_deref(), Some("C:/Users/dev"));
+    assert_eq!(source.tmp_dir.as_deref(), Some("C:/Temp"));
+}
+
+#[test]
 fn a_service_file_is_named_after_the_service() {
     let path = service_file_of(Path::new("/etc/pm3"), "web");
     assert_eq!(path, Ok(PathBuf::from("/etc/pm3/web.yaml")));
@@ -75,10 +121,9 @@ async fn resolving_a_service_defaults_the_working_directory_to_the_pm3_home() {
         .resolve_service("web")
         .await
         .expect("the service should resolve");
-    let expected = std::fs::canonicalize(fixture.dir.path().join("web"))
-        .expect("canonicalize the workspace")
-        .to_string_lossy()
-        .into_owned();
+    let expected = crate::portable_real_path(
+        &std::fs::canonicalize(fixture.dir.path().join("web")).expect("canonicalize the workspace"),
+    );
     assert_eq!(spec.cwd, expected);
 }
 
@@ -88,7 +133,7 @@ async fn resolving_a_service_expands_the_home_placeholder() {
     write_service_file(
         &fixture.source,
         "web",
-        "name: \"web\"\nscript: \"/bin/sh\"\nargs:\n  - \"${HOME}/app.js\"\n",
+        &format!("name: \"web\"\nscript: '{SERVICE_SCRIPT}'\nargs:\n  - \"${{HOME}}/app.js\"\n"),
     );
     let spec = fixture
         .source
@@ -159,7 +204,7 @@ async fn resolving_a_service_from_a_legacy_apps_file_is_reported() {
     write_service_file(
         &fixture.source,
         "web",
-        "apps:\n  - name: \"web\"\n    script: \"/bin/sh\"\n",
+        &format!("apps:\n  - name: \"web\"\n    script: '{SERVICE_SCRIPT}'\n"),
     );
     let err = fixture
         .source
@@ -214,7 +259,7 @@ async fn a_host_without_a_home_hands_out_nothing() {
         .resolve_service("web")
         .await
         .expect("the service should resolve");
-    assert!(spec.env.is_empty());
+    assert_eq!(spec.env, []);
 }
 
 #[tokio::test]
@@ -261,7 +306,9 @@ async fn resolving_a_service_whose_file_declares_an_environment_is_refused() {
     write_service_file(
         &fixture.source,
         "web",
-        "name: \"web\"\nscript: \"/bin/sh\"\nenv:\n  TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n",
+        &format!(
+            "name: \"web\"\nscript: '{SERVICE_SCRIPT}'\nenv:\n  TUNNEL_TOKEN: \"eyJhIjoiZjQ2\"\n"
+        ),
     );
     let err = fixture
         .source

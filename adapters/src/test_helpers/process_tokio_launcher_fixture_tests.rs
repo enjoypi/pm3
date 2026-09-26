@@ -1,11 +1,10 @@
 use std::path::Path;
 
 use super::*;
+pub use crate::platform::EOL;
+use crate::platform::{SHELL, shell_args};
 
 pub const APP_NAME: &str = "web";
-pub const ECHO_PROGRAM: &str = "/bin/echo";
-pub const SHELL_PROGRAM: &str = "/bin/sh";
-pub const PWD_PROGRAM: &str = "/bin/pwd";
 pub const OUT_LOG: &str = "web-out.log";
 pub const ERR_LOG: &str = "web-err.log";
 
@@ -19,6 +18,22 @@ pub fn spec_in(dir: &Path, program: &str, args: &[&str]) -> LaunchSpec {
         stdout_path: text(&dir.join(OUT_LOG)),
         stderr_path: text(&dir.join(ERR_LOG)),
     }
+}
+
+pub fn shell_spec(dir: &Path, unix: &str, windows: &str) -> LaunchSpec {
+    let mut spec = spec_in(dir, SHELL, &[]);
+    spec.args = shell_args(unix, windows);
+    spec
+}
+
+#[cfg(unix)]
+pub fn echo_spec(dir: &Path, word: &str) -> LaunchSpec {
+    spec_in(dir, "/bin/echo", &[word])
+}
+
+#[cfg(windows)]
+pub fn echo_spec(dir: &Path, word: &str) -> LaunchSpec {
+    shell_spec(dir, "", &format!("echo {word}"))
 }
 
 pub fn text(path: &Path) -> String {

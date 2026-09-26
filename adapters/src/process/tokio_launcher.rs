@@ -126,10 +126,23 @@ async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command
         .stderr(Stdio::from(stderr.into_std().await));
     #[cfg(unix)]
     command.process_group(0);
+    #[cfg(windows)]
+    command.envs(windows_system_env());
     for (key, value) in &spec.env {
         command.env(key, value);
     }
     command
+}
+
+#[cfg(windows)]
+const WINDOWS_SYSTEM_VARIABLES: [&str; 3] = ["SystemRoot", "windir", "SystemDrive"];
+
+#[cfg(windows)]
+fn windows_system_env() -> Vec<(&'static str, std::ffi::OsString)> {
+    WINDOWS_SYSTEM_VARIABLES
+        .iter()
+        .filter_map(|name| Some((*name, std::env::var_os(name)?)))
+        .collect()
 }
 
 async fn open_for_append(app: &str, path: &str) -> Result<File, LaunchError> {

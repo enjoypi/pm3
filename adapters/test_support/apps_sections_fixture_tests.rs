@@ -2,8 +2,8 @@ pub fn apps_section(name: &str, script: &str, cwd: &str) -> String {
     format!(
         r#"apps:
   - name: "{name}"
-    script: "{script}"
-    cwd: "{cwd}"
+    script: '{script}'
+    cwd: '{cwd}'
 "#
     )
 }

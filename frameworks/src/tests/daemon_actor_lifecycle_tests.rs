@@ -197,7 +197,7 @@ async fn stopping_everything_force_kills_a_child_the_table_forgot() {
     let (_name, _generation, outcome) = next_exit(&mut harness.events).await;
     assert_eq!(
         outcome,
-        ExitOutcome::Signalled,
+        crate::platform::KILLED,
         "pid {pid} should be force killed"
     );
 }

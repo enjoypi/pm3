@@ -5,11 +5,9 @@ use super::*;
 const TIMEOUT_MS: u64 = 5000;
 use crate::{
     UnitKind, UnitProgramSet, UnitSpec,
-    unit_specs::{fake_program, program_set, spec_for},
+    unit_specs::{fake_program_for, false_program, program_set, spec_for, true_program},
 };
 
-const TRUE_PROGRAM: &str = "/usr/bin/true";
-const FALSE_PROGRAM: &str = "/usr/bin/false";
 const CONFIG_BODY: &str = "pm3:\n  home: \"~/.pm3\"\n";
 
 fn installed_spec(home: &Path, kind: UnitKind) -> UnitSpec {
@@ -22,10 +20,11 @@ fn installed_spec(home: &Path, kind: UnitKind) -> UnitSpec {
 #[tokio::test]
 async fn a_dry_run_install_prints_the_plan_and_leaves_the_disk_alone() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = spec_for(UnitKind::Launchd, dir.path());
     let report = install_unit(
         &spec,
-        &program_set(FALSE_PROGRAM),
+        &program_set(&false_program),
         CONFIG_BODY,
         true,
         TIMEOUT_MS,
@@ -34,7 +33,7 @@ async fn a_dry_run_install_prints_the_plan_and_leaves_the_disk_alone() {
     .expect("a dry run should never fail");
     assert!(report.contains("<key>RunAtLoad</key>"), "got: {report}");
     assert!(
-        report.contains("run /usr/bin/false load -w"),
+        report.contains(&format!("run {false_program} load -w")),
         "got: {report}"
     );
     assert!(!spec.unit_path().exists(), "a dry run must not write");
@@ -43,10 +42,11 @@ async fn a_dry_run_install_prints_the_plan_and_leaves_the_disk_alone() {
 #[tokio::test]
 async fn an_install_writes_the_unit_and_activates_it() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let true_program = true_program(dir.path());
     let spec = spec_for(UnitKind::Systemd, dir.path());
     let report = install_unit(
         &spec,
-        &program_set(TRUE_PROGRAM),
+        &program_set(&true_program),
         CONFIG_BODY,
         false,
         TIMEOUT_MS,
@@ -64,10 +64,11 @@ async fn an_install_writes_the_unit_and_activates_it() {
 #[tokio::test]
 async fn a_dry_run_systemd_install_marks_linger_as_optional() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = spec_for(UnitKind::Systemd, dir.path());
     let report = install_unit(
         &spec,
-        &program_set(FALSE_PROGRAM),
+        &program_set(&false_program),
         CONFIG_BODY,
         true,
         TIMEOUT_MS,
@@ -75,7 +76,7 @@ async fn a_dry_run_systemd_install_marks_linger_as_optional() {
     .await
     .expect("a dry run should never fail");
     assert!(
-        report.contains("try /usr/bin/false enable-linger"),
+        report.contains(&format!("try {false_program} enable-linger")),
         "got: {report}"
     );
 }
@@ -83,12 +84,14 @@ async fn a_dry_run_systemd_install_marks_linger_as_optional() {
 #[tokio::test]
 async fn an_install_survives_a_refused_linger() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let true_program = true_program(dir.path());
+    let false_program = false_program(dir.path());
     let spec = spec_for(UnitKind::Systemd, dir.path());
     let programs = UnitProgramSet {
-        launchctl: TRUE_PROGRAM.to_string(),
-        systemctl: TRUE_PROGRAM.to_string(),
-        loginctl: FALSE_PROGRAM.to_string(),
-        schtasks: TRUE_PROGRAM.to_string(),
+        launchctl: true_program.clone(),
+        systemctl: true_program.clone(),
+        loginctl: false_program.clone(),
+        schtasks: true_program.clone(),
         runtime_dir: None,
         uid: Some(4242),
     };
@@ -96,7 +99,7 @@ async fn an_install_survives_a_refused_linger() {
         .await
         .expect("a refused linger must not fail the install");
     assert!(
-        report.contains("skipped: cannot complete '/usr/bin/false'"),
+        report.contains(&format!("skipped: cannot complete '{false_program}'")),
         "got: {report}"
     );
 }
@@ -104,17 +107,19 @@ async fn an_install_survives_a_refused_linger() {
 #[tokio::test]
 async fn an_install_never_asks_a_lingering_user_for_permission() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let true_program = true_program(dir.path());
     let spec = spec_for(UnitKind::Systemd, dir.path());
-    let loginctl = fake_program(
+    let loginctl = fake_program_for(
         dir.path(),
         "loginctl",
         "case \"$1\" in show-user) echo yes;; *) exit 1;; esac",
+        "if \"%~1\"==\"show-user\" (echo yes) else (exit /b 1)",
     );
     let programs = UnitProgramSet {
-        launchctl: TRUE_PROGRAM.to_string(),
-        systemctl: TRUE_PROGRAM.to_string(),
+        launchctl: true_program.clone(),
+        systemctl: true_program.clone(),
         loginctl,
-        schtasks: TRUE_PROGRAM.to_string(),
+        schtasks: true_program.clone(),
         runtime_dir: None,
         uid: Some(4242),
     };
@@ -132,10 +137,11 @@ async fn an_install_never_asks_a_lingering_user_for_permission() {
 #[tokio::test]
 async fn an_install_reports_a_manager_refusal() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = spec_for(UnitKind::Launchd, dir.path());
     let err = install_unit(
         &spec,
-        &program_set(FALSE_PROGRAM),
+        &program_set(&false_program),
         CONFIG_BODY,
         false,
         TIMEOUT_MS,
@@ -149,10 +155,11 @@ async fn an_install_reports_a_manager_refusal() {
 #[tokio::test]
 async fn an_install_settles_the_config_into_the_pm3_home() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let true_program = true_program(dir.path());
     let spec = spec_for(UnitKind::Systemd, dir.path());
     install_unit(
         &spec,
-        &program_set(TRUE_PROGRAM),
+        &program_set(&true_program),
         CONFIG_BODY,
         false,
         TIMEOUT_MS,
@@ -168,12 +175,13 @@ async fn an_install_settles_the_config_into_the_pm3_home() {
 #[tokio::test]
 async fn a_dry_run_uninstall_prints_the_plan() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = spec_for(UnitKind::Launchd, dir.path());
-    let report = uninstall_unit(&spec, &program_set(FALSE_PROGRAM), true, TIMEOUT_MS)
+    let report = uninstall_unit(&spec, &program_set(&false_program), true, TIMEOUT_MS)
         .await
         .expect("a dry run should never fail");
     assert!(
-        report.contains("try /usr/bin/false unload -w"),
+        report.contains(&format!("try {false_program} unload -w")),
         "got: {report}"
     );
     assert!(report.contains("remove "), "got: {report}");
@@ -182,8 +190,9 @@ async fn a_dry_run_uninstall_prints_the_plan() {
 #[tokio::test]
 async fn uninstalling_what_was_never_installed_is_a_noop() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = spec_for(UnitKind::Launchd, dir.path());
-    let report = uninstall_unit(&spec, &program_set(FALSE_PROGRAM), false, TIMEOUT_MS)
+    let report = uninstall_unit(&spec, &program_set(&false_program), false, TIMEOUT_MS)
         .await
         .expect("a missing service is not an error");
     assert_eq!(report, NOTHING_INSTALLED);
@@ -192,8 +201,9 @@ async fn uninstalling_what_was_never_installed_is_a_noop() {
 #[tokio::test]
 async fn an_uninstall_deactivates_the_service_and_removes_the_unit() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let true_program = true_program(dir.path());
     let spec = installed_spec(dir.path(), UnitKind::Systemd);
-    let report = uninstall_unit(&spec, &program_set(TRUE_PROGRAM), false, TIMEOUT_MS)
+    let report = uninstall_unit(&spec, &program_set(&true_program), false, TIMEOUT_MS)
         .await
         .expect("the uninstall should succeed");
     assert_eq!(report, "uninstalled pm3-test");
@@ -204,7 +214,7 @@ async fn an_uninstall_deactivates_the_service_and_removes_the_unit() {
 async fn an_uninstall_that_cannot_remove_the_unit_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), UnitKind::Launchd);
-    let vanishing = fake_program(dir.path(), "launchctl", "rm -f \"$3\"");
+    let vanishing = fake_program_for(dir.path(), "launchctl", "rm -f \"$3\"", "del /f /q \"%~3\"");
 
     let err = uninstall_unit(&spec, &program_set(&vanishing), false, TIMEOUT_MS)
         .await
@@ -217,8 +227,9 @@ async fn an_uninstall_that_cannot_remove_the_unit_is_reported() {
 #[tokio::test]
 async fn an_uninstall_the_manager_refuses_still_removes_the_unit() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = installed_spec(dir.path(), UnitKind::Launchd);
-    uninstall_unit(&spec, &program_set(FALSE_PROGRAM), false, TIMEOUT_MS)
+    uninstall_unit(&spec, &program_set(&false_program), false, TIMEOUT_MS)
         .await
         .expect("a refusal to unload must not strand the unit file");
     assert!(!spec.unit_path().is_file());
@@ -227,8 +238,9 @@ async fn an_uninstall_the_manager_refuses_still_removes_the_unit() {
 #[tokio::test]
 async fn an_uninstall_the_manager_refuses_says_what_it_skipped() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = installed_spec(dir.path(), UnitKind::Launchd);
-    let report = uninstall_unit(&spec, &program_set(FALSE_PROGRAM), false, TIMEOUT_MS)
+    let report = uninstall_unit(&spec, &program_set(&false_program), false, TIMEOUT_MS)
         .await
         .expect("a refusal to unload must not strand the unit file");
     assert!(report.contains("skipped: "), "got: {report}");
@@ -252,8 +264,9 @@ async fn a_status_report_that_cannot_reach_the_manager_is_reported() {
 #[tokio::test]
 async fn the_status_report_names_the_label_the_kind_and_the_state() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let false_program = false_program(dir.path());
     let spec = spec_for(UnitKind::Launchd, dir.path());
-    let report = status_report(&spec, &program_set(FALSE_PROGRAM), TIMEOUT_MS)
+    let report = status_report(&spec, &program_set(&false_program), TIMEOUT_MS)
         .await
         .expect("an absent unit needs no manager");
     assert!(
@@ -266,7 +279,7 @@ async fn the_status_report_names_the_label_the_kind_and_the_state() {
 async fn the_status_report_sees_a_running_service() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), UnitKind::Systemd);
-    let program = fake_program(dir.path(), "systemctl", "echo active");
+    let program = fake_program_for(dir.path(), "systemctl", "echo active", "echo active");
     let report = status_report(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the probe should be readable");

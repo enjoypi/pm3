@@ -1,9 +1,9 @@
 use super::{escape::escape_xml, spec::UnitSpec};
 
-const TASK_HEADER: &str = concat!(
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
-    "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n"
-);
+const UTF16_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n";
+const TASK_OPENING: &str =
+    "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n";
+const UTF16_LE_BOM: [u8; 2] = [0xFF, 0xFE];
 
 const RESTART_MINIMUM_SECS: u64 = 60;
 const RESTART_COUNT: u64 = 999;
@@ -15,7 +15,7 @@ pub fn render_task_xml(spec: &UnitSpec) -> String {
     let working_directory = escape_xml(&spec.working_directory.to_string_lossy());
     let interval = spec.restart_delay_secs.max(RESTART_MINIMUM_SECS);
     format!(
-        "{TASK_HEADER}  <RegistrationInfo>
+        "{UTF16_DECLARATION}{TASK_OPENING}  <RegistrationInfo>
     <Description>{label}</Description>
   </RegistrationInfo>
   <Triggers>
@@ -49,6 +49,17 @@ pub fn render_task_xml(spec: &UnitSpec) -> String {
 </Task>
 "
     )
+}
+
+#[must_use]
+pub fn encode_for_disk(contents: &str) -> Vec<u8> {
+    if contents.starts_with(UTF16_DECLARATION) {
+        return UTF16_LE_BOM
+            .into_iter()
+            .chain(contents.encode_utf16().flat_map(u16::to_le_bytes))
+            .collect();
+    }
+    contents.as_bytes().to_vec()
 }
 
 #[must_use]

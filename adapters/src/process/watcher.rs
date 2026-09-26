@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, oneshot};
 use usecases::{ExitOutcome, Liveness, ProcessProbe as _};
 
-use super::{ps_probe::PsProcessProbe, tokio_launcher::TokioProcessLauncher};
+use super::{HostProcessProbe, tokio_launcher::TokioProcessLauncher};
 
 const UNKNOWN_EXIT: ExitOutcome = ExitOutcome::Unobserved;
 
@@ -61,7 +61,7 @@ pub struct AdoptedWatch {
 impl AdoptedWatch {
     pub(crate) async fn until_gone(
         self: &Arc<Self>,
-        probe: Arc<PsProcessProbe>,
+        probe: Arc<HostProcessProbe>,
         pid: u32,
         token: Option<String>,
         cadence: PollCadence,
@@ -88,7 +88,7 @@ impl AdoptedWatch {
         gone.await.ok();
     }
 
-    async fn poll_until_all_gone(&self, probe: &PsProcessProbe, cadence: PollCadence) {
+    async fn poll_until_all_gone(&self, probe: &HostProcessProbe, cadence: PollCadence) {
         let mut step_ms = cadence.interval_ms.max(1);
         while let Some(watched) = self.roster().await {
             tokio::time::sleep(Duration::from_millis(step_ms)).await;
@@ -135,7 +135,7 @@ impl AdoptedWatch {
 pub async fn wait_for_exit(
     launcher: &TokioProcessLauncher,
     watch: &Arc<AdoptedWatch>,
-    probe: Arc<PsProcessProbe>,
+    probe: Arc<HostProcessProbe>,
     pid: u32,
     token: Option<String>,
     cadence: PollCadence,

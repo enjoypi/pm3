@@ -126,7 +126,7 @@ async fn stopping_an_unknown_service_reports_not_found_without_effects() {
         )
         .await;
     assert!(outcome.is_err());
-    assert!(effects.is_empty(), "got: {effects:?}");
+    assert_eq!(effects, [], "got: {effects:?}");
 }
 
 fn force_kill_effect(effects: &[SupervisionEffect]) -> (u64, u32, Option<String>) {
@@ -188,7 +188,7 @@ async fn a_force_kill_for_a_replaced_instance_without_a_token_stays_dropped() {
         .on_force_kill("api", generation, pid, None, &ports)
         .await;
 
-    assert!(ports.force_killed().is_empty());
+    assert_eq!(ports.force_killed(), []);
 }
 
 #[tokio::test]

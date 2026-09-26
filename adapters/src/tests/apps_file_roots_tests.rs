@@ -12,7 +12,7 @@ fn dedup_keeps_the_first_occurrence_and_its_order() {
 
 #[test]
 fn dedup_of_nothing_yields_nothing() {
-    assert!(dedup_roots(Vec::new()).is_empty());
+    assert_eq!(dedup_roots(Vec::new()), Vec::<String>::new());
 }
 
 #[test]

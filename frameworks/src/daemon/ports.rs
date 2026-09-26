@@ -2,9 +2,9 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use adapters::{
     AdoptedWatch, Clock, CommandWrapper, CopyTruncateRotator, CronScheduler, DumpContents,
-    DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter, HostReadyProber,
-    HostSandbox, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Liveness, LogRotateError,
-    LogRotator, PollCadence, Ports, ProcessLauncher, ProcessProbe, ProcessRecord, PsProcessProbe,
+    DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter, HostProcessProbe,
+    HostReadyProber, HostSandbox, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Liveness,
+    LogRotateError, LogRotator, PollCadence, Ports, ProcessLauncher, ProcessProbe, ProcessRecord,
     Readiness, ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxCommandWrapper,
     SandboxError, SandboxPolicy, Scheduler, Sha256Fingerprinter, SignalError, SignalScope,
     Signaler, SpecSource, SystemClock, TokioProcessLauncher, WrappedCommand, YamlDumpStore,
@@ -18,7 +18,7 @@ pub struct DaemonPorts {
     wrapper: SandboxCommandWrapper,
     store: YamlDumpStore,
     clock: SystemClock,
-    probe: Arc<PsProcessProbe>,
+    probe: Arc<HostProcessProbe>,
     watch: Arc<AdoptedWatch>,
     fingerprinter: Sha256Fingerprinter,
     scheduler: CronScheduler,
@@ -50,7 +50,7 @@ impl DaemonPorts {
             wrapper: SandboxCommandWrapper::new(backend, minimal_read_roots),
             store: YamlDumpStore::new(dump_file, specs),
             clock: SystemClock,
-            probe: Arc::new(PsProcessProbe::with_timeout(
+            probe: Arc::new(HostProcessProbe::with_timeout(
                 command_timeout_ms,
                 poll_interval_ms,
             )),

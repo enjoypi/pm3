@@ -83,7 +83,7 @@ pub fn expand_service_cwd(value: &str, cwd: &str) -> String {
 async fn real_path(path: &str) -> String {
     tokio::fs::canonicalize(path).await.map_or_else(
         |_unresolved| path.to_string(),
-        |resolved| resolved.to_string_lossy().into_owned(),
+        |resolved| crate::portable_real_path(&resolved),
     )
 }
 

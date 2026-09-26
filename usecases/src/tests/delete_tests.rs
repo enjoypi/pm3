@@ -15,7 +15,7 @@ async fn deleting_a_running_app_terminates_it_and_drops_the_record() {
     assert_eq!(outcome.name, "api");
     assert_eq!(outcome.force_kill_pid, Some(100));
     assert_eq!(ports.terminated(), vec![100]);
-    assert!(table.records().is_empty());
+    assert_eq!(table.records(), []);
 }
 
 #[tokio::test]
@@ -27,7 +27,7 @@ async fn deleting_a_stopped_app_needs_no_signal() {
         .await
         .expect("delete should succeed");
     assert_eq!(outcome.force_kill_pid, None);
-    assert!(table.records().is_empty());
+    assert_eq!(table.records(), []);
 }
 
 #[tokio::test]
@@ -79,7 +79,7 @@ async fn deleting_the_dependent_first_then_its_dependency_works() {
     delete_app(&mut table, &AppSelector::Name("api".to_string()), &ports)
         .await
         .expect("api is free once web is gone");
-    assert!(table.records().is_empty());
+    assert_eq!(table.records(), []);
 }
 
 #[tokio::test]
@@ -114,5 +114,5 @@ async fn deleting_persists_the_shrunken_table() {
     delete_app(&mut table, &AppSelector::Id(1), &ports)
         .await
         .expect("delete should succeed");
-    assert!(ports.stored().is_empty());
+    assert_eq!(ports.stored(), []);
 }

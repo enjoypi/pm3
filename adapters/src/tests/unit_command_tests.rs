@@ -111,7 +111,7 @@ fn a_user_scoped_call_exports_the_runtime_directory() {
 #[test]
 fn a_user_scoped_call_without_a_known_session_exports_nothing() {
     let command = systemctl_daemon_reload(&programs());
-    assert!(command.env.is_empty(), "got: {:?}", command.env);
+    assert_eq!(command.env, [], "got: {:?}", command.env);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn creating_a_scheduled_task_points_at_the_rendered_xml() {
         command.args,
         ["/Create", "/TN", "pm3-test", "/XML", XML_PATH, "/F"]
     );
-    assert!(command.env.is_empty(), "got: {:?}", command.env);
+    assert_eq!(command.env, [], "got: {:?}", command.env);
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn querying_a_scheduled_task_asks_for_the_verbose_listing() {
 #[test]
 fn a_launch_agent_call_needs_no_runtime_directory() {
     let command = launchctl_list(&owned_programs(), "pm3-test");
-    assert!(command.env.is_empty(), "got: {:?}", command.env);
+    assert_eq!(command.env, [], "got: {:?}", command.env);
 }
 
 #[test]

@@ -17,7 +17,7 @@ fn an_oversized_log_is_rotated_aside_and_truncated() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: chatty\n    script: /bin/sh\n    cwd: \"{cwd}\"\n    args:\n      - \"-c\"\n      - \"i=0; while [ $i -lt 200 ]; do echo line; i=$((i+1)); done; exec sleep 30\"\n"
+            "apps:\n  - name: chatty\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"i=0; while [ $i -lt 200 ]; do echo line; i=$((i+1)); done; exec sleep 30\"\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);

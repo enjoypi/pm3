@@ -90,7 +90,7 @@ async fn a_dependency_missing_everywhere_still_blocks_the_start() {
     .await;
     let err = failure(report);
     assert!(matches!(err, UsecaseError::Dependency(_)), "got: {err}");
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -116,7 +116,7 @@ async fn a_dependency_cycle_is_rejected_before_spawning_anything() {
     let specs = [spec_with_deps("a", &["b"]), spec_with_deps("b", &["a"])];
     let err = failure(start_apps(&mut table, &specs, LOGS_DIR, &ports).await);
     assert!(matches!(err, UsecaseError::Dependency(_)), "got: {err}");
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -129,7 +129,7 @@ async fn an_invalid_spec_is_rejected_before_spawning_anything() {
     };
     let err = failure(start_apps(&mut table, &[broken], LOGS_DIR, &ports).await);
     assert!(matches!(err, UsecaseError::Spec(_)), "got: {err}");
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -163,7 +163,7 @@ async fn a_sandbox_without_a_backend_blocks_the_start() {
     let report = start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
     let err = failure(report);
     assert!(matches!(err, UsecaseError::Sandbox(_)), "got: {err}");
-    assert!(ports.spawned_names().is_empty());
+    assert_eq!(ports.spawned_names(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -230,8 +230,8 @@ async fn a_service_skipped_by_an_early_batch_failure_leaves_no_record() {
     let mut table = ProcessTable::new();
     let specs = [spec_with_deps("web", &["api"]), spec("api")];
     start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
-    assert!(table.records().is_empty());
-    assert!(ports.stored().is_empty());
+    assert_eq!(table.records(), []);
+    assert_eq!(ports.stored(), []);
 }
 
 #[tokio::test]

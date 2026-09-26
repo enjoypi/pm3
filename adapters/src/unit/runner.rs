@@ -191,7 +191,7 @@ async fn write_file(dir: &Path, path: &Path, contents: &str) -> Result<(), UnitC
     tokio::fs::create_dir_all(dir)
         .await
         .map_err(|error| io_error(dir, &error))?;
-    crate::private_file::write_private(path, contents)
+    crate::private_file::write_private_bytes(path, &super::schtasks::encode_for_disk(contents))
         .await
         .map_err(|error| io_error(path, &error))
 }

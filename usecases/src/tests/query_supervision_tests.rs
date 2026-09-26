@@ -36,7 +36,7 @@ fn launched(name: &str, pm_id: u32, pid: u32, token: &str) -> ProcessRecord {
 
 #[test]
 fn an_empty_table_preserves_no_pid() {
-    assert!(running_pids(&ProcessTable::new()).is_empty());
+    assert_eq!(running_pids(&ProcessTable::new()), []);
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn a_running_record_without_a_pid_is_not_preserved() {
     let mut headless = launched("api", 0, 100, "t1");
     headless.runtime.pid = None;
     let table = ProcessTable::from_records(vec![headless]);
-    assert!(running_pids(&table).is_empty());
+    assert_eq!(running_pids(&table), []);
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn a_scheduled_record_the_operator_stopped_is_not_armed_again() {
     let mut disarmed = armed("nightly", 0, "0 3 * * *");
     disarmed.runtime.schedule_armed = false;
     let table = ProcessTable::from_records(vec![disarmed]);
-    assert!(armed_schedule_names(&table).is_empty());
+    assert_eq!(armed_schedule_names(&table), Vec::<String>::new());
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn a_record_without_a_schedule_is_never_armed() {
     let mut armless = plain("api", 0);
     armless.runtime.schedule_armed = true;
     let table = ProcessTable::from_records(vec![armless]);
-    assert!(armed_schedule_names(&table).is_empty());
+    assert_eq!(armed_schedule_names(&table), Vec::<String>::new());
 }
 
 #[test]
@@ -147,7 +147,7 @@ fn a_pid_no_record_owns_is_labelled_a_stray() {
 
 #[test]
 fn a_tracked_pid_already_scheduled_for_a_kill_is_not_swept_again() {
-    assert!(unswept_pids(&[100, 200], &[100, 200]).is_empty());
+    assert_eq!(unswept_pids(&[100, 200], &[100, 200]), []);
 }
 
 #[test]
@@ -164,7 +164,7 @@ fn limited(name: &str, pm_id: u32, pid: u32, limit_kib: u64) -> ProcessRecord {
 #[test]
 fn a_service_without_a_limit_is_not_watched() {
     let table = ProcessTable::from_records(vec![launched("api", 0, 4242, "token")]);
-    assert!(memory_watch_list(&table).is_empty());
+    assert_eq!(memory_watch_list(&table), []);
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn a_stopped_service_with_a_limit_is_not_watched() {
     let mut record = limited("api", 0, 4242, 1000);
     record.runtime.status = ProcessStatus::Stopped;
     let table = ProcessTable::from_records(vec![record]);
-    assert!(memory_watch_list(&table).is_empty());
+    assert_eq!(memory_watch_list(&table), []);
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn a_sample_below_the_limit_reports_no_breach() {
         "api", 0, 4242, 1000,
     )]));
     let sampled = std::collections::BTreeMap::from([(4242, 999)]);
-    assert!(breached_memory(&watched, &sampled).is_empty());
+    assert_eq!(breached_memory(&watched, &sampled), []);
 }
 
 #[test]
@@ -218,7 +218,10 @@ fn a_pid_the_probe_never_answered_for_reports_no_breach() {
     let watched = memory_watch_list(&ProcessTable::from_records(vec![limited(
         "api", 0, 4242, 1000,
     )]));
-    assert!(breached_memory(&watched, &std::collections::BTreeMap::new()).is_empty());
+    assert_eq!(
+        breached_memory(&watched, &std::collections::BTreeMap::new()),
+        []
+    );
 }
 
 #[test]
@@ -226,7 +229,7 @@ fn a_running_service_without_a_pid_is_not_watched() {
     let mut record = limited("api", 0, 4242, 1000);
     record.runtime.pid = None;
     let table = ProcessTable::from_records(vec![record]);
-    assert!(memory_watch_list(&table).is_empty());
+    assert_eq!(memory_watch_list(&table), []);
 }
 
 #[test]
@@ -265,7 +268,7 @@ fn probed(name: &str, pm_id: u32, pid: u32, port: u16) -> ProcessRecord {
 #[test]
 fn a_service_without_a_liveness_probe_is_not_watched() {
     let table = ProcessTable::from_records(vec![launched("api", 0, 4242, "token")]);
-    assert!(liveness_watch_list(&table).is_empty());
+    assert_eq!(liveness_watch_list(&table), []);
 }
 
 #[test]
@@ -362,7 +365,7 @@ fn a_service_that_has_stayed_up_loses_its_unstable_tally() {
 fn a_service_still_inside_its_min_uptime_keeps_its_unstable_tally() {
     let mut table = ProcessTable::from_records(vec![flapping("api", 17, 1000)]);
     let settled = settle_stability(&mut table, 1000 + 999);
-    assert!(settled.is_empty(), "got: {settled:?}");
+    assert_eq!(settled, Vec::<String>::new(), "got: {settled:?}");
     let record = table.find_by_name("api").expect("record present");
     assert_eq!(record.runtime.unstable_restarts, 17);
 }
@@ -370,7 +373,10 @@ fn a_service_still_inside_its_min_uptime_keeps_its_unstable_tally() {
 #[test]
 fn a_service_that_never_flapped_is_left_untouched() {
     let mut table = ProcessTable::from_records(vec![flapping("api", 0, 1000)]);
-    assert!(settle_stability(&mut table, 1000 + 5000).is_empty());
+    assert_eq!(
+        settle_stability(&mut table, 1000 + 5000),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
@@ -389,5 +395,8 @@ fn a_service_that_never_launched_reports_no_elapsed_time_to_settle() {
     let mut record = flapping("api", 17, 1000);
     record.runtime.started_at_ms = None;
     let mut table = ProcessTable::from_records(vec![record]);
-    assert!(settle_stability(&mut table, 1000 + 5000).is_empty());
+    assert_eq!(
+        settle_stability(&mut table, 1000 + 5000),
+        Vec::<String>::new()
+    );
 }

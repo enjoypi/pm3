@@ -52,7 +52,7 @@ fn derivable_root(value: &str) -> bool {
     if value.is_empty() {
         return true;
     }
-    if value.starts_with('/') {
+    if usecases::is_absolute_path(value) {
         return true;
     }
     value.starts_with('~')
@@ -189,7 +189,7 @@ fn validate_sandbox_roots(sandbox: &SandboxConfig) -> Result<(), ConfigError> {
 fn reject_relative_roots(field: &'static str, roots: &[String]) -> Result<(), ConfigError> {
     roots
         .iter()
-        .find(|root| !root.starts_with('/'))
+        .find(|root| !usecases::is_absolute_path(root))
         .map_or(Ok(()), |root| {
             Err(ConfigError::RelativeSandboxRoot {
                 field,

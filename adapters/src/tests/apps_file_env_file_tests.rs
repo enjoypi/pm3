@@ -263,7 +263,7 @@ async fn a_missing_file_means_no_environment() {
     let loaded = load_env_file(&path, Some(HOME))
         .await
         .expect("a missing file is fine");
-    assert!(loaded.is_empty());
+    assert_eq!(loaded, Vec::<(String, String)>::new());
 }
 
 #[tokio::test]

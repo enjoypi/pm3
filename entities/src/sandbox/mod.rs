@@ -6,5 +6,5 @@ pub use self::{
         PolicyError, ReadScope, SandboxMode, SandboxPolicy, root_is_forbidden,
         validate_forbidden_roots, validate_policy,
     },
-    roots::{covers_path, normalize_root},
+    roots::{covers_path, is_absolute_path, normalize_root},
 };

@@ -17,21 +17,21 @@ fn a_changed_service_that_is_running_is_offered_a_restart() {
 fn a_changed_service_that_was_just_started_is_not_offered_a_restart() {
     let names = changed(&["db"]);
     let pending = stale_running(&names, &changed(&["web"]));
-    assert!(pending.is_empty(), "got: {pending:?}");
+    assert_eq!(pending, Vec::<&str>::new(), "got: {pending:?}");
 }
 
 #[test]
 fn an_unchanged_running_service_is_not_offered_a_restart() {
     let names = changed(&[]);
     let pending = stale_running(&names, &changed(&["web"]));
-    assert!(pending.is_empty(), "got: {pending:?}");
+    assert_eq!(pending, Vec::<&str>::new(), "got: {pending:?}");
 }
 
 #[test]
 fn a_service_name_that_prefixes_another_does_not_match() {
     let names = changed(&["web"]);
     let pending = stale_running(&names, &changed(&["web2"]));
-    assert!(pending.is_empty(), "got: {pending:?}");
+    assert_eq!(pending, Vec::<&str>::new(), "got: {pending:?}");
 }
 
 #[test]

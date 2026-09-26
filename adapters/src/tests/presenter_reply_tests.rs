@@ -230,7 +230,7 @@ fn other_replies_expose_no_deleted_names() {
     let reply = SupervisionReply::Deleted {
         name: "web".to_string(),
     };
-    assert!(deleted_names(&reply).is_empty());
+    assert_eq!(deleted_names(&reply), Vec::<String>::new());
 }
 
 #[test]
@@ -318,7 +318,10 @@ fn a_start_that_could_not_be_recorded_says_so() {
 
 #[test]
 fn a_reply_that_started_nothing_refuses_nothing() {
-    assert!(refused_names(&SupervisionReply::Listed(Vec::new())).is_empty());
+    assert_eq!(
+        refused_names(&SupervisionReply::Listed(Vec::new())),
+        Vec::<String>::new()
+    );
 }
 
 #[test]

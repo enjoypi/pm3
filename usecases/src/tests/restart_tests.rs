@@ -18,7 +18,7 @@ async fn restarting_a_stopped_app_starts_it_immediately() {
         panic!("expected an immediate start");
     };
     assert_eq!(started.pid, Some(100));
-    assert!(ports.terminated().is_empty());
+    assert_eq!(ports.terminated(), []);
 }
 
 #[tokio::test]

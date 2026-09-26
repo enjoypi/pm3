@@ -195,3 +195,41 @@ fn parse_config_derives_the_roots_of_a_config_written_before_they_existed() {
     );
     assert!(parsed.pm3.data_dir.is_empty(), "pm3 derives the data root");
 }
+
+#[test]
+fn parsing_keeps_a_forward_slash_home_as_written() {
+    let config = parse_config(&valid_yaml()).expect("should parse");
+    assert_eq!(config.pm3.home, HOME);
+    assert_eq!(config.pm3.cfg_dir, format!("{HOME}/service"));
+}
+
+#[cfg(windows)]
+#[test]
+fn parsing_turns_every_windows_root_into_forward_slashes() {
+    let yaml = format!(
+        "{}{}",
+        pm3_section(r"C:\srv\pm3", KILL_TIMEOUT_MS, SANDBOX_MODE),
+        telemetry_section("info"),
+    )
+    .replace(
+        "  search_path:",
+        "  state_dir: 'C:\\srv\\state'\n  runtime_dir: 'C:\\srv\\run'\n  data_dir: 'C:\\srv\\data'\n  search_path:",
+    );
+    let pm3 = parse_config(&yaml).expect("should parse").pm3;
+    assert_eq!(
+        [
+            pm3.home,
+            pm3.cfg_dir,
+            pm3.state_dir,
+            pm3.runtime_dir,
+            pm3.data_dir
+        ],
+        [
+            "C:/srv/pm3",
+            "C:/srv/pm3/service",
+            "C:/srv/state",
+            "C:/srv/run",
+            "C:/srv/data"
+        ]
+    );
+}

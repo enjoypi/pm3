@@ -37,14 +37,12 @@ fn the_unit_path_joins_the_directory_and_the_unit_name() {
 #[test]
 fn the_daemon_args_carry_the_absolute_config_path() {
     let spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
-    assert_eq!(
-        spec.daemon_args(),
-        [
-            "daemon".to_string(),
-            "--config".to_string(),
-            "/home/dev/.pm3/config.yaml".to_string()
-        ]
-    );
+    let args: Vec<String> = spec
+        .daemon_args()
+        .iter()
+        .map(|arg| crate::portable_path(arg))
+        .collect();
+    assert_eq!(args, ["daemon", "--config", "/home/dev/.pm3/config.yaml"]);
 }
 
 #[test]

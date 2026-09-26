@@ -3,13 +3,14 @@ use adapters::{
 };
 
 use super::{shared::*, test_helpers::*, *};
+use crate::platform::{SHELL, SHELL_FLAG, SUCCEEDER};
 
 #[tokio::test]
 async fn each_app_expands_the_placeholder_with_its_own_working_directory() {
     let mut harness = harness();
     for name in ["web", "db"] {
         let body = format!(
-            "name: {name}\nscript: /bin/sh\nargs:\n  - \"-c\"\n  - \"true\"\n  - \"${{PM3_SERVICE_CWD}}\"\n"
+            "name: {name}\nscript: '{SHELL}'\nargs:\n  - \"{SHELL_FLAG}\"\n  - \"{SUCCEEDER}\"\n  - \"${{PM3_SERVICE_CWD}}\"\n"
         );
         std::fs::write(
             service_file_of(&harness.cfg_dir, name).expect("a safe service name"),
@@ -153,6 +154,25 @@ async fn resetting_an_unknown_app_reports_not_found() {
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn signalling_a_running_app_on_windows_refuses_what_it_cannot_express() {
+    let mut harness = harness();
+    start_one(&mut harness, "web", SLEEPER).await;
+    let refused = harness
+        .daemon
+        .handle(SupervisionRequest::Signal {
+            selector: selector("web"),
+            signal: "USR1".to_string(),
+        })
+        .await
+        .expect_err("windows has no SIGUSR1")
+        .to_string();
+    assert!(refused.contains("windows has no SIGUSR1"), "got: {refused}");
+    assert_eq!(status_of(&mut harness, "web").await, "online");
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn signalling_a_running_app_confirms_the_delivery() {
     let mut harness = harness();

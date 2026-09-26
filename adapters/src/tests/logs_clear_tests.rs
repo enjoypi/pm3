@@ -17,8 +17,9 @@ async fn clearing_a_missing_log_names_the_path() {
     assert_eq!(
         err.to_string(),
         format!(
-            "cannot clear log file '{}': No such file or directory (os error 2)",
-            log.to_string_lossy()
+            "cannot clear log file '{}': {}",
+            log.to_string_lossy(),
+            std::io::Error::from_raw_os_error(2)
         )
     );
 }

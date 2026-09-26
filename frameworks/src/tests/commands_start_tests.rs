@@ -144,7 +144,12 @@ async fn restarting_an_unchanged_inline_app_reports_no_config_change() {
     let again = start_inline(&fixture.config_path, &inline_request("/bin/sh", &args))
         .await
         .expect("should start");
-    assert!(again.changed.is_empty(), "got: {:?}", again.changed);
+    assert_eq!(
+        again.changed,
+        Vec::<String>::new(),
+        "got: {:?}",
+        again.changed
+    );
     assert!(
         again.response.contains("already running"),
         "got: {}",
