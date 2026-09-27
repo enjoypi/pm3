@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 
 const NAME: &str = "cloudflared";
@@ -21,15 +20,22 @@ fn value_of(text: &str) -> String {
     value
 }
 
-fn written(text: &str, mode: u32) -> (tempfile::TempDir, std::path::PathBuf) {
+fn written(text: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = env_file_of(dir.path(), NAME).expect("the name should be safe");
     std::fs::write(&path, text).expect("write the environment file");
+    (dir, path)
+}
+
+#[cfg(unix)]
+fn written_with_mode(text: &str, mode: u32) -> (tempfile::TempDir, std::path::PathBuf) {
+    let (dir, path) = written(text);
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
         .expect("set the starting permissions");
     (dir, path)
 }
 
+#[cfg(unix)]
 fn mode_of(path: &std::path::Path) -> u32 {
     std::fs::metadata(path)
         .expect("read the metadata")
@@ -44,7 +50,7 @@ fn the_file_sits_beside_the_service_file() {
         .expect("the name should be safe");
     assert_eq!(
         path,
-        std::path::Path::new("/srv/pm3/service/cloudflared.env")
+        std::path::Path::new("/srv/pm3/service").join("cloudflared.env")
     );
 }
 
@@ -268,25 +274,27 @@ async fn a_missing_file_means_no_environment() {
 
 #[tokio::test]
 async fn a_present_file_is_loaded() {
-    let (_dir, path) = written("TUNNEL_TOKEN=eyJhIjoiZjQ2\n", 0o600);
+    let (_dir, path) = written("TUNNEL_TOKEN=eyJhIjoiZjQ2\n");
     let loaded = load_env_file(&path, Some(HOME))
         .await
         .expect("the file should load");
     assert_eq!(loaded, [(TOKEN_KEY.to_string(), TOKEN_VALUE.to_string())]);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn loading_tightens_a_world_readable_file() {
-    let (_dir, path) = written("TUNNEL_TOKEN=eyJhIjoiZjQ2\n", 0o644);
+    let (_dir, path) = written_with_mode("TUNNEL_TOKEN=eyJhIjoiZjQ2\n", 0o644);
     load_env_file(&path, Some(HOME))
         .await
         .expect("the file should load");
     assert_eq!(mode_of(&path), 0o600);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn an_already_private_file_keeps_its_mode() {
-    let (_dir, path) = written("TUNNEL_TOKEN=eyJhIjoiZjQ2\n", 0o600);
+    let (_dir, path) = written_with_mode("TUNNEL_TOKEN=eyJhIjoiZjQ2\n", 0o600);
     load_env_file(&path, Some(HOME))
         .await
         .expect("the file should load");
@@ -296,8 +304,7 @@ async fn an_already_private_file_keeps_its_mode() {
 #[tokio::test]
 async fn an_unreadable_file_is_reported_without_its_contents() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let blocker = dir.path().join("blocker");
-    std::fs::write(&blocker, "not a directory").expect("write the blocker");
+    let blocker = crate::platform::unreachable_parent(dir.path());
     let path = env_file_of(&blocker, NAME).expect("the name should be safe");
     let refused = load_env_file(&path, Some(HOME))
         .await
@@ -310,9 +317,10 @@ async fn an_unreadable_file_is_reported_without_its_contents() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_linked_file_is_read_but_its_target_keeps_its_mode() {
-    let (_dir, target) = written("TUNNEL_TOKEN=eyJhIjoiZjQ2\n", 0o644);
+    let (_dir, target) = written_with_mode("TUNNEL_TOKEN=eyJhIjoiZjQ2\n", 0o644);
     let beside = tempfile::tempdir().expect("create temp dir");
     let link = env_file_of(beside.path(), NAME).expect("the name should be safe");
     std::os::unix::fs::symlink(&target, &link).expect("link the shared secret into place");
@@ -327,6 +335,7 @@ async fn a_linked_file_is_read_but_its_target_keeps_its_mode() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_file_that_cannot_be_tightened_only_warns() {
     let dir = tempfile::tempdir().expect("create temp dir");

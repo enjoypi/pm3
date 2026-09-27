@@ -1,9 +1,10 @@
-#![cfg(unix)]
 use std::time::Duration;
 
 use adapters::{ENV_FILE_SUFFIX, GLOBAL_ENV_STEM, Pm3Roots, resolve_paths};
 
 use super::*;
+#[cfg(windows)]
+use crate::test_support::POLL_INTERVAL_MS;
 use crate::{
     client::UdsClient,
     signal::SignalRegisterError,
@@ -67,6 +68,7 @@ async fn a_blocked_home_stops_the_daemon() {
     assert!(err.contains("cannot prepare the pm3 home"), "got: {err}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_socket_path_blocked_by_a_directory_stops_the_daemon() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -82,6 +84,24 @@ async fn a_socket_path_blocked_by_a_directory_stops_the_daemon() {
     assert!(err.contains("stale pm3 socket"), "got: {err}");
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn a_pipe_secret_blocked_by_a_directory_stops_the_daemon() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    let paths = resolve_paths(Pm3Roots::single(&home));
+    std::fs::create_dir_all(&paths.logs_dir).expect("prepare the home");
+    std::fs::create_dir_all(paths.socket.with_file_name(crate::layout::PIPE_SECRET_FILE))
+        .expect("occupy the pipe secret path");
+    let config = write_config(dir.path(), &home.to_string_lossy());
+    let err = run_daemon_with_shutdown(config.to_str().expect("path"), Box::pin(async {}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("cannot bind the pm3 socket"), "got: {err}");
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn a_daemon_that_cannot_decrypt_an_environment_refuses_to_take_over() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -126,6 +146,30 @@ async fn a_daemon_that_cannot_decrypt_an_environment_refuses_to_take_over() {
     );
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn a_second_daemon_on_a_live_pipe_exits_quietly() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let home = dir.path().join("home");
+    let paths = resolve_paths(Pm3Roots::single(&home));
+    std::fs::create_dir_all(&paths.logs_dir).expect("prepare the home");
+    let BindOutcome::Bound(_held) = bind_uds(&paths.socket, POLL_INTERVAL_MS)
+        .await
+        .expect("bind the first daemon")
+    else {
+        panic!("the first daemon should own the pipe")
+    };
+    let config = write_config(dir.path(), &home.to_string_lossy());
+    run_daemon_with_shutdown(config.to_str().expect("path"), Box::pin(async {}))
+        .await
+        .expect("the second daemon should stand down");
+    assert!(
+        !paths.pid_file.exists(),
+        "a daemon that stood down must not claim the pid file"
+    );
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn a_second_daemon_on_a_live_socket_exits_quietly() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -227,6 +271,7 @@ async fn a_relative_home_stops_the_daemon() {
     assert!(err.contains("must be absolute"), "got: {err}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_relative_service_directory_stops_the_daemon() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -243,6 +288,7 @@ async fn a_relative_service_directory_stops_the_daemon() {
     assert!(err.contains("must be absolute"), "got: {err}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_daemon_refuses_a_home_that_overflows_the_socket_limit() {
     let dir = tempfile::tempdir().expect("temp dir");

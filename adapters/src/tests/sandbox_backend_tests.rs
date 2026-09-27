@@ -58,3 +58,26 @@ fn a_resolved_backend_carries_the_absolute_path_of_its_program() {
         .map(|found| found.program);
     assert_eq!(host.is_some(), std::path::Path::new("/bin/bwrap").is_file());
 }
+
+#[test]
+fn an_installed_backend_resolves_to_the_program_on_the_search_path() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = crate::platform::script(dir.path(), "fake-bwrap", "", "");
+    let name = program
+        .file_name()
+        .expect("the script has a file name")
+        .to_string_lossy()
+        .into_owned();
+    let set = SandboxProgramSet {
+        seatbelt: String::new(),
+        bwrap: name,
+    };
+    let search = dir.path().to_string_lossy().into_owned();
+    assert_eq!(
+        SandboxBackend::Bwrap.resolve(&set, Some(&search)),
+        Some(HostSandbox {
+            backend: SandboxBackend::Bwrap,
+            program: program.to_string_lossy().into_owned(),
+        })
+    );
+}

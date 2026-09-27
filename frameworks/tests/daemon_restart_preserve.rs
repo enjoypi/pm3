@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -6,6 +5,7 @@
 
 mod common;
 
+#[cfg(unix)]
 use std::{
     io::{Read as _, Write as _},
     os::unix::net::UnixListener,
@@ -13,9 +13,11 @@ use std::{
 };
 
 use self::common::{
-    Home, daemon_log, described_pid, detach_daemon, home, pm3, process_is_alive, shutdown_daemon,
-    stderr_of, stdout_of, verbose_home, wait_for_file, wait_for_log, write_apps,
+    EXEC_SLEEPER, Home, SHELL, SHELL_FLAG, described_pid, home, pm3, process_is_alive,
+    shutdown_daemon, stdout_of, wait_for_file, write_apps,
 };
+#[cfg(unix)]
+use self::common::{daemon_log, detach_daemon, stderr_of, verbose_home, wait_for_log};
 
 const SERVICE: &str = "keeper";
 
@@ -34,20 +36,24 @@ fn start_sleeper(home: &Home) -> u32 {
     described_pid(home, SERVICE)
 }
 
+#[cfg(unix)]
 fn secrets(home: &Home) -> PathBuf {
     home.root.join("service").join(format!("{SERVICE}.env"))
 }
 
+#[cfg(unix)]
 fn retune(home: &Home) {
     std::fs::write(secrets(home), "TUNED=1\n").expect("write the service environment");
 }
 
+#[cfg(unix)]
 fn revive_daemon(home: &Home) {
     let listed = pm3(home, &["list"]);
     assert!(listed.status.success(), "{}", stdout_of(&listed));
     wait_for_file(&home.root.join("pm3.pid"));
 }
 
+#[cfg(unix)]
 fn script_at(dir: &Path, body: &str) -> PathBuf {
     let path = dir.join("service.sh");
     std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write the service script");
@@ -56,6 +62,7 @@ fn script_at(dir: &Path, body: &str) -> PathBuf {
     path
 }
 
+#[cfg(unix)]
 #[test]
 fn a_service_outlives_the_daemon_that_launched_it() {
     let home = home();
@@ -70,6 +77,7 @@ fn a_service_outlives_the_daemon_that_launched_it() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn an_unchanged_service_keeps_its_process_across_a_daemon_restart() {
     let home = verbose_home();
@@ -86,6 +94,7 @@ fn an_unchanged_service_keeps_its_process_across_a_daemon_restart() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn reclaiming_a_service_is_reported_in_the_daemon_log() {
     let home = verbose_home();
@@ -102,6 +111,7 @@ fn reclaiming_a_service_is_reported_in_the_daemon_log() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_reclaimed_service_is_still_reported_as_online() {
     let home = home();
@@ -119,6 +129,7 @@ fn a_reclaimed_service_is_still_reported_as_online() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_service_whose_config_changed_is_restarted_by_the_new_daemon() {
     let home = verbose_home();
@@ -138,6 +149,7 @@ fn a_service_whose_config_changed_is_restarted_by_the_new_daemon() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn restarting_a_changed_service_takes_the_old_process_down_first() {
     let home = verbose_home();
@@ -155,6 +167,7 @@ fn restarting_a_changed_service_takes_the_old_process_down_first() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_survivor_the_new_daemon_cannot_read_is_stopped_instead_of_orphaned() {
     let home = verbose_home();
@@ -172,6 +185,7 @@ fn a_survivor_the_new_daemon_cannot_read_is_stopped_instead_of_orphaned() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_service_whose_program_changed_is_restarted_by_the_new_daemon() {
     let home = verbose_home();
@@ -237,10 +251,13 @@ fn killing_with_services_tolerates_a_dump_it_cannot_write() {
     std::fs::remove_dir_all(&dump).expect("unblock the dump path");
 }
 
+#[cfg(unix)]
 const IMPOSTOR_REFUSAL: &[u8] =
     b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\noops";
+#[cfg(unix)]
 const HEALTH_PROBES: usize = 2;
 
+#[cfg(unix)]
 fn serve_health_then_refusal(socket: &Path) {
     let listener = UnixListener::bind(socket).expect("bind the impostor daemon");
     std::thread::spawn(move || {
@@ -260,6 +277,7 @@ fn serve_health_then_refusal(socket: &Path) {
     });
 }
 
+#[cfg(unix)]
 #[test]
 fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
     let home = home();
@@ -275,6 +293,7 @@ fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn killing_the_daemon_alone_leaves_the_service_running() {
     let home = home();
@@ -295,9 +314,12 @@ fn killing_the_daemon_alone_leaves_the_service_running() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 const HEALTH_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+#[cfg(unix)]
 const REQUEST_SINK: usize = 1024;
 
+#[cfg(unix)]
 fn answer_one_probe_then_vanish(socket: &Path) {
     let listener = UnixListener::bind(socket).expect("bind the impostor socket");
     let socket = socket.to_path_buf();
@@ -313,6 +335,7 @@ fn answer_one_probe_then_vanish(socket: &Path) {
     });
 }
 
+#[cfg(unix)]
 #[test]
 fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
     let home = home();
@@ -406,8 +429,8 @@ fn killing_a_daemon_that_will_not_leave_reports_a_failure() {
     let pid_file = home.root.join("pm3.pid");
     let recorded = std::fs::read_to_string(&pid_file).expect("the daemon pid file");
 
-    let mut decoy = std::process::Command::new("/bin/sh")
-        .args(["-c", "exec sleep 30"])
+    let mut decoy = std::process::Command::new(SHELL)
+        .args([SHELL_FLAG, EXEC_SLEEPER])
         .spawn()
         .expect("should spawn a decoy");
     std::fs::write(&pid_file, decoy.id().to_string()).expect("point the pid file at the decoy");

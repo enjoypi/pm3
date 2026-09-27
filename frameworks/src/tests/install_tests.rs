@@ -1,15 +1,18 @@
-#![cfg(unix)]
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::{
     io,
-    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
 };
 
 use adapters::{UnitKind, UnitProgramSet};
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
+use self::manager::{HEALTHY_SCHTASKS, HEALTHY_SYSTEMD, fake_manager};
 use super::*;
-use crate::test_support::{write_config, write_impatient_config};
+use crate::{
+    daemon_fixture::{FakeListener, answer},
+    test_support::{write_config, write_impatient_config},
+};
 
 const MANAGER_PID: u32 = 4242;
 
@@ -59,13 +62,6 @@ fn impatient_systemd_fixture(manager_body: &str) -> Fixture {
     fixture(dir, config.to_string_lossy().into_owned(), &manager)
 }
 
-fn fake_manager(dir: &Path, body: &str) -> String {
-    let path = dir.join("fake-manager");
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write the fake manager");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    path.to_string_lossy().into_owned()
-}
-
 fn context(fixture: &Fixture, kind: UnitKind, uid: Option<u32>) -> InstallContext {
     context_with_exe(fixture, kind, uid, Ok(fixture.dir.path().join("new-pm3")))
 }
@@ -103,6 +99,7 @@ fn seed_pid_file(fixture: &Fixture) {
         .expect("write the pid file");
 }
 
+#[cfg(unix)]
 fn unit_file(fixture: &Fixture, kind: UnitKind) -> PathBuf {
     let dir = match kind {
         UnitKind::Launchd => fixture.home.join("Library/LaunchAgents"),
@@ -128,11 +125,12 @@ fn seed_dump(fixture: &Fixture, name: &str, pid: Option<u32>) {
     std::fs::write(fixture.home.join("dump.yaml"), body).expect("write the dump");
 }
 
-fn health_server(socket: PathBuf, refuse_first: u32) -> tokio::task::JoinHandle<()> {
+async fn health_server(socket: PathBuf, refuse_first: u32) -> tokio::task::JoinHandle<()> {
+    let mut listener = FakeListener::bind(&socket).await;
     tokio::spawn(async move {
-        let listener = tokio::net::UnixListener::bind(socket).expect("bind the fake daemon socket");
         let mut seen = 0u32;
-        while let Ok((mut stream, _)) = listener.accept().await {
+        loop {
+            let mut stream = listener.accept().await;
             seen += 1;
             let status = if seen <= refuse_first {
                 "500 no"
@@ -144,9 +142,7 @@ fn health_server(socket: PathBuf, refuse_first: u32) -> tokio::task::JoinHandle<
                 "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             );
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).await;
-            stream.write_all(response.as_bytes()).await.ok();
+            answer(stream.as_mut(), response.as_bytes()).await;
         }
     })
 }
@@ -155,17 +151,12 @@ fn stamp_dir(fixture: &Fixture) -> PathBuf {
     fixture.backups.join("unknown")
 }
 
-const HEALTHY_SYSTEMD: &str =
-    "case \"$2\" in\n  is-active) echo active ;;\n  show) echo 4242 ;;\nesac\nexit 0";
-
-const HEALTHY_SCHTASKS: &str = "case \"$1\" in\n  /Query) echo 'Status: Running' ;;\nesac\nexit 0";
-
 #[tokio::test]
 async fn a_schtasks_install_treats_the_pid_file_as_the_supervised_pid() {
     let fixture = systemd_fixture(HEALTHY_SCHTASKS);
     let source = seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let lines = std::sync::Mutex::new(Vec::new());
     let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
 
@@ -200,7 +191,7 @@ async fn a_first_install_swaps_the_binary_and_verifies_the_takeover() {
     let fixture = systemd_fixture(HEALTHY_SYSTEMD);
     let source = seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let lines = std::sync::Mutex::new(Vec::new());
     let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
 
@@ -229,6 +220,7 @@ async fn a_first_install_swaps_the_binary_and_verifies_the_takeover() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn an_upgrade_backs_up_the_binary_the_config_and_the_unit_under_its_version() {
     let launchd = "case \"$1\" in\n  list) echo '\"PID\" = 4242;' ;;\nesac\nexit 0";
@@ -244,7 +236,7 @@ async fn an_upgrade_backs_up_the_binary_the_config_and_the_unit_under_its_versio
         .expect("chmod the old binary");
     std::fs::write(fixture.home.join("config.yaml"), "old config").expect("write the old config");
     unit_file(&fixture, UnitKind::Launchd);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let lines = std::sync::Mutex::new(Vec::new());
     let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
 
@@ -278,7 +270,7 @@ async fn an_install_without_a_source_uses_the_running_binary() {
     let fixture = systemd_fixture(HEALTHY_SYSTEMD);
     let source = seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
 
     run_install(
@@ -359,7 +351,7 @@ async fn an_install_with_an_identical_binary_keeps_it_and_skips_its_backup() {
         .expect("prepare the dest dir");
     std::fs::write(&fixture.destination, "new binary").expect("seed the identical binary");
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let lines = std::sync::Mutex::new(Vec::new());
     let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
 
@@ -387,3 +379,5 @@ async fn an_install_with_an_identical_binary_keeps_it_and_skips_its_backup() {
 
 #[path = "install_backup_tests.rs"]
 mod backup;
+#[path = "install_manager_fixture_tests.rs"]
+mod manager;

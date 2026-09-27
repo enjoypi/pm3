@@ -169,3 +169,19 @@ fn a_probe_command_that_can_never_run_fails_fast() {
     let outcome = spawn_verdict(ErrorKind::PermissionDenied, "denied".to_string());
     assert_eq!(outcome, Readiness::Failed("denied".to_string()));
 }
+
+#[tokio::test]
+async fn an_exec_probe_runs_a_script_that_needs_the_host_system_variables() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let script = crate::platform::script(dir.path(), "probe", "exit 0", "echo ready");
+    let name = script
+        .file_name()
+        .expect("the script has a file name")
+        .to_string_lossy()
+        .into_owned();
+    let prober = HostReadyProber::new(TIMEOUT_MS, dir.path().to_string_lossy().into_owned());
+    assert_eq!(
+        prober.check_ready(&exec_probe(&[&name])).await,
+        Readiness::Ready
+    );
+}

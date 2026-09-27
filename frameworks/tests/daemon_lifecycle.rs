@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -7,7 +6,8 @@
 mod common;
 
 use self::common::{
-    app_log, daemon_pid, home, pm3, shutdown_daemon, sleeper_apps, stdout_of, wait_for_file,
+    SLEEPER, abs, app_log, daemon_pid, home, pm3, shell_app, shutdown_daemon, sleeper_apps,
+    stdout_of, wait_for_file,
 };
 
 #[test]
@@ -74,6 +74,7 @@ fn an_unknown_app_fails_the_command() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_signal_command_delivers_to_the_process_group() {
     let home = home();
@@ -127,11 +128,12 @@ fn completion_prints_a_script_without_a_daemon() {
 #[test]
 fn a_writable_root_that_does_not_exist_yet_is_accepted() {
     let home = home();
-    let cwd = home.root.to_string_lossy();
+    let web = shell_app(&home, "web", SLEEPER);
+    let missing = abs("/nonexistent/pm3-root");
     let apps = self::common::write_apps(
         &home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n    sandbox:\n      mode: danger-full-access\n      writable_roots:\n        - /nonexistent/pm3-root\n"
+            "apps:\n{web}    sandbox:\n      mode: danger-full-access\n      writable_roots:\n        - '{missing}'\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
@@ -146,6 +148,7 @@ fn the_hidden_sleep_target_exits_cleanly() {
     assert!(slept.status.success(), "__sleep should exit cleanly");
 }
 
+#[cfg(unix)]
 #[test]
 fn a_shutdown_force_kills_a_service_that_ignores_the_stop_signal() {
     let home = home();
@@ -172,6 +175,7 @@ fn a_shutdown_force_kills_a_service_that_ignores_the_stop_signal() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn a_plain_kill_spares_online_services_but_sweeps_a_stuck_stopping_one() {
     let home = home();
@@ -312,6 +316,68 @@ fn a_restart_without_a_declaration_fails() {
     assert!(
         !restarted.status.success(),
         "restarting without a declaration must fail"
+    );
+    shutdown_daemon(&home);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_signal_windows_cannot_deliver_is_refused_and_term_ends_the_tree() {
+    let home = home();
+    let apps = sleeper_apps(&home, "web");
+    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+    let pid = self::common::described_pid(&home, "web");
+
+    let refused = pm3(&home, &["sendSignal", "USR1", "web"]);
+    assert!(!refused.status.success(), "{}", stdout_of(&refused));
+    assert!(self::common::process_is_alive(pid), "USR1 must not kill");
+
+    let killed = pm3(&home, &["sendSignal", "TERM", "web"]);
+    assert!(
+        killed.status.success(),
+        "{}",
+        self::common::stderr_of(&killed)
+    );
+    let deadline = std::time::Instant::now() + self::common::READY_BUDGET;
+    while self::common::process_is_alive(pid) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "pid {pid} should have exited on TERM"
+        );
+        std::thread::sleep(self::common::PROBE_INTERVAL);
+    }
+    shutdown_daemon(&home);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_confined_app_is_refused_where_no_sandbox_backend_exists() {
+    let home = self::common::home_with_sandbox("workspace-write", false);
+    let cwd = self::common::workspace_of(&home);
+    let invocation = self::common::shell_invocation(SLEEPER);
+    let apps = self::common::write_apps(
+        &home,
+        &format!("apps:\n  - name: web\n    cwd: '{cwd}'\n{invocation}"),
+    );
+    let scratch = home.dir.path().join("scratch");
+    std::fs::create_dir_all(&scratch).expect("prepare a temp dir beside the home");
+    let started = self::common::captured(
+        std::process::Command::new(self::common::PM3)
+            .arg("--config")
+            .arg(&home.config)
+            .args(["start", apps.to_str().expect("path")])
+            .env("TMPDIR", &scratch),
+    );
+    assert!(
+        !started.status.success(),
+        "an app must never run unconfined behind the operator's back: {}",
+        stdout_of(&started)
+    );
+    assert!(
+        self::common::stderr_of(&started).contains("no usable sandbox backend"),
+        "{}",
+        self::common::stderr_of(&started)
     );
     shutdown_daemon(&home);
 }

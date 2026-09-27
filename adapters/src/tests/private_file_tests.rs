@@ -1,11 +1,11 @@
-#![cfg(unix)]
-
 use super::*;
 
+#[cfg(unix)]
 fn mode_of(path: &Path) -> u32 {
     full_mode_of(path) & 0o777
 }
 
+#[cfg(unix)]
 fn full_mode_of(path: &Path) -> u32 {
     std::fs::metadata(path)
         .expect("the file should exist")
@@ -21,6 +21,7 @@ async fn a_written_file_is_readable_by_its_owner_alone() {
     write_private(&path, "services: []\n")
         .await
         .expect("should write");
+    #[cfg(unix)]
     assert_eq!(mode_of(&path), OWNER_ONLY_FILE);
     assert_eq!(
         std::fs::read_to_string(&path).expect("should read"),
@@ -56,6 +57,7 @@ async fn an_appended_log_is_readable_by_its_owner_alone() {
     let path = dir.path().join("app-out.log");
     let file = append_private(&path).await.expect("should open");
     drop(file);
+    #[cfg(unix)]
     assert_eq!(mode_of(&path), OWNER_ONLY_FILE);
 }
 
@@ -73,6 +75,7 @@ fn a_blocking_append_keeps_the_same_permissions() {
     let path = dir.path().join("pm3.log");
     let file = append_private_blocking(&path).expect("should open");
     drop(file);
+    #[cfg(unix)]
     assert_eq!(mode_of(&path), OWNER_ONLY_FILE);
 }
 
@@ -103,11 +106,14 @@ async fn a_sweep_proof_file_is_owner_only_and_carries_the_sticky_bit() {
     write_sweep_proof(&path, "4242")
         .await
         .expect("should write");
-    let mode = full_mode_of(&path);
-    assert_eq!(
-        mode, SWEEP_PROOF_FILE,
-        "systemd-tmpfiles skips a sticky runtime file, got: {mode:o}"
-    );
+    #[cfg(unix)]
+    {
+        let mode = full_mode_of(&path);
+        assert_eq!(
+            mode, SWEEP_PROOF_FILE,
+            "systemd-tmpfiles skips a sticky runtime file, got: {mode:o}"
+        );
+    }
     assert_eq!(std::fs::read_to_string(&path).expect("should read"), "4242");
 }
 

@@ -259,6 +259,8 @@ async fn restarting_a_stopped_app_through_a_command_starts_it_again() {
 
 #[path = "daemon_actor_batch_tests.rs"]
 mod batch;
+#[path = "daemon_actor_liveness_tests.rs"]
+mod liveness;
 #[path = "daemon_actor_memory_tests.rs"]
 mod memory;
 #[path = "daemon_actor_ready_tests.rs"]

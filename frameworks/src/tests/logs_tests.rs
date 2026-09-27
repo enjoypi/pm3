@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use std::fmt::Write as _;
 
 use clap::Parser as _;

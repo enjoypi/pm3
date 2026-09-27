@@ -64,3 +64,8 @@ fn an_unsafe_name_cannot_address_an_action_route() {
     let err = app_action_path("my app", "stop").unwrap_err().to_string();
     assert!(err.contains("my app"), "got: {err}");
 }
+
+#[test]
+fn a_signal_request_carries_the_signal_name() {
+    assert_eq!(encode_signal_request("SIGHUP"), "{\"signal\":\"SIGHUP\"}");
+}

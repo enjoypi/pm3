@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 use crate::platform::{SHELL, SHELL_FLAG, SLEEPER};
 

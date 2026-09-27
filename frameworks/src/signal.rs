@@ -1,4 +1,3 @@
-#[cfg(unix)]
 use std::io;
 
 use thiserror::Error;
@@ -80,11 +79,18 @@ impl ShutdownSignals {
 #[cfg(windows)]
 impl ShutdownSignals {
     pub fn register() -> Result<Self, SignalRegisterError> {
-        let interrupt = ctrl_c().map_err(|e| SignalRegisterError::Register {
+        Self::register_with(&ctrl_c, &ctrl_shutdown)
+    }
+
+    fn register_with(
+        interrupt: &dyn Fn() -> io::Result<CtrlC>,
+        shutdown: &dyn Fn() -> io::Result<CtrlShutdown>,
+    ) -> Result<Self, SignalRegisterError> {
+        let interrupt = interrupt().map_err(|e| SignalRegisterError::Register {
             signal: EVENT_INTERRUPT,
             reason: e.to_string(),
         })?;
-        let shutdown = ctrl_shutdown().map_err(|e| SignalRegisterError::Register {
+        let shutdown = shutdown().map_err(|e| SignalRegisterError::Register {
             signal: EVENT_SHUTDOWN,
             reason: e.to_string(),
         })?;

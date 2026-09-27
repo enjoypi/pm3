@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -6,11 +5,11 @@
 
 mod common;
 
-use self::common::{
-    daemon_pid, home, pm3, shutdown_daemon, signal, sleeper_apps, stdout_of, wait_for_file,
-    wait_until_gone,
-};
+#[cfg(unix)]
+use self::common::{daemon_pid, signal, stdout_of, wait_until_gone};
+use self::common::{home, pm3, shutdown_daemon, sleeper_apps, wait_for_file};
 
+#[cfg(unix)]
 #[test]
 fn a_restarted_daemon_resurrects_the_managed_apps() {
     let home = home();

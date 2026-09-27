@@ -1,15 +1,15 @@
 use std::{fmt::Write as _, path::PathBuf, time::Duration};
 
 use adapters::{
-    AppSelector, DaemonCommand, Pm3Paths, Pm3Roots, SupervisionOutcome, SupervisionRequest,
-    resolve_paths, service_file_of,
+    AppSelector, DaemonCommand, Pm3Config, Pm3Paths, Pm3Roots, SupervisionOutcome,
+    SupervisionRequest, resolve_paths, service_file_of,
 };
 use tokio::sync::oneshot;
 
 use super::*;
 use crate::{
     platform::{SHELL, SHELL_FLAG},
-    test_support::{SANDBOX_MODE, pm3_config_with_home, write_apps_file},
+    test_support::{pm3_config_with_home, write_apps_file},
 };
 
 pub const CHANNEL_DEPTH: usize = 16;
@@ -27,46 +27,39 @@ pub struct Harness {
 }
 
 pub fn harness() -> Harness {
-    harness_with_kill_timeout(pm3_config_with_home("/unused").kill_timeout_ms)
+    configured_harness(&|_config| {})
 }
 
 pub fn harness_with_sandbox_mode(mode: &str) -> Harness {
-    built_harness(pm3_config_with_home("/unused").kill_timeout_ms, mode)
+    configured_harness(&|config| config.sandbox.mode = mode.to_string())
 }
 
 pub fn harness_with_kill_timeout(kill_timeout_ms: u64) -> Harness {
-    built_harness(kill_timeout_ms, SANDBOX_MODE)
+    configured_harness(&|config| config.kill_timeout_ms = kill_timeout_ms)
 }
 
 pub fn harness_with_log_rotate(max_bytes: u64, interval_ms: u64) -> Harness {
-    built_harness_with_rotate(
-        pm3_config_with_home("/unused").kill_timeout_ms,
-        SANDBOX_MODE,
-        max_bytes,
-        interval_ms,
-    )
+    configured_harness(&|config| {
+        config.log_rotate_max_bytes = max_bytes;
+        config.log_rotate_interval_ms = interval_ms;
+    })
 }
 
-fn built_harness(kill_timeout_ms: u64, sandbox_mode: &str) -> Harness {
-    built_harness_with_rotate(kill_timeout_ms, sandbox_mode, 0, 60000)
+pub fn harness_with_decryptor(program: &str) -> Harness {
+    configured_harness(&|config| {
+        config.sops_program = program.to_string();
+        config.sops_identity_file = format!("{}/age-key", config.home);
+    })
 }
 
-fn built_harness_with_rotate(
-    kill_timeout_ms: u64,
-    sandbox_mode: &str,
-    log_rotate_max_bytes: u64,
-    log_rotate_interval_ms: u64,
-) -> Harness {
+fn configured_harness(tweak: &dyn Fn(&mut Pm3Config)) -> Harness {
     let dir = tempfile::tempdir().expect("temp dir");
     let paths = resolve_paths(Pm3Roots::single(dir.path()));
     std::fs::create_dir_all(&paths.logs_dir).expect("create the log directory");
     let cfg_dir = dir.path().join("service");
     std::fs::create_dir_all(&cfg_dir).expect("create the service directory");
     let mut config = pm3_config_with_home(&paths.root.to_string_lossy());
-    config.kill_timeout_ms = kill_timeout_ms;
-    config.sandbox.mode = sandbox_mode.to_string();
-    config.log_rotate_max_bytes = log_rotate_max_bytes;
-    config.log_rotate_interval_ms = log_rotate_interval_ms;
+    tweak(&mut config);
     let specs = SpecSource {
         cfg_dir: cfg_dir.clone(),
         config,

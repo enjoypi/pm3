@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -6,22 +5,29 @@
 
 mod common;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::{
-    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
 use self::common::{
-    Home, PM3, daemon_log, described_pid, home, pm3, process_is_alive, shutdown_daemon, stdout_of,
-    wait_for_file, wait_for_listing, wait_for_log, wait_until_gone, write_apps,
+    EXEC_SLEEPER, Home, home, pm3, report_variable, shell_invocation, shutdown_daemon, stdout_of,
+    wait_for_file, wait_for_listing, write_apps,
+};
+#[cfg(unix)]
+use self::common::{
+    PM3, daemon_log, described_pid, process_is_alive, wait_for_log, wait_until_gone,
 };
 
 const NAME: &str = "keeper";
 const TOKEN_KEY: &str = "TUNNEL_TOKEN";
 const FIRST_TOKEN: &str = "eyJhIjoiZjQ2NzE0";
 const SECOND_TOKEN: &str = "eyJhIjoiYjkwMmMz";
+#[cfg(unix)]
 const READABLE_MODE: u32 = 0o644;
+#[cfg(unix)]
 const OWNER_ONLY_MODE: u32 = 0o600;
 const CONTENT_BUDGET: Duration = Duration::from_secs(10);
 const CONTENT_PAUSE: Duration = Duration::from_millis(50);
@@ -46,7 +52,8 @@ fn decryptor_veto(home: &Home) -> PathBuf {
     home.root.join("decryptor-veto")
 }
 
-fn with_decryptor(home: &Home, token: &str) {
+#[cfg(unix)]
+fn write_decryptor(home: &Home, token: &str) -> PathBuf {
     let program = home.root.join("fake-sops");
     std::fs::write(
         &program,
@@ -58,6 +65,25 @@ fn with_decryptor(home: &Home, token: &str) {
     .expect("write the decryptor stub");
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
         .expect("make the decryptor stub executable");
+    program
+}
+
+#[cfg(windows)]
+fn write_decryptor(home: &Home, token: &str) -> PathBuf {
+    let program = home.root.join("fake-sops.cmd");
+    std::fs::write(
+        &program,
+        format!(
+            "@echo off\r\nif exist \"{}\" exit /b 4\r\necho {TOKEN_KEY}={token}\r\n",
+            decryptor_veto(home).to_string_lossy()
+        ),
+    )
+    .expect("write the decryptor stub");
+    program
+}
+
+fn with_decryptor(home: &Home, token: &str) {
+    let program = write_decryptor(home, token);
     let identity = home.root.join("age-key");
     std::fs::write(&identity, "fake identity\n").expect("write the identity file");
     let text = std::fs::read_to_string(&home.config).expect("the pm3 config");
@@ -88,17 +114,15 @@ fn declare_token(home: &Home, token: &str) {
         format!("# the tunnel credential\n{TOKEN_KEY}={token}\n"),
     )
     .expect("write the environment file");
+    #[cfg(unix)]
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(READABLE_MODE))
         .expect("loosen the environment file");
 }
 
 fn start_reporter_of(home: &Home, variable: &str) -> std::process::Output {
-    let apps = write_apps(
-        home,
-        &format!(
-            "apps:\n  - name: {NAME}\n    script: /bin/sh\n    args:\n      - \"-c\"\n      - \"printf %s \\\"${variable}\\\" > ${{PM3_SERVICE_CWD}}/token.txt; exec sleep 30\"\n"
-        ),
-    );
+    let report = report_variable(variable, "${PM3_SERVICE_CWD}/token.txt", EXEC_SLEEPER);
+    let invocation = shell_invocation(&report);
+    let apps = write_apps(home, &format!("apps:\n  - name: {NAME}\n{invocation}"));
     pm3(home, &["start", apps.to_str().expect("path")])
 }
 
@@ -119,6 +143,7 @@ fn wait_for_content(path: &Path, expected: &str) -> String {
     seen
 }
 
+#[cfg(unix)]
 fn mode_of(path: &Path) -> u32 {
     std::fs::metadata(path)
         .expect("read the metadata")
@@ -161,6 +186,7 @@ fn the_credential_never_lands_in_the_service_file() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn loading_an_environment_file_tightens_its_permissions() {
     let home = home();
@@ -202,7 +228,9 @@ fn pm3_hands_the_home_to_a_managed_process() {
     assert!(started.status.success(), "{}", stdout_of(&started));
     wait_for_file(&token_file(&home));
 
-    let host_home = std::env::var("HOME").expect("tests always run with HOME");
+    let host_home = std::env::var("HOME")
+        .expect("tests always run with HOME")
+        .replace('\\', "/");
     assert_eq!(
         wait_for_content(&token_file(&home), &host_home),
         host_home,
@@ -265,6 +293,7 @@ fn an_encrypted_environment_reaches_the_managed_process() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_decryptor_that_fails_stops_the_takeover_instead_of_evicting() {
     let home = home();
@@ -317,8 +346,8 @@ fn a_sidecar_pm3_never_opened_is_visible_in_the_listing() {
         &home.config,
         text.replace(
             &format!(
-                "sops_identity_file: '{}/age-key'",
-                home.root.to_string_lossy()
+                "sops_identity_file: '{}'",
+                home.root.join("age-key").to_string_lossy()
             ),
             "sops_identity_file: \"\"",
         ),

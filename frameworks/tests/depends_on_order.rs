@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -7,18 +6,20 @@
 mod common;
 
 use self::common::{
-    Home, daemon_log, home, pm3, shutdown_daemon, stderr_of, stdout_of, verbose_home, wait_for_log,
-    write_apps,
+    Home, SHELL, SHELL_FLAG, SLEEPER, daemon_log, home, pm3, record_then_sleep, shutdown_daemon,
+    stderr_of, stdout_of, verbose_home, wait_for_log, write_apps,
 };
 
 const ORDER_FILE: &str = "order.txt";
 
 fn ordered_apps(home: &Home) -> std::path::PathBuf {
     let cwd = home.root.to_string_lossy();
+    let web = record_then_sleep("web", ORDER_FILE);
+    let db = record_then_sleep("db", ORDER_FILE);
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"echo web >> ./{ORDER_FILE}; sleep 30\"\n  - name: db\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"echo db >> ./{ORDER_FILE}; sleep 30\"\n"
+            "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{web}'\n  - name: db\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{db}'\n"
         ),
     )
 }
@@ -28,7 +29,7 @@ fn cyclic_apps(home: &Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n  - name: db\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - web\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
+            "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n  - name: db\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    depends_on:\n      - web\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n"
         ),
     )
 }
@@ -108,7 +109,7 @@ fn an_unknown_dependency_is_refused() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - ghost\n    args:\n      - \"-c\"\n      - \"sleep 30\"\n"
+            "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    depends_on:\n      - ghost\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);

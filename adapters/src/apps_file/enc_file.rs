@@ -92,6 +92,8 @@ pub async fn load_enc_file(decryptor: &Decryptor<'_>, path: &Path) -> Result<Str
     let shown = path.to_string_lossy().into_owned();
     let mut command = Command::new(decryptor.program);
     command.env_clear();
+    #[cfg(windows)]
+    command.envs(crate::process::windows_system_env());
     for (key, value) in decryptor.extra_env {
         command.env(key, value);
     }

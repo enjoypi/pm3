@@ -168,7 +168,6 @@ pub fn write_config(dir: &Path, home: &str) -> PathBuf {
     path
 }
 
-#[cfg(unix)]
 pub fn write_config_with_cfg_dir(dir: &Path, home: &str, cfg_dir: &str) -> PathBuf {
     let path = dir.join("config.yaml");
     let yaml = config_yaml(home).replace(
@@ -192,7 +191,6 @@ pub fn write_config_with_decryptor(dir: &Path, home: &str, program: &str) -> Pat
     path
 }
 
-#[cfg(unix)]
 pub fn write_impatient_config(dir: &Path, home: &str) -> PathBuf {
     let path = dir.join("config.yaml");
     let yaml = config_yaml(home).replace(

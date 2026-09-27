@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 use crate::{
     daemon_fixture::{Fixture, running_daemon, sleeper_apps_file, stop_daemon},
@@ -18,7 +17,11 @@ fn an_apps_file_is_resolved_to_an_absolute_path() {
     let dir = tempfile::tempdir().expect("temp dir");
     let file = crate::test_support::write_apps_file(dir.path(), "apps: []\n");
     let resolved = canonical_apps_file(file.to_str().expect("path")).expect("should resolve");
-    assert!(resolved.starts_with('/'), "got: {resolved}");
+    assert!(
+        std::path::Path::new(&resolved).is_absolute(),
+        "got: {resolved}"
+    );
+    assert!(!resolved.contains('\\'), "got: {resolved}");
 }
 
 #[test]
@@ -98,7 +101,7 @@ async fn restarting_a_changed_apps_file_reports_the_changed_app() {
     std::fs::write(
         &apps_file,
         format!(
-            "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n"
+            "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{SLEEPER}'\n    max_restarts: 3\n"
         ),
     )
     .expect("edit the apps file");
@@ -124,7 +127,7 @@ async fn describing_a_started_app_reports_its_script() {
     let described = describe_app(&fixture.config_path, "web", false)
         .await
         .expect("should describe");
-    assert!(described.contains("/bin/sh"), "got: {described}");
+    assert!(described.contains(SHELL), "got: {described}");
     stop_daemon(fixture).await;
 }
 
@@ -350,7 +353,8 @@ async fn a_daemon_that_disappears_after_the_probe_stops_a_command() {
     let home = dir.path().join("home");
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
-    let answering = crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock"));
+    let answering =
+        crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock")).await;
     let err = list_apps(config.to_str().expect("path"), false, false)
         .await
         .unwrap_err()

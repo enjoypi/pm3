@@ -1,9 +1,14 @@
-#![cfg(unix)]
-use std::{path::PathBuf, sync::Mutex, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+    time::Duration,
+};
 
-use adapters::{LogStream, Pm3Paths, Pm3Roots, log_path, resolve_paths};
+use adapters::{LogStream, Pm3Paths, Pm3Roots, log_path, portable_path, resolve_paths};
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::{
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
+    io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _},
     sync::oneshot,
     task::JoinHandle,
 };
@@ -28,7 +33,7 @@ pub struct Fixture {
 
 pub async fn running_daemon() -> Fixture {
     let dir = tempfile::tempdir().expect("temp dir");
-    let home = dir.path().join("home");
+    let home = PathBuf::from(portable_path(&dir.path().join("home").to_string_lossy()));
     let paths = resolve_paths(Pm3Roots::single(&home));
     let config_path = write_config(dir.path(), &home.to_string_lossy())
         .to_string_lossy()
@@ -112,34 +117,95 @@ impl Collected {
     }
 }
 
-const REPLY_200: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+pub const REPLY_200: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
 const REPLY_500: &[u8] = b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\n\r\noops";
 const REQUEST_SINK: usize = 1024;
 
-pub fn answer_only_the_health_probe(socket: PathBuf) -> JoinHandle<()> {
-    let listener = tokio::net::UnixListener::bind(&socket).expect("bind the probe answerer");
+pub trait Duplex: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Duplex for T {}
+
+#[cfg(unix)]
+pub struct FakeListener(tokio::net::UnixListener);
+
+#[cfg(unix)]
+impl FakeListener {
+    pub fn bind(socket: &Path) -> impl Future<Output = Self> {
+        std::future::ready(Self(
+            tokio::net::UnixListener::bind(socket).expect("bind the fake daemon"),
+        ))
+    }
+
+    #[expect(
+        clippy::needless_pass_by_ref_mut,
+        reason = "a named pipe listener swaps its pending instance, so both platforms share one signature"
+    )]
+    pub async fn accept(&mut self) -> Box<dyn Duplex> {
+        let (stream, _addr) = self.0.accept().await.expect("accept a request");
+        Box::new(stream)
+    }
+}
+
+#[cfg(windows)]
+pub struct FakeListener {
+    name: String,
+    next: NamedPipeServer,
+}
+
+#[cfg(windows)]
+impl FakeListener {
+    pub async fn bind(socket: &Path) -> Self {
+        let secret = crate::layout::pipe_secret(socket)
+            .await
+            .expect("read the pipe secret");
+        let name = crate::layout::pipe_name_of(socket, &secret);
+        let next = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(&name)
+            .expect("bind the fake daemon");
+        Self { name, next }
+    }
+
+    pub async fn accept(&mut self) -> Box<dyn Duplex> {
+        self.next.connect().await.expect("accept a request");
+        let fresh = ServerOptions::new()
+            .create(&self.name)
+            .expect("open the next pipe instance");
+        Box::new(std::mem::replace(&mut self.next, fresh))
+    }
+}
+
+pub async fn answer(stream: &mut dyn Duplex, reply: &[u8]) {
+    let mut sink = vec![0_u8; REQUEST_SINK];
+    let read = stream.read(&mut sink).await.unwrap_or_default();
+    sink.truncate(read);
+    stream.write_all(reply).await.ok();
+    stream.shutdown().await.ok();
+}
+
+pub async fn answer_only_the_health_probe(socket: PathBuf) -> JoinHandle<()> {
+    let mut listener = FakeListener::bind(&socket).await;
     tokio::spawn(async move {
-        let (mut stream, _addr) = listener.accept().await.expect("accept the probe");
-        let mut sink = vec![0_u8; REQUEST_SINK];
-        let read = stream.read(&mut sink).await.unwrap_or_default();
-        sink.truncate(read);
-        stream.write_all(REPLY_200).await.ok();
-        stream.shutdown().await.ok();
+        answer(listener.accept().await.as_mut(), REPLY_200).await;
         drop(listener);
         std::fs::remove_file(&socket).ok();
     })
 }
 
-pub fn answer_health_then_refusal(socket: &std::path::Path) -> JoinHandle<()> {
-    let listener = tokio::net::UnixListener::bind(socket).expect("bind the answerer");
+pub async fn answer_health_then_refusal(socket: &Path) -> JoinHandle<()> {
+    let mut listener = FakeListener::bind(socket).await;
     tokio::spawn(async move {
         for reply in [REPLY_200, REPLY_200, REPLY_500] {
-            let (mut stream, _addr) = listener.accept().await.expect("accept a request");
-            let mut sink = vec![0_u8; REQUEST_SINK];
-            let read = stream.read(&mut sink).await.unwrap_or_default();
-            sink.truncate(read);
-            stream.write_all(reply).await.ok();
-            stream.shutdown().await.ok();
+            answer(listener.accept().await.as_mut(), reply).await;
         }
     })
+}
+
+#[expect(
+    clippy::infinite_loop,
+    reason = "a fake daemon answers until its test aborts the task"
+)]
+pub async fn keep_answering(mut listener: FakeListener, reply: &'static [u8]) {
+    loop {
+        answer(listener.accept().await.as_mut(), reply).await;
+    }
 }

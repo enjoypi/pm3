@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -8,9 +7,11 @@ mod common;
 
 use std::path::PathBuf;
 
+#[cfg(unix)]
+use self::common::detach_daemon;
 use self::common::{
-    Home, app_log, daemon_log, detach_daemon, home, pm3, shutdown_daemon, stdout_of, wait_for_file,
-    wait_for_log, write_apps,
+    Home, app_log, daemon_log, home, pm3, report_variable, shell_invocation, shutdown_daemon,
+    stdout_of, wait_for_file, wait_for_log, write_apps,
 };
 
 const NAME: &str = "echoer";
@@ -46,11 +47,10 @@ fn write_shared(home: &Home, suffix: &str, body: &str) {
 }
 
 fn echoing_app(home: &Home) -> PathBuf {
+    let invocation = shell_invocation(&report_variable(SHARED_KEY, "seen.txt", "echo done"));
     write_apps(
         home,
-        &format!(
-            "apps:\n  - name: {NAME}\n    script: /bin/sh\n    autorestart: false\n    args:\n      - \"-c\"\n      - \"printf '%s' \\\"${SHARED_KEY}\\\" > seen.txt; echo done\"\n"
-        ),
+        &format!("apps:\n  - name: {NAME}\n    autorestart: false\n{invocation}"),
     )
 }
 
@@ -155,6 +155,7 @@ fn a_sealed_shared_environment_still_lets_every_app_start() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_shared_value_never_evicts_an_app_across_a_handover() {
     let home = home();

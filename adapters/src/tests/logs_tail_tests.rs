@@ -421,3 +421,18 @@ async fn following_reads_no_more_than_the_budget_per_poll() {
         "a four byte budget must not swallow thirteen bytes in one read"
     );
 }
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_tail_of_a_log_locked_by_another_handle_is_reported() {
+    let (_dir, path) = temp_log(THREE_LINES.as_bytes());
+    let holder = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("open a second handle");
+    holder
+        .lock()
+        .expect("windows locks are mandatory for other handles");
+    let err = read_tail(&path, 2, MAX_READ).await.unwrap_err().to_string();
+    assert!(err.contains("cannot read log file"), "got: {err}");
+}

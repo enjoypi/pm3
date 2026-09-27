@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -6,8 +5,9 @@
 
 mod common;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::{
-    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     process::Output,
     sync::atomic::{AtomicU64, Ordering},
@@ -16,9 +16,10 @@ use std::{
 #[cfg(target_os = "linux")]
 use self::common::impatient_home;
 use self::common::{
-    PM3, SERVICE_LABEL, described_pid, home_with_timeout, sleeper_apps, stderr_of, stdout_of,
-    wait_for_listing,
+    PM3, SERVICE_LABEL, captured, home_with_timeout, stderr_of, stdout_of, wait_for_listing,
 };
+#[cfg(unix)]
+use self::common::{described_pid, sleeper_apps};
 
 static NEXT_LABEL: AtomicU64 = AtomicU64::new(0);
 
@@ -60,6 +61,8 @@ impl Drop for InstallFixture {
 const MANAGER_NAME: &str = "launchd";
 #[cfg(target_os = "linux")]
 const MANAGER_NAME: &str = "systemd";
+#[cfg(windows)]
+const MANAGER_NAME: &str = "schtasks";
 
 #[cfg(target_os = "macos")]
 fn unit_dir(fake_home: &Path) -> PathBuf {
@@ -71,6 +74,16 @@ fn unit_dir(fake_home: &Path) -> PathBuf {
     fake_home.join(".config/systemd/user")
 }
 
+#[cfg(unix)]
+const DESTINATION: &str = "dest/pm3";
+#[cfg(windows)]
+const DESTINATION: &str = "dest/pm3.exe";
+
+#[cfg(unix)]
+const MANAGER_KEY: &str = "systemctl_path: \"/usr/bin/systemctl\"";
+#[cfg(windows)]
+const MANAGER_KEY: &str = "schtasks_path: \"schtasks\"";
+
 #[cfg(target_os = "macos")]
 const UNIT_EXTENSION: &str = "plist";
 #[cfg(target_os = "linux")]
@@ -81,7 +94,7 @@ fn fixture(home: common::Home, manager_body: &str) -> InstallFixture {
     patch_label(&home, &label);
     let fake_home = home.dir.path().join("fake-home");
     std::fs::create_dir_all(&fake_home).expect("prepare the fake home");
-    let destination = home.dir.path().join("dest/pm3");
+    let destination = home.dir.path().join(DESTINATION);
     let backups = home.dir.path().join("backups");
     let manager = write_manager(&home, &destination, manager_body);
     patch_manager_path(&home, &manager);
@@ -107,6 +120,7 @@ fn patch_label(home: &common::Home, label: &str) {
     std::fs::write(&home.config, patched).expect("patch the config");
 }
 
+#[cfg(unix)]
 fn write_manager(home: &common::Home, destination: &Path, body: &str) -> PathBuf {
     let pidfile = home.root.join("pm3.pid");
     let log = home.root.join("pm3.log");
@@ -123,12 +137,24 @@ fn write_manager(home: &common::Home, destination: &Path, body: &str) -> PathBuf
     path
 }
 
+#[cfg(windows)]
+fn write_manager(home: &common::Home, destination: &Path, body: &str) -> PathBuf {
+    let pidfile = home.root.join("pm3.pid");
+    let script = format!(
+        "@echo off\nset \"DEST={}\"\nset \"CFG={}\"\nset \"PIDFILE={}\"\n{body}\nexit /b 0\n",
+        destination.display(),
+        home.config.display(),
+        pidfile.display(),
+    );
+    let path = home.dir.path().join("fake-schtasks.cmd");
+    std::fs::write(&path, script.replace('\n', "\r\n")).expect("write the fake schtasks");
+    path
+}
+
 fn patch_manager_path(home: &common::Home, manager: &Path) {
     let yaml = std::fs::read_to_string(&home.config).expect("read the config");
-    let patched = yaml.replace(
-        "systemctl_path: \"/usr/bin/systemctl\"",
-        &format!("systemctl_path: \"{}\"", manager.display()),
-    );
+    let key = MANAGER_KEY.split_once(':').expect("a yaml key").0;
+    let patched = yaml.replace(MANAGER_KEY, &format!("{key}: '{}'", manager.display()));
     assert!(
         patched.contains(&manager.display().to_string()),
         "the config points at the fake manager"
@@ -141,18 +167,19 @@ fn install(fixture: &InstallFixture) -> Output {
 }
 
 fn pm3_at(fixture: &InstallFixture, args: &[&str]) -> Output {
-    let mut command = std::process::Command::new(PM3);
-    command
-        .arg("--config")
-        .arg(&fixture.home.config)
-        .args(args)
-        .env("HOME", &fixture.fake_home)
-        .env("PM3_INSTALL_PATH", &fixture.destination)
-        .env("PM3_INSTALL_BACKUPS", &fixture.backups)
-        .output()
-        .expect("pm3 should run")
+    captured(
+        std::process::Command::new(PM3)
+            .arg("--config")
+            .arg(&fixture.home.config)
+            .args(args)
+            .env("HOME", &fixture.fake_home)
+            .env("USERPROFILE", &fixture.fake_home)
+            .env("PM3_INSTALL_PATH", &fixture.destination)
+            .env("PM3_INSTALL_BACKUPS", &fixture.backups),
+    )
 }
 
+#[cfg(unix)]
 const SUPERVISING_MANAGER: &str = r#"case "$2" in
   is-active)
     if [ -f "$PIDFILE" ]; then echo active; exit 0; fi
@@ -181,6 +208,16 @@ const SUPERVISING_MANAGER: &str = r#"case "$2" in
     ;;
 esac
 "#;
+
+#[cfg(windows)]
+const SUPERVISING_MANAGER: &str = r#"if "%1"=="/Query" (
+  if exist "%PIDFILE%" (echo Status: Running) else (echo Status: Ready)
+  exit /b 0
+)
+if "%1"=="/Run" (
+  powershell -NoProfile -NonInteractive -Command "Start-Process -WindowStyle Hidden -FilePath $env:DEST -ArgumentList 'daemon','--config',$env:CFG"
+  exit /b 0
+)"#;
 
 #[test]
 fn a_first_install_lands_the_binary_and_brings_the_daemon_under_supervision() {
@@ -214,6 +251,7 @@ fn a_first_install_lands_the_binary_and_brings_the_daemon_under_supervision() {
     assert!(listed.contains("no apps"), "got: {listed}");
 }
 
+#[cfg(unix)]
 #[test]
 fn an_upgrade_adopts_the_running_service_and_backs_up_the_previous_install() {
     let fixture = fixture(patient_home(), SUPERVISING_MANAGER);

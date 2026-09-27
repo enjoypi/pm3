@@ -76,7 +76,6 @@ async fn an_unparsable_shared_environment_is_reported() {
     assert!(err.contains("expected KEY=VALUE"), "got: {err}");
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_undecryptable_sidecar_without_an_identity_falls_back_to_the_plain_one() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -92,24 +91,17 @@ async fn an_undecryptable_sidecar_without_an_identity_falls_back_to_the_plain_on
     );
 }
 
-#[cfg(unix)]
-fn with_decryptor(config: &mut Pm3Config, dir: &Path, body: &str) {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    let path = dir.join("fake-sops");
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write the decryptor stub");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-        .expect("make the decryptor stub executable");
+fn with_decryptor(config: &mut Pm3Config, dir: &Path, unix: &str, windows: &str) {
+    let path = crate::platform::script(dir, "fake-sops", unix, windows);
     config.sops_program = path.to_string_lossy().into_owned();
     config.sops_identity_file = "/home/dev/.ssh/age-shared".to_string();
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_opened_shared_environment_reaches_every_app() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "printf 'TZ=UTC\\n'");
+    with_decryptor(&mut config, dir.path(), "printf 'TZ=UTC\\n'", "echo TZ=UTC");
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
 
     let values = load_global_env(&config, dir.path(), None)
@@ -123,12 +115,16 @@ async fn an_opened_shared_environment_reaches_every_app() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_opened_shared_value_keeps_its_quotes_verbatim() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "printf 'PASSWORD=\"p@ss\\n'");
+    with_decryptor(
+        &mut config,
+        dir.path(),
+        "printf 'PASSWORD=\"p@ss\\n'",
+        "echo PASSWORD=\"p@ss",
+    );
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
 
     let values = load_global_env(&config, dir.path(), None)
@@ -142,12 +138,11 @@ async fn an_opened_shared_value_keeps_its_quotes_verbatim() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_decryptor_that_refuses_stops_the_shared_environment() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "exit 1");
+    with_decryptor(&mut config, dir.path(), "exit 1", "exit /b 1");
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
 
     let err = load_global_env(&config, dir.path(), None)
@@ -158,12 +153,16 @@ async fn a_decryptor_that_refuses_stops_the_shared_environment() {
     assert!(err.contains("cannot decrypt"), "got: {err}");
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_opened_shared_value_expands_the_home_placeholder() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "printf 'BIN=$HOME/bin\\n'");
+    with_decryptor(
+        &mut config,
+        dir.path(),
+        "printf 'BIN=$HOME/bin\\n'",
+        "echo BIN=$HOME/bin",
+    );
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
 
     let values = load_global_env(&config, dir.path(), Some("/home/dev"))
@@ -177,12 +176,11 @@ async fn an_opened_shared_value_expands_the_home_placeholder() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_opened_shared_environment_that_will_not_parse_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "printf 'TZ\\n'");
+    with_decryptor(&mut config, dir.path(), "printf 'TZ\\n'", "echo TZ");
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
 
     let err = load_global_env(&config, dir.path(), None)
@@ -209,7 +207,6 @@ async fn a_shared_sidecar_that_cannot_be_stat_ed_is_reported() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn the_plain_layer_hands_its_xdg_values_to_the_decryptor() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -218,6 +215,7 @@ async fn the_plain_layer_hands_its_xdg_values_to_the_decryptor() {
         &mut config,
         dir.path(),
         "printf 'SEEN=%s\\n' \"$XDG_CONFIG_HOME\"",
+        "echo SEEN=%XDG_CONFIG_HOME%",
     );
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
     write(
@@ -236,12 +234,16 @@ async fn the_plain_layer_hands_its_xdg_values_to_the_decryptor() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn an_opened_shared_value_wins_over_the_plain_one() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "printf 'TZ=Asia/Shanghai\\n'");
+    with_decryptor(
+        &mut config,
+        dir.path(),
+        "printf 'TZ=Asia/Shanghai\\n'",
+        "echo TZ=Asia/Shanghai",
+    );
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
     write(dir.path(), ENV_FILE_SUFFIX, "TZ=UTC\nLANG=C\n");
 
@@ -259,7 +261,6 @@ async fn an_opened_shared_value_wins_over_the_plain_one() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_sidecar_opens_with_the_xdg_values_from_the_plain_layer() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -268,6 +269,7 @@ async fn a_sidecar_opens_with_the_xdg_values_from_the_plain_layer() {
         &mut config,
         dir.path(),
         "printf 'TOKEN=%s\\n' \"$XDG_CONFIG_HOME\"",
+        "echo TOKEN=%XDG_CONFIG_HOME%",
     );
     config.sops_identity_file = String::new();
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
@@ -305,12 +307,11 @@ fn the_decryptor_environment_keeps_only_the_xdg_values() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_decryptor_that_needs_no_identity_still_hands_over_its_values() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "printf 'TZ=UTC\\n'");
+    with_decryptor(&mut config, dir.path(), "printf 'TZ=UTC\\n'", "echo TZ=UTC");
     config.sops_identity_file = String::new();
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
 
@@ -325,12 +326,11 @@ async fn a_decryptor_that_needs_no_identity_still_hands_over_its_values() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn a_declared_identity_makes_a_refusal_fatal() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = config();
-    with_decryptor(&mut config, dir.path(), "exit 1");
+    with_decryptor(&mut config, dir.path(), "exit 1", "exit /b 1");
     write(dir.path(), ENC_FILE_SUFFIX, "sops: {}\n");
     write(dir.path(), ENV_FILE_SUFFIX, "TZ=UTC\n");
 

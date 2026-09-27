@@ -138,7 +138,8 @@ async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command
 const WINDOWS_SYSTEM_VARIABLES: [&str; 3] = ["SystemRoot", "windir", "SystemDrive"];
 
 #[cfg(windows)]
-fn windows_system_env() -> Vec<(&'static str, std::ffi::OsString)> {
+#[must_use]
+pub fn windows_system_env() -> Vec<(&'static str, std::ffi::OsString)> {
     WINDOWS_SYSTEM_VARIABLES
         .iter()
         .filter_map(|name| Some((*name, std::env::var_os(name)?)))

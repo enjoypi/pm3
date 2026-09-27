@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -6,18 +5,24 @@
 
 mod common;
 
+#[cfg(unix)]
 use std::{
     io::{Read as _, Write as _},
     os::unix::{fs::PermissionsExt as _, net::UnixListener},
     path::Path,
 };
 
-use self::common::{daemon_pid, home, pm3, shutdown_daemon, stderr_of, stdout_of, wait_for_file};
+#[cfg(unix)]
+use self::common::stderr_of;
+use self::common::{daemon_pid, home, pm3, shutdown_daemon, stdout_of, wait_for_file};
 
+#[cfg(unix)]
 const IMPOSTOR_REPLY: &[u8] =
     b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok";
+#[cfg(unix)]
 const REQUEST_SINK: usize = 1024;
 
+#[cfg(unix)]
 fn serve_plain_text(socket: &Path) {
     let listener = UnixListener::bind(socket).expect("bind the impostor socket");
     std::thread::spawn(move || {
@@ -46,6 +51,7 @@ fn an_orphan_socket_file_is_replaced() {
     shutdown_daemon(&home);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_socket_that_answers_something_other_than_a_pm3_reply_is_reported() {
     let home = home();
@@ -64,6 +70,7 @@ fn a_socket_that_answers_something_other_than_a_pm3_reply_is_reported() {
     );
 }
 
+#[cfg(unix)]
 fn mode_of(path: &Path) -> u32 {
     std::fs::metadata(path)
         .expect("stat the path")
@@ -72,6 +79,7 @@ fn mode_of(path: &Path) -> u32 {
         & 0o777
 }
 
+#[cfg(unix)]
 #[test]
 fn the_control_plane_is_owner_only() {
     let home = home();

@@ -1,12 +1,11 @@
-#![cfg(unix)]
-use std::{
-    os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
-};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::install::InstallError;
 
+#[cfg(unix)]
 fn mode_of(path: &Path) -> u32 {
     std::fs::metadata(path)
         .expect("the path exists")
@@ -83,6 +82,7 @@ async fn a_missing_source_is_an_error() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn an_unreadable_destination_is_an_error() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -113,15 +113,19 @@ async fn a_backup_copies_every_existing_file_into_a_private_stamp_dir() {
     )
     .await
     .expect("the backup succeeds");
-    assert_eq!(stamp, dir.path().join("backups/20260730T133344Z"));
-    assert_eq!(mode_of(&dir.path().join("backups")), 0o700);
-    assert_eq!(mode_of(&stamp), 0o700);
+    assert_eq!(stamp, dir.path().join("backups").join("20260730T133344Z"));
     assert_eq!(
         std::fs::read_to_string(stamp.join("pm3")).expect("binary copy"),
         "binary"
     );
-    assert_eq!(mode_of(&stamp.join("pm3")), 0o600);
-    assert_eq!(mode_of(&stamp.join("config.yaml")), 0o600);
+    assert!(stamp.join("config.yaml").is_file());
+    #[cfg(unix)]
+    {
+        assert_eq!(mode_of(&dir.path().join("backups")), 0o700);
+        assert_eq!(mode_of(&stamp), 0o700);
+        assert_eq!(mode_of(&stamp.join("pm3")), 0o600);
+        assert_eq!(mode_of(&stamp.join("config.yaml")), 0o600);
+    }
 }
 
 #[tokio::test]
@@ -184,6 +188,7 @@ async fn a_backup_reports_a_source_without_a_file_name() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_backup_reports_an_unreadable_source() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -206,6 +211,33 @@ async fn a_backup_reports_an_unreadable_source() {
 }
 
 #[tokio::test]
+async fn a_backup_reports_a_source_it_cannot_look_at() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let hidden = crate::platform::unreachable_parent(dir.path()).join("secret");
+    let error = back_up(&[hidden], &dir.path().join("backups"), "stamp")
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().starts_with("cannot back up '"),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_destination_pm3_cannot_look_at_is_an_error() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let source = dir.path().join("new-pm3");
+    std::fs::write(&source, "bytes").expect("write source");
+    let hidden = crate::platform::unreachable_parent(dir.path()).join("pm3");
+    let error = binary_matches(&source, &hidden).await.unwrap_err();
+    assert!(
+        error.to_string().starts_with("cannot replace '"),
+        "got: {error}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn restricting_a_missing_directory_is_an_error() {
     let dir = tempfile::tempdir().expect("temp dir");
     let missing = dir.path().join("missing");
@@ -218,6 +250,7 @@ async fn restricting_a_missing_directory_is_an_error() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn restricting_a_missing_file_is_an_error() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -234,7 +267,7 @@ async fn a_replacement_lands_atomically_next_to_the_destination() {
     let dir = tempfile::tempdir().expect("temp dir");
     let source = dir.path().join("new-pm3");
     std::fs::write(&source, "new binary").expect("write source");
-    let destination = dir.path().join("bin/pm3");
+    let destination = dir.path().join("bin").join("pm3");
     std::fs::create_dir_all(dir.path().join("bin")).expect("mkdir");
     std::fs::write(&destination, "old binary").expect("write destination");
     replace_binary(&source, &destination)
@@ -244,7 +277,7 @@ async fn a_replacement_lands_atomically_next_to_the_destination() {
         std::fs::read_to_string(&destination).expect("destination"),
         "new binary"
     );
-    assert!(!dir.path().join("bin/pm3.incoming").exists());
+    assert!(!dir.path().join("bin").join("pm3.incoming").exists());
 }
 
 #[tokio::test]
@@ -252,7 +285,7 @@ async fn a_replacement_creates_a_missing_parent_directory() {
     let dir = tempfile::tempdir().expect("temp dir");
     let source = dir.path().join("new-pm3");
     std::fs::write(&source, "new binary").expect("write source");
-    let destination = dir.path().join("bin/pm3");
+    let destination = dir.path().join("bin").join("pm3");
     replace_binary(&source, &destination)
         .await
         .expect("the parent is created");
@@ -292,6 +325,7 @@ async fn a_replacement_reports_a_parent_that_is_a_file() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_replacement_reports_a_destination_it_cannot_rename_over() {
     let dir = tempfile::tempdir().expect("temp dir");

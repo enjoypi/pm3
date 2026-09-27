@@ -13,6 +13,8 @@ mod win_probe;
 #[cfg(unix)]
 pub use self::ps_probe::PsProcessProbe as HostProcessProbe;
 #[cfg(windows)]
+pub(crate) use self::tokio_launcher::windows_system_env;
+#[cfg(windows)]
 pub use self::win_probe::WinProcessProbe as HostProcessProbe;
 pub use self::{
     kill_signaler::KillSignaler,

@@ -1,7 +1,5 @@
-#![cfg(unix)]
-use tokio::net::{UnixListener, UnixStream};
-
 use super::*;
+use crate::daemon_fixture::{FakeListener, answer};
 
 const REQUEST_ID: &str = "7-1";
 
@@ -15,17 +13,8 @@ fn socket_in(dir: &tempfile::TempDir) -> PathBuf {
     dir.path().join("pm3.sock")
 }
 
-fn bound_socket(socket: &Path) -> UnixListener {
-    UnixListener::bind(socket).expect("bind")
-}
-
-async fn serve_once(listener: UnixListener, reply: &'static [u8]) {
-    let (mut stream, _addr) = listener.accept().await.expect("accept");
-    let mut sink = vec![0_u8; REQUEST_SINK];
-    let read = stream.read(&mut sink).await.unwrap_or_default();
-    sink.truncate(read);
-    stream.write_all(reply).await.ok();
-    stream.shutdown().await.ok();
+async fn serve_once(mut listener: FakeListener, reply: &'static [u8]) {
+    answer(listener.accept().await.as_mut(), reply).await;
 }
 
 #[test]
@@ -99,7 +88,7 @@ fn a_non_numeric_status_code_is_rejected() {
 async fn a_request_reaches_the_daemon_and_returns_its_reply() {
     let dir = tempfile::tempdir().expect("temp dir");
     let socket = socket_in(&dir);
-    let listener = bound_socket(&socket);
+    let listener = FakeListener::bind(&socket).await;
     let served = tokio::spawn(serve_once(listener, REPLY_200));
 
     let reply = UdsClient::new(socket, TIMEOUT_MS)
@@ -132,7 +121,7 @@ async fn a_missing_socket_is_reported() {
 
 #[tokio::test]
 async fn a_daemon_that_closes_before_reading_the_request_is_reported() {
-    let (mut client_side, server_side) = UnixStream::pair().expect("pair");
+    let (mut client_side, server_side) = tokio::io::duplex(REQUEST_SINK);
     drop(server_side);
     let err = converse(
         &mut client_side,
@@ -150,7 +139,7 @@ async fn a_daemon_that_closes_before_reading_the_request_is_reported() {
 
 #[tokio::test]
 async fn a_daemon_reply_that_is_not_text_is_reported() {
-    let (mut client_side, mut server_side) = UnixStream::pair().expect("pair");
+    let (mut client_side, mut server_side) = tokio::io::duplex(REQUEST_SINK);
     let server = tokio::spawn(async move {
         let mut sink = vec![0_u8; 64];
         let read = server_side.read(&mut sink).await.unwrap_or_default();
@@ -176,7 +165,7 @@ async fn a_daemon_reply_that_is_not_text_is_reported() {
 async fn a_daemon_that_answers_nothing_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
     let socket = socket_in(&dir);
-    let listener = bound_socket(&socket);
+    let listener = FakeListener::bind(&socket).await;
     let served = tokio::spawn(serve_once(listener, b""));
 
     let err = UdsClient::new(socket, TIMEOUT_MS)
@@ -192,7 +181,7 @@ async fn a_daemon_that_answers_nothing_is_reported() {
 async fn a_healthy_daemon_is_recognised() {
     let dir = tempfile::tempdir().expect("temp dir");
     let socket = socket_in(&dir);
-    let listener = bound_socket(&socket);
+    let listener = FakeListener::bind(&socket).await;
     let served = tokio::spawn(serve_once(listener, REPLY_200));
 
     let healthy = UdsClient::new(socket, TIMEOUT_MS).daemon_is_healthy().await;
@@ -214,9 +203,10 @@ async fn an_absent_daemon_is_not_healthy() {
 async fn a_daemon_that_never_answers_is_given_up_on() {
     let dir = tempfile::tempdir().expect("temp dir");
     let socket = socket_in(&dir);
-    let listener = bound_socket(&socket);
+    let listener = FakeListener::bind(&socket).await;
+    let mut listener = listener;
     let stalled = tokio::spawn(async move {
-        let (stream, _addr) = listener.accept().await.expect("accept");
+        let stream = listener.accept().await;
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         drop(stream);
     });
@@ -237,7 +227,7 @@ async fn a_daemon_that_never_answers_is_given_up_on() {
 async fn a_daemon_that_answers_garbage_is_reported() {
     let dir = tempfile::tempdir().expect("temp dir");
     let socket = socket_in(&dir);
-    let listener = bound_socket(&socket);
+    let listener = FakeListener::bind(&socket).await;
     let served = tokio::spawn(serve_once(listener, b"not http at all"));
 
     let err = UdsClient::new(socket, TIMEOUT_MS)

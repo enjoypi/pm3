@@ -185,5 +185,11 @@ fn log_recycled_pid(pid: u32, expected: &str, seen: &str) {
 }
 
 #[cfg(test)]
+#[path = "../tests/process_watcher_pure_tests.rs"]
+mod pure_tests;
+#[cfg(test)]
 #[path = "../tests/process_watcher_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "../tests/process_watcher_windows_tests.rs"]
+mod windows_tests;

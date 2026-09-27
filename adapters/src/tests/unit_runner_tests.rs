@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use std::path::{Path, PathBuf};
 
 use super::*;
@@ -6,11 +5,17 @@ use super::*;
 const TIMEOUT_MS: u64 = 5000;
 use crate::{
     UnitKind,
-    unit_specs::{MISSING_PROGRAM, fake_program, program_set, program_set_for_user, spec_for},
+    unit_specs::{MISSING_PROGRAM, fake_program_for, program_set, program_set_for_user, spec_for},
 };
 
+#[cfg(unix)]
 const TRUE_PROGRAM: &str = "/usr/bin/true";
+#[cfg(windows)]
+const TRUE_PROGRAM: &str = r"C:\Windows\System32\HOSTNAME.EXE";
+#[cfg(unix)]
 const FALSE_PROGRAM: &str = "/usr/bin/false";
+#[cfg(windows)]
+const FALSE_PROGRAM: &str = r"C:\Windows\System32\PING.EXE";
 const OWNER_UID: u32 = 4242;
 const OWNER_RUNTIME_DIR: &str = "/run/user/4242";
 
@@ -73,7 +78,12 @@ async fn a_silent_failure_reports_the_exit_status() {
 #[tokio::test]
 async fn a_noisy_failure_reports_what_the_manager_said() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let program = fake_program(dir.path(), "noisy", "echo 'no such unit' >&2; exit 1");
+    let program = fake_program_for(
+        dir.path(),
+        "noisy",
+        "echo 'no such unit' >&2; exit 1",
+        "echo no such unit 1>&2\r\nexit /b 1",
+    );
     let err = execute_plan(&run_step_of(&program), TIMEOUT_MS)
         .await
         .unwrap_err()
@@ -214,8 +224,7 @@ async fn the_plan_stops_at_the_first_failing_step() {
 #[tokio::test]
 async fn an_unreadable_unit_path_stops_the_plan_and_rolls_back_earlier_writes() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let blocker = dir.path().join("blocked");
-    std::fs::write(&blocker, "occupied").expect("occupy the unit directory");
+    let blocker = crate::platform::unreachable_parent(dir.path());
     let created = dir.path().join("created.plist");
     let steps = vec![
         write_step(dir.path(), &created),
@@ -268,6 +277,24 @@ async fn a_failing_plan_leaves_a_file_it_only_overwrote() {
         unit.exists(),
         "pm3 must not delete a file it did not create"
     );
+}
+
+#[tokio::test]
+async fn a_command_carries_its_environment() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let program = fake_program_for(
+        dir.path(),
+        "probe",
+        "[ \"$PM3_PROBE\" = yes ]",
+        "if \"%PM3_PROBE%\"==\"yes\" exit /b 0\r\nexit /b 1",
+    );
+    let command = UnitCommand {
+        env: vec![("PM3_PROBE".to_string(), "yes".to_string())],
+        ..bare_command(&program)
+    };
+    execute_plan(&[UnitStep::Run(command)], TIMEOUT_MS)
+        .await
+        .expect("the variable should reach the command");
 }
 
 #[path = "unit_runner_systemd_tests.rs"]

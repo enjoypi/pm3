@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 
 fn logs_dir_with(files: &[(&str, usize)]) -> (tempfile::TempDir, String) {
@@ -127,18 +126,21 @@ async fn a_dangling_symlink_where_a_log_should_be_is_skipped() {
     assert!(rotated[0].path.ends_with("api-out.log"));
 }
 
-#[cfg(unix)]
+fn make_readonly(path: &std::path::Path) -> std::fs::Permissions {
+    let original = std::fs::metadata(path).expect("stat").permissions();
+    let mut locked = original.clone();
+    locked.set_readonly(true);
+    std::fs::set_permissions(path, locked).expect("make the log readonly");
+    original
+}
+
 #[tokio::test]
 async fn a_readonly_log_cannot_be_truncated_and_is_skipped() {
-    use std::os::unix::fs::PermissionsExt as _;
-
     let (dir, _logs_dir) = logs_dir_with(&[("web-out.log", 4096), ("api-out.log", 4096)]);
-    std::fs::set_permissions(
-        dir.path().join("web-out.log"),
-        std::fs::Permissions::from_mode(0o444),
-    )
-    .expect("make the log readonly");
+    let log = dir.path().join("web-out.log");
+    let original = make_readonly(&log);
     let rotated = rotate(dir.path(), 1024).await;
+    std::fs::set_permissions(&log, original).expect("restore the log permissions");
     assert_eq!(rotated.len(), 1);
     assert!(rotated[0].path.ends_with("api-out.log"));
     assert_eq!(

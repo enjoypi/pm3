@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 
 #[tokio::test]
@@ -26,7 +25,12 @@ async fn a_missing_manager_stops_the_status_query() {
 async fn a_launch_agent_with_a_pid_is_running() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), UnitKind::Launchd);
-    let program = fake_program(dir.path(), "launchctl", "echo '\"PID\" = 4242;'");
+    let program = fake_program_for(
+        dir.path(),
+        "launchctl",
+        "echo '\"PID\" = 4242;'",
+        "echo \"PID\" = 4242;",
+    );
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the listing should be readable");
@@ -37,7 +41,12 @@ async fn a_launch_agent_with_a_pid_is_running() {
 async fn a_launch_agent_without_a_pid_is_installed_but_stopped() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), UnitKind::Launchd);
-    let program = fake_program(dir.path(), "launchctl", "echo 'LastExitStatus = 0;'");
+    let program = fake_program_for(
+        dir.path(),
+        "launchctl",
+        "echo 'LastExitStatus = 0;'",
+        "echo LastExitStatus = 0;",
+    );
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the listing should be readable");
@@ -48,7 +57,7 @@ async fn a_launch_agent_without_a_pid_is_installed_but_stopped() {
 async fn an_active_systemd_unit_is_running() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), UnitKind::Systemd);
-    let program = fake_program(dir.path(), "systemctl", "echo active");
+    let program = fake_program_for(dir.path(), "systemctl", "echo active", "echo active");
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the probe should be readable");
@@ -59,7 +68,12 @@ async fn an_active_systemd_unit_is_running() {
 async fn an_inactive_systemd_unit_is_installed_but_stopped() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), UnitKind::Systemd);
-    let program = fake_program(dir.path(), "systemctl", "echo inactive; exit 3");
+    let program = fake_program_for(
+        dir.path(),
+        "systemctl",
+        "echo inactive; exit 3",
+        "echo inactive\r\nexit /b 3",
+    );
     let status = query_status(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("a stopped unit is not an error");
@@ -70,10 +84,11 @@ async fn an_inactive_systemd_unit_is_installed_but_stopped() {
 async fn a_user_scoped_call_carries_the_runtime_directory() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = installed_spec(dir.path(), UnitKind::Systemd);
-    let program = fake_program(
+    let program = fake_program_for(
         dir.path(),
         "systemctl",
         &format!("test \"$XDG_RUNTIME_DIR\" = \"{OWNER_RUNTIME_DIR}\" && echo active"),
+        &format!("if \"%XDG_RUNTIME_DIR%\"==\"{OWNER_RUNTIME_DIR}\" echo active"),
     );
     let programs = program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR);
     let status = query_status(&spec, &programs, TIMEOUT_MS)
@@ -89,7 +104,7 @@ async fn a_user_scoped_call_carries_the_runtime_directory() {
 #[tokio::test]
 async fn a_lingering_user_needs_no_further_permission() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let program = fake_program(dir.path(), "loginctl", "echo yes");
+    let program = fake_program_for(dir.path(), "loginctl", "echo yes", "echo yes");
     let programs = program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR);
     let state = linger_state(UnitKind::Systemd, &programs, TIMEOUT_MS).await;
     assert_eq!(state, LingerState::Enabled);
@@ -98,7 +113,7 @@ async fn a_lingering_user_needs_no_further_permission() {
 #[tokio::test]
 async fn a_user_without_linger_leaves_the_state_unknown() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let program = fake_program(dir.path(), "loginctl", "echo no");
+    let program = fake_program_for(dir.path(), "loginctl", "echo no", "echo no");
     let programs = program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR);
     let state = linger_state(UnitKind::Systemd, &programs, TIMEOUT_MS).await;
     assert_eq!(state, LingerState::Unknown);
@@ -137,7 +152,12 @@ async fn schtasks_never_asks_about_linger() {
 #[tokio::test]
 async fn a_manager_that_never_answers_is_given_up_on() {
     let dir = tempfile::tempdir().expect("temp dir");
-    let program = fake_program(dir.path(), "slow-systemctl", "sleep 30");
+    let program = fake_program_for(
+        dir.path(),
+        "slow-systemctl",
+        "sleep 30",
+        r"C:\Windows\System32\PING.EXE -n 3 127.0.0.1 >nul 2>&1",
+    );
     let err = execute_plan(&run_step_of(&program), 30)
         .await
         .expect_err("a stalled manager fails the plan");
@@ -176,7 +196,12 @@ fn every_error_variant_renders_a_message() {
 async fn a_launchd_supervised_pid_comes_from_the_listing() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Launchd, dir.path());
-    let program = fake_program(dir.path(), "launchctl", "echo '\"PID\" = 4242;'");
+    let program = fake_program_for(
+        dir.path(),
+        "launchctl",
+        "echo '\"PID\" = 4242;'",
+        "echo \"PID\" = 4242;",
+    );
     let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the listing should be readable");
@@ -187,7 +212,7 @@ async fn a_launchd_supervised_pid_comes_from_the_listing() {
 async fn a_systemd_supervised_pid_comes_from_the_main_pid_property() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Systemd, dir.path());
-    let program = fake_program(dir.path(), "systemctl", "echo 4242");
+    let program = fake_program_for(dir.path(), "systemctl", "echo 4242", "echo 4242");
     let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("the property should be readable");
@@ -198,7 +223,7 @@ async fn a_systemd_supervised_pid_comes_from_the_main_pid_property() {
 async fn a_zero_main_pid_means_nothing_is_supervised() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Systemd, dir.path());
-    let program = fake_program(dir.path(), "systemctl", "echo 0");
+    let program = fake_program_for(dir.path(), "systemctl", "echo 0", "echo 0");
     let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
         .await
         .expect("a zero answer is not an error");
@@ -240,7 +265,12 @@ async fn a_missing_pid_query_program_is_an_error() {
 async fn a_hand_back_kickstarts_the_agent() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Launchd, dir.path());
-    let program = fake_program(dir.path(), "launchctl", "printf '%s' \"$*\" > \"$0.args\"");
+    let program = fake_program_for(
+        dir.path(),
+        "launchctl",
+        "printf '%s' \"$*\" > \"$0.args\"",
+        "echo %*> \"%~f0.args\"",
+    );
     let handed = hand_back_to_manager(
         &spec,
         &program_set_for_user(&program, OWNER_UID, OWNER_RUNTIME_DIR),
@@ -251,7 +281,7 @@ async fn a_hand_back_kickstarts_the_agent() {
     assert!(handed);
     let recorded =
         std::fs::read_to_string(format!("{program}.args")).expect("the args were logged");
-    assert_eq!(recorded, "kickstart gui/4242/pm3-test");
+    assert_eq!(recorded.trim_end(), "kickstart gui/4242/pm3-test");
 }
 
 #[tokio::test]

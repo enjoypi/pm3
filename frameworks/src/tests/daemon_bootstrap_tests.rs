@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use std::{
     fs::{File, FileTimes},
     path::PathBuf,
@@ -6,17 +5,13 @@ use std::{
 };
 
 use adapters::{Pm3Roots, resolve_paths};
-use tokio::{
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
-    net::UnixListener,
-};
 
 use super::*;
-use crate::test_support::pm3_config_with_home;
-
-const REPLY_200: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
-const REQUEST_SINK: usize = 1024;
-const NEVER_BINDS: &str = "/usr/bin/true";
+use crate::{
+    daemon_fixture::{FakeListener, REPLY_200, keep_answering},
+    platform::true_program,
+    test_support::pm3_config_with_home,
+};
 
 struct Fixture {
     dir: tempfile::TempDir,
@@ -46,20 +41,9 @@ fn launch<'f>(fixture: &'f Fixture, program: &str) -> DaemonLaunch<'f> {
     )
 }
 
-fn healthy_daemon(paths: &Pm3Paths) -> tokio::task::JoinHandle<()> {
-    let listener = UnixListener::bind(&paths.socket).expect("bind");
-    tokio::spawn(async move {
-        loop {
-            let Ok((mut stream, _addr)) = listener.accept().await else {
-                return;
-            };
-            let mut sink = vec![0_u8; REQUEST_SINK];
-            let read = stream.read(&mut sink).await.unwrap_or_default();
-            sink.truncate(read);
-            stream.write_all(REPLY_200).await.ok();
-            stream.shutdown().await.ok();
-        }
-    })
+async fn healthy_daemon(paths: &Pm3Paths) -> tokio::task::JoinHandle<()> {
+    let listener = FakeListener::bind(&paths.socket).await;
+    tokio::spawn(keep_answering(listener, REPLY_200))
 }
 
 fn backdate(path: &std::path::Path, by: Duration) {
@@ -121,7 +105,7 @@ async fn a_lock_left_behind_by_an_interrupted_start_is_cleared() {
 #[test]
 fn the_poll_budget_comes_from_the_configured_timeouts() {
     let fixture = fixture();
-    let launch = launch(&fixture, NEVER_BINDS);
+    let launch = launch(&fixture, &true_program());
     assert_eq!(launch.interval_ms, crate::test_support::POLL_INTERVAL_MS);
     assert_eq!(
         launch.attempts,
@@ -135,8 +119,8 @@ fn the_poll_budget_comes_from_the_configured_timeouts() {
 #[tokio::test]
 async fn a_daemon_that_already_answers_is_left_alone() {
     let fixture = fixture();
-    let serving = healthy_daemon(&fixture.paths);
-    ensure_daemon_running(&launch(&fixture, NEVER_BINDS))
+    let serving = healthy_daemon(&fixture.paths).await;
+    ensure_daemon_running(&launch(&fixture, &true_program()))
         .await
         .expect("should find the running daemon");
     serving.abort();
@@ -169,7 +153,7 @@ async fn the_spawn_lock_is_released_after_a_failed_spawn() {
 async fn an_unwritable_daemon_log_is_reported() {
     let fixture = fixture();
     std::fs::create_dir(&fixture.paths.daemon_log).expect("occupy the daemon log path");
-    let err = ensure_daemon_running(&launch(&fixture, NEVER_BINDS))
+    let err = ensure_daemon_running(&launch(&fixture, &true_program()))
         .await
         .unwrap_err()
         .to_string();
@@ -179,7 +163,7 @@ async fn an_unwritable_daemon_log_is_reported() {
 #[tokio::test]
 async fn a_daemon_that_never_answers_times_out() {
     let fixture = fixture();
-    let err = ensure_daemon_running(&launch(&fixture, NEVER_BINDS))
+    let err = ensure_daemon_running(&launch(&fixture, &true_program()))
         .await
         .unwrap_err()
         .to_string();
@@ -193,17 +177,7 @@ async fn a_held_lock_makes_the_caller_wait_instead_of_spawning() {
     let socket = fixture.paths.socket.clone();
     let serving = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(80)).await;
-        let listener = UnixListener::bind(&socket).expect("bind");
-        loop {
-            let Ok((mut stream, _addr)) = listener.accept().await else {
-                return;
-            };
-            let mut sink = vec![0_u8; REQUEST_SINK];
-            let read = stream.read(&mut sink).await.unwrap_or_default();
-            sink.truncate(read);
-            stream.write_all(REPLY_200).await.ok();
-            stream.shutdown().await.ok();
-        }
+        keep_answering(FakeListener::bind(&socket).await, REPLY_200).await;
     });
 
     ensure_daemon_running(&launch(&fixture, "/nonexistent/pm3"))
@@ -220,7 +194,7 @@ async fn a_held_lock_makes_the_caller_wait_instead_of_spawning() {
 #[tokio::test]
 async fn the_spawn_lock_is_held_until_the_daemon_answers() {
     let fixture = fixture();
-    let launching = launch(&fixture, NEVER_BINDS);
+    let launching = launch(&fixture, &true_program());
     let observing = async {
         tokio::time::sleep(Duration::from_millis(30)).await;
         fixture.paths.lock_file.exists()

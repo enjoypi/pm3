@@ -32,14 +32,17 @@ impl HostReadyProber {
             return Readiness::Failed(format!("cannot find '{program}' on pm3.search_path"));
         };
         let started = std::time::Instant::now();
-        let spawned = Command::new(resolved)
+        let mut probe = Command::new(resolved);
+        probe
             .args(command.get(1..).unwrap_or_default())
             .env_clear()
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn();
+            .kill_on_drop(true);
+        #[cfg(windows)]
+        probe.envs(super::windows_system_env());
+        let spawned = probe.spawn();
         let mut child = match spawned {
             Ok(child) => child,
             Err(error) => {

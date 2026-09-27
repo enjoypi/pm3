@@ -264,21 +264,21 @@ async fn load_strands_an_idle_app_with_no_pid_to_sweep() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn load_strands_an_app_whose_writable_root_links_into_a_hidden_root() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let canonical = dir.path().canonicalize().expect("canonical temp dir");
+    let canonical = PathBuf::from(crate::platform::real_text(dir.path()));
     let source = spec_source_in(&canonical);
     let store = YamlDumpStore::new(canonical.join("dump.yaml"), source.clone());
     let link = canonical.join("data");
-    std::os::unix::fs::symlink(&canonical, &link).expect("link into the pm3 home");
+    crate::platform::link_dir(&canonical, &link);
     write_service_file(
         &source,
         "web",
         &format!(
-            "name: \"web\"\nscript: \"/bin/sh\"\nsandbox:\n  writable_roots:\n    - \"{}\"\n",
-            link.display()
+            "name: \"web\"\nscript: '{}'\nsandbox:\n  writable_roots:\n    - \"{}\"\n",
+            crate::platform::SHELL,
+            crate::platform::text(&link)
         ),
     );
     store
@@ -297,7 +297,6 @@ async fn load_strands_an_app_whose_writable_root_links_into_a_hidden_root() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn load_refuses_rather_than_stranding_an_app_it_cannot_decrypt() {
     use crate::spec_sources::{with_decryptor, write_enc_file};
@@ -306,7 +305,7 @@ async fn load_refuses_rather_than_stranding_an_app_it_cannot_decrypt() {
     let mut source = spec_source_in(dir.path());
     register_service(&source, "web");
     write_enc_file(&source, "web", "TOKEN: ENC[fake]\n");
-    with_decryptor(&mut source, "exit 4");
+    with_decryptor(&mut source, "exit 4", "exit /b 4");
     let store = YamlDumpStore::new(dir.path().join("dump.yaml"), source);
     store
         .save(&[sample_record("web")], None)

@@ -32,12 +32,19 @@ pub async fn binary_matches(source: &Path, destination: &Path) -> Result<bool, I
             if error.kind() == std::io::ErrorKind::NotFound {
                 return Ok(false);
             }
-            if error.kind() == std::io::ErrorKind::IsADirectory {
+            if occupied_by_directory(destination).await {
                 return Ok(false);
             }
             Err(InstallError::replace_io(destination, &error))
         }
     }
+}
+
+async fn occupied_by_directory(path: &Path) -> bool {
+    tokio::fs::metadata(path)
+        .await
+        .as_ref()
+        .is_ok_and(std::fs::Metadata::is_dir)
 }
 
 pub async fn replace_binary(source: &Path, destination: &Path) -> Result<(), InstallError> {
@@ -145,3 +152,6 @@ fn staged_path(destination: &Path) -> PathBuf {
 #[cfg(test)]
 #[path = "../tests/install_store_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "../tests/install_store_windows_tests.rs"]
+mod windows_tests;

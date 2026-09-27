@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 
 #[test]
@@ -106,6 +105,11 @@ async fn checking_a_missing_config_fails() {
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
+#[cfg(unix)]
+const DELIVERABLE_SIGNAL: &str = "usr1";
+#[cfg(windows)]
+const DELIVERABLE_SIGNAL: &str = "term";
+
 #[tokio::test]
 async fn an_accepted_signal_delivers_and_reports() {
     let fixture = crate::daemon_fixture::running_daemon().await;
@@ -120,12 +124,13 @@ async fn an_accepted_signal_delivers_and_reports() {
         "--config",
         &config,
         "sendSignal",
-        "usr1",
+        DELIVERABLE_SIGNAL,
         "web",
     ]))
     .await
     .expect("should signal");
-    assert_eq!(signalled.as_deref(), Some("sent USR1 to web"));
+    let expected = format!("sent {} to web", DELIVERABLE_SIGNAL.to_uppercase());
+    assert_eq!(signalled.as_deref(), Some(expected.as_str()));
 
     crate::daemon_fixture::stop_daemon(fixture).await;
 }
@@ -156,7 +161,9 @@ async fn every_app_subcommand_reaches_the_daemon() {
         .await
         .expect("should describe");
     assert!(
-        described.unwrap_or_default().contains("/bin/sh"),
+        described
+            .unwrap_or_default()
+            .contains(crate::platform::SHELL),
         "describe should show the script"
     );
 

@@ -304,86 +304,6 @@ fn a_relative_service_directory_is_rejected() {
     assert!(err.contains("must be absolute"), "got: {err}");
 }
 
-#[cfg(windows)]
-#[test]
-fn a_pipe_name_changes_with_the_secret() {
-    let socket = Path::new(r"C:\pm3\pm3.sock");
-    let first = pipe_name_of(socket, "0123456789abcdef0123456789abcdef");
-    let second = pipe_name_of(socket, "fedcba9876543210fedcba9876543210");
-    assert_ne!(first, second);
-    assert!(first.starts_with(r"\\.\pipe\pm3-"), "got: {first}");
-}
-
-#[cfg(windows)]
-#[test]
-fn a_generated_secret_has_the_shape_of_a_pipe_secret() {
-    let secret = generate_pipe_secret();
-    assert!(is_pipe_secret(&secret), "got: {secret}");
-}
-
-#[cfg(windows)]
-#[test]
-fn a_secret_with_a_bad_shape_is_rejected() {
-    assert!(!is_pipe_secret("too-short"));
-    assert!(!is_pipe_secret("0123456789abcdef0123456789abcdeg"));
-    assert!(!is_pipe_secret("0123456789ABCDEF0123456789ABCDEF0"));
-}
-
-#[cfg(windows)]
-#[tokio::test]
-async fn a_missing_pipe_secret_is_created_once_and_reused() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let socket = dir.path().join("pm3.sock");
-    let first = pipe_secret(&socket).await.expect("create the secret");
-    let second = pipe_secret(&socket).await.expect("read the secret back");
-    assert_eq!(first, second);
-    assert!(is_pipe_secret(&first), "got: {first}");
-}
-
-#[cfg(windows)]
-#[tokio::test]
-async fn a_corrupt_pipe_secret_is_replaced() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let socket = dir.path().join("pm3.sock");
-    tokio::fs::write(socket.with_file_name(PIPE_SECRET_FILE), "garbage")
-        .await
-        .expect("seed a corrupt secret");
-    let secret = pipe_secret(&socket).await.expect("replace the secret");
-    assert!(is_pipe_secret(&secret), "got: {secret}");
-}
-
-#[cfg(windows)]
-#[tokio::test]
-async fn a_pipe_secret_in_a_missing_home_is_reported() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let socket = dir.path().join("absent").join("pm3.sock");
-    let err = pipe_secret(&socket).await.unwrap_err().to_string();
-    assert!(err.contains("absent"), "got: {err}");
-}
-
-#[cfg(windows)]
-#[tokio::test]
-async fn a_pipe_secret_blocked_by_a_directory_is_reported() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let socket = dir.path().join("pm3.sock");
-    std::fs::create_dir(socket.with_file_name(PIPE_SECRET_FILE)).expect("block the secret path");
-    let err = pipe_secret(&socket).await.unwrap_err().to_string();
-    assert!(err.contains(PIPE_SECRET_FILE), "got: {err}");
-}
-
-#[cfg(windows)]
-#[tokio::test]
-async fn a_lost_create_race_reads_the_winners_secret() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let path = dir.path().join(PIPE_SECRET_FILE);
-    let winner = "0123456789abcdef0123456789abcdef";
-    tokio::fs::write(&path, winner)
-        .await
-        .expect("seed the winner");
-    let secret = create_pipe_secret(&path).await.expect("read the winner");
-    assert_eq!(secret, winner);
-}
-
 #[test]
 fn a_declared_cfg_dir_survives_the_config_root_variable() {
     let mut config = pm3_config_with_home(&abs("/srv/pm3"));
@@ -568,3 +488,7 @@ fn a_pm3_home_variable_wins_over_every_derived_root() {
     assert_eq!(roots.state, Path::new(&abs("/srv/pm3")));
     assert_eq!(roots.runtime, Path::new(&abs("/srv/pm3")));
 }
+
+#[cfg(windows)]
+#[path = "layout_pipe_tests.rs"]
+mod pipe;

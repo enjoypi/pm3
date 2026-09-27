@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 
 #[tokio::test]
@@ -102,15 +101,29 @@ async fn opening_a_follower_fails_for_a_missing_log_in_strict_mode() {
     stop_daemon(fixture).await;
 }
 
+#[cfg(unix)]
+fn unreadable_log(dir: &std::path::Path) -> std::path::PathBuf {
+    let blocker = dir.join("blocker");
+    std::fs::write(&blocker, b"file").expect("write the blocker");
+    blocker.join("ghost-out.log")
+}
+
+#[cfg(windows)]
+fn unreadable_log(dir: &std::path::Path) -> std::path::PathBuf {
+    let blocker = dir.join("ghost-out.log");
+    std::fs::create_dir(&blocker).expect("occupy the log path with a directory");
+    blocker
+}
+
 #[tokio::test]
 async fn opening_a_follower_fails_for_an_unreadable_log_in_lenient_mode() {
     let fixture = running_daemon().await;
-    let blocker = fixture.dir.path().join("blocker");
-    std::fs::write(&blocker, b"file").expect("write the blocker");
     let targets = vec![LogTarget {
         name: "ghost".to_string(),
         stream: LogStream::Stdout,
-        path: blocker.join("ghost-out.log").to_string_lossy().into_owned(),
+        path: unreadable_log(fixture.dir.path())
+            .to_string_lossy()
+            .into_owned(),
         prefix: "ghost | ".to_string(),
     }];
     let outcome = open_followers(&targets, false, 4_194_304).await;
@@ -140,6 +153,7 @@ async fn follow_targets_propagates_the_open_failure() {
     stop_daemon(fixture).await;
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn following_fails_when_the_log_turns_into_a_directory_mid_follow() {
     let fixture = running_daemon().await;

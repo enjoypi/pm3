@@ -1,10 +1,10 @@
-#![cfg(unix)]
 use super::*;
+use crate::platform::abs;
 
 #[test]
 fn the_default_config_lives_in_the_config_root() {
     assert_eq!(
-        default_config(None, None, None, Some("/home/dev")),
+        default_config(None, None, None, Some("/home/dev")).replace('\\', "/"),
         "/home/dev/.config/pm3/config.yaml"
     );
 }
@@ -12,8 +12,8 @@ fn the_default_config_lives_in_the_config_root() {
 #[test]
 fn a_pm3_home_keeps_the_default_config_in_the_single_root() {
     assert_eq!(
-        default_config(Some("/srv/pm3"), None, None, Some("/home/dev")),
-        "/srv/pm3/config.yaml"
+        default_config(Some(&abs("/srv/pm3")), None, None, Some("/home/dev")).replace('\\', "/"),
+        abs("/srv/pm3/config.yaml")
     );
 }
 

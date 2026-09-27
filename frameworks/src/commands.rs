@@ -5,7 +5,7 @@ use adapters::{
     ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext, ServiceUndo, SignalScope,
     Signaler as _, StartSettlement, app_action_path, app_path, decode_reply, encode_signal_request,
     encode_start_request, forget, load_and_parse_config, prepare_inline, render_daemon_gone,
-    render_daemon_stopped, settle_start, split_apps_file, wait_until_released,
+    render_daemon_stopped, settle_start, split_apps_file,
 };
 
 use crate::{
@@ -236,8 +236,9 @@ pub async fn shutdown_daemon(config_path: &str, with_services: bool) -> Result<S
     .terminate(pid, SignalScope::ProcessGroup)
     .await?;
     let budget_ms = pm3.start_timeout_ms;
-    if !wait_until_released(
-        &session.paths.socket,
+    if !daemon_released(
+        &client,
+        &session.paths,
         budget_ms,
         pm3.daemon_poll_interval_ms,
     )
@@ -250,6 +251,36 @@ pub async fn shutdown_daemon(config_path: &str, with_services: bool) -> Result<S
         });
     }
     Ok(render_daemon_stopped(stopped.as_deref(), pid))
+}
+
+#[cfg(unix)]
+async fn daemon_released(
+    _client: &UdsClient,
+    paths: &Pm3Paths,
+    budget_ms: u64,
+    poll_interval_ms: u64,
+) -> bool {
+    adapters::wait_until_released(&paths.socket, budget_ms, poll_interval_ms).await
+}
+
+#[cfg(windows)]
+async fn daemon_released(
+    client: &UdsClient,
+    paths: &Pm3Paths,
+    budget_ms: u64,
+    poll_interval_ms: u64,
+) -> bool {
+    let step_ms = poll_interval_ms.max(1);
+    let mut waited_ms = 0;
+    while client.daemon_is_healthy().await {
+        if waited_ms >= budget_ms {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(step_ms)).await;
+        waited_ms = waited_ms.saturating_add(step_ms);
+    }
+    crate::layout::clear_runtime_files(paths).await;
+    true
 }
 
 async fn report_gone_daemon(
@@ -282,7 +313,7 @@ pub fn canonical_apps_file(apps_file: &str) -> Result<String> {
         path: apps_file.to_string(),
         reason,
     })?;
-    Ok(resolved.to_string_lossy().into_owned())
+    Ok(adapters::portable_real_path(&resolved))
 }
 
 async fn ask_report(

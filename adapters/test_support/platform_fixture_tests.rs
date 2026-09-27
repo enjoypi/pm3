@@ -70,3 +70,56 @@ impl Drop for SleepingTree {
         }
     }
 }
+
+#[cfg(unix)]
+pub fn script(dir: &std::path::Path, name: &str, unix: &str, _windows: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let path = dir.join(name);
+    std::fs::write(&path, format!("#!/bin/sh\n{unix}\n")).expect("write the script");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        .expect("make the script executable");
+    path
+}
+
+#[cfg(windows)]
+pub fn script(dir: &std::path::Path, name: &str, _unix: &str, windows: &str) -> std::path::PathBuf {
+    let path = dir.join(format!("{name}.cmd"));
+    std::fs::write(&path, format!("@echo off\r\n{windows}\r\n")).expect("write the script");
+    path
+}
+
+#[cfg(unix)]
+pub const ABSOLUTE_SHELL: &str = "/bin/sh";
+#[cfg(windows)]
+pub const ABSOLUTE_SHELL: &str = "C:/Windows/System32/cmd.exe";
+
+#[cfg(unix)]
+pub fn link_dir(target: &std::path::Path, link: &std::path::Path) {
+    std::os::unix::fs::symlink(target, link).expect("link the directory");
+}
+
+#[cfg(windows)]
+pub fn link_dir(target: &std::path::Path, link: &std::path::Path) {
+    let status = std::process::Command::new(SHELL)
+        .args(["/C", "mklink", "/J"])
+        .arg(native(link))
+        .arg(native(target))
+        .stdout(std::process::Stdio::null())
+        .status()
+        .expect("run mklink");
+    assert!(status.success(), "mklink /J should link the directory");
+}
+
+#[cfg(windows)]
+fn native(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('/', "\\")
+}
+
+pub fn real_text(path: &std::path::Path) -> String {
+    crate::portable_real_path(&path.canonicalize().expect("canonicalize the path"))
+}
+
+pub fn text(path: &std::path::Path) -> String {
+    crate::portable_path(&path.to_string_lossy())
+}

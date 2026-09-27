@@ -1,12 +1,10 @@
-#![cfg(unix)]
-use tokio::{
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
-    net::UnixListener,
-    task::JoinHandle,
-};
+use tokio::task::JoinHandle;
 
 use super::*;
-use crate::daemon_fixture::{running_daemon, stop_daemon};
+use crate::{
+    daemon_fixture::{FakeListener, answer, running_daemon, stop_daemon},
+    platform::{SHELL, SHELL_FLAG, SLEEPER},
+};
 
 fn blocked_home_config(dir: &std::path::Path) -> String {
     let home = dir.join("home");
@@ -80,7 +78,7 @@ async fn starting_apps_reports_an_unreadable_apps_file() {
 
 #[tokio::test]
 async fn starting_inline_without_a_config_fails() {
-    let outcome = start_inline("/nonexistent/pm3.yaml", &inline_request("/bin/sh", &[])).await;
+    let outcome = start_inline("/nonexistent/pm3.yaml", &inline_request(SHELL, &[])).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
@@ -99,7 +97,7 @@ async fn starting_inline_with_a_program_off_the_search_path_fails() {
 async fn starting_inline_reports_a_blocked_home() {
     let dir = tempfile::tempdir().expect("temp dir");
     let config = blocked_home_config(dir.path());
-    let err = start_inline(&config, &inline_request("/bin/sh", &[]))
+    let err = start_inline(&config, &inline_request(SHELL, &[]))
         .await
         .unwrap_err()
         .to_string();
@@ -122,8 +120,8 @@ async fn deleting_an_unknown_app_fails() {
 #[tokio::test]
 async fn starting_inline_reaches_the_daemon() {
     let fixture = running_daemon().await;
-    let args = vec!["-c".to_string(), "sleep 5".to_string()];
-    let started = start_inline(&fixture.config_path, &inline_request("/bin/sh", &args))
+    let args = vec![SHELL_FLAG.to_string(), SLEEPER.to_string()];
+    let started = start_inline(&fixture.config_path, &inline_request(SHELL, &args))
         .await
         .expect("the inline app should start");
     assert!(
@@ -137,11 +135,11 @@ async fn starting_inline_reaches_the_daemon() {
 #[tokio::test]
 async fn restarting_an_unchanged_inline_app_reports_no_config_change() {
     let fixture = running_daemon().await;
-    let args = vec!["-c".to_string(), "sleep 5".to_string()];
-    start_inline(&fixture.config_path, &inline_request("/bin/sh", &args))
+    let args = vec![SHELL_FLAG.to_string(), SLEEPER.to_string()];
+    start_inline(&fixture.config_path, &inline_request(SHELL, &args))
         .await
         .expect("should start");
-    let again = start_inline(&fixture.config_path, &inline_request("/bin/sh", &args))
+    let again = start_inline(&fixture.config_path, &inline_request(SHELL, &args))
         .await
         .expect("should start");
     assert_eq!(
@@ -175,20 +173,12 @@ fn a_relative_service_directory_cannot_open_a_session() {
 const HEALTH_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
 const STOP_ALL_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 24\r\n\r\n{\"report\":\"stopped all\"}";
 const UNSAVED_START_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{\"report\":\"started web\",\"unsaved\":\"cannot write the state file\"}";
-const SCRIPT_SINK: usize = 1024;
 
-fn vanishing_daemon(socket: PathBuf, replies: &'static [&'static [u8]]) -> JoinHandle<()> {
-    let listener = UnixListener::bind(&socket).expect("bind the scripted daemon");
+async fn vanishing_daemon(socket: PathBuf, replies: &'static [&'static [u8]]) -> JoinHandle<()> {
+    let mut listener = FakeListener::bind(&socket).await;
     tokio::spawn(async move {
         for reply in replies {
-            let Ok((mut stream, _addr)) = listener.accept().await else {
-                break;
-            };
-            let mut sink = vec![0_u8; SCRIPT_SINK];
-            let read = stream.read(&mut sink).await.unwrap_or_default();
-            sink.truncate(read);
-            stream.write_all(reply).await.ok();
-            stream.shutdown().await.ok();
+            answer(listener.accept().await.as_mut(), reply).await;
         }
         drop(listener);
         std::fs::remove_file(&socket).ok();
@@ -213,7 +203,7 @@ async fn shutting_down_with_services_reports_a_daemon_that_refuses_the_stop() {
     let home = dir.path().join("home");
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
-    let answering = crate::daemon_fixture::answer_health_then_refusal(&home.join("pm3.sock"));
+    let answering = crate::daemon_fixture::answer_health_then_refusal(&home.join("pm3.sock")).await;
 
     let err = shutdown_daemon(config.to_str().expect("path"), true)
         .await
@@ -230,7 +220,8 @@ async fn shutting_down_a_daemon_that_already_left_is_treated_as_stopped() {
     let home = dir.path().join("home");
     std::fs::create_dir_all(home.join("logs")).expect("prepare the home");
     let config = crate::test_support::write_config(dir.path(), &home.to_string_lossy());
-    let answering = crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock"));
+    let answering =
+        crate::daemon_fixture::answer_only_the_health_probe(home.join("pm3.sock")).await;
     let gone = shutdown_daemon(config.to_str().expect("path"), false)
         .await
         .expect("a daemon that already left counts as stopped");
@@ -247,7 +238,8 @@ async fn shutting_down_with_services_reports_them_even_when_the_daemon_left_mid_
     vanishing_daemon(
         home.join("pm3.sock"),
         &[HEALTH_REPLY, HEALTH_REPLY, STOP_ALL_REPLY],
-    );
+    )
+    .await;
     let gone = shutdown_daemon(config.to_str().expect("path"), true)
         .await
         .expect("stop-all succeeded, so the vanished daemon counts as stopped");
@@ -282,7 +274,7 @@ async fn a_start_the_daemon_could_not_record_fails_without_rolling_the_service_f
         dir.path(),
         "apps:\n  - name: web\n    script: /bin/sh\n",
     );
-    vanishing_daemon(home.join("pm3.sock"), &[HEALTH_REPLY, UNSAVED_START_REPLY]);
+    vanishing_daemon(home.join("pm3.sock"), &[HEALTH_REPLY, UNSAVED_START_REPLY]).await;
 
     let err = start_apps(
         config.to_str().expect("path"),
@@ -317,7 +309,7 @@ async fn start_one_app(dir: &std::path::Path, replies: &'static [&'static [u8]])
     let config = crate::test_support::write_config(dir, &home.to_string_lossy());
     let apps_file =
         crate::test_support::write_apps_file(dir, "apps:\n  - name: web\n    script: /bin/sh\n");
-    vanishing_daemon(home.join("pm3.sock"), replies);
+    vanishing_daemon(home.join("pm3.sock"), replies).await;
     start_apps(
         config.to_str().expect("path"),
         apps_file.to_str().expect("path"),

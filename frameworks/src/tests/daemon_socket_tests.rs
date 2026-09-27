@@ -1,8 +1,9 @@
-#![cfg(unix)]
+#[cfg(unix)]
 use std::time::Duration;
 
 use super::*;
 
+#[cfg(unix)]
 const ACCEPT_BUDGET: Duration = Duration::from_millis(200);
 const ACCEPT_RETRY_MS: u64 = 50;
 
@@ -19,6 +20,7 @@ async fn a_free_path_is_bound() {
     assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_live_socket_means_another_daemon_owns_it() {
     let dir = temp_dir();
@@ -44,6 +46,7 @@ async fn a_stale_socket_file_is_replaced() {
     assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_socket_path_blocked_by_a_directory_is_reported() {
     let dir = temp_dir();
@@ -59,6 +62,7 @@ async fn a_socket_path_blocked_by_a_directory_is_reported() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_bound_socket_is_owner_only_and_carries_the_sticky_bit() {
     let dir = temp_dir();
@@ -76,6 +80,7 @@ async fn a_bound_socket_is_owner_only_and_carries_the_sticky_bit() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn an_unrestrictable_socket_path_is_reported() {
     let dir = temp_dir();
@@ -97,16 +102,19 @@ async fn an_unbindable_socket_path_is_reported() {
     assert!(err.contains("cannot bind the pm3 socket"), "got: {err}");
 }
 
+#[cfg(unix)]
 #[test]
 fn a_peer_running_as_the_owner_is_admitted() {
     assert!(admits(Some(501), Some(501)));
 }
 
+#[cfg(unix)]
 #[test]
 fn a_peer_running_as_someone_else_is_turned_away() {
     assert!(!admits(Some(502), Some(501)));
 }
 
+#[cfg(unix)]
 #[test]
 fn an_unreadable_credential_falls_back_to_the_socket_permissions() {
     assert!(
@@ -115,11 +123,13 @@ fn an_unreadable_credential_falls_back_to_the_socket_permissions() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn an_unknown_owner_falls_back_to_the_socket_permissions() {
     assert!(admits(Some(502), None));
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_connection_from_the_owner_reaches_the_router() {
     let dir = temp_dir();
@@ -133,6 +143,7 @@ async fn a_connection_from_the_owner_reaches_the_router() {
     assert!(accepted.is_ok(), "the daemon must serve its own user");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_connection_from_another_user_never_reaches_the_router() {
     let dir = temp_dir();
@@ -149,6 +160,7 @@ async fn a_connection_from_another_user_never_reaches_the_router() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_bound_listener_reports_the_address_it_answers_on() {
     let dir = temp_dir();
@@ -163,11 +175,13 @@ async fn a_bound_listener_reports_the_address_it_answers_on() {
     assert_eq!(reported.as_pathname(), Some(path.as_path()));
 }
 
+#[cfg(unix)]
 #[test]
 fn a_socket_whose_owner_cannot_be_read_leaves_the_owner_unknown() {
     assert_eq!(socket_owner_of(Path::new("/nonexistent/pm3.sock")), None);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_socket_nobody_listens_on_is_replaced() {
     let dir = temp_dir();
@@ -179,6 +193,7 @@ async fn a_socket_nobody_listens_on_is_replaced() {
     assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_socket_pm3_cannot_even_reach_is_never_unlinked() {
     let dir = temp_dir();
@@ -196,3 +211,7 @@ async fn a_socket_pm3_cannot_even_reach_is_never_unlinked() {
         "unlinking a socket a live daemon still serves would run two supervisors"
     );
 }
+
+#[cfg(windows)]
+#[path = "daemon_socket_windows_tests.rs"]
+mod windows;

@@ -1,5 +1,12 @@
-#![cfg(unix)]
-use super::*;
+#[cfg(unix)]
+use super::manager::{KICKSTART_DELETES_ITSELF, LOAD_DELETES_ITSELF, SHOW_DELETES_ITSELF};
+use super::{
+    manager::{
+        ENABLE_CORRUPTS_DUMP, ENABLE_EMPTIES_DUMP, FOREIGN_PID, KICKSTART_RECOVERS,
+        KICKSTART_REFUSED, REFUSING_ENABLE, SHOW_STALLS, write_manager,
+    },
+    *,
+};
 
 #[tokio::test]
 async fn an_install_reports_a_corrupt_dump_before_touching_anything() {
@@ -69,6 +76,7 @@ async fn an_install_reports_a_unit_it_cannot_back_up() {
     assert!(error.to_string().contains("cannot back up"), "got: {error}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn an_install_reports_a_failed_uninstall() {
     let fixture = systemd_fixture(HEALTHY_SYSTEMD);
@@ -93,7 +101,7 @@ async fn an_install_reports_a_failed_uninstall() {
 async fn an_install_reports_a_daemon_whose_pid_is_unknown() {
     let fixture = systemd_fixture(HEALTHY_SYSTEMD);
     seed_source(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 0);
+    let server = health_server(fixture.home.join("pm3.sock"), 0).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -112,7 +120,7 @@ async fn an_install_reports_a_daemon_whose_pid_is_unknown() {
 
 #[tokio::test]
 async fn an_install_reports_a_failed_reinstall() {
-    let fixture = systemd_fixture("case \"$2\" in\n  enable) exit 1 ;;\nesac\nexit 0");
+    let fixture = systemd_fixture(REFUSING_ENABLE);
     seed_source(&fixture);
     let emit = |_line: &str| {};
     let error = run_install(
@@ -131,12 +139,10 @@ async fn an_install_reports_a_failed_reinstall() {
 
 #[tokio::test]
 async fn an_install_reports_a_takeover_that_never_happens() {
-    let fixture = impatient_systemd_fixture(
-        "case \"$2\" in\n  is-active) echo active ;;\n  show) echo 1 ;;\nesac\nexit 0",
-    );
+    let fixture = impatient_systemd_fixture(FOREIGN_PID);
     seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -149,16 +155,16 @@ async fn an_install_reports_a_takeover_that_never_happens() {
     server.abort();
     let message = error.to_string();
     assert!(message.contains("did not come under"), "got: {message}");
-    assert!(message.contains("backups/unknown"), "got: {message}");
+    let backup = stamp_dir(&fixture).to_string_lossy().into_owned();
+    assert!(message.contains(&backup), "got: {message}");
 }
 
 #[tokio::test]
 async fn a_launchd_install_recovers_via_a_kickstart() {
-    let launchd = "case \"$1\" in\n  list) if [ -f \"$0.kicked\" ]; then echo '\"PID\" = 4242;'; else echo '{}' ; fi ;;\n  kickstart) touch \"$0.kicked\" ;;\nesac\nexit 0";
-    let fixture = impatient_systemd_fixture(launchd);
+    let fixture = impatient_systemd_fixture(KICKSTART_RECOVERS);
     seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     run_install(
         &fixture.config_path,
@@ -175,11 +181,10 @@ async fn a_launchd_install_recovers_via_a_kickstart() {
 
 #[tokio::test]
 async fn a_launchd_install_reports_a_failed_kickstart() {
-    let launchd = "case \"$1\" in\n  list) echo '{}' ;;\n  kickstart) exit 1 ;;\nesac\nexit 0";
-    let fixture = impatient_systemd_fixture(launchd);
+    let fixture = impatient_systemd_fixture(KICKSTART_REFUSED);
     seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -196,13 +201,13 @@ async fn a_launchd_install_reports_a_failed_kickstart() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_takeover_probe_reports_a_manager_it_cannot_run() {
-    let launchd = "case \"$1\" in\n  load) rm \"$0\" ;;\nesac\nexit 0";
-    let fixture = systemd_fixture(launchd);
+    let fixture = systemd_fixture(LOAD_DELETES_ITSELF);
     seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -216,13 +221,13 @@ async fn a_takeover_probe_reports_a_manager_it_cannot_run() {
     assert!(error.to_string().contains("cannot run"), "got: {error}");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_takeover_probe_reports_a_pid_query_it_cannot_run() {
-    let systemd = "case \"$2\" in\n  is-active) echo active ;;\n  show) rm \"$0\" ;;\nesac\nexit 0";
-    let fixture = systemd_fixture(systemd);
+    let fixture = systemd_fixture(SHOW_DELETES_ITSELF);
     seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -238,8 +243,7 @@ async fn a_takeover_probe_reports_a_pid_query_it_cannot_run() {
 
 #[tokio::test]
 async fn a_takeover_probe_reports_a_pid_query_that_stalls() {
-    let systemd = "case \"$2\" in\n  is-active) echo active ;;\n  show) sleep 30 ;;\nesac\nexit 0";
-    let fixture = systemd_fixture(systemd);
+    let fixture = systemd_fixture(SHOW_STALLS);
     let yaml = std::fs::read_to_string(&fixture.config_path).expect("read the config");
     let patched = yaml.replace("command_timeout_ms: 5000", "command_timeout_ms: 40");
     assert!(
@@ -249,7 +253,7 @@ async fn a_takeover_probe_reports_a_pid_query_that_stalls() {
     std::fs::write(&fixture.config_path, patched).expect("patch the config");
     seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -266,13 +270,13 @@ async fn a_takeover_probe_reports_a_pid_query_that_stalls() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_launchd_install_reports_a_manager_lost_after_the_kickstart() {
-    let launchd = "case \"$1\" in\n  list) echo '{}' ;;\n  kickstart) rm \"$0\" ;;\nesac\nexit 0";
-    let fixture = impatient_systemd_fixture(launchd);
+    let fixture = impatient_systemd_fixture(KICKSTART_DELETES_ITSELF);
     seed_source(&fixture);
     seed_pid_file(&fixture);
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -288,20 +292,14 @@ async fn a_launchd_install_reports_a_manager_lost_after_the_kickstart() {
 
 #[tokio::test]
 async fn an_install_reports_a_dump_it_cannot_reread() {
-    let systemd = "case \"$2\" in\n  is-active) echo active ;;\n  show) echo 4242 ;;\n  enable) echo 'not: [yaml' > \"$PM3_DUMP\" ;;\nesac\nexit 0";
-    let fixture = systemd_fixture(systemd);
+    let fixture = systemd_fixture(ENABLE_CORRUPTS_DUMP);
     seed_source(&fixture);
     seed_pid_file(&fixture);
     seed_dump(&fixture, "api", Some(MANAGER_PID));
     let dump = fixture.home.join("dump.yaml");
     let manager = fixture.programs.systemctl.clone();
-    std::fs::write(
-        &manager,
-        format!("#!/bin/sh\nPM3_DUMP={}\n{systemd}\n", dump.display()),
-    )
-    .expect("rewrite the fake manager");
-    std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    write_manager(Path::new(&manager), Some(&dump), ENABLE_CORRUPTS_DUMP);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let emit = |_line: &str| {};
     let error = run_install(
         &fixture.config_path,
@@ -317,20 +315,14 @@ async fn an_install_reports_a_dump_it_cannot_reread() {
 
 #[tokio::test]
 async fn an_install_reports_services_it_lost() {
-    let systemd = "case \"$2\" in\n  is-active) echo active ;;\n  show) echo 4242 ;;\n  enable) printf 'services: []\\n' > \"$PM3_DUMP\" ;;\nesac\nexit 0";
-    let fixture = systemd_fixture(systemd);
+    let fixture = systemd_fixture(ENABLE_EMPTIES_DUMP);
     seed_source(&fixture);
     seed_pid_file(&fixture);
     seed_dump(&fixture, "api", Some(MANAGER_PID));
     let dump = fixture.home.join("dump.yaml");
     let manager = fixture.programs.systemctl.clone();
-    std::fs::write(
-        &manager,
-        format!("#!/bin/sh\nPM3_DUMP={}\n{systemd}\n", dump.display()),
-    )
-    .expect("rewrite the fake manager");
-    std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    let server = health_server(fixture.home.join("pm3.sock"), 1);
+    write_manager(Path::new(&manager), Some(&dump), ENABLE_EMPTIES_DUMP);
+    let server = health_server(fixture.home.join("pm3.sock"), 1).await;
     let lines = std::sync::Mutex::new(Vec::new());
     let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
     let error = run_install(

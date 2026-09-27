@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -8,7 +7,7 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use self::common::{PM3, stdout_of};
+use self::common::{PM3, captured, stdout_of};
 
 struct SplitHome {
     dir: tempfile::TempDir,
@@ -52,23 +51,32 @@ fn split_config_yaml() -> String {
         5000,
         &common::HomeTunables::default(),
     );
-    body.replace("  cfg_dir: \"/service\"\n", "  cfg_dir: \"\"\n")
+    body.replace("  cfg_dir: '/service'\n", "  cfg_dir: \"\"\n")
 }
 
 fn pm3_split(home: &SplitHome, args: &[&str]) -> std::process::Output {
-    std::process::Command::new(PM3)
-        .arg("--config")
-        .arg(&home.config)
-        .args(args)
-        .env("PM3_CONFIG_DIR", home.config_root())
-        .env("PM3_STATE_DIR", home.state_root())
-        .env("PM3_RUNTIME_DIR", home.runtime_root())
-        .env("PM3_DATA_DIR", home.data_root())
-        .env_remove("PM3_HOME")
-        .output()
-        .expect("pm3 should run")
+    pm3_split_at(home, &home.runtime_root(), args)
 }
 
+fn pm3_split_at(home: &SplitHome, runtime: &Path, args: &[&str]) -> std::process::Output {
+    captured(
+        std::process::Command::new(PM3)
+            .arg("--config")
+            .arg(&home.config)
+            .args(args)
+            .env("PM3_CONFIG_DIR", home.config_root())
+            .env("PM3_STATE_DIR", home.state_root())
+            .env("PM3_RUNTIME_DIR", runtime)
+            .env("PM3_DATA_DIR", home.data_root())
+            .env_remove("PM3_HOME"),
+    )
+}
+
+fn deep_runtime(home: &SplitHome) -> PathBuf {
+    home.dir.path().join("d".repeat(120))
+}
+
+#[cfg(unix)]
 fn owner_only(path: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::metadata(path)
@@ -112,6 +120,7 @@ fn a_daemon_started_with_the_split_layout_serves_the_cli() {
     let _ = pm3_split(&home, &["shutdown"]);
 }
 
+#[cfg(unix)]
 #[test]
 fn the_split_layout_keeps_every_root_to_its_owner() {
     let home = split_home();
@@ -136,6 +145,7 @@ fn the_split_layout_keeps_every_root_to_its_owner() {
     let _ = pm3_split(&home, &["shutdown"]);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_confined_app_writes_its_cwd_while_the_state_root_stays_hidden() {
     let home = split_home();
@@ -170,6 +180,7 @@ fn a_confined_app_writes_its_cwd_while_the_state_root_stays_hidden() {
     let _ = pm3_split(&home, &["shutdown", "--with-services"]);
 }
 
+#[cfg(unix)]
 fn wait_for_line(log: &Path, needle: &str) {
     for _ in 0..200 {
         if std::fs::read_to_string(log).is_ok_and(|text| text.contains(needle)) {
@@ -183,22 +194,11 @@ fn wait_for_line(log: &Path, needle: &str) {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_runtime_root_that_overflows_the_socket_limit_is_refused() {
     let home = split_home();
-    let deep = home.dir.path().join("d".repeat(120));
-
-    let refused = std::process::Command::new(PM3)
-        .arg("--config")
-        .arg(&home.config)
-        .arg("list")
-        .env("PM3_CONFIG_DIR", home.config_root())
-        .env("PM3_STATE_DIR", home.state_root())
-        .env("PM3_RUNTIME_DIR", &deep)
-        .env("PM3_DATA_DIR", home.data_root())
-        .env_remove("PM3_HOME")
-        .output()
-        .expect("pm3 should run");
+    let refused = pm3_split_at(&home, &deep_runtime(&home), &["list"]);
 
     assert!(
         !refused.status.success(),
@@ -211,19 +211,9 @@ fn a_runtime_root_that_overflows_the_socket_limit_is_refused() {
     );
 }
 
+#[cfg(unix)]
 fn refuse_with_deep_runtime(home: &SplitHome, args: &[&str]) -> String {
-    let deep = home.dir.path().join("d".repeat(120));
-    let refused = std::process::Command::new(PM3)
-        .arg("--config")
-        .arg(&home.config)
-        .args(args)
-        .env("PM3_CONFIG_DIR", home.config_root())
-        .env("PM3_STATE_DIR", home.state_root())
-        .env("PM3_RUNTIME_DIR", &deep)
-        .env("PM3_DATA_DIR", home.data_root())
-        .env_remove("PM3_HOME")
-        .output()
-        .expect("pm3 should run");
+    let refused = pm3_split_at(home, &deep_runtime(home), args);
     assert!(
         !refused.status.success(),
         "a socket pm3 cannot bind must fail: {}",
@@ -232,6 +222,7 @@ fn refuse_with_deep_runtime(home: &SplitHome, args: &[&str]) -> String {
     String::from_utf8_lossy(&refused.stderr).into_owned()
 }
 
+#[cfg(unix)]
 #[test]
 fn a_daemon_refuses_a_runtime_root_that_overflows_the_socket_limit() {
     let home = split_home();
@@ -242,6 +233,7 @@ fn a_daemon_refuses_a_runtime_root_that_overflows_the_socket_limit() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn startup_refuses_a_runtime_root_that_overflows_the_socket_limit() {
     let home = split_home();
@@ -250,4 +242,22 @@ fn startup_refuses_a_runtime_root_that_overflows_the_socket_limit() {
         complaint.contains("cannot accept the socket path"),
         "rendering a unit must refuse the same way, got: {complaint}"
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn a_runtime_root_far_past_the_unix_socket_limit_still_serves_the_cli() {
+    let home = split_home();
+    let deep = deep_runtime(&home);
+    let listed = pm3_split_at(&home, &deep, &["list"]);
+    assert!(
+        listed.status.success(),
+        "a named pipe has no path limit: {}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert!(
+        deep.join("pm3.sock").exists(),
+        "the marker lives in the runtime root"
+    );
+    let _ = pm3_split_at(&home, &deep, &["shutdown"]);
 }

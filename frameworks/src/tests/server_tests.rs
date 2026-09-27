@@ -1,8 +1,9 @@
-#![cfg(unix)]
 use axum::{Router, routing::get};
+#[cfg(unix)]
+use tokio::net::UnixListener;
 use tokio::{
     io::AsyncWriteExt as _,
-    net::{TcpListener, TcpStream, UnixListener},
+    net::{TcpListener, TcpStream},
 };
 
 use super::*;
@@ -40,6 +41,7 @@ async fn serving_a_tcp_listener_stops_on_the_shutdown_signal() {
         .expect("graceful shutdown");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn serving_a_unix_listener_stops_on_the_shutdown_signal() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -49,6 +51,7 @@ async fn serving_a_unix_listener_stops_on_the_shutdown_signal() {
         .expect("graceful shutdown");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_unix_listener_answers_requests() {
     let dir = tempfile::tempdir().expect("temp dir");

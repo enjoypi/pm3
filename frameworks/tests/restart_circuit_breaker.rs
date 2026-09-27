@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -9,7 +8,8 @@ mod common;
 use std::time::{Duration, Instant};
 
 use self::common::{
-    PROBE_INTERVAL, READY_BUDGET, home, pm3, shutdown_daemon, stdout_of, write_apps,
+    PROBE_INTERVAL, READY_BUDGET, SHELL, SHELL_FLAG, home, pm3, shutdown_daemon, stdout_of,
+    write_apps,
 };
 
 fn crashing_apps(home: &common::Home) -> std::path::PathBuf {
@@ -17,7 +17,7 @@ fn crashing_apps(home: &common::Home) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: flapper\n    script: /bin/sh\n    cwd: '{cwd}'\n    min_uptime_ms: 50\n    max_restarts: 1\n    restart_delay_ms: 1\n    args:\n      - \"-c\"\n      - \"exit 7\"\n"
+            "apps:\n  - name: flapper\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    min_uptime_ms: 50\n    max_restarts: 1\n    restart_delay_ms: 1\n    args:\n      - \"{SHELL_FLAG}\"\n      - \"exit 7\"\n"
         ),
     )
 }
@@ -88,7 +88,7 @@ fn clean_exit_apps(home: &common::Home, code: i32) -> std::path::PathBuf {
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: flapper\n    script: /bin/sh\n    cwd: '{cwd}'\n    min_uptime_ms: 50\n    max_restarts: 1\n    restart_delay_ms: 1\n    stop_exit_codes:\n      - {code}\n    args:\n      - \"-c\"\n      - \"exit {code}\"\n"
+            "apps:\n  - name: flapper\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    min_uptime_ms: 50\n    max_restarts: 1\n    restart_delay_ms: 1\n    stop_exit_codes:\n      - {code}\n    args:\n      - \"{SHELL_FLAG}\"\n      - \"exit {code}\"\n"
         ),
     )
 }
@@ -124,7 +124,7 @@ fn an_out_of_range_stop_exit_code_fails_the_start() {
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: flapper\n    script: /bin/sh\n    cwd: '{cwd}'\n    stop_exit_codes:\n      - 999\n    args:\n      - \"-c\"\n      - \"exit 3\"\n"
+            "apps:\n  - name: flapper\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    stop_exit_codes:\n      - 999\n    args:\n      - \"{SHELL_FLAG}\"\n      - \"exit 3\"\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);

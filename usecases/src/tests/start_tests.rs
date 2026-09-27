@@ -264,5 +264,21 @@ async fn a_successful_start_persists_the_table() {
     assert_eq!(ports.stored().len(), 1);
 }
 
+#[tokio::test]
+async fn a_launched_app_receives_its_environment_as_key_value_pairs() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let with_env = AppSpec {
+        env: vec![entities::EnvValue::app("PORT", "8080")],
+        ..spec("api")
+    };
+    start_apps(&mut table, &[with_env], LOGS_DIR, &ports).await;
+    let launched = ports.spawned();
+    assert_eq!(
+        launched[0].env,
+        vec![("PORT".to_string(), "8080".to_string())]
+    );
+}
+
 #[path = "start_identity_tests.rs"]
 mod identity;

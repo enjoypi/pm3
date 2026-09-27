@@ -1,13 +1,23 @@
 #![allow(
     dead_code,
+    unused_imports,
     reason = "each integration test binary consumes a different subset of these helpers"
 )]
 
+mod platform;
+
 use std::{
-    io::Write as _,
+    io::{Seek as _, Write as _},
     path::{Path, PathBuf},
     process::Output,
     time::Duration,
+};
+
+#[cfg(unix)]
+pub use self::platform::signal;
+pub use self::platform::{
+    EXEC_SLEEPER, NAP, SEARCH_PATH, SHELL, SHELL_FLAG, SLEEPER, abs, captured, chatty_command,
+    flood_command, process_is_alive, record_then_sleep, report_variable,
 };
 
 pub const PM3: &str = env!("CARGO_BIN_EXE_pm3");
@@ -31,12 +41,12 @@ impl Drop for Home {
             ["list"].as_slice(),
             ["shutdown", "--with-services"].as_slice(),
         ] {
-            std::process::Command::new(PM3)
-                .arg("--config")
-                .arg(&self.config)
-                .args(args)
-                .output()
-                .ok();
+            captured(
+                std::process::Command::new(PM3)
+                    .arg("--config")
+                    .arg(&self.config)
+                    .args(args),
+            );
         }
     }
 }
@@ -222,7 +232,7 @@ pub fn config_yaml(
         r#"pm3:
   home: '{home}'
   cfg_dir: '{home}/service'
-  search_path: "/usr/bin:/bin:/opt/homebrew/bin"
+  search_path: "{SEARCH_PATH}"
   stop_signal: "TERM"
   kill_timeout_ms: 400
   start_timeout_ms: {start_timeout_ms}
@@ -294,6 +304,7 @@ fn service_yaml(wait_for_network: bool) -> String {
     )
 }
 
+#[cfg(unix)]
 pub fn netcat() -> &'static str {
     ["/usr/bin/nc", "/bin/nc"]
         .into_iter()
@@ -317,31 +328,39 @@ pub fn sleeper_apps(home: &Home, name: &str) -> PathBuf {
     )
 }
 
+pub fn shell_app(home: &Home, name: &str, command: &str) -> String {
+    let cwd = home.root.to_string_lossy();
+    let invocation = shell_invocation(command);
+    format!("  - name: {name}\n    cwd: '{cwd}'\n{invocation}")
+}
+
+pub fn shell_invocation(command: &str) -> String {
+    let quoted = command.replace('\'', "''");
+    format!("    script: '{SHELL}'\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{quoted}'\n")
+}
+
 pub fn pm3(home: &Home, args: &[&str]) -> Output {
-    let mut command = std::process::Command::new(PM3);
-    command
-        .arg("--config")
-        .arg(&home.config)
-        .args(args)
-        .output()
-        .expect("pm3 should run")
+    captured(
+        std::process::Command::new(PM3)
+            .arg("--config")
+            .arg(&home.config)
+            .args(args),
+    )
 }
 
 pub fn pm3_with_stdin(home: &Home, args: &[&str], input: &str) -> Output {
-    let mut child = std::process::Command::new(PM3)
-        .arg("--config")
-        .arg(&home.config)
-        .args(args)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("pm3 should run");
-    {
-        let mut stdin = child.stdin.take().expect("stdin is piped");
-        stdin.write_all(input.as_bytes()).expect("write the answer");
-    }
-    child.wait_with_output().expect("pm3 should exit")
+    let mut answer = tempfile::tempfile().expect("an answer file");
+    answer
+        .write_all(input.as_bytes())
+        .expect("write the answer");
+    answer.rewind().expect("rewind the answer");
+    captured(
+        std::process::Command::new(PM3)
+            .arg("--config")
+            .arg(&home.config)
+            .args(args)
+            .stdin(answer),
+    )
 }
 
 pub fn stdout_of(output: &Output) -> String {
@@ -404,35 +423,19 @@ pub fn wait_for_listing(home: &Home, needle: &str) -> String {
     panic!("the listing should mention {needle} inside the budget, saw:\n{shown}")
 }
 
-pub fn signal(pid: u32, name: &str) {
-    let status = std::process::Command::new("/bin/kill")
-        .args([name, &pid.to_string()])
-        .status()
-        .expect("should signal the daemon");
-    assert!(status.success(), "kill {name} {pid} should succeed");
-}
-
 pub fn shutdown_daemon(home: &Home) {
     let listed = pm3(home, &["list"]);
-    assert!(listed.status.success(), "{}", stdout_of(&listed));
+    assert!(listed.status.success(), "{}", stderr_of(&listed));
     let killed = pm3(home, &["shutdown", "--with-services"]);
-    assert!(killed.status.success(), "{}", stdout_of(&killed));
+    assert!(killed.status.success(), "{}", stderr_of(&killed));
     wait_until_gone(&home.root.join("pm3.sock"));
 }
 
+#[cfg(unix)]
 pub fn detach_daemon(home: &Home) {
     let socket = home.root.join("pm3.sock");
     signal(daemon_pid(home), "-TERM");
     wait_until_gone(&socket);
-}
-
-pub fn process_is_alive(pid: u32) -> bool {
-    std::process::Command::new("/bin/kill")
-        .args(["-0", &pid.to_string()])
-        .output()
-        .expect("should probe the process")
-        .status
-        .success()
 }
 
 pub fn described_pid(home: &Home, name: &str) -> u32 {

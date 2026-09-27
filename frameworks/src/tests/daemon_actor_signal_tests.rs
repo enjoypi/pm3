@@ -232,6 +232,30 @@ async fn resurrecting_skips_an_app_without_a_service_file() {
 }
 
 #[tokio::test]
+async fn resurrecting_an_app_whose_environment_cannot_be_decrypted_refuses_the_takeover() {
+    let mut origin = harness();
+    start_one(&mut origin, "web", SLEEPER).await;
+    let mut revived = harness_with_decryptor("pm3-missing-decryptor");
+    std::fs::copy(&origin.paths.dump_file, &revived.paths.dump_file).expect("copy the dump");
+    std::fs::copy(
+        origin.cfg_dir.join("web.yaml"),
+        revived.cfg_dir.join("web.yaml"),
+    )
+    .expect("copy the service file");
+    std::fs::write(revived.cfg_dir.join("web.enc.yaml"), "TOKEN: ENC[fake]\n")
+        .expect("write the encrypted environment");
+
+    let err = revived
+        .daemon
+        .resurrect_saved_apps()
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("cannot take over"), "got: {err}");
+}
+
+#[tokio::test]
 async fn resurrecting_a_broken_dump_is_tolerated() {
     let mut harness = harness();
     std::fs::write(&harness.paths.dump_file, "{{not yaml").expect("write a broken dump");

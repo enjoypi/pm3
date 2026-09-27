@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -7,8 +6,13 @@
 mod common;
 
 use self::common::{
-    daemon_log, home, pm3, shutdown_daemon, stdout_of, verbose_home, wait_for_listing, write_apps,
+    EXEC_SLEEPER, NAP, SHELL, SHELL_FLAG, daemon_log, home, pm3, shutdown_daemon, stdout_of,
+    verbose_home, wait_for_listing, write_apps,
 };
+
+fn probe_exec(command: &str) -> String {
+    format!("        - '{SHELL}'\n        - \"{SHELL_FLAG}\"\n        - '{command}'\n")
+}
 
 fn probed_apps(
     home: &common::Home,
@@ -19,7 +23,7 @@ fn probed_apps(
     write_apps(
         home,
         &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    listen_timeout_ms: {listen_timeout_ms}\n    ready_probe:\n      exec:\n{probe_args}\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n"
+            "apps:\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    listen_timeout_ms: {listen_timeout_ms}\n    ready_probe:\n      exec:\n{probe_args}    args:\n      - \"{SHELL_FLAG}\"\n      - '{EXEC_SLEEPER}'\n"
         ),
     )
 }
@@ -27,7 +31,7 @@ fn probed_apps(
 #[test]
 fn an_app_with_a_passing_probe_comes_online() {
     let home = home();
-    let apps = probed_apps(&home, "        - \"/usr/bin/true\"", 5000);
+    let apps = probed_apps(&home, &probe_exec("exit 0"), 5000);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
     assert!(started.status.success(), "{}", stdout_of(&started));
 
@@ -38,7 +42,7 @@ fn an_app_with_a_passing_probe_comes_online() {
 #[test]
 fn an_app_that_never_becomes_ready_is_marked_errored() {
     let home = home();
-    let apps = probed_apps(&home, "        - \"/usr/bin/false\"", 500);
+    let apps = probed_apps(&home, &probe_exec("exit 1"), 500);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
     assert!(started.status.success(), "{}", stdout_of(&started));
 
@@ -51,10 +55,11 @@ fn an_app_that_never_becomes_ready_is_marked_errored() {
 fn a_dependent_app_starts_after_its_dependency_is_ready() {
     let home = verbose_home();
     let cwd = home.root.to_string_lossy();
+    let nap = probe_exec(NAP);
     let apps = write_apps(
         &home,
         &format!(
-            "apps:\n  - name: db\n    script: /bin/sh\n    cwd: '{cwd}'\n    listen_timeout_ms: 8000\n    ready_probe:\n      exec:\n        - \"/bin/sh\"\n        - \"-c\"\n        - \"sleep 1\"\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"-c\"\n      - \"exec sleep 30\"\n"
+            "apps:\n  - name: db\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    listen_timeout_ms: 8000\n    ready_probe:\n      exec:\n{nap}    args:\n      - \"{SHELL_FLAG}\"\n      - '{EXEC_SLEEPER}'\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{EXEC_SLEEPER}'\n"
         ),
     );
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);

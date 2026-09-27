@@ -1,19 +1,13 @@
-#![cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
-
 use super::*;
+use crate::platform::{EOL, SEARCH_PATH};
 
 const NAME: &str = "caddy";
 const IDENTITY: &str = "/home/dev/.ssh/age-cfg";
-const SEARCH_PATH: &str = "/usr/bin:/bin";
 const TIMEOUT_MS: u64 = 30000;
 
-fn scripted(body: &str) -> (tempfile::TempDir, String) {
+fn scripted(unix: &str, windows: &str) -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let path = dir.path().join("fake-sops");
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("write the stub");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-        .expect("make the stub executable");
+    let path = crate::platform::script(dir.path(), "fake-sops", unix, windows);
     (dir, path.to_string_lossy().into_owned())
 }
 
@@ -33,8 +27,8 @@ fn decryptor<'d>(program: &'d str, extra_env: &'d [(String, String)]) -> Decrypt
     }
 }
 
-async fn decrypted(body: &str) -> Result<String, EncFileError> {
-    let (dir, program) = scripted(body);
+async fn decrypted(unix: &str, windows: &str) -> Result<String, EncFileError> {
+    let (dir, program) = scripted(unix, windows);
     let path = enc_path(&dir);
     load_enc_file(&decryptor(&program, &[]), &path).await
 }
@@ -45,7 +39,7 @@ fn the_file_sits_beside_the_service_file() {
         .expect("the name should be safe");
     assert_eq!(
         path,
-        std::path::Path::new("/srv/pm3/service/caddy.enc.yaml"),
+        std::path::Path::new("/srv/pm3/service").join("caddy.enc.yaml"),
         "the encrypted sidecar takes the service name and the enc.yaml suffix"
     );
 }
@@ -58,22 +52,24 @@ fn an_unsafe_name_never_becomes_a_path() {
 
 #[tokio::test]
 async fn a_decrypted_file_yields_its_plain_text() {
-    let text = decrypted("printf 'TOKEN=abc\\n'")
+    let text = decrypted("printf 'TOKEN=abc\\n'", "echo TOKEN=abc")
         .await
         .expect("the stub should decrypt");
     assert_eq!(
-        text, "TOKEN=abc\n",
+        text,
+        format!("TOKEN=abc{EOL}"),
         "the loader hands back exactly what the decryptor printed"
     );
 }
 
 #[tokio::test]
 async fn a_value_holding_spaces_survives_the_pipe() {
-    let text = decrypted("printf 'A=val with spaces\\n'")
+    let text = decrypted("printf 'A=val with spaces\\n'", "echo A=val with spaces")
         .await
         .expect("the stub should decrypt");
     assert_eq!(
-        text, "A=val with spaces\n",
+        text,
+        format!("A=val with spaces{EOL}"),
         "the loader never lets a shell re-split an unquoted value"
     );
 }
@@ -81,28 +77,29 @@ async fn a_value_holding_spaces_survives_the_pipe() {
 #[tokio::test]
 async fn the_identity_reaches_the_decryptor_in_both_shapes() {
     let probe = "printf 'SSH=%s AGE=%s\\n'";
-    let text = decrypted(&format!(
-        "{probe} \"$SOPS_AGE_SSH_PRIVATE_KEY_FILE\" \"$SOPS_AGE_KEY_FILE\""
-    ))
+    let text = decrypted(
+        &format!("{probe} \"$SOPS_AGE_SSH_PRIVATE_KEY_FILE\" \"$SOPS_AGE_KEY_FILE\""),
+        "echo SSH=%SOPS_AGE_SSH_PRIVATE_KEY_FILE% AGE=%SOPS_AGE_KEY_FILE%",
+    )
     .await
     .expect("the stub should decrypt");
     assert_eq!(
         text,
-        format!("SSH={IDENTITY} AGE={IDENTITY}\n"),
+        format!("SSH={IDENTITY} AGE={IDENTITY}{EOL}"),
         "an age identity and an ssh identity use different variables and sops reads only the matching one, so pm3 hands the path to both"
     );
 }
 
 #[tokio::test]
 async fn the_encrypted_path_reaches_the_decryptor() {
-    let (dir, program) = scripted("printf 'SEEN=%s\\n' \"$4\"");
+    let (dir, program) = scripted("printf 'SEEN=%s\\n' \"$4\"", "echo SEEN=%~4");
     let path = enc_path(&dir);
     let text = load_enc_file(&decryptor(&program, &[]), &path)
         .await
         .expect("the stub should decrypt");
     assert_eq!(
         text,
-        format!("SEEN={}\n", path.to_string_lossy()),
+        format!("SEEN={}{EOL}", path.to_string_lossy()),
         "the encrypted file is the last argument, after the output-type flag"
     );
 }
@@ -122,7 +119,10 @@ async fn a_missing_decryptor_is_reported_as_unavailable() {
 
 #[tokio::test]
 async fn a_stalled_decryptor_is_reported_as_stalled() {
-    let (dir, program) = scripted("sleep 5");
+    let (dir, program) = scripted(
+        "sleep 5",
+        r"C:\Windows\System32\PING.EXE -n 6 127.0.0.1 >nul 2>&1",
+    );
     let path = enc_path(&dir);
     let refusal = load_enc_file(
         &Decryptor {
@@ -141,9 +141,12 @@ async fn a_stalled_decryptor_is_reported_as_stalled() {
 
 #[tokio::test]
 async fn a_refusing_decryptor_reports_only_its_exit_code() {
-    let refusal = decrypted("printf 'AGE-SECRET-KEY-1LEAK\\n' >&2; exit 3")
-        .await
-        .expect_err("a non-zero exit should be refused");
+    let refusal = decrypted(
+        "printf 'AGE-SECRET-KEY-1LEAK\\n' >&2; exit 3",
+        "echo AGE-SECRET-KEY-1LEAK 1>&2\r\nexit /b 3",
+    )
+    .await
+    .expect_err("a non-zero exit should be refused");
     let shown = refusal.to_string();
     assert!(
         shown.contains('3'),
@@ -155,9 +158,10 @@ async fn a_refusing_decryptor_reports_only_its_exit_code() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_signalled_decryptor_is_still_refused() {
-    let refusal = decrypted("kill -TERM $$")
+    let refusal = decrypted("kill -TERM $$", "")
         .await
         .expect_err("a signalled decryptor should be refused");
     assert!(
@@ -168,7 +172,10 @@ async fn a_signalled_decryptor_is_still_refused() {
 
 #[tokio::test]
 async fn a_non_utf8_payload_is_refused() {
-    let refusal = decrypted("printf 'K=\\300\\300\\n'")
+    let (dir, program) = scripted("printf 'K=\\300\\300\\n'", "type \"%~dp0payload.bin\"");
+    std::fs::write(dir.path().join("payload.bin"), b"K=\xC0\xC0\n").expect("write the payload");
+    let path = enc_path(&dir);
+    let refusal = load_enc_file(&decryptor(&program, &[]), &path)
         .await
         .expect_err("invalid utf-8 should be refused");
     assert!(
@@ -179,7 +186,7 @@ async fn a_non_utf8_payload_is_refused() {
 
 #[tokio::test]
 async fn a_refusal_names_the_file_it_could_not_decrypt() {
-    let (dir, program) = scripted("exit 1");
+    let (dir, program) = scripted("exit 1", "exit /b 1");
     let path = enc_path(&dir);
     let refusal = load_enc_file(&decryptor(&program, &[]), &path)
         .await
@@ -192,12 +199,12 @@ async fn a_refusal_names_the_file_it_could_not_decrypt() {
 
 #[tokio::test]
 async fn the_search_path_reaches_the_decryptor() {
-    let text = decrypted("printf 'SEEN=%s\\n' \"$PATH\"")
+    let text = decrypted("printf 'SEEN=%s\\n' \"$PATH\"", "echo SEEN=%PATH%")
         .await
         .expect("the stub should decrypt");
     assert_eq!(
         text,
-        format!("SEEN={SEARCH_PATH}\n"),
+        format!("SEEN={SEARCH_PATH}{EOL}"),
         "pm3 decides where the decryptor is found, so it hands over its own search path"
     );
 }
@@ -205,14 +212,15 @@ async fn the_search_path_reaches_the_decryptor() {
 #[tokio::test]
 async fn the_decryptor_carries_nothing_but_its_identity_and_path() {
     let probe = "printf 'IDENTITY=[%s] HOME=[%s]\\n'";
-    let text = decrypted(&format!(
-        "{probe} \"$SOPS_AGE_SSH_PRIVATE_KEY_FILE\" \"$HOME\""
-    ))
+    let text = decrypted(
+        &format!("{probe} \"$SOPS_AGE_SSH_PRIVATE_KEY_FILE\" \"$HOME\""),
+        "echo IDENTITY=[%SOPS_AGE_SSH_PRIVATE_KEY_FILE%] HOME=[%HOME%]",
+    )
     .await
     .expect("the stub should decrypt");
     assert_eq!(
         text,
-        format!("IDENTITY=[{IDENTITY}] HOME=[]\n"),
+        format!("IDENTITY=[{IDENTITY}] HOME=[]{EOL}"),
         "the identity reaches the decryptor and the parent's own environment does not"
     );
 }
@@ -242,8 +250,7 @@ async fn a_written_sidecar_is_seen() {
 #[tokio::test]
 async fn a_sidecar_pm3_cannot_look_at_is_refused() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let blocker = dir.path().join("blocker");
-    std::fs::write(&blocker, "not a directory").expect("seed the blocking file");
+    let blocker = crate::platform::unreachable_parent(dir.path());
     let refusal = enc_file_present(&blocker.join("web.enc.yaml"))
         .await
         .expect_err("an unreadable path must not pass as absent");
@@ -271,8 +278,10 @@ fn a_service_name_can_never_shadow_an_encrypted_sidecar() {
 
 #[tokio::test]
 async fn extra_variables_reach_the_decryptor_beside_the_identity() {
-    let (dir, program) =
-        scripted("printf 'SEEN=%s IDENTITY=%s\\n' \"$XDG_CONFIG_HOME\" \"$SOPS_AGE_KEY_FILE\"");
+    let (dir, program) = scripted(
+        "printf 'SEEN=%s IDENTITY=%s\\n' \"$XDG_CONFIG_HOME\" \"$SOPS_AGE_KEY_FILE\"",
+        "echo SEEN=%XDG_CONFIG_HOME% IDENTITY=%SOPS_AGE_KEY_FILE%",
+    );
     let path = enc_path(&dir);
     let extra = vec![("XDG_CONFIG_HOME".to_string(), "/srv/cfg".to_string())];
     let text = load_enc_file(&decryptor(&program, &extra), &path)
@@ -280,14 +289,17 @@ async fn extra_variables_reach_the_decryptor_beside_the_identity() {
         .expect("the stub should decrypt");
     assert_eq!(
         text,
-        format!("SEEN=/srv/cfg IDENTITY={IDENTITY}\n"),
+        format!("SEEN=/srv/cfg IDENTITY={IDENTITY}{EOL}"),
         "an extra variable never displaces the identity"
     );
 }
 
 #[tokio::test]
 async fn an_extra_variable_cannot_shadow_the_identity() {
-    let (dir, program) = scripted("printf 'IDENTITY=%s\\n' \"$SOPS_AGE_KEY_FILE\"");
+    let (dir, program) = scripted(
+        "printf 'IDENTITY=%s\\n' \"$SOPS_AGE_KEY_FILE\"",
+        "echo IDENTITY=%SOPS_AGE_KEY_FILE%",
+    );
     let path = enc_path(&dir);
     let extra = vec![("SOPS_AGE_KEY_FILE".to_string(), "/evil/key".to_string())];
     let text = load_enc_file(&decryptor(&program, &extra), &path)
@@ -295,7 +307,7 @@ async fn an_extra_variable_cannot_shadow_the_identity() {
         .expect("the stub should decrypt");
     assert_eq!(
         text,
-        format!("IDENTITY={IDENTITY}\n"),
+        format!("IDENTITY={IDENTITY}{EOL}"),
         "pm3 decides the identity, so no shared file can redirect it"
     );
 }

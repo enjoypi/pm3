@@ -1,4 +1,3 @@
-#![cfg(unix)]
 use super::*;
 
 const PROBE_TARGET: &str = "pm3-probe-target";
@@ -27,7 +26,7 @@ fn a_non_executable_search_path_match_is_skipped_for_executables() {
     std::fs::write(first.path().join(PROBE_TARGET), "#!/bin/sh\n").expect("write the target");
     let second = directory_holding_the_target();
     let path_env = format!(
-        "{}:{}",
+        "{}{PATH_SEPARATOR}{}",
         first.path().to_string_lossy(),
         second.path().to_string_lossy()
     );
@@ -60,10 +59,13 @@ fn a_non_executable_script_still_resolves_so_spawn_can_refuse_it() {
 
 #[test]
 fn an_absolute_program_resolves_to_itself() {
-    assert_eq!(
-        resolve_program("/bin/sh", None),
-        Some(PathBuf::from("/bin/sh"))
-    );
+    let shell = crate::platform::ABSOLUTE_SHELL;
+    assert_eq!(resolve_program(shell, None), Some(PathBuf::from(shell)));
+}
+
+#[test]
+fn an_absolute_program_is_available() {
+    assert!(program_available(crate::platform::ABSOLUTE_SHELL, None));
 }
 
 #[test]
@@ -86,7 +88,7 @@ fn the_first_matching_search_path_entry_wins() {
     let first = directory_holding_the_target();
     let second = directory_holding_the_target();
     let path_env = format!(
-        "{}:{}",
+        "{}{PATH_SEPARATOR}{}",
         first.path().to_string_lossy(),
         second.path().to_string_lossy()
     );

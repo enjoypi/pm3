@@ -1,4 +1,3 @@
-#![cfg(unix)]
 #![allow(
     clippy::tests_outside_test_module,
     reason = "integration tests in tests/ are inherently outside #[cfg(test)]"
@@ -7,17 +6,14 @@
 mod common;
 
 use self::common::{
-    app_error_log, app_log, home, pm3, shutdown_daemon, stdout_of, wait_for_log, write_apps,
+    app_error_log, app_log, chatty_command, home, pm3, shell_app, shutdown_daemon, stdout_of,
+    wait_for_log, write_apps,
 };
 
 fn chatty_apps(home: &common::Home) -> std::path::PathBuf {
-    let cwd = home.root.to_string_lossy();
-    write_apps(
-        home,
-        &format!(
-            "apps:\n  - name: web\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"echo web-out; echo web-err >&2; exec sleep 30\"\n  - name: api\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"echo api-out; echo api-err >&2; exec sleep 30\"\n"
-        ),
-    )
+    let web = shell_app(home, "web", &chatty_command("web-out", "web-err"));
+    let api = shell_app(home, "api", &chatty_command("api-out", "api-err"));
+    write_apps(home, &format!("apps:\n{web}{api}"))
 }
 
 fn start_chatty(home: &common::Home) {

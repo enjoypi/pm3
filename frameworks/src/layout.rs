@@ -333,7 +333,7 @@ pub fn xdg_runtime_env() -> Option<&'static str> {
 }
 
 fn xdg_value(cell: &'static LazyLock<Option<String>>) -> Option<&'static str> {
-    cell.as_deref().filter(|text| !text.is_empty())
+    cell.as_deref().and_then(named)
 }
 
 static XDG_CONFIG: LazyLock<Option<String>> =

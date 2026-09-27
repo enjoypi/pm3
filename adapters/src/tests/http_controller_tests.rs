@@ -391,3 +391,36 @@ async fn an_action_reply_carries_no_views() {
         exchange.body
     );
 }
+
+fn request_id_from(value: axum::http::HeaderValue) -> String {
+    let mut headers = HeaderMap::new();
+    headers.insert(REQUEST_ID_HEADER, value);
+    request_id_of(&headers)
+}
+
+#[test]
+fn a_caller_request_id_is_kept() {
+    assert_eq!(
+        request_id_from(axum::http::HeaderValue::from_static("cli-42")),
+        "cli-42"
+    );
+}
+
+#[test]
+fn an_empty_request_id_is_replaced() {
+    let id = request_id_from(axum::http::HeaderValue::from_static(""));
+    assert!(id.parse::<u64>().is_ok(), "got: {id}");
+}
+
+#[test]
+fn a_request_id_that_is_not_text_is_replaced() {
+    let value = axum::http::HeaderValue::from_bytes(b"\xff").expect("obs-text is a valid header");
+    let id = request_id_from(value);
+    assert!(id.parse::<u64>().is_ok(), "got: {id}");
+}
+
+#[test]
+fn a_missing_request_id_is_generated() {
+    let id = request_id_of(&HeaderMap::new());
+    assert!(id.parse::<u64>().is_ok(), "got: {id}");
+}
