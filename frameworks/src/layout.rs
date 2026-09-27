@@ -404,6 +404,11 @@ pub fn host_install_backups() -> Option<String> {
 }
 
 #[must_use]
+pub fn host_account() -> Option<String> {
+    std::env::var("USERNAME").ok()
+}
+
+#[must_use]
 pub fn host_pm3_env() -> Vec<(String, String)> {
     pm3_variables(std::env::vars().collect())
 }

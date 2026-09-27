@@ -15,8 +15,8 @@ use crate::{
     client::UdsClient,
     commands,
     layout::{
-        host_home, host_install_backups, host_install_destination, host_pm3_env, host_runtime_dir,
-        host_uid, read_pid_file,
+        host_account, host_home, host_install_backups, host_install_destination, host_pm3_env,
+        host_runtime_dir, host_uid, read_pid_file,
     },
     service::{
         HOST_SERVICE_KIND, ServiceAction, ServiceContext, ServiceSession, dispatch_service,
@@ -32,6 +32,7 @@ pub struct InstallContext {
     pub pm3_env: Vec<(String, String)>,
     pub runtime_dir: Option<String>,
     pub uid: Option<u32>,
+    pub account: Option<String>,
     pub current_exe: io::Result<PathBuf>,
     pub kind: UnitKind,
     pub programs: Option<UnitProgramSet>,
@@ -45,6 +46,7 @@ pub async fn run(config_path: &str, source: Option<PathBuf>) -> Result<()> {
         pm3_env: host_pm3_env(),
         runtime_dir: host_runtime_dir(home.as_deref()),
         uid: host_uid(home.as_deref()),
+        account: host_account(),
         home_env: home,
         current_exe: std::env::current_exe(),
         kind: HOST_SERVICE_KIND,
@@ -145,6 +147,7 @@ fn service_context<'c>(context: &'c InstallContext, destination: &Path) -> Servi
         pm3_env: context.pm3_env.clone(),
         runtime_dir: context.runtime_dir.clone(),
         uid: context.uid,
+        account: context.account.clone(),
         binary: Ok(destination.to_path_buf()),
     }
 }

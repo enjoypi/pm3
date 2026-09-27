@@ -8,8 +8,8 @@ use adapters::{
 use crate::{
     Error, Result,
     layout::{
-        Pm3Places, canonicalize, ensure_layout, host_home, host_pm3_env, host_runtime_dir,
-        host_uid, resolve_places,
+        Pm3Places, canonicalize, ensure_layout, host_account, host_home, host_pm3_env,
+        host_runtime_dir, host_uid, resolve_places,
     },
     telemetry::init_cli_telemetry,
 };
@@ -37,6 +37,7 @@ pub struct ServiceContext<'c> {
     pub pm3_env: Vec<(String, String)>,
     pub runtime_dir: Option<String>,
     pub uid: Option<u32>,
+    pub account: Option<String>,
     pub binary: std::io::Result<PathBuf>,
 }
 
@@ -69,6 +70,7 @@ pub async fn run_service(config_path: &str, action: &ServiceAction) -> Result<St
         pm3_env: host_pm3_env(),
         runtime_dir: host_runtime_dir(home.as_deref()),
         uid: host_uid(home.as_deref()),
+        account: host_account(),
         binary: std::env::current_exe(),
     };
     dispatch_service(config_path, action, &context).await
@@ -195,6 +197,7 @@ fn build_spec(
         log_path,
         search_path,
         home: home_dir,
+        account: context.account.clone().unwrap_or_default(),
         pm3_env: pm3_variables(resolved_roots_env(&context.pm3_env, paths)),
         restart_delay_secs,
         restart_condition,

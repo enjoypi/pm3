@@ -44,6 +44,7 @@ fn context<'c>(fixture: &'c Fixture, kind: UnitKind, home: &'c str) -> ServiceCo
         home_env: Some(home),
         runtime_dir: None,
         uid: None,
+        account: None,
         binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     }
 }
@@ -59,6 +60,7 @@ fn a_session_hands_the_host_session_to_the_service_manager() {
         home_env: Some(&home),
         runtime_dir: Some("/run/user/4242".to_string()),
         uid: Some(4242),
+        account: Some("dev".to_string()),
         binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
 
@@ -69,6 +71,7 @@ fn a_session_hands_the_host_session_to_the_service_manager() {
         session.programs.runtime_dir.as_deref(),
         Some("/run/user/4242")
     );
+    assert_eq!(session.spec.account, "dev");
     assert_eq!(session.programs.uid, Some(4242));
 }
 
@@ -177,6 +180,7 @@ fn a_missing_home_stops_the_session() {
         home_env: None,
         runtime_dir: None,
         uid: None,
+        account: None,
         binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
     let err = open_service_session(&fixture.config_path, &context)
@@ -196,6 +200,7 @@ fn a_binary_that_cannot_be_located_stops_the_session() {
         home_env: Some(&home),
         runtime_dir: None,
         uid: None,
+        account: None,
         binary: Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "no such process image",
@@ -329,6 +334,7 @@ fn a_session_refuses_a_home_that_overflows_the_socket_limit() {
         home_env: Some("/home/dev"),
         runtime_dir: None,
         uid: None,
+        account: None,
         binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
 

@@ -348,13 +348,11 @@ async fn following_keeps_waiting_when_the_log_is_renamed_away() {
         .await
         .expect("should start");
     std::fs::rename(&path, path.with_extension("1")).expect("rename the log away");
-    assert!(
-        follower
-            .poll_appended()
-            .await
-            .expect("a missing path must not abort the follow")
-            .is_empty()
-    );
+    let appended = follower
+        .poll_appended()
+        .await
+        .expect("a missing path must not abort the follow");
+    assert_eq!(appended, Vec::<String>::new());
 }
 
 #[tokio::test]

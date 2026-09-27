@@ -217,6 +217,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
         home_env: Some(&fake_home),
         runtime_dir: None,
         uid: None,
+        account: None,
         binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
     };
     let command = ServiceAction::Install {

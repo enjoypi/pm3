@@ -23,6 +23,19 @@ fn the_task_runs_as_the_interactive_user_with_least_privilege() {
 }
 
 #[test]
+fn the_task_is_bound_to_the_installing_account_so_no_admin_is_needed() {
+    let mut spec = spec_for(UnitKind::WinSchtasks, Path::new("/home/dev"));
+    spec.account = "a&b".to_string();
+    let xml = render_task_xml(&spec);
+    assert!(
+        xml.contains(
+            "<LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>a&amp;b</UserId>"
+        )
+    );
+    assert!(xml.contains("<Principal>\n      <UserId>a&amp;b</UserId>"));
+}
+
+#[test]
 fn the_task_never_times_out_and_ignores_duplicate_triggers() {
     let xml = render_task_xml(&spec_for(UnitKind::WinSchtasks, Path::new("/home/dev")));
     assert!(xml.contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"));

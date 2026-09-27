@@ -85,6 +85,7 @@ fn context_with_exe(
         pm3_env: Vec::new(),
         runtime_dir: None,
         uid,
+        account: None,
         current_exe: exe,
         kind,
         programs: Some(programs),

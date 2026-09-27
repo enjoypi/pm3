@@ -77,8 +77,11 @@ async fn spawn_runs_in_the_requested_directory() {
     let spec = shell_spec(dir.path(), "pwd", "cd");
     run_to_completion(&spec).await.expect("should reap");
     let printed = read_log(dir.path(), OUT_LOG).await;
+    let printed = std::path::Path::new(printed.trim_end())
+        .canonicalize()
+        .expect("printed directory exists");
     assert_eq!(
-        crate::portable_path(printed.trim_end()),
+        crate::portable_real_path(&printed),
         crate::portable_real_path(&expected)
     );
 }

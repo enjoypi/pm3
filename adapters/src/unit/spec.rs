@@ -92,6 +92,7 @@ pub struct UnitSpec {
     pub log_path: PathBuf,
     pub search_path: String,
     pub home: String,
+    pub account: String,
     pub pm3_env: Vec<(String, String)>,
     pub restart_delay_secs: u64,
     pub restart_condition: String,

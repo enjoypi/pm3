@@ -11,6 +11,7 @@ const RESTART_COUNT: u64 = 999;
 #[must_use]
 pub fn render_task_xml(spec: &UnitSpec) -> String {
     let label = escape_xml(&spec.label);
+    let account = escape_xml(&spec.account);
     let wrapper = escape_xml(&spec.wrapper_path().to_string_lossy());
     let working_directory = escape_xml(&spec.working_directory.to_string_lossy());
     let interval = spec.restart_delay_secs.max(RESTART_MINIMUM_SECS);
@@ -21,10 +22,12 @@ pub fn render_task_xml(spec: &UnitSpec) -> String {
   <Triggers>
     <LogonTrigger>
       <Enabled>true</Enabled>
+      <UserId>{account}</UserId>
     </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal>
+      <UserId>{account}</UserId>
       <LogonType>InteractiveToken</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
