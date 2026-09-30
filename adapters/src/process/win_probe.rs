@@ -7,6 +7,8 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::time::{Instant, sleep};
 use usecases::{Liveness, ProcessProbe, ResourceSample};
 
+use super::timed::next_pause;
+
 const BYTES_PER_KIB: u64 = 1024;
 
 #[derive(Clone, Debug)]
@@ -167,11 +169,10 @@ impl ProcessProbe for WinProcessProbe {
             if off_the_runtime(read_tree_members, &[pgid]).await == 0 {
                 return true;
             }
-            let remaining = budget.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
+            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
                 return false;
-            }
-            sleep(remaining.min(self.step())).await;
+            };
+            sleep(pause).await;
         }
     }
 
@@ -183,11 +184,10 @@ impl ProcessProbe for WinProcessProbe {
             if matches!(liveness, Liveness::Gone) {
                 return liveness;
             }
-            let remaining = budget.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
+            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
                 return liveness;
-            }
-            sleep(remaining.min(self.step())).await;
+            };
+            sleep(pause).await;
         }
     }
 }

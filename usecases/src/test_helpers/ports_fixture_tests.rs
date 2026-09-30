@@ -3,7 +3,7 @@ use std::{
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
-use entities::{AppSpec, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, ProcessStatus, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy};
 
 use crate::{
     Ports,
@@ -11,11 +11,12 @@ use crate::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, FingerprintError, Fingerprinter,
         LaunchError, LaunchSpec, LaunchedProcess, Liveness, LogRotateError, LogRotator,
         ProcessLauncher, ProcessProbe, Readiness, ReadyProber, ResourceSample, RotatedLog,
-        SandboxError, Scheduler, SignalError, SignalScope, Signaler, StrandedProcess,
-        WrappedCommand,
+        SandboxError, Scheduler, SignalError, SignalScope, Signaler, SpecResolveError,
+        SpecResolver, StrandedProcess, WrappedCommand,
     },
     record::ProcessRecord,
     start::start_apps,
+    supervisor::Supervisor,
     table::ProcessTable,
 };
 
@@ -68,7 +69,6 @@ struct FakeState {
     load_failure: Option<LoadFailure>,
     save_fails: bool,
     live: BTreeMap<u32, String>,
-    resources: BTreeMap<u32, ResourceSample>,
     probe_blind: Vec<u32>,
     probe_broken: Vec<u32>,
     adopted: Vec<u32>,
@@ -207,12 +207,6 @@ impl FakePorts {
     pub fn seed_live(&self, pid: u32, token: &str) {
         self.with_state(|state| {
             state.live.insert(pid, token.to_string());
-        });
-    }
-
-    pub fn seed_resource(&self, pid: u32, sample: ResourceSample) {
-        self.with_state(|state| {
-            state.resources.insert(pid, sample);
         });
     }
 
@@ -496,6 +490,56 @@ pub async fn started_table(ports: &FakePorts) -> ProcessTable {
     let mut table = ProcessTable::new();
     start_apps(&mut table, &[spec("api")], LOGS_DIR, ports).await;
     table
+}
+
+pub const KILL_TIMEOUT_MS: u64 = 1600;
+pub const READY_TIMEOUT_MS: u64 = 30000;
+pub const READY_POLL_MS: u64 = 200;
+
+pub fn supervisor() -> Supervisor {
+    Supervisor::new(
+        LOGS_DIR.to_string(),
+        KILL_TIMEOUT_MS,
+        READY_TIMEOUT_MS,
+        READY_POLL_MS,
+    )
+}
+
+pub fn status_of(supervisor: &Supervisor, name: &str) -> ProcessStatus {
+    supervisor
+        .table
+        .find_by_name(name)
+        .expect("the record should exist")
+        .runtime
+        .status
+}
+
+pub struct StaticResolver(Option<&'static str>);
+
+impl StaticResolver {
+    pub const fn always() -> Self {
+        Self(None)
+    }
+
+    pub const fn failing(name: &'static str) -> Self {
+        Self(Some(name))
+    }
+}
+
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
+)]
+impl SpecResolver for StaticResolver {
+    async fn prepare(&self, name: &str) -> Result<AppSpec, SpecResolveError> {
+        if self.0 == Some(name) {
+            return Err(SpecResolveError::Missing {
+                name: name.to_string(),
+                reason: "the declaration vanished".to_string(),
+            });
+        }
+        Ok(spec(name))
+    }
 }
 
 #[path = "ports_fake_impls_fixture_tests.rs"]

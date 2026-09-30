@@ -4,7 +4,7 @@ use std::{
 };
 
 use thiserror::Error;
-use tokio::{process::Command, time::Instant};
+use tokio::process::Command;
 
 use super::{
     command::{UnitCommand, UnitProgramSet, launchctl_kickstart, loginctl_show_linger},
@@ -214,22 +214,23 @@ async fn run_command(command: &UnitCommand, timeout_ms: u64) -> Result<(), UnitC
 }
 
 async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, UnitCommandError> {
-    let started = Instant::now();
     let mut built = Command::new(&command.program);
     built
         .args(&command.args)
         .envs(command.env.iter().map(|(name, value)| (name, value)));
-    let output = match capture_timed(built, timeout_ms).await {
+    let timed = capture_timed(built, timeout_ms).await;
+    let duration_ms = timed.duration_ms;
+    let output = match timed.outcome {
         CommandOutcome::Stalled => {
             let reason = format!("did not answer within {timeout_ms} ms");
-            log_failed_command(&command.program, &reason, started);
+            log_failed_command(&command.program, &reason, duration_ms);
             return Err(UnitCommandError::Stalled {
                 program: command.program.clone(),
                 timeout_ms,
             });
         }
         CommandOutcome::SpawnFailed(error) => {
-            log_failed_command(&command.program, &error.to_string(), started);
+            log_failed_command(&command.program, &error.to_string(), duration_ms);
             return Err(UnitCommandError::Spawn {
                 program: command.program.clone(),
                 reason: error.to_string(),
@@ -240,7 +241,6 @@ async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, Uni
     let captured = Captured::from_output(&output);
     let program = command.program.as_str();
     let code = captured.code;
-    let duration_ms = elapsed_ms(started);
     tracing::debug!(
         feature = "unit",
         program,
@@ -252,8 +252,7 @@ async fn capture(command: &UnitCommand, timeout_ms: u64) -> Result<Captured, Uni
     Ok(captured)
 }
 
-fn log_failed_command(program: &str, reason: &str, started: Instant) {
-    let duration_ms = elapsed_ms(started);
+fn log_failed_command(program: &str, reason: &str, duration_ms: u128) {
     tracing::debug!(
         feature = "unit",
         program,
@@ -262,10 +261,6 @@ fn log_failed_command(program: &str, reason: &str, started: Instant) {
         action = "service_command",
         "a service manager command never produced an exit status"
     );
-}
-
-fn elapsed_ms(started: Instant) -> u128 {
-    started.elapsed().as_millis()
 }
 
 fn io_error(path: &Path, source: &std::io::Error) -> UnitCommandError {

@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::paths::RUNTIME_DIR_ROOT;
+
 pub const DAEMON_SUBCOMMAND: &str = "daemon";
 pub const CONFIG_FLAG: &str = "--config";
 
@@ -19,7 +21,6 @@ const SYSTEMD_ACTIVE: &str = "active";
 const SCHTASKS_RUNNING: &str = "Running";
 const PM3_VARIABLE_PREFIX: &str = "PM3_";
 const LINGER_ENABLED: &str = "yes";
-const RUNTIME_DIR_ROOT: &str = "/run/user";
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum UnitKind {

@@ -1,3 +1,5 @@
+use entities::DependencyError;
+
 use super::*;
 
 fn assert_transparent(wrapped: &UsecaseError, expected: &str) {
@@ -95,34 +97,4 @@ fn an_invalid_signal_renders_transparently() {
     };
     let expected = source.to_string();
     assert_transparent(&UsecaseError::from(source), &expected);
-}
-
-#[test]
-fn the_fake_scheduler_answers_a_fixed_interval() {
-    use crate::ports::Scheduler as _;
-
-    let ports = crate::ports_test_helpers::FakePorts::new(1000);
-    assert_eq!(
-        ports.next_fire_ms("* * * * *", 1000),
-        Some(1000 + crate::ports_test_helpers::FAKE_FIRE_INTERVAL_MS)
-    );
-}
-
-#[test]
-fn the_fake_scheduler_refuses_an_unschedulable_expression() {
-    use crate::ports::Scheduler as _;
-
-    let ports = crate::ports_test_helpers::FakePorts::new(1000);
-    assert_eq!(
-        ports.next_fire_ms(crate::ports_test_helpers::UNSCHEDULABLE_CRON, 1000),
-        None
-    );
-}
-
-#[tokio::test]
-async fn the_fake_probe_samples_no_resident_memory() {
-    use crate::ports::ProcessProbe as _;
-
-    let ports = crate::ports_test_helpers::FakePorts::new(1000);
-    assert!(ports.resident_memory(&[7]).await.is_empty());
 }

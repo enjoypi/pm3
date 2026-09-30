@@ -16,7 +16,7 @@ use crate::{
     resurrect::resurrect,
     selector::AppSelector,
     start::StartOutcome,
-    stop::persist_for_handover,
+    stop::{StopOutcome, persist_for_handover},
     supervise::{ExitAction, handle_child_exit, settle_failed_probe},
     supervision::{SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest},
     supervisor_log::{
@@ -331,10 +331,10 @@ impl Supervisor {
                 self.watch(&started, effects);
                 name
             }
-            RestartOutcome::AwaitingExit {
+            RestartOutcome::AwaitingExit(StopOutcome {
                 name,
                 force_kill_pid,
-            } => {
+            }) => {
                 let token = self.identity_token(&name);
                 self.schedule_force_kill(&name, force_kill_pid, token, effects);
                 name

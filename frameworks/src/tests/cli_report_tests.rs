@@ -244,6 +244,38 @@ async fn naming_a_service_without_a_program_explains_the_usage() {
 }
 
 #[tokio::test]
+async fn an_inline_start_with_a_bad_cron_is_refused_before_the_daemon() {
+    let err = execute(parse(&[
+        "pm3",
+        "start",
+        "--name",
+        "probe",
+        "--cron",
+        "not a cron",
+        crate::platform::SHELL,
+    ]))
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("not a cron"), "got: {err}");
+}
+
+#[tokio::test]
+async fn an_inline_start_without_a_usable_config_fails() {
+    let outcome = execute(parse(&[
+        "pm3",
+        "--config",
+        "/nonexistent/pm3.yaml",
+        "start",
+        "--name",
+        "probe",
+        crate::platform::SHELL,
+    ]))
+    .await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
 async fn starting_without_a_target_explains_the_usage() {
     let err = execute(parse(&["pm3", "start"]))
         .await

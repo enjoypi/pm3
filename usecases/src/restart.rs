@@ -3,17 +3,14 @@ use crate::{
     persist::save_table,
     selector::AppSelector,
     start::{StartOutcome, start_one},
-    stop::request_stop,
+    stop::{StopOutcome, request_stop},
     table::ProcessTable,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RestartOutcome {
     Started(StartOutcome),
-    AwaitingExit {
-        name: String,
-        force_kill_pid: Option<u32>,
-    },
+    AwaitingExit(StopOutcome),
 }
 
 pub async fn restart_app(
@@ -22,9 +19,7 @@ pub async fn restart_app(
     logs_dir: &str,
     ports: &impl Ports,
 ) -> Result<RestartOutcome> {
-    let record = table
-        .find_mut(selector)
-        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
+    let record = table.require_mut(selector)?;
 
     if record.runtime.status.is_settled() {
         let name = record.runtime.name.clone();
@@ -36,10 +31,7 @@ pub async fn restart_app(
     let stopped = request_stop(record, ports).await?;
     record.runtime.request_restart();
     persist_restart(table, &stopped.name, ports).await;
-    Ok(RestartOutcome::AwaitingExit {
-        name: stopped.name,
-        force_kill_pid: stopped.force_kill_pid,
-    })
+    Ok(RestartOutcome::AwaitingExit(stopped))
 }
 
 async fn persist_restart(table: &ProcessTable, app: &str, ports: &impl Ports) {

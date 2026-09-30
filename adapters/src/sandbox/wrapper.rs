@@ -20,11 +20,6 @@ impl SandboxCommandWrapper {
             minimal_read_roots,
         }
     }
-
-    #[must_use]
-    pub fn backend(&self) -> Option<SandboxBackend> {
-        self.host.as_ref().map(|host| host.backend)
-    }
 }
 
 impl CommandWrapper for SandboxCommandWrapper {

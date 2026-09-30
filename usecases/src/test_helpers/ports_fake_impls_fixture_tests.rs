@@ -117,12 +117,8 @@ impl ProcessProbe for FakePorts {
         BTreeMap::new()
     }
 
-    async fn resource_usage(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
-        self.read(|state| {
-            pids.iter()
-                .filter_map(|pid| state.resources.get(pid).map(|sample| (*pid, *sample)))
-                .collect()
-        })
+    async fn resource_usage(&self, _pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
+        BTreeMap::new()
     }
 
     async fn identity(&self, pid: u32) -> Liveness {

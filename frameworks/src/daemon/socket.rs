@@ -205,13 +205,9 @@ fn pipe_is_held(name: &str) -> bool {
 
 #[cfg(windows)]
 async fn mark_bound(path: &Path) {
-    match tokio::fs::remove_file(path).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            log_marker(path, &error.to_string());
-            return;
-        }
+    if let Err(error) = adapters::remove_if_present(path).await {
+        log_marker(path, &error.to_string());
+        return;
     }
     if let Err(error) = adapters::write_private(path, "").await {
         log_marker(path, &error.to_string());

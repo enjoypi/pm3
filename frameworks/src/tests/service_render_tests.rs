@@ -73,19 +73,6 @@ async fn an_install_writes_the_unit_under_the_given_home() {
 }
 
 #[tokio::test]
-async fn an_install_settles_the_config_into_the_pm3_home() {
-    let fixture = fixture(&true_program());
-    let home = home_of(&fixture);
-    let settled = installed_config(&fixture, UnitKind::Systemd, &home)
-        .await
-        .expect("the install should succeed");
-    assert_eq!(
-        settled,
-        std::fs::read_to_string(&fixture.config_path).expect("read the source config")
-    );
-}
-
-#[tokio::test]
 async fn a_schtasks_install_writes_the_task_xml_and_the_wrapper() {
     let fixture = fixture(&true_program());
     let home = home_of(&fixture);

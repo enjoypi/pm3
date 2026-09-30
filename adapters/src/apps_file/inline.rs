@@ -11,12 +11,11 @@ const ADDED_PREFIX: char = '+';
 
 const NESTED_INDENT: &str = "  ";
 
-pub struct InlineRequest<'r> {
+pub struct InlineStart<'r> {
     pub name: &'r str,
     pub program: &'r str,
     pub args: &'r [String],
     pub cwd: Option<&'r str>,
-    pub home: Option<&'r str>,
     pub cron: Option<&'r str>,
     pub autorestart: Option<bool>,
     pub network: bool,
@@ -30,7 +29,7 @@ pub struct InlineRequest<'r> {
 }
 
 #[must_use]
-pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
+pub fn inline_entry(request: &InlineStart<'_>, home: Option<&str>) -> AppEntry {
     let sandbox = SandboxEntry {
         mode: None,
         read: None,
@@ -58,10 +57,10 @@ pub fn inline_entry(request: &InlineRequest<'_>) -> AppEntry {
         liveness_tcp: None,
         sandbox: Some(sandbox),
     };
-    fold_entry(&entry, request.home)
+    fold_entry(&entry, home)
 }
 
-fn ready_probe_of(request: &InlineRequest<'_>) -> Option<ReadyProbeEntry> {
+fn ready_probe_of(request: &InlineStart<'_>) -> Option<ReadyProbeEntry> {
     if !request.ready_exec.is_empty() {
         return Some(ReadyProbeEntry {
             exec: Some(request.ready_exec.to_vec()),

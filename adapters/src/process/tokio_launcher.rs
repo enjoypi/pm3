@@ -116,18 +116,15 @@ impl ProcessLauncher for TokioProcessLauncher {
 }
 
 async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command {
-    let mut command = Command::new(&spec.program);
+    let mut command = clean_command(spec.program.as_ref());
     command
         .args(&spec.args)
         .current_dir(&spec.cwd)
-        .env_clear()
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout.into_std().await))
         .stderr(Stdio::from(stderr.into_std().await));
     #[cfg(unix)]
     command.process_group(0);
-    #[cfg(windows)]
-    command.envs(windows_system_env());
     for (key, value) in &spec.env {
         command.env(key, value);
     }
@@ -136,6 +133,14 @@ async fn build_command(spec: &LaunchSpec, stdout: File, stderr: File) -> Command
 
 #[cfg(windows)]
 const WINDOWS_SYSTEM_VARIABLES: [&str; 3] = ["SystemRoot", "windir", "SystemDrive"];
+
+pub fn clean_command(program: &std::ffi::OsStr) -> Command {
+    let mut command = Command::new(program);
+    command.env_clear();
+    #[cfg(windows)]
+    command.envs(windows_system_env());
+    command
+}
 
 #[cfg(windows)]
 #[must_use]

@@ -1,15 +1,16 @@
-use std::{path::Path, time::Duration};
+use std::path::Path;
 
-use tokio::{process::Command, time::timeout};
+use tokio::process::Command;
 
 use super::layout::parse_version_output;
+use crate::process::{CommandOutcome, capture_timed};
 
 pub async fn binary_version(path: &Path, timeout_ms: u64) -> Option<String> {
-    let probe = Command::new(path).arg("--version").output();
-    let output = timeout(Duration::from_millis(timeout_ms), probe)
-        .await
-        .ok()?
-        .ok()?;
+    let mut probe = Command::new(path);
+    probe.arg("--version");
+    let CommandOutcome::Finished(output) = capture_timed(probe, timeout_ms).await.outcome else {
+        return None;
+    };
     if !output.status.success() {
         return None;
     }

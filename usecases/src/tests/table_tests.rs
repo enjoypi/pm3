@@ -1,6 +1,7 @@
 use entities::topo_sort;
 
-use super::{test_helpers::*, *};
+use super::*;
+use crate::record::test_helpers::{record, spec, spec_with_deps};
 
 #[test]
 fn a_new_table_holds_no_records() {
@@ -70,7 +71,7 @@ fn removing_the_highest_id_hands_it_out_again() {
 
 #[test]
 fn a_table_restored_from_records_fills_the_gap_below_their_highest_id() {
-    let mut table = ProcessTable::from_records(vec![record_with_id("a", 4)]);
+    let mut table = ProcessTable::from_records(vec![record("a", 4)]);
     assert_eq!(
         table.upsert(spec("b"), 1000),
         1,
@@ -80,18 +81,14 @@ fn a_table_restored_from_records_fills_the_gap_below_their_highest_id() {
 
 #[test]
 fn a_dense_table_hands_out_the_id_above_its_highest() {
-    let mut table = ProcessTable::from_records(vec![
-        record_with_id("a", 1),
-        record_with_id("b", 2),
-        record_with_id("c", 3),
-    ]);
+    let mut table =
+        ProcessTable::from_records(vec![record("a", 1), record("b", 2), record("c", 3)]);
     assert_eq!(table.upsert(spec("d"), 1000), 4);
 }
 
 #[test]
 fn an_unsorted_dump_still_yields_the_lowest_free_id() {
-    let mut table =
-        ProcessTable::from_records(vec![record_with_id("c", 3), record_with_id("a", 1)]);
+    let mut table = ProcessTable::from_records(vec![record("c", 3), record("a", 1)]);
     assert_eq!(table.upsert(spec("b"), 1000), 2);
 }
 
@@ -149,7 +146,7 @@ fn dependency_nodes_feed_the_topological_sort() {
 
 #[test]
 fn an_id_below_the_floor_left_by_an_older_dump_is_stepped_over() {
-    let mut table = ProcessTable::from_records(vec![record_with_id("legacy", 0)]);
+    let mut table = ProcessTable::from_records(vec![record("legacy", 0)]);
     assert_eq!(
         table.upsert(spec("fresh"), 1000),
         1,

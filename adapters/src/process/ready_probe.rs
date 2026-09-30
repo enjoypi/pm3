@@ -1,6 +1,6 @@
 use std::{io::ErrorKind, process::Stdio, time::Duration};
 
-use tokio::{process::Command, time::timeout};
+use tokio::time::timeout;
 use usecases::{Readiness, ReadyProbe, ReadyProber};
 
 use crate::program::resolve_executable;
@@ -32,16 +32,13 @@ impl HostReadyProber {
             return Readiness::Failed(format!("cannot find '{program}' on pm3.search_path"));
         };
         let started = std::time::Instant::now();
-        let mut probe = Command::new(resolved);
+        let mut probe = super::tokio_launcher::clean_command(resolved.as_os_str());
         probe
             .args(command.get(1..).unwrap_or_default())
-            .env_clear()
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        #[cfg(windows)]
-        probe.envs(super::windows_system_env());
         let spawned = probe.spawn();
         let mut child = match spawned {
             Ok(child) => child,

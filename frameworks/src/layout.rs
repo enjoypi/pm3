@@ -16,9 +16,6 @@ use adapters::{
 use crate::{Error, Result};
 
 #[cfg(unix)]
-const OWNER_ONLY_DIR: u32 = 0o700;
-const RUNTIME_DIR_VARIABLE: &str = "XDG_RUNTIME_DIR";
-#[cfg(unix)]
 const OWN_PROCESS_DIR: &str = "/proc/self";
 
 pub struct RootSources<'s> {
@@ -108,10 +105,6 @@ const fn named(value: &str) -> Option<&str> {
     Some(value)
 }
 
-pub fn resolve_cfg_dir(pm3: &Pm3Config, home_env: Option<&str>) -> Result<PathBuf> {
-    Ok(resolve_places(pm3, home_env)?.cfg_dir)
-}
-
 #[derive(Debug)]
 pub struct Pm3Places {
     pub paths: Pm3Paths,
@@ -165,7 +158,7 @@ async fn prepare_directory(path: &Path) -> Result<()> {
 
 #[cfg(unix)]
 async fn restrict_to_owner(path: &Path) {
-    let permissions = std::fs::Permissions::from_mode(OWNER_ONLY_DIR);
+    let permissions = std::fs::Permissions::from_mode(adapters::OWNER_ONLY_DIR);
     if let Err(error) = tokio::fs::set_permissions(path, permissions).await {
         log_stuck_permissions(path, &error.to_string());
     }
@@ -292,13 +285,9 @@ pub async fn clear_runtime_files(paths: &Pm3Paths) {
 }
 
 pub(crate) async fn remove_runtime_file(path: &Path) {
-    let Err(error) = tokio::fs::remove_file(path).await else {
-        return;
-    };
-    if error.kind() == std::io::ErrorKind::NotFound {
-        return;
+    if let Err(error) = adapters::remove_if_present(path).await {
+        log_stuck_removal(path, &error.to_string());
     }
-    log_stuck_removal(path, &error.to_string());
 }
 
 fn log_stuck_removal(path: &Path, reason: &str) {
@@ -341,7 +330,7 @@ static XDG_CONFIG: LazyLock<Option<String>> =
 static XDG_STATE: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("XDG_STATE_HOME").ok());
 static XDG_DATA: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("XDG_DATA_HOME").ok());
 static XDG_RUNTIME: LazyLock<Option<String>> =
-    LazyLock::new(|| std::env::var(RUNTIME_DIR_VARIABLE).ok());
+    LazyLock::new(|| std::env::var(adapters::RUNTIME_DIR_VARIABLE).ok());
 
 #[must_use]
 pub fn host_home() -> Option<String> {
@@ -440,11 +429,11 @@ pub const fn owner_uid_of(_path: &Path) -> Option<u32> {
 
 #[must_use]
 pub fn host_runtime_dir(home_env: Option<&str>) -> Option<String> {
-    let declared = std::env::var(RUNTIME_DIR_VARIABLE).ok();
+    let declared = std::env::var(adapters::RUNTIME_DIR_VARIABLE).ok();
     runtime_dir_of(declared.as_deref(), host_uid(home_env))
 }
 
-fn layout_error(path: &Path, source: &std::io::Error) -> Error {
+pub(crate) fn layout_error(path: &Path, source: &std::io::Error) -> Error {
     Error::Layout {
         path: path.to_string_lossy().into_owned(),
         reason: source.to_string(),

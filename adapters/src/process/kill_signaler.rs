@@ -1,4 +1,4 @@
-use tokio::{process::Command, time::Instant};
+use tokio::process::Command;
 use usecases::{SignalError, SignalScope, Signaler};
 
 use super::timed::{CommandOutcome, capture_timed};
@@ -38,13 +38,14 @@ impl KillSignaler {
 
     async fn signal(&self, signal: &str, target: &str, pid: u32) -> Result<(), SignalError> {
         let arguments = signal_arguments(signal, target, pid);
-        let started = Instant::now();
         let mut command = Command::new(&self.program);
         command.args(&arguments);
-        let output = match capture_timed(command, self.timeout_ms).await {
+        let timed = capture_timed(command, self.timeout_ms).await;
+        let duration_ms = timed.duration_ms;
+        let output = match timed.outcome {
             CommandOutcome::Stalled => {
                 let refusal = self.stalled(pid);
-                log_undelivered_signal(pid, signal, target, elapsed_ms(started), &refusal);
+                log_undelivered_signal(pid, signal, target, duration_ms, &refusal);
                 return Err(refusal);
             }
             CommandOutcome::SpawnFailed(error) => {
@@ -52,13 +53,12 @@ impl KillSignaler {
                     pid,
                     reason: error.to_string(),
                 };
-                log_undelivered_signal(pid, signal, target, elapsed_ms(started), &refusal);
+                log_undelivered_signal(pid, signal, target, duration_ms, &refusal);
                 return Err(refusal);
             }
             CommandOutcome::Finished(output) => output,
         };
         let code = exit_code_of(&output.status);
-        let duration_ms = elapsed_ms(started);
         tracing::debug!(
             feature = "supervisor",
             pid,
@@ -159,10 +159,6 @@ fn kill_program(_taskkill_path: &str) -> String {
 #[cfg(windows)]
 fn kill_program(taskkill_path: &str) -> String {
     taskkill_path.to_string()
-}
-
-fn elapsed_ms(started: Instant) -> u128 {
-    started.elapsed().as_millis()
 }
 
 fn log_undelivered_signal(

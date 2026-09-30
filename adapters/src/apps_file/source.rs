@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 
 use usecases::{
     AppSpec, EnvOrigin, EnvScope, EnvValue, SpecError, SpecResolveError, SpecResolver,
-    merge_environment, validate_app_name,
+    merge_environment,
 };
 
 use super::{
-    enc_file::{Decryptor, ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
+    enc_file::{ENC_FILE_SUFFIX, enc_file_present, open_declared},
     env_file::{ENV_FILE_SUFFIX, load_env_file, parse_env_text},
     file::{AppsFileError, SpecDefaults, SpecRoots, load_service_file, resolve_checked},
     global_env::scoped,
@@ -141,25 +141,9 @@ impl SpecSource {
         if !enc_file_present(&path).await? {
             return Ok(Secrets::Absent);
         }
-        let declared_identity = !self.config.sops_identity_file.is_empty();
-        let opened = load_enc_file(
-            &Decryptor {
-                program: &self.config.sops_program,
-                identity: &self.config.sops_identity_file,
-                search_path: &self.config.search_path,
-                timeout_ms: self.config.sops_timeout_ms,
-                extra_env: &self.decryptor_env,
-            },
-            &path,
-        )
-        .await;
-        let body = match opened {
-            Ok(text) => text,
-            Err(error) if declared_identity => return Err(error.into()),
-            Err(_error) => {
-                log_unopened_secrets(&path.to_string_lossy());
-                return Ok(Secrets::Sealed);
-            }
+        let Some(body) = open_declared(&self.config, &path, &self.decryptor_env).await? else {
+            log_unopened_secrets(&path.to_string_lossy());
+            return Ok(Secrets::Sealed);
         };
         Ok(Secrets::Opened(Decrypted {
             path: path.to_string_lossy().into_owned(),
@@ -235,8 +219,7 @@ fn resolve_failure(name: &str, error: &AppsFileError) -> SpecResolveError {
 }
 
 pub fn service_file_of(cfg_dir: &Path, name: &str) -> Result<PathBuf, SpecError> {
-    validate_app_name(name)?;
-    Ok(cfg_dir.join(format!("{name}.{SERVICE_FILE_SUFFIX}")))
+    super::named_file(cfg_dir, name, SERVICE_FILE_SUFFIX)
 }
 
 #[cfg(test)]

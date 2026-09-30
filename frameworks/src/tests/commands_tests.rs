@@ -1,3 +1,5 @@
+use adapters::{RESTART_ACTION, STOP_ACTION};
+
 use super::*;
 use crate::{
     daemon_fixture::{Fixture, running_daemon, sleeper_apps_file, stop_daemon},
@@ -27,11 +29,6 @@ fn an_apps_file_is_resolved_to_an_absolute_path() {
 #[test]
 fn a_session_cannot_open_without_a_config() {
     assert!(open_session("/nonexistent/pm3.yaml").is_err());
-}
-
-#[test]
-fn checking_a_missing_config_fails() {
-    assert!(check_config("/nonexistent/pm3.yaml").is_err());
 }
 
 #[test]

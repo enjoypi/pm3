@@ -1,53 +1,9 @@
-use entities::AppSpec;
-
 use super::*;
 use crate::{
-    ports::SpecResolveError,
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec, spec_with_deps},
+    ports_test_helpers::{FakePorts, LOGS_DIR, StaticResolver, spec, spec_with_deps, supervisor},
     start::start_apps,
     supervision::SupervisionRequest,
 };
-
-const KILL_TIMEOUT_MS: u64 = 1600;
-const READY_TIMEOUT_MS: u64 = 30000;
-const READY_POLL_MS: u64 = 200;
-
-struct StaticResolver(Option<&'static str>);
-
-impl StaticResolver {
-    fn always() -> Self {
-        Self(None)
-    }
-
-    fn failing(name: &'static str) -> Self {
-        Self(Some(name))
-    }
-}
-
-#[expect(
-    clippy::unused_async_trait_impl,
-    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
-)]
-impl SpecResolver for StaticResolver {
-    async fn prepare(&self, name: &str) -> Result<AppSpec, SpecResolveError> {
-        if self.0 == Some(name) {
-            return Err(SpecResolveError::Missing {
-                name: name.to_string(),
-                reason: "the declaration vanished".to_string(),
-            });
-        }
-        Ok(spec(name))
-    }
-}
-
-fn supervisor() -> Supervisor {
-    Supervisor::new(
-        LOGS_DIR.to_string(),
-        KILL_TIMEOUT_MS,
-        READY_TIMEOUT_MS,
-        READY_POLL_MS,
-    )
-}
 
 async fn two_app_supervisor(ports: &FakePorts) -> Supervisor {
     let mut supervisor = supervisor();

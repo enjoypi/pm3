@@ -17,20 +17,13 @@ pub async fn signal_app(
     ports: &impl Ports,
 ) -> Result<SignalOutcome> {
     let signal = parse_signal_name(raw_signal)?;
-    let record = table
-        .find_mut(selector)
-        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
+    let record = table.require_mut(selector)?;
     let name = record.runtime.name.clone();
     let live = record
         .runtime
-        .pid
-        .filter(|_pid| !record.runtime.status.is_settled())
+        .live_pid()
         .ok_or_else(|| UsecaseError::NotRunning(name.clone()))?;
-    let token = record
-        .runtime
-        .identity
-        .as_ref()
-        .map(|identity| identity.token.clone());
+    let token = record.runtime.identity_token().map(str::to_owned);
     let observed = ports.identity(live).await;
     let owns_pid = matches!(observed, Liveness::Alive(ref current) if token.as_deref() == Some(current.as_str()));
     if !owns_pid {

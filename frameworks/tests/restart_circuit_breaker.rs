@@ -35,27 +35,16 @@ fn wait_for_status(home: &common::Home, status: &str) -> String {
 }
 
 #[test]
-fn a_crash_loop_trips_the_breaker_and_settles_as_errored() {
+fn a_crash_loop_trips_the_breaker_and_a_reset_clears_it() {
     let home = home();
     let apps = crashing_apps(&home);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
     assert!(started.status.success(), "{}", stdout_of(&started));
-
-    let described = wait_for_status(&home, "errored");
+    let errored = wait_for_status(&home, "errored");
     assert!(
-        described.contains("restarts"),
-        "describe should report the restart counter: {described}"
+        errored.contains("restarts"),
+        "describe should report the restart counter: {errored}"
     );
-    shutdown_daemon(&home);
-}
-
-#[test]
-fn a_reset_clears_the_breaker_state() {
-    let home = home();
-    let apps = crashing_apps(&home);
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
-    wait_for_status(&home, "errored");
 
     let reset = pm3(&home, &["reset", "flapper"]);
     assert!(reset.status.success(), "{}", stdout_of(&reset));

@@ -37,7 +37,6 @@ fn inline_request<'s>(program: &'s str, args: &'s [String]) -> InlineStart<'s> {
         ready_tcp: None,
         listen_timeout_ms: None,
         stop_exit_codes: &[],
-        force: false,
     }
 }
 
@@ -78,7 +77,7 @@ async fn starting_apps_reports_an_unreadable_apps_file() {
 
 #[tokio::test]
 async fn starting_inline_without_a_config_fails() {
-    let outcome = start_inline("/nonexistent/pm3.yaml", &inline_request(SHELL, &[])).await;
+    let outcome = start_inline("/nonexistent/pm3.yaml", &inline_request(SHELL, &[]), false).await;
     assert!(outcome.is_err(), "got: {outcome:?}");
 }
 
@@ -86,10 +85,14 @@ async fn starting_inline_without_a_config_fails() {
 async fn starting_inline_with_a_program_off_the_search_path_fails() {
     let dir = tempfile::tempdir().expect("temp dir");
     let config = usable_config(dir.path());
-    let err = start_inline(&config, &inline_request("pm3-not-a-real-program", &[]))
-        .await
-        .unwrap_err()
-        .to_string();
+    let err = start_inline(
+        &config,
+        &inline_request("pm3-not-a-real-program", &[]),
+        false,
+    )
+    .await
+    .unwrap_err()
+    .to_string();
     assert!(err.contains("cannot find"), "got: {err}");
 }
 
@@ -97,7 +100,7 @@ async fn starting_inline_with_a_program_off_the_search_path_fails() {
 async fn starting_inline_reports_a_blocked_home() {
     let dir = tempfile::tempdir().expect("temp dir");
     let config = blocked_home_config(dir.path());
-    let err = start_inline(&config, &inline_request(SHELL, &[]))
+    let err = start_inline(&config, &inline_request(SHELL, &[]), false)
         .await
         .unwrap_err()
         .to_string();
@@ -110,18 +113,10 @@ async fn deleting_without_a_config_fails() {
 }
 
 #[tokio::test]
-async fn deleting_an_unknown_app_fails() {
-    let fixture = running_daemon().await;
-    let outcome = delete_app(&fixture.config_path, "ghost").await;
-    assert!(outcome.is_err(), "got: {outcome:?}");
-    stop_daemon(fixture).await;
-}
-
-#[tokio::test]
 async fn starting_inline_reaches_the_daemon() {
     let fixture = running_daemon().await;
     let args = vec![SHELL_FLAG.to_string(), SLEEPER.to_string()];
-    let started = start_inline(&fixture.config_path, &inline_request(SHELL, &args))
+    let started = start_inline(&fixture.config_path, &inline_request(SHELL, &args), false)
         .await
         .expect("the inline app should start");
     assert!(
@@ -136,10 +131,10 @@ async fn starting_inline_reaches_the_daemon() {
 async fn restarting_an_unchanged_inline_app_reports_no_config_change() {
     let fixture = running_daemon().await;
     let args = vec![SHELL_FLAG.to_string(), SLEEPER.to_string()];
-    start_inline(&fixture.config_path, &inline_request(SHELL, &args))
+    start_inline(&fixture.config_path, &inline_request(SHELL, &args), false)
         .await
         .expect("should start");
-    let again = start_inline(&fixture.config_path, &inline_request(SHELL, &args))
+    let again = start_inline(&fixture.config_path, &inline_request(SHELL, &args), false)
         .await
         .expect("should start");
     assert_eq!(

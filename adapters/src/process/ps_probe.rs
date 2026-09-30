@@ -9,7 +9,7 @@ use tokio::{
 };
 use usecases::{Liveness, ProcessProbe, ResourceSample};
 
-use super::timed::{CommandOutcome, capture_timed};
+use super::timed::{CommandOutcome, capture_timed, next_pause};
 use crate::exit_status::UNKNOWN_EXIT_CODE;
 
 pub const PS_PROGRAM: &str = "/bin/ps";
@@ -54,6 +54,10 @@ impl PsProcessProbe {
     #[must_use]
     pub fn with_timeout(timeout_ms: u64, poll_interval_ms: u64) -> Self {
         Self::new(PS_PROGRAM.to_string(), timeout_ms, poll_interval_ms)
+    }
+
+    fn step(&self) -> Duration {
+        Duration::from_millis(self.poll_interval_ms.max(1))
     }
 
     pub(crate) async fn resident_memory_kib(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
@@ -117,14 +121,15 @@ impl PsProcessProbe {
     }
 
     async fn read_ps(&self, command: Command, joined: &str, action: &str) -> Option<String> {
-        let started = Instant::now();
-        let output = match capture_timed(command, self.timeout_ms).await {
+        let timed = capture_timed(command, self.timeout_ms).await;
+        let duration_ms = timed.duration_ms;
+        let output = match timed.outcome {
             CommandOutcome::Stalled => {
-                log_stalled_probe(joined, self.timeout_ms, elapsed_ms(started), action);
+                log_stalled_probe(joined, self.timeout_ms, duration_ms, action);
                 return None;
             }
             CommandOutcome::SpawnFailed(_) => {
-                log_unusable_probe(joined, &self.program, elapsed_ms(started), action);
+                log_unusable_probe(joined, &self.program, duration_ms, action);
                 return None;
             }
             CommandOutcome::Finished(output) => output,
@@ -132,7 +137,7 @@ impl PsProcessProbe {
         let code = output.status.code();
         if !output.status.success() && code != Some(NO_SUCH_PROCESS_CODE) {
             let refusal = code.unwrap_or(UNKNOWN_EXIT_CODE);
-            log_refused_probe(joined, refusal, elapsed_ms(started), action);
+            log_refused_probe(joined, refusal, duration_ms, action);
             return None;
         }
         Some(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -312,12 +317,10 @@ impl ProcessProbe for PsProcessProbe {
                 Some(false) => {}
                 None => return false,
             }
-            let remaining = budget.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
+            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
                 return false;
-            }
-            let step = Duration::from_millis(self.poll_interval_ms.max(1));
-            sleep(remaining.min(step)).await;
+            };
+            sleep(pause).await;
         }
     }
 
@@ -329,18 +332,12 @@ impl ProcessProbe for PsProcessProbe {
             if matches!(liveness, Liveness::Gone) {
                 return liveness;
             }
-            let remaining = budget.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
+            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
                 return liveness;
-            }
-            let step = Duration::from_millis(self.poll_interval_ms.max(1));
-            sleep(remaining.min(step)).await;
+            };
+            sleep(pause).await;
         }
     }
-}
-
-fn elapsed_ms(started: Instant) -> u128 {
-    started.elapsed().as_millis()
 }
 
 fn log_probe(pids: &str, alive: usize, duration_ms: u128) {

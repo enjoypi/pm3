@@ -153,9 +153,11 @@ fn mode_of(path: &Path) -> u32 {
 }
 
 #[test]
-fn an_environment_file_reaches_the_managed_process() {
+fn an_environment_file_reaches_the_process_but_never_the_service_file() {
     let home = home();
     declare_token(&home, FIRST_TOKEN);
+    #[cfg(unix)]
+    assert_eq!(mode_of(&env_file(&home)), READABLE_MODE);
 
     let started = start_reporter(&home);
     assert!(started.status.success(), "{}", stdout_of(&started));
@@ -165,16 +167,8 @@ fn an_environment_file_reaches_the_managed_process() {
         FIRST_TOKEN,
         "the managed process must see the declared credential"
     );
-    shutdown_daemon(&home);
-}
-
-#[test]
-fn the_credential_never_lands_in_the_service_file() {
-    let home = home();
-    declare_token(&home, FIRST_TOKEN);
-
-    let started = start_reporter(&home);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    #[cfg(unix)]
+    assert_eq!(mode_of(&env_file(&home)), OWNER_ONLY_MODE);
     let declaration = std::fs::read_to_string(service_file(&home)).expect("the service file");
     assert!(
         !declaration.contains(FIRST_TOKEN),
@@ -183,20 +177,6 @@ fn the_credential_never_lands_in_the_service_file() {
     assert!(!declaration.contains("env:"), "got: {declaration}");
     let described = stdout_of(&pm3(&home, &["describe", NAME]));
     assert!(!described.contains(FIRST_TOKEN), "{described}");
-    shutdown_daemon(&home);
-}
-
-#[cfg(unix)]
-#[test]
-fn loading_an_environment_file_tightens_its_permissions() {
-    let home = home();
-    declare_token(&home, FIRST_TOKEN);
-    assert_eq!(mode_of(&env_file(&home)), READABLE_MODE);
-
-    let started = start_reporter(&home);
-    assert!(started.status.success(), "{}", stdout_of(&started));
-    wait_for_file(&token_file(&home));
-    assert_eq!(mode_of(&env_file(&home)), OWNER_ONLY_MODE);
     shutdown_daemon(&home);
 }
 

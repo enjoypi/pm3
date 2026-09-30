@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    apps_file::{ENC_FILE_SUFFIX, ENV_FILE_SUFFIX},
-    service::{InlineStart, prepare_inline, split_apps_file},
+    apps_file::{ENC_FILE_SUFFIX, ENV_FILE_SUFFIX, InlineStart},
+    service::{prepare_inline, split_apps_file},
     service_fixtures::*,
 };
 
@@ -73,9 +73,9 @@ async fn an_inline_request_refuses_an_unsafe_app_name() {
     let args = shell_args();
     let request = InlineStart {
         name: "../escape",
-        ..request(SHELL, &args, None, false)
+        ..request(SHELL, &args, None)
     };
-    let err = prepare_inline(&context(&home), &request)
+    let err = prepare_inline(&context(&home), &request, false)
         .await
         .unwrap_err()
         .to_string();
@@ -154,7 +154,7 @@ async fn a_service_file_pm3_cannot_read_stops_the_write() {
     let blocked = home.cfg_dir.join("sleeper.yaml");
     std::fs::create_dir_all(&blocked).expect("block the service file path");
     let args = shell_args();
-    let err = prepare_inline(&context(&home), &request(SHELL, &args, None, false))
+    let err = prepare_inline(&context(&home), &request(SHELL, &args, None), false)
         .await
         .unwrap_err()
         .to_string();

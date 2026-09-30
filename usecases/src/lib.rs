@@ -25,21 +25,19 @@ mod persist;
 mod supervisor_log;
 
 pub use entities::{
-    AppSpec, DependencyError, DependencyNode, EnvOrigin, EnvScope, EnvValue, MemoryVerdict,
-    PolicyError, ProcessIdentity, ProcessRuntime, ProcessStatus, ReadScope, ReadyProbe,
-    RestartDecision, RestartPolicy, RuntimeError, SandboxMode, SandboxPolicy, SignalNameError,
-    SpecError, VALID_SIGNALS, covers_path, decide_memory_verdict, decide_restart, is_absolute_path,
-    is_name_letter, mask_secret, merge_environment, normalize_root, parse_memory_limit,
-    parse_signal_name, root_is_forbidden, topo_sort, validate_app_name, validate_forbidden_roots,
-    validate_policy, validate_spec,
+    AppSpec, EnvOrigin, EnvScope, EnvValue, PolicyError, ProcessIdentity, ProcessRuntime,
+    ProcessStatus, ReadScope, ReadyProbe, RestartPolicy, RuntimeError, SandboxMode, SandboxPolicy,
+    SignalNameError, SpecError, VALID_SIGNALS, covers_path, is_absolute_path, is_name_letter,
+    mask_secret, merge_environment, normalize_root, parse_memory_limit, root_is_forbidden,
+    validate_app_name, validate_forbidden_roots, validate_policy, validate_spec,
 };
 use thiserror::Error;
 
 pub use self::{
-    delete::{DeleteOutcome, delete_app},
+    delete::delete_app,
     fingerprint::{pid_was_recycled, render_identity},
-    handover::{HandoverComparison, ServiceSnapshot, compare_handover, describe_handover},
-    log_paths::{LogPaths, LogStream, log_path, log_paths},
+    handover::{ServiceSnapshot, compare_handover, describe_handover},
+    log_paths::{LogStream, log_path, log_paths},
     ports::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome, FingerprintError,
         Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, LogRotateError,
@@ -47,29 +45,17 @@ pub use self::{
         RotatedLog, SandboxError, Scheduler, SignalError, SignalScope, Signaler, SpecResolveError,
         SpecResolver, StrandedProcess, WrappedCommand,
     },
-    query::{
-        armed_schedule_names, describe_app, identity_token_of, list_apps, owner_of_pid,
-        running_pids, schedule_of, unsettled_count,
-    },
+    query::{describe_app, list_apps},
     record::{EnvDisplay, ProcessRecord, ProcessView},
-    reset::reset_app,
-    restart::{RestartOutcome, restart_app},
-    resurrect::resurrect,
     selector::AppSelector,
-    signal::{SignalOutcome, signal_app},
-    start::{
-        StartKind, StartOutcome, StartReport, StartSettlement, refused_services, settle_start,
-        start_apps,
-    },
-    stop::{StopOutcome, persist_for_handover, stop_all_apps, stop_app},
-    supervise::{ExitAction, handle_child_exit},
+    signal::signal_app,
+    start::{StartKind, StartOutcome, StartReport, StartSettlement, settle_start, start_apps},
+    stop::stop_app,
     supervision::{
         SupervisionEffect, SupervisionFailure, SupervisionOutcome, SupervisionReply,
         SupervisionRequest,
     },
     supervisor::Supervisor,
-    table::ProcessTable,
-    timer_state::TimerState,
 };
 
 pub trait Ports:
@@ -92,7 +78,7 @@ pub enum UsecaseError {
     Spec(#[from] SpecError),
 
     #[error(transparent)]
-    Dependency(#[from] DependencyError),
+    Dependency(#[from] entities::DependencyError),
 
     #[error(transparent)]
     Policy(#[from] PolicyError),

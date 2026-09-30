@@ -1,5 +1,3 @@
-#[cfg(unix)]
-use adapters::NOTHING_INSTALLED;
 use adapters::UnitProgramSet;
 
 use super::*;

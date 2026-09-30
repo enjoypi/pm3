@@ -29,10 +29,10 @@ async fn restarting_a_running_app_terminates_it_and_records_the_intent() {
     let outcome = restart_app(&mut table, &AppSelector::Id(1), LOGS_DIR, &ports)
         .await
         .expect("restart should succeed");
-    let RestartOutcome::AwaitingExit {
+    let RestartOutcome::AwaitingExit(StopOutcome {
         name,
         force_kill_pid,
-    } = outcome
+    }) = outcome
     else {
         panic!("expected the restart to await the exit");
     };
@@ -56,10 +56,10 @@ async fn restarting_a_running_record_without_a_pid_needs_no_force_kill() {
     let outcome = restart_app(&mut table, &selector, LOGS_DIR, &ports)
         .await
         .expect("restart should succeed");
-    let RestartOutcome::AwaitingExit {
+    let RestartOutcome::AwaitingExit(StopOutcome {
         name: _,
         force_kill_pid,
-    } = outcome
+    }) = outcome
     else {
         panic!("expected the restart to await the exit");
     };
@@ -79,7 +79,7 @@ async fn restarting_an_app_that_is_already_stopping_spawns_no_second_instance() 
         .await
         .expect("second restart should succeed");
     assert!(
-        matches!(outcome, RestartOutcome::AwaitingExit { .. }),
+        matches!(outcome, RestartOutcome::AwaitingExit(_)),
         "got: {outcome:?}"
     );
     assert_eq!(ports.spawned_names(), vec!["api".to_string()]);
@@ -121,7 +121,7 @@ async fn a_persistence_failure_while_restarting_a_running_app_still_reports_the_
     let outcome = restart_app(&mut table, &AppSelector::Id(1), LOGS_DIR, &ports)
         .await
         .expect("a terminated process must be reported even when the dump cannot be written");
-    let RestartOutcome::AwaitingExit { force_kill_pid, .. } = outcome else {
+    let RestartOutcome::AwaitingExit(StopOutcome { force_kill_pid, .. }) = outcome else {
         panic!("a running app is restarted by stopping it first: {outcome:?}");
     };
     assert!(force_kill_pid.is_some());

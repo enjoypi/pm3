@@ -3,8 +3,9 @@ use usecases::{ReadScope, SandboxMode};
 use super::*;
 use crate::{
     SpecDefaults, SpecRoots,
+    apps_file::{load_service_file, parse_service_file, resolve_checked},
     config_sections::{pm3_section, telemetry_section},
-    load_service_file, parse_config, parse_service_file, resolve_checked,
+    parse_config,
 };
 
 const NAME: &str = "mihomo-rule";
@@ -14,13 +15,12 @@ const CWD: &str = "/home/dev/.pm3/mihomo-rule";
 
 const HOME: &str = "/home/dev";
 
-fn request(writable_dirs: &[String]) -> InlineRequest<'_> {
-    InlineRequest {
+fn request(writable_dirs: &[String]) -> InlineStart<'_> {
+    InlineStart {
         name: NAME,
         program: PROGRAM,
         args: &[],
         cwd: Some(CWD),
-        home: Some(HOME),
         cron: None,
         autorestart: None,
         network: true,
@@ -36,7 +36,7 @@ fn request(writable_dirs: &[String]) -> InlineRequest<'_> {
 
 #[test]
 fn an_inline_request_becomes_a_single_app() {
-    let entry = inline_entry(&request(&[]));
+    let entry = inline_entry(&request(&[]), Some(HOME));
     assert_eq!(entry.name, NAME);
     assert_eq!(entry.script, PROGRAM);
     assert_eq!(entry.cwd.as_deref(), Some("${HOME}/.pm3/mihomo-rule"));
@@ -46,7 +46,7 @@ fn an_inline_request_becomes_a_single_app() {
 fn a_program_under_the_home_folds_into_a_placeholder() {
     let mut asked = request(&[]);
     asked.program = "/home/dev/bin/mihomo";
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     assert_eq!(entry.script, "${HOME}/bin/mihomo");
 }
 
@@ -55,7 +55,7 @@ fn the_program_arguments_are_carried_verbatim() {
     let args = ["-d".to_string(), CWD.to_string(), "-f".to_string()];
     let mut asked = request(&[]);
     asked.args = &args;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     assert_eq!(entry.args, ["-d", "${HOME}/.pm3/mihomo-rule", "-f"]);
 }
 
@@ -64,13 +64,13 @@ fn a_bare_service_cwd_token_is_stored_braced() {
     let args = ["-d".to_string(), "PM3_SERVICE_CWD".to_string()];
     let mut asked = request(&[]);
     asked.args = &args;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     assert_eq!(entry.args, ["-d", "${PM3_SERVICE_CWD}"]);
 }
 
 #[test]
 fn the_network_switch_reaches_the_sandbox_section() {
-    let entry = inline_entry(&request(&[]));
+    let entry = inline_entry(&request(&[]), Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -82,7 +82,7 @@ fn the_network_switch_reaches_the_sandbox_section() {
 fn no_network_switch_leaves_the_configured_default_alone() {
     let mut asked = request(&[]);
     asked.network = false;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -92,7 +92,7 @@ fn no_network_switch_leaves_the_configured_default_alone() {
 
 #[test]
 fn an_inline_app_never_asks_for_a_sandbox_mode() {
-    let entry = inline_entry(&request(&[]));
+    let entry = inline_entry(&request(&[]), Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -102,7 +102,7 @@ fn an_inline_app_never_asks_for_a_sandbox_mode() {
 
 #[test]
 fn no_writable_dirs_leaves_the_defaults_alone() {
-    let entry = inline_entry(&request(&[]));
+    let entry = inline_entry(&request(&[]), Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -113,7 +113,7 @@ fn no_writable_dirs_leaves_the_defaults_alone() {
 #[test]
 fn writable_dirs_are_declared_on_their_own() {
     let dirs = ["/srv/data".to_string()];
-    let entry = inline_entry(&request(&dirs));
+    let entry = inline_entry(&request(&dirs), Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -128,7 +128,7 @@ fn writable_dirs_are_declared_on_their_own() {
 #[test]
 fn a_writable_dir_equal_to_the_working_directory_is_not_repeated() {
     let dirs = [CWD.to_string()];
-    let entry = inline_entry(&request(&dirs));
+    let entry = inline_entry(&request(&dirs), Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -141,7 +141,7 @@ fn a_writable_dir_equal_to_the_working_directory_is_not_repeated() {
 
 #[test]
 fn an_inline_app_never_declares_an_environment() {
-    let entry = inline_entry(&request(&[]));
+    let entry = inline_entry(&request(&[]), Some(HOME));
     assert!(entry.rejected_env.is_none());
     assert!(
         !encode_service_file(&entry).contains("env:"),
@@ -152,7 +152,7 @@ fn an_inline_app_never_declares_an_environment() {
 #[test]
 fn an_encoded_inline_app_reads_back_unchanged() {
     let dirs = ["/srv/data".to_string()];
-    let entry = inline_entry(&request(&dirs));
+    let entry = inline_entry(&request(&dirs), Some(HOME));
     let yaml = encode_service_file(&entry);
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
     assert_eq!(reparsed.name, NAME);
@@ -161,7 +161,7 @@ fn an_encoded_inline_app_reads_back_unchanged() {
 
 #[test]
 fn an_encoded_app_with_no_collections_still_reads_back() {
-    let entry = inline_entry(&request(&[]));
+    let entry = inline_entry(&request(&[]), Some(HOME));
     let yaml = encode_service_file(&entry);
     assert!(
         !yaml.contains('~'),
@@ -186,17 +186,22 @@ fn an_encoded_inline_app_resolves_into_a_spec() {
     let config = parse_config(&yaml).expect("the fixture config should parse");
     let defaults = SpecDefaults::from_config(
         &config.pm3,
-        SpecRoots::single(
-            "/tmp/pm3-fixture",
-            "/tmp/pm3-fixture-cfg",
-            "/tmp/pm3-fixture/logs",
-        ),
+        SpecRoots {
+            home_dir: "/tmp/pm3-fixture",
+            cfg_dir: "/tmp/pm3-fixture-cfg",
+            apps_dir: "/tmp/pm3-fixture",
+            state_dir: "/tmp/pm3-fixture",
+            runtime_dir: "/tmp/pm3-fixture",
+            data_dir: "/tmp/pm3-fixture",
+            logs_dir: "/tmp/pm3-fixture/logs",
+            tmp_dir: None,
+        },
     )
     .expect("the fixture defaults should build");
     let mut asked = request(&[]);
     asked.cwd = None;
     asked.program = INSTALLED_PROGRAM;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     let specs = [resolve_checked(&defaults, &entry).expect("the inline app should resolve")];
     assert_eq!(specs.len(), 1);
     assert_eq!(specs[0].cwd, "/tmp/pm3-fixture/mihomo-rule");
@@ -209,7 +214,7 @@ async fn a_home_placeholder_expands_when_the_config_file_is_loaded() {
     let path = dir.path().join("mihomo-rule.yaml");
     let mut asked = request(&[]);
     asked.cwd = Some("/home/dev/work");
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     std::fs::write(&path, encode_service_file(&entry)).expect("write the config file");
     let loaded = load_service_file(&path.to_string_lossy())
         .await
@@ -336,7 +341,7 @@ fn control_characters_in_arguments_survive_a_round_trip() {
     ];
     let mut asked = request(&[]);
     asked.args = &args;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     let yaml = encode_service_file(&entry);
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
     assert_eq!(reparsed.args, entry.args);
@@ -349,7 +354,7 @@ async fn a_dollar_sign_in_an_argument_survives_loading_the_service_file() {
     let path = dir.path().join("mihomo-rule.yaml");
     let mut asked = request(&[]);
     asked.args = &args;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     std::fs::write(&path, encode_service_file(&entry)).expect("write the config file");
     let loaded = load_service_file(&path.to_string_lossy())
         .await
@@ -365,8 +370,7 @@ async fn a_home_placeholder_inside_an_argument_still_expands() {
     let path = dir.path().join("mihomo-rule.yaml");
     let mut asked = request(&[]);
     asked.args = &args;
-    asked.home = Some(home.as_str());
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(home.as_str()));
     let yaml = encode_service_file(&entry);
     assert!(yaml.contains("${HOME}/data"), "got: {yaml}");
     std::fs::write(&path, &yaml).expect("write the config file");
@@ -381,7 +385,7 @@ fn a_service_cwd_placeholder_is_not_escaped_away() {
     let args = ["${PM3_SERVICE_CWD}/db".to_string()];
     let mut asked = request(&[]);
     asked.args = &args;
-    let yaml = encode_service_file(&inline_entry(&asked));
+    let yaml = encode_service_file(&inline_entry(&asked, Some(HOME)));
     assert!(yaml.contains("${PM3_SERVICE_CWD}/db"), "got: {yaml}");
 }
 
@@ -390,7 +394,7 @@ fn an_argument_with_a_newline_is_encoded_on_a_single_line() {
     let args = ["line one\nline two".to_string()];
     let mut asked = request(&[]);
     asked.args = &args;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     let yaml = encode_service_file(&entry);
     assert!(yaml.contains(r#"- "line one\nline two""#), "got: {yaml}");
 }
@@ -401,7 +405,7 @@ fn an_inline_cron_reaches_the_encoded_file() {
     let mut ask = request(&dirs);
     ask.cron = Some("~ * * * *");
     ask.autorestart = Some(false);
-    let entry = inline_entry(&ask);
+    let entry = inline_entry(&ask, Some(HOME));
     let yaml = encode_service_file(&entry);
     assert!(yaml.contains(r#"schedule: "~ * * * *""#), "got: {yaml}");
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
@@ -412,7 +416,7 @@ fn an_inline_cron_reaches_the_encoded_file() {
 #[test]
 fn an_app_without_a_cron_omits_the_schedule_key() {
     let dirs: Vec<String> = Vec::new();
-    let entry = inline_entry(&request(&dirs));
+    let entry = inline_entry(&request(&dirs), Some(HOME));
     assert!(!encode_service_file(&entry).contains("schedule:"));
 }
 
@@ -421,7 +425,7 @@ fn readable_dirs_are_declared_and_folded_like_the_writable_ones() {
     let readable = ["/home/dev/data".to_string()];
     let mut asked = request(&[]);
     asked.readable_dirs = &readable;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -434,7 +438,7 @@ fn readable_dirs_are_declared_and_folded_like_the_writable_ones() {
 
 #[test]
 fn no_readable_dirs_leaves_the_defaults_alone() {
-    let entry = inline_entry(&request(&[]));
+    let entry = inline_entry(&request(&[]), Some(HOME));
     let sandbox = entry
         .sandbox
         .as_ref()
@@ -446,7 +450,7 @@ fn no_readable_dirs_leaves_the_defaults_alone() {
 fn a_declared_memory_limit_reaches_the_encoded_service() {
     let mut asked = request(&[]);
     asked.max_memory = Some("300M");
-    let yaml = encode_service_file(&inline_entry(&asked));
+    let yaml = encode_service_file(&inline_entry(&asked, Some(HOME)));
     assert!(yaml.contains("max_memory: \"300M\""), "got: {yaml}");
 }
 
@@ -455,7 +459,7 @@ fn an_inline_exec_probe_round_trips() {
     let probe = ["curl".to_string(), "-sf".to_string()];
     let mut asked = request(&[]);
     asked.ready_exec = &probe;
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     let yaml = encode_service_file(&entry);
     assert!(yaml.contains("ready_probe:\n"), "{yaml}");
     assert!(yaml.contains("- \"curl\""), "{yaml}");
@@ -470,7 +474,7 @@ fn an_inline_exec_probe_round_trips() {
 fn an_inline_tcp_probe_round_trips() {
     let mut asked = request(&[]);
     asked.ready_tcp = Some("127.0.0.1:8080");
-    let entry = inline_entry(&asked);
+    let entry = inline_entry(&asked, Some(HOME));
     let yaml = encode_service_file(&entry);
     assert!(yaml.contains("tcp: \"127.0.0.1:8080\""), "{yaml}");
     let reparsed = parse_service_file(&yaml).expect("the encoded app should parse");
@@ -496,10 +500,13 @@ fn an_empty_probe_section_is_omitted() {
 
 #[test]
 fn an_inline_request_renders_stop_exit_codes() {
-    let entry = inline_entry(&InlineRequest {
-        stop_exit_codes: &[0, 3],
-        ..request(&[])
-    });
+    let entry = inline_entry(
+        &InlineStart {
+            stop_exit_codes: &[0, 3],
+            ..request(&[])
+        },
+        Some(HOME),
+    );
     let yaml = encode_service_file(&entry);
     assert!(
         yaml.contains("stop_exit_codes:\n  - 0\n  - 3\n"),
@@ -511,7 +518,7 @@ fn an_inline_request_renders_stop_exit_codes() {
 
 #[test]
 fn an_inline_request_without_stop_exit_codes_renders_none() {
-    let yaml = encode_service_file(&inline_entry(&request(&[])));
+    let yaml = encode_service_file(&inline_entry(&request(&[]), Some(HOME)));
     assert!(!yaml.contains("stop_exit_codes"), "got: {yaml}");
 }
 

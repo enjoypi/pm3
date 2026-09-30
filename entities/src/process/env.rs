@@ -37,6 +37,11 @@ impl EnvValue {
     }
 
     #[must_use]
+    pub fn pair(&self) -> (String, String) {
+        (self.key.clone(), self.value.clone())
+    }
+
+    #[must_use]
     pub fn injected(key: &str, value: &str) -> Self {
         Self::new(key, value, EnvScope::Injected)
     }

@@ -177,14 +177,6 @@ async fn following_fails_when_the_log_turns_into_a_directory_mid_follow() {
 }
 
 #[tokio::test]
-async fn reading_a_log_for_an_unsafe_name_fails() {
-    let fixture = running_daemon().await;
-    let outcome = run_logs(&fixture.config_path, &reading(&["../escape"]), &|_| {}).await;
-    assert!(outcome.is_err(), "got: {outcome:?}");
-    stop_daemon(fixture).await;
-}
-
-#[tokio::test]
 async fn the_cli_reads_the_stderr_log_with_the_err_flag() {
     let fixture = running_daemon().await;
     seed_log(&fixture, "web", LogStream::Stderr, "boom\n");

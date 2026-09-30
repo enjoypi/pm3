@@ -1,7 +1,4 @@
-use std::{
-    io::ErrorKind,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use futures_util::future::join_all;
 use tokio::fs;
@@ -25,11 +22,6 @@ impl YamlDumpStore {
     #[must_use]
     pub const fn new(path: PathBuf, specs: SpecSource) -> Self {
         Self { path, specs }
-    }
-
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        self.path.as_path()
     }
 
     async fn rejoin(&self, state: StateDto) -> Result<Rejoined, DumpError> {
@@ -113,11 +105,9 @@ impl DumpStore for YamlDumpStore {
 }
 
 async fn read_optional(path: &Path) -> Result<Option<String>, DumpError> {
-    match fs::read_to_string(path).await {
-        Ok(raw) => Ok(Some(raw)),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(read_error(path, &e.to_string())),
-    }
+    crate::fs_util::read_optional(path)
+        .await
+        .map_err(|error| read_error(path, &error.to_string()))
 }
 
 pub async fn dump_snapshot(path: &Path) -> Result<Vec<ServiceSnapshot>, DumpError> {
@@ -147,9 +137,7 @@ async fn write_atomically(path: &Path, contents: &str) -> Result<(), DumpError> 
 }
 
 fn staging_path(path: &Path) -> PathBuf {
-    let mut staged = path.as_os_str().to_os_string();
-    staged.push(TMP_SUFFIX);
-    PathBuf::from(staged)
+    crate::fs_util::with_suffix(path, TMP_SUFFIX)
 }
 
 fn warn_unusable(app: &str, error: &AppsFileError) {

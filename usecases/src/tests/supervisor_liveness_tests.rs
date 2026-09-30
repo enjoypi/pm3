@@ -3,24 +3,12 @@ use entities::{ProcessStatus, ReadyProbe};
 use super::*;
 use crate::{
     SupervisionEffect,
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec},
+    ports_test_helpers::{FakePorts, LOGS_DIR, spec, status_of, supervisor},
     start::start_apps,
 };
 
-const KILL_TIMEOUT_MS: u64 = 1600;
-const READY_TIMEOUT_MS: u64 = 30000;
-const READY_POLL_MS: u64 = 200;
 const INTERVAL_MS: u64 = 30000;
 const THRESHOLD: u32 = 2;
-
-fn supervisor() -> Supervisor {
-    Supervisor::new(
-        LOGS_DIR.to_string(),
-        KILL_TIMEOUT_MS,
-        READY_TIMEOUT_MS,
-        READY_POLL_MS,
-    )
-}
 
 async fn start_watched(supervisor: &mut Supervisor, ports: &FakePorts, name: &str) {
     let mut candidate = spec(name);
@@ -34,15 +22,6 @@ async fn start_watched(supervisor: &mut Supervisor, ports: &FakePorts, name: &st
         .find_by_name_mut(name)
         .expect("record present");
     record.runtime.mark_online();
-}
-
-fn status_of(supervisor: &Supervisor, name: &str) -> ProcessStatus {
-    supervisor
-        .table
-        .find_by_name(name)
-        .expect("record present")
-        .runtime
-        .status
 }
 
 fn failures_of(supervisor: &Supervisor, name: &str) -> u32 {

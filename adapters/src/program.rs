@@ -9,11 +9,6 @@ pub const SERVICE_CWD_NAME: &str = "PM3_SERVICE_CWD";
 pub const SERVICE_CWD_PLACEHOLDER: &str = "${PM3_SERVICE_CWD}";
 
 #[must_use]
-pub fn program_available(program: &str, path_env: Option<&str>) -> bool {
-    resolve_program(program, path_env).is_some()
-}
-
-#[must_use]
 pub fn resolve_program(program: &str, path_env: Option<&str>) -> Option<PathBuf> {
     resolve_with(program, path_env, Path::is_file)
 }

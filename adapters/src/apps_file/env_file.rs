@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    io,
     path::{Path, PathBuf},
     str::Chars,
 };
@@ -8,12 +7,10 @@ use std::{
 use std::{os::unix::fs::PermissionsExt as _, time::Instant};
 
 use thiserror::Error;
-use usecases::{SpecError, validate_app_name};
+use usecases::SpecError;
 
 pub const ENV_FILE_SUFFIX: &str = "env";
 
-#[cfg(unix)]
-const SECRET_FILE_MODE: u32 = 0o600;
 const COMMENT_PREFIX: char = '#';
 const PAIR_SEPARATOR: char = '=';
 const DOUBLE_FENCE: char = '"';
@@ -22,7 +19,6 @@ const ESCAPE_PREFIX: char = '\\';
 const HEX_MARKER: char = 'x';
 const HEX_RADIX: u32 = 16;
 const HEX_DIGITS: usize = 2;
-const BRACED_HOME: &str = "${HOME}";
 const BARE_HOME: &str = "$HOME";
 
 #[derive(Debug, Error)]
@@ -53,8 +49,7 @@ pub enum EnvFileError {
 }
 
 pub fn env_file_of(cfg_dir: &Path, name: &str) -> Result<PathBuf, SpecError> {
-    validate_app_name(name)?;
-    Ok(cfg_dir.join(format!("{name}.{ENV_FILE_SUFFIX}")))
+    super::named_file(cfg_dir, name, ENV_FILE_SUFFIX)
 }
 
 pub async fn load_env_file(
@@ -125,14 +120,12 @@ fn parse_pairs(
 }
 
 async fn read_optional(path: &Path, shown: &str) -> Result<Option<String>, EnvFileError> {
-    match tokio::fs::read_to_string(path).await {
-        Ok(text) => Ok(Some(text)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(EnvFileError::Read {
+    crate::fs_util::read_optional(path)
+        .await
+        .map_err(|error| EnvFileError::Read {
             path: shown.to_string(),
             reason: error.to_string(),
-        }),
-    }
+        })
 }
 
 #[cfg(unix)]
@@ -142,7 +135,7 @@ async fn secure_file(path: &Path, shown: &str) {
         return;
     }
     let started = Instant::now();
-    let permissions = std::fs::Permissions::from_mode(SECRET_FILE_MODE);
+    let permissions = std::fs::Permissions::from_mode(crate::private_file::OWNER_ONLY_FILE);
     let tightened = tokio::fs::set_permissions(path, permissions).await;
     let duration_ms = started.elapsed().as_millis();
     match tightened {
@@ -221,7 +214,7 @@ fn expand_home(home: Option<&str>, plain: &str) -> String {
     let Some(home) = home else {
         return plain.to_string();
     };
-    expand_bare_home(home, &plain.replace(BRACED_HOME, home))
+    expand_bare_home(home, &plain.replace(crate::program::HOME_PLACEHOLDER, home))
 }
 
 fn expand_bare_home(home: &str, text: &str) -> String {

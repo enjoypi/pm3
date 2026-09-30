@@ -3,22 +3,11 @@ use entities::ProcessStatus;
 use super::*;
 use crate::{
     SupervisionEffect,
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec, spec_probed, spec_with_deps},
+    ports_test_helpers::{
+        FakePorts, LOGS_DIR, spec, spec_probed, spec_with_deps, status_of, supervisor,
+    },
     start::{StartKind, start_apps},
 };
-
-const KILL_TIMEOUT_MS: u64 = 1600;
-const READY_TIMEOUT_MS: u64 = 30000;
-const READY_POLL_MS: u64 = 200;
-
-fn supervisor() -> Supervisor {
-    Supervisor::new(
-        LOGS_DIR.to_string(),
-        KILL_TIMEOUT_MS,
-        READY_TIMEOUT_MS,
-        READY_POLL_MS,
-    )
-}
 
 async fn start_probed(
     supervisor: &mut Supervisor,
@@ -40,15 +29,6 @@ fn generation_of(effect: &SupervisionEffect) -> u64 {
         panic!("expected an await-ready effect")
     };
     *generation
-}
-
-fn status_of(supervisor: &Supervisor, name: &str) -> ProcessStatus {
-    supervisor
-        .table
-        .find_by_name(name)
-        .expect("the record should exist")
-        .runtime
-        .status
 }
 
 #[tokio::test]

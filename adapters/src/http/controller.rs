@@ -141,12 +141,7 @@ fn render(outcome: Result<SupervisionReply, DaemonError>) -> (StatusCode, ReplyD
 fn refusal(error: &DaemonError) -> ReplyDto {
     ReplyDto {
         report: error.to_string(),
-        service: None,
-        already_running: Vec::new(),
-        refused: Vec::new(),
-        unsaved: None,
-        deleted: Vec::new(),
-        views: Vec::new(),
+        ..ReplyDto::default()
     }
 }
 

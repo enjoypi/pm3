@@ -41,9 +41,7 @@ pub async fn settle_failed_probe(
     name: &str,
     ports: &impl Ports,
 ) -> Result<()> {
-    let record = table
-        .find_by_name_mut(name)
-        .ok_or_else(|| UsecaseError::NotFound(name.to_string()))?;
+    let record = table.require_by_name_mut(name)?;
     record.runtime.mark_exited(ProcessStatus::Errored);
     save_table(table, ports).await?;
     Ok(())
@@ -90,9 +88,7 @@ fn classify_exit(
     outcome: ExitOutcome,
     now_ms: u64,
 ) -> Result<ExitAction> {
-    let record = table
-        .find_by_name_mut(name)
-        .ok_or_else(|| UsecaseError::NotFound(name.to_string()))?;
+    let record = table.require_by_name_mut(name)?;
 
     if let Some(settled) = settle_without_the_breaker(record, outcome) {
         record.runtime.mark_exited(ProcessStatus::Stopped);

@@ -254,19 +254,11 @@ fn reject_line_break(field: &'static str, value: &str) -> Result<(), ConfigError
 }
 
 fn sandbox_mode_names() -> String {
-    SandboxMode::ALL
-        .iter()
-        .map(|mode| mode.as_str())
-        .collect::<Vec<_>>()
-        .join(", ")
+    SandboxMode::ALL.map(SandboxMode::as_str).join(", ")
 }
 
 fn read_scope_names() -> String {
-    ReadScope::ALL
-        .iter()
-        .map(|scope| scope.as_str())
-        .collect::<Vec<_>>()
-        .join(", ")
+    ReadScope::ALL.map(ReadScope::as_str).join(", ")
 }
 
 pub fn validate_telemetry_config(t: &TelemetryConfig) -> Result<(), ConfigError> {

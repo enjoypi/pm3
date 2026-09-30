@@ -17,15 +17,6 @@ pub trait SpecResolver: Send + Sync {
     -> impl Future<Output = Result<AppSpec, SpecResolveError>> + Send;
 }
 
-impl SpecResolveError {
-    #[must_use]
-    pub fn app(&self) -> &str {
-        match self {
-            Self::Missing { name, reason: _ } | Self::Unusable { name, reason: _ } => name,
-        }
-    }
-}
-
 #[cfg(test)]
 #[path = "../tests/ports_specs_tests.rs"]
 mod tests;

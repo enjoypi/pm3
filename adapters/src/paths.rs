@@ -17,7 +17,8 @@ const RUNTIME_SUBDIR: &str = "run";
 const XDG_CONFIG_FALLBACK: &str = "~/.config";
 pub const XDG_STATE_FALLBACK: &str = "~/.local/state";
 const XDG_DATA_FALLBACK: &str = "~/.local/share";
-const RUNTIME_DIR_ROOT: &str = "/run/user";
+pub(crate) const RUNTIME_DIR_ROOT: &str = "/run/user";
+pub const RUNTIME_DIR_VARIABLE: &str = "XDG_RUNTIME_DIR";
 #[cfg(windows)]
 const VERBATIM_PREFIX: &str = r"\\?\";
 const SUN_PATH_CAPACITY: usize = 104;

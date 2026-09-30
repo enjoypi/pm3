@@ -1,12 +1,9 @@
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use usecases::{EnvScope, EnvValue};
+use usecases::{EnvScope, EnvValue, merge_environment};
 
 use super::{
-    enc_file::{Decryptor, ENC_FILE_SUFFIX, enc_file_present, load_enc_file},
+    enc_file::{ENC_FILE_SUFFIX, enc_file_present, open_declared},
     env_file::{ENV_FILE_SUFFIX, load_env_file, parse_env_text},
     file::AppsFileError,
 };
@@ -16,23 +13,17 @@ pub const GLOBAL_ENV_STEM: &str = "pm3";
 
 const XDG_PREFIX: &str = "XDG_";
 
-pub enum Opened {
-    Values(Vec<(String, String)>),
-    Sealed,
-    Absent,
-}
-
 pub async fn load_global_env(
     config: &Pm3Config,
     config_root: &Path,
     home: Option<&str>,
 ) -> Result<Vec<EnvValue>, AppsFileError> {
     let stem = config_root.join(GLOBAL_ENV_STEM);
-    let plain = plain_values(&stem, home).await?;
-    let opened = open_secrets(config, &stem, home, &xdg_values(&plain)).await?;
-    let declared = merge_layers(&plain, opened);
+    let plain = scoped(&plain_values(&stem, home).await?, EnvScope::Global);
+    let secrets = open_secrets(config, &stem, home, &decryptor_env(&plain)).await?;
+    let declared = merge_environment(&[&plain, &scoped(&secrets, EnvScope::Global)]);
     log_global_env(declared.len());
-    Ok(scoped(&declared, EnvScope::Global))
+    Ok(declared)
 }
 
 pub async fn warn_misplaced_global_env(config_root: &Path, cfg_dir: &Path) {
@@ -54,31 +45,6 @@ fn stray_global_env(config_root: &Path, cfg_dir: &Path) -> Option<PathBuf> {
     Some(cfg_dir.join(GLOBAL_ENV_STEM))
 }
 
-fn merge_layers(plain: &[(String, String)], opened: Opened) -> Vec<(String, String)> {
-    let Opened::Values(secrets) = opened else {
-        return plain.to_vec();
-    };
-    let mut merged: BTreeMap<&str, &str> = BTreeMap::new();
-    for (key, value) in plain {
-        merged.insert(key, value);
-    }
-    for (key, value) in &secrets {
-        merged.insert(key, value);
-    }
-    merged
-        .into_iter()
-        .map(|(key, value)| (key.to_string(), value.to_string()))
-        .collect()
-}
-
-fn xdg_values(plain: &[(String, String)]) -> Vec<(String, String)> {
-    plain
-        .iter()
-        .filter(|(key, _value)| key.starts_with(XDG_PREFIX))
-        .cloned()
-        .collect()
-}
-
 async fn plain_values(
     stem: &Path,
     home: Option<&str>,
@@ -89,38 +55,23 @@ async fn plain_values(
 async fn sidecar_present(path: &Path) -> bool {
     enc_file_present(path).await.unwrap_or(false)
 }
+
 async fn open_secrets(
     config: &Pm3Config,
     stem: &Path,
     home: Option<&str>,
     extra: &[(String, String)],
-) -> Result<Opened, AppsFileError> {
+) -> Result<Vec<(String, String)>, AppsFileError> {
     let path = stem.with_extension(ENC_FILE_SUFFIX);
     if !sidecar_present(&path).await {
-        return Ok(Opened::Absent);
+        return Ok(Vec::new());
     }
-    let declared_identity = !config.sops_identity_file.is_empty();
-    let body = match load_enc_file(
-        &Decryptor {
-            program: &config.sops_program,
-            identity: &config.sops_identity_file,
-            search_path: &config.search_path,
-            timeout_ms: config.sops_timeout_ms,
-            extra_env: extra,
-        },
-        &path,
-    )
-    .await
-    {
-        Ok(text) => text,
-        Err(error) if declared_identity => return Err(error.into()),
-        Err(_error) => {
-            log_sealed_global_env(&path.to_string_lossy());
-            return Ok(Opened::Sealed);
-        }
+    let Some(body) = open_declared(config, &path, extra).await? else {
+        log_sealed_global_env(&path.to_string_lossy());
+        return Ok(Vec::new());
     };
     let shown = path.to_string_lossy().into_owned();
-    Ok(Opened::Values(parse_env_text(&shown, home, &body)?))
+    Ok(parse_env_text(&shown, home, &body)?)
 }
 
 pub fn scoped(declared: &[(String, String)], scope: EnvScope) -> Vec<EnvValue> {
@@ -135,7 +86,7 @@ pub fn decryptor_env(global: &[EnvValue]) -> Vec<(String, String)> {
     global
         .iter()
         .filter(|entry| entry.key.starts_with(XDG_PREFIX))
-        .map(|entry| (entry.key.clone(), entry.value.clone()))
+        .map(EnvValue::pair)
         .collect()
 }
 

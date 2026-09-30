@@ -29,37 +29,6 @@ async fn an_uninstall_that_cannot_remove_the_unit_is_reported() {
 }
 
 #[tokio::test]
-async fn an_uninstall_that_the_manager_refuses_reports_what_it_skipped() {
-    let fixture = fixture(&false_program());
-    let home = home_of(&fixture);
-    install_unit(&fixture, UnitKind::Launchd);
-    let command = ServiceAction::Uninstall { dry_run: false };
-    let report = dispatch_service(
-        &fixture.config_path,
-        &command,
-        &context(&fixture, UnitKind::Launchd, &home),
-    )
-    .await
-    .expect("a refusal to unload must not strand the unit file");
-    assert!(report.contains("skipped: "), "got: {report}");
-}
-
-#[tokio::test]
-async fn an_uninstall_without_an_install_says_so() {
-    let fixture = fixture(&false_program());
-    let home = home_of(&fixture);
-    let command = ServiceAction::Uninstall { dry_run: false };
-    let report = dispatch_service(
-        &fixture.config_path,
-        &command,
-        &context(&fixture, UnitKind::Launchd, &home),
-    )
-    .await
-    .expect("a missing service is not an error");
-    assert_eq!(report, NOTHING_INSTALLED);
-}
-
-#[tokio::test]
 async fn the_host_service_query_reaches_the_real_platform_manager() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");

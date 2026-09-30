@@ -1,15 +1,11 @@
-use crate::{
-    Ports, Result, UsecaseError, persist::save_table, selector::AppSelector, table::ProcessTable,
-};
+use crate::{Ports, Result, persist::save_table, selector::AppSelector, table::ProcessTable};
 
 pub async fn reset_app(
     table: &mut ProcessTable,
     selector: &AppSelector,
     ports: &impl Ports,
 ) -> Result<String> {
-    let record = table
-        .find_mut(selector)
-        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
+    let record = table.require_mut(selector)?;
     record.runtime.reset_restarts();
     let name = record.runtime.name.clone();
     save_table(table, ports).await?;

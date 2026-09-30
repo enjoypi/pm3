@@ -2,27 +2,9 @@ use std::path::{Path, PathBuf};
 
 use super::store::{Reconciled, ServiceError, ServiceUndo, write_service_file};
 use crate::{
-    apps_file::{InlineRequest, encode_service_file, fold_entry, inline_entry, load_apps_file},
+    apps_file::{InlineStart, encode_service_file, fold_entry, inline_entry, load_apps_file},
     program::resolve_program,
 };
-
-pub struct InlineStart<'s> {
-    pub name: &'s str,
-    pub program: &'s str,
-    pub args: &'s [String],
-    pub cwd: Option<&'s str>,
-    pub cron: Option<&'s str>,
-    pub autorestart: Option<bool>,
-    pub network: bool,
-    pub writable_dirs: &'s [String],
-    pub readable_dirs: &'s [String],
-    pub max_memory: Option<&'s str>,
-    pub ready_exec: &'s [String],
-    pub ready_tcp: Option<&'s str>,
-    pub listen_timeout_ms: Option<u64>,
-    pub stop_exit_codes: &'s [i32],
-    pub force: bool,
-}
 
 pub struct ServiceContext<'c> {
     pub cfg_dir: &'c Path,
@@ -47,34 +29,18 @@ pub struct SplitApps {
 pub async fn prepare_inline(
     context: &ServiceContext<'_>,
     request: &InlineStart<'_>,
+    force: bool,
 ) -> Result<PreparedService, ServiceError> {
     if resolve_program(request.program, Some(context.search_path)).is_none() {
         return Err(ServiceError::ProgramNotFound {
             program: request.program.to_string(),
         });
     }
-    let entry = inline_entry(&InlineRequest {
-        name: request.name,
-        program: request.program,
-        args: request.args,
-        cwd: request.cwd,
-        home: context.home,
-        cron: request.cron,
-        autorestart: request.autorestart,
-        network: request.network,
-        writable_dirs: request.writable_dirs,
-        readable_dirs: request.readable_dirs,
-        max_memory: request.max_memory,
-        ready_exec: request.ready_exec,
-        ready_tcp: request.ready_tcp,
-        listen_timeout_ms: request.listen_timeout_ms,
-        stop_exit_codes: request.stop_exit_codes,
-    });
+    let entry = inline_entry(request, context.home);
     let contents = encode_service_file(&entry);
     let path = crate::apps_file::service_file_of(context.cfg_dir, request.name)?;
     let mut undo = ServiceUndo::default();
-    let reconciled =
-        write_service_file(request.name, &path, &contents, request.force, &mut undo).await?;
+    let reconciled = write_service_file(request.name, &path, &contents, force, &mut undo).await?;
     Ok(PreparedService {
         path,
         reconciled,

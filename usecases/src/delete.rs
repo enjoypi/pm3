@@ -1,23 +1,19 @@
 use crate::{
-    Ports, Result, UsecaseError, persist::save_table, selector::AppSelector, stop::request_stop,
+    Ports, Result, UsecaseError,
+    persist::save_table,
+    selector::AppSelector,
+    stop::{StopOutcome, request_stop},
     table::ProcessTable,
 };
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DeleteOutcome {
-    pub name: String,
-    pub force_kill_pid: Option<u32>,
-}
 
 pub async fn delete_app(
     table: &mut ProcessTable,
     selector: &AppSelector,
     ports: &impl Ports,
-) -> Result<DeleteOutcome> {
+) -> Result<StopOutcome> {
     let name = table
-        .find(selector)
-        .map(|record| record.runtime.name.clone())
-        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
+        .require(selector)
+        .map(|record| record.runtime.name.clone())?;
     let dependents = dependents_of(table, &name);
     if !dependents.is_empty() {
         return Err(UsecaseError::StillDependedOn { name, dependents });
@@ -29,7 +25,7 @@ pub(crate) async fn delete_one(
     table: &mut ProcessTable,
     name: &str,
     ports: &impl Ports,
-) -> Result<DeleteOutcome> {
+) -> Result<StopOutcome> {
     let selector = AppSelector::Name(name.to_string());
     let record = table
         .find_mut(&selector)
@@ -42,10 +38,7 @@ pub(crate) async fn delete_one(
         table.restore(removed);
         return Err(error);
     }
-    Ok(DeleteOutcome {
-        name: stopped.name,
-        force_kill_pid: stopped.force_kill_pid,
-    })
+    Ok(stopped)
 }
 
 fn dependents_of(table: &ProcessTable, name: &str) -> Vec<String> {

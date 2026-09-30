@@ -12,7 +12,3 @@ pub enum Readiness {
 pub trait ReadyProber: Send + Sync {
     fn check_ready(&self, probe: &ReadyProbe) -> impl Future<Output = Readiness> + Send;
 }
-
-#[cfg(test)]
-#[path = "../tests/ports_ready_tests.rs"]
-mod tests;

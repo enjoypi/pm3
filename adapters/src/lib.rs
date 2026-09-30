@@ -1,6 +1,7 @@
 pub mod apps_file;
 pub mod config;
 pub mod exit_status;
+pub mod fs_util;
 pub mod http;
 pub mod install;
 pub mod logs;
@@ -20,94 +21,76 @@ pub mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
-    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, EnvDisplay,
-    EnvOrigin, ExitOutcome, FingerprintError, Fingerprinter, HandoverComparison, LaunchError,
-    LaunchSpec, LaunchedProcess, Liveness, LogRotateError, LogRotator, LogStream, Ports,
-    ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView,
-    ReadScope, Readiness, ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxError,
-    SandboxMode, SandboxPolicy, Scheduler, ServiceSnapshot, SignalError, SignalScope, Signaler,
-    SpecError, SpecResolveError, StartKind, StartOutcome, StartSettlement, StrandedProcess,
-    SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor,
-    WrappedCommand, compare_handover, describe_handover, log_path, settle_start, validate_app_name,
+    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, EnvOrigin,
+    ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess,
+    Liveness, LogRotateError, LogRotator, LogStream, Ports, ProcessLauncher, ProcessProbe,
+    ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness, ReadyProbe,
+    ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
+    SignalError, SignalScope, Signaler, SpecError, SpecResolveError, StartKind, StartOutcome,
+    StartSettlement, SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest,
+    Supervisor, WrappedCommand, compare_handover, describe_handover, log_path, settle_start,
+    validate_app_name,
 };
 
 pub use self::{
     apps_file::{
-        AppEntry, AppsFile, AppsFileError, ENC_FILE_SUFFIX, ENV_FILE_SUFFIX, EncFileError,
-        EnvFileError, GLOBAL_ENV_STEM, InlineRequest, ReadyProbeEntry, SERVICE_FILE_SUFFIX,
-        SOPS_PROGRAM, SandboxEntry, SpecDefaults, SpecRoots, SpecSource, decryptor_env, diff_lines,
-        enc_file_of, encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file,
-        load_enc_file, load_env_file, load_global_env, load_service_file, parse_apps_file,
-        parse_env_file, parse_service_file, resolve_checked, service_file_of,
-        warn_misplaced_global_env,
+        AppsFile, AppsFileError, ENC_FILE_SUFFIX, ENV_FILE_SUFFIX, GLOBAL_ENV_STEM, InlineStart,
+        SERVICE_FILE_SUFFIX, SpecDefaults, SpecRoots, SpecSource, decryptor_env, enc_file_of,
+        encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file,
+        load_global_env, service_file_of, warn_misplaced_global_env,
     },
     config::{
-        AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, LoadedConfig, Pm3Config,
-        RESTART_CONDITION_ALWAYS, RESTART_CONDITION_ON_FAILURE, RestartConfig, STOP_SIGNAL_TERM,
+        AppConfig, ConfigError, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig, STOP_SIGNAL_TERM,
         SandboxConfig, ServiceConfig, TelemetryConfig, check_config, load_and_parse_config,
-        load_config_file, parse_config, show_config, validate_config, validate_pm3_config,
-        validate_telemetry_config,
+        load_config_file, parse_config, show_config,
     },
-    exit_status::{UNKNOWN_EXIT_CODE, describe_refusal, exit_code_of},
+    exit_status::{describe_refusal, exit_code_of},
+    fs_util::remove_if_present,
     http::{
-        APPS_PATH, EnvDisplayDto, HEALTH_OK, HEALTH_PATH, HealthDto, ProcessViewDto,
-        REQUEST_ID_HEADER, ReplyDecodeError, ReplyDto, SERVICES_STOP_ALL_PATH, StartRequestDto,
-        app_action_path, app_path, decode_reply, encode_signal_request, encode_start_request,
-        router,
+        APPS_PATH, HEALTH_OK, HEALTH_PATH, ProcessViewDto, REQUEST_ID_HEADER, RESET_ACTION,
+        RESTART_ACTION, ReplyDecodeError, ReplyDto, SERVICES_STOP_ALL_PATH, SIGNAL_ACTION,
+        STOP_ACTION, app_action_path, app_path, decode_reply, encode_signal_request,
+        encode_start_request, router,
     },
     install::{
         InstallError, back_up, backup_name, backup_root, binary_matches, binary_version,
-        destination_of, parse_version_output, replace_binary,
+        destination_of, replace_binary,
     },
-    logs::{
-        CopyTruncateRotator, LogClearError, LogFollower, LogReadError, clear_log, read_tail,
-        tail_lines,
-    },
+    logs::{CopyTruncateRotator, LogClearError, LogFollower, LogReadError, clear_log, read_tail},
     paths::{
-        CONFIG_FILE, PM3_SUBDIR, PathError, Pm3Paths, Pm3Roots, RuntimeSources, XDG_STATE_FALLBACK,
+        CONFIG_FILE, PathError, Pm3Paths, Pm3Roots, RUNTIME_DIR_VARIABLE, RuntimeSources,
         check_socket_length, default_config_path, expand_home, portable_path, portable_real_path,
         resolve_config_root, resolve_data_root, resolve_paths, resolve_runtime_root,
         resolve_state_root,
     },
-    persistence::{
-        DecodeError, DumpDocument, RuntimeDto, StateDto, YamlDumpStore, decode_state,
-        dump_snapshot, encode_states,
-    },
+    persistence::{YamlDumpStore, dump_snapshot},
     presenter::{
-        DAEMON_NOT_RUNNING, EMPTY_NOTICE, Listing, NOTHING_STARTED, affected_service,
-        already_running_names, render_daemon_gone, render_daemon_stopped, render_describe,
-        render_json_list, render_json_one, render_reply, render_started, render_table,
-        unsaved_reason,
+        DAEMON_NOT_RUNNING, EMPTY_NOTICE, Listing, affected_service, already_running_names,
+        render_daemon_gone, render_daemon_stopped, render_json_list, render_json_one, render_reply,
+        render_table, unsaved_reason,
     },
     private_file::{
-        OWNER_ONLY_FILE, SWEEP_PROOF_FILE, append_private, append_private_blocking, write_private,
+        OWNER_ONLY_DIR, OWNER_ONLY_FILE, SWEEP_PROOF_FILE, append_private_blocking, write_private,
         write_sweep_proof,
     },
     process::{
         AdoptedWatch, HostProcessProbe, HostReadyProber, KillSignaler, PollCadence,
         Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
     },
-    program::{
-        HOME_PLACEHOLDER, SERVICE_CWD_NAME, SERVICE_CWD_PLACEHOLDER, fold_home, fold_service_cwd,
-        program_available, resolve_program,
-    },
-    sandbox::{
-        HostSandbox, SandboxBackend, SandboxCommandWrapper, SandboxProgramSet, seatbelt_profile,
-    },
-    schedule::{CronError, CronScheduler, ExpandError, expand_random, validate_cron},
+    sandbox::{HostSandbox, SandboxBackend, SandboxCommandWrapper, SandboxProgramSet},
+    schedule::{CronError, CronScheduler, validate_cron},
     service::{
-        InlineStart, PreparedService, Reconciled, ServiceContext, ServiceError, ServiceUndo,
-        SplitApps, forget, prepare_inline, reconcile, split_apps_file,
+        Reconciled, ServiceContext, ServiceError, ServiceUndo, forget, prepare_inline, reconcile,
+        split_apps_file,
     },
     startup::log_startup_banner,
-    state::{DaemonCommand, DaemonError, DaemonHandle},
+    state::{DaemonCommand, DaemonHandle},
     unit::{
-        CONFIG_FLAG, DAEMON_SUBCOMMAND, NOTHING_INSTALLED, UnitCommandError, UnitKind,
-        UnitProgramSet, UnitSpec, UnitStatus, hand_back_to_manager, install_unit, pm3_variables,
-        query_status, query_supervised_pid, runtime_dir_of, status_report, uninstall_unit,
-        unit_dir_of, write_targets,
+        CONFIG_FLAG, DAEMON_SUBCOMMAND, UnitCommandError, UnitKind, UnitProgramSet, UnitSpec,
+        UnitStatus, hand_back_to_manager, install_unit, pm3_variables, query_status,
+        query_supervised_pid, runtime_dir_of, status_report, uninstall_unit, unit_dir_of,
+        write_targets,
     },
-    workspace::{expand_service_cwd, materialise_workspace},
 };
 
 #[derive(Debug, Error)]

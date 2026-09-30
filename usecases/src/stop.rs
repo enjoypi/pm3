@@ -19,9 +19,7 @@ pub async fn stop_app(
     selector: &AppSelector,
     ports: &impl Ports,
 ) -> Result<StopOutcome> {
-    let record = table
-        .find_mut(selector)
-        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))?;
+    let record = table.require_mut(selector)?;
     record.runtime.disarm_schedule();
     record.runtime.cancel_restart();
     let outcome = request_stop(record, ports).await?;
@@ -104,10 +102,7 @@ pub(crate) async fn request_stop(
 ) -> Result<StopOutcome> {
     let name = record.runtime.name.clone();
 
-    let live = record
-        .runtime
-        .pid
-        .filter(|_pid| !record.runtime.status.is_settled());
+    let live = record.runtime.live_pid();
     let Some(pid) = live else {
         record.runtime.mark_exited(ProcessStatus::Stopped);
         return Ok(StopOutcome {

@@ -314,7 +314,10 @@ fn resolve_specs_drops_a_duplicate_default_writable_root() {
 #[test]
 fn resolve_specs_skips_a_missing_tmp_dir() {
     let defaults = SpecDefaults {
-        roots: fixture_roots().with_tmp(None),
+        roots: SpecRoots {
+            tmp_dir: None,
+            ..fixture_roots()
+        },
         ..defaults()
     };
     let spec = resolve_one(&defaults, &minimal_entry());
@@ -324,7 +327,10 @@ fn resolve_specs_skips_a_missing_tmp_dir() {
 #[test]
 fn resolve_specs_skips_a_blank_tmp_dir() {
     let defaults = SpecDefaults {
-        roots: fixture_roots().with_tmp(Some("")),
+        roots: SpecRoots {
+            tmp_dir: Some(""),
+            ..fixture_roots()
+        },
         ..defaults()
     };
     let spec = resolve_one(&defaults, &minimal_entry());
@@ -334,7 +340,10 @@ fn resolve_specs_skips_a_blank_tmp_dir() {
 #[test]
 fn resolve_specs_skips_a_tmp_dir_that_would_hand_over_a_hidden_root() {
     let defaults = SpecDefaults {
-        roots: fixture_roots().with_tmp(Some("/tmp")),
+        roots: SpecRoots {
+            tmp_dir: Some("/tmp"),
+            ..fixture_roots()
+        },
         ..defaults()
     };
     let spec = resolve_one(&defaults, &minimal_entry());

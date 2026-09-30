@@ -35,6 +35,13 @@ pub fn spec(name: &str) -> AppSpec {
     }
 }
 
+pub fn spec_with_deps(name: &str, depends_on: &[&str]) -> AppSpec {
+    AppSpec {
+        depends_on: depends_on.iter().map(|dep| (*dep).to_string()).collect(),
+        ..spec(name)
+    }
+}
+
 pub fn record(name: &str, pm_id: u32) -> ProcessRecord {
     ProcessRecord {
         spec: spec(name),

@@ -37,12 +37,6 @@ fn the_program_set_reads_both_backends_from_the_config() {
 }
 
 #[test]
-fn each_backend_has_a_log_friendly_name() {
-    assert_eq!(SandboxBackend::Seatbelt.as_str(), "seatbelt");
-    assert_eq!(SandboxBackend::Bwrap.as_str(), "bwrap");
-}
-
-#[test]
 fn a_backend_that_is_not_installed_resolves_to_nothing() {
     assert!(
         SandboxBackend::Bwrap

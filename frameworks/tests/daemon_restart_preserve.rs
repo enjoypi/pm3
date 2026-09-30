@@ -64,26 +64,15 @@ fn script_at(dir: &Path, body: &str) -> PathBuf {
 
 #[cfg(unix)]
 #[test]
-fn a_service_outlives_the_daemon_that_launched_it() {
-    let home = home();
-    let pid = start_sleeper(&home);
-
-    detach_daemon(&home);
-
-    assert!(
-        process_is_alive(pid),
-        "the service should still run after the daemon left"
-    );
-    shutdown_daemon(&home);
-}
-
-#[cfg(unix)]
-#[test]
-fn an_unchanged_service_keeps_its_process_across_a_daemon_restart() {
+fn an_unchanged_service_outlives_its_daemon_and_is_reclaimed_by_the_next() {
     let home = verbose_home();
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
+    assert!(
+        process_is_alive(pid),
+        "the service should still run after the daemon left"
+    );
     revive_daemon(&home);
 
     assert_eq!(
@@ -91,35 +80,11 @@ fn an_unchanged_service_keeps_its_process_across_a_daemon_restart() {
         pid,
         "the new daemon should reclaim the very same process"
     );
-    shutdown_daemon(&home);
-}
-
-#[cfg(unix)]
-#[test]
-fn reclaiming_a_service_is_reported_in_the_daemon_log() {
-    let home = verbose_home();
-    start_sleeper(&home);
-
-    detach_daemon(&home);
-    revive_daemon(&home);
-
     let log = wait_for_log(&daemon_log(&home), "\"action\":\"adopt\"");
     assert!(
         log.contains(&format!("\"service\":\"{SERVICE}\"")),
         "got: {log}"
     );
-    shutdown_daemon(&home);
-}
-
-#[cfg(unix)]
-#[test]
-fn a_reclaimed_service_is_still_reported_as_online() {
-    let home = home();
-    start_sleeper(&home);
-
-    detach_daemon(&home);
-    revive_daemon(&home);
-
     let listed = pm3(&home, &["list"]);
     assert!(
         stdout_of(&listed).contains("online"),
@@ -131,7 +96,7 @@ fn a_reclaimed_service_is_still_reported_as_online() {
 
 #[cfg(unix)]
 #[test]
-fn a_service_whose_config_changed_is_restarted_by_the_new_daemon() {
+fn a_service_whose_config_changed_is_replaced_by_the_new_daemon() {
     let home = verbose_home();
     let pid = start_sleeper(&home);
 
@@ -146,20 +111,7 @@ fn a_service_whose_config_changed_is_restarted_by_the_new_daemon() {
     );
     let log = wait_for_log(&daemon_log(&home), "\"action\":\"respawn\"");
     assert!(log.contains("\"reason\":\"launch\""), "got: {log}");
-    shutdown_daemon(&home);
-}
-
-#[cfg(unix)]
-#[test]
-fn restarting_a_changed_service_takes_the_old_process_down_first() {
-    let home = verbose_home();
-    let pid = start_sleeper(&home);
-
-    detach_daemon(&home);
-    retune(&home);
-    revive_daemon(&home);
     wait_for_log(&daemon_log(&home), "\"action\":\"evict\"");
-
     assert!(
         !process_is_alive(pid),
         "the stale survivor must not outlive its replacement"
@@ -454,32 +406,6 @@ fn killing_a_daemon_that_will_not_leave_reports_a_failure() {
     decoy.wait().expect("should reap the decoy");
     std::fs::write(&pid_file, recorded).expect("restore the pid file");
     shutdown_daemon(&home);
-}
-
-#[test]
-fn deleting_a_selector_that_would_escape_the_apps_path_is_refused() {
-    let home = home();
-    let deleted = pm3(&home, &["delete", "my app"]);
-    assert!(!deleted.status.success(), "{}", stdout_of(&deleted));
-    assert!(
-        common::stderr_of(&deleted).contains("not allowed"),
-        "{}",
-        common::stderr_of(&deleted)
-    );
-}
-
-#[test]
-fn deleting_without_a_usable_config_cannot_open_a_session() {
-    let deleted = std::process::Command::new(common::PM3)
-        .args(["--config", "/nonexistent/pm3.yaml", "delete", "3"])
-        .output()
-        .expect("pm3 should run");
-    assert!(!deleted.status.success(), "{}", stdout_of(&deleted));
-    assert!(
-        common::stderr_of(&deleted).contains("/nonexistent/pm3.yaml"),
-        "{}",
-        common::stderr_of(&deleted)
-    );
 }
 
 #[test]

@@ -9,7 +9,6 @@ const NETWORK_POLICY: &str = include_str!("seatbelt_network_policy.sbpl");
 
 const PARAMETER_FLAG: &str = "-D";
 const PROFILE_FLAG: &str = "-p";
-const ARGUMENT_TERMINATOR: &str = "--";
 const READABLE_PARAMETER: &str = "READABLE";
 const WRITABLE_PARAMETER: &str = "WRITABLE";
 const HIDDEN_PARAMETER: &str = "HIDDEN";
@@ -39,13 +38,7 @@ pub fn seatbelt_argv(
     }
     sandbox_args.push(PROFILE_FLAG.to_string());
     sandbox_args.push(rendered.profile);
-    sandbox_args.push(ARGUMENT_TERMINATOR.to_string());
-    sandbox_args.push(program.to_string());
-    sandbox_args.extend_from_slice(args);
-    WrappedCommand {
-        program: sandbox_program.to_string(),
-        args: sandbox_args,
-    }
+    super::finish_wrapped(sandbox_program, sandbox_args, program, args)
 }
 
 #[must_use]

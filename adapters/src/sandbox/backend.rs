@@ -38,14 +38,6 @@ impl SandboxProgramSet {
 
 impl SandboxBackend {
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Seatbelt => "seatbelt",
-            Self::Bwrap => "bwrap",
-        }
-    }
-
-    #[must_use]
     pub fn resolve(
         self,
         programs: &SandboxProgramSet,

@@ -1,7 +1,4 @@
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 use usecases::SpecError;
@@ -107,9 +104,7 @@ pub async fn forget(cfg_dir: &Path, name: &str) {
 }
 
 async fn remove_quietly(path: &Path) {
-    if let Err(error) = tokio::fs::remove_file(path).await
-        && error.kind() != io::ErrorKind::NotFound
-    {
+    if let Err(error) = crate::fs_util::remove_if_present(path).await {
         log_stuck_forget(path, &error.to_string());
     }
 }
@@ -124,14 +119,12 @@ pub async fn reconcile(
 }
 
 async fn read_existing(path: &Path) -> Result<Option<String>, ServiceError> {
-    match tokio::fs::read_to_string(path).await {
-        Ok(existing) => Ok(Some(existing)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(ServiceError::Read {
+    crate::fs_util::read_optional(path)
+        .await
+        .map_err(|error| ServiceError::Read {
             path: path.to_string_lossy().into_owned(),
             reason: error.to_string(),
-        }),
-    }
+        })
 }
 
 pub(super) fn reconcile_contents(

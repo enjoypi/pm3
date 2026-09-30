@@ -1,8 +1,9 @@
 use std::path::Path;
 
+use crate::paths::RUNTIME_DIR_VARIABLE;
+
 const USER_SCOPE: &str = "--user";
 const OVERRIDE_DISABLED: &str = "-w";
-const RUNTIME_DIR_VARIABLE: &str = "XDG_RUNTIME_DIR";
 const SHOW_USER: &str = "show-user";
 const PROPERTY_FLAG: &str = "-p";
 const VALUE_FLAG: &str = "--value";

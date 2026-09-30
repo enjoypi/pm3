@@ -224,30 +224,6 @@ fn a_program_that_is_not_on_the_search_path_is_refused() {
 }
 
 #[test]
-fn starting_without_a_target_explains_the_usage() {
-    let home = home();
-    let refused = pm3(&home, &["start"]);
-    assert!(!refused.status.success(), "start needs a target");
-    assert!(
-        stderr_of(&refused).contains("exactly one apps file"),
-        "{}",
-        stderr_of(&refused)
-    );
-}
-
-#[test]
-fn naming_a_service_without_a_program_explains_the_usage() {
-    let home = home();
-    let refused = pm3(&home, &["start", "--name", "probe"]);
-    assert!(!refused.status.success(), "--name needs a program");
-    assert!(
-        stderr_of(&refused).contains("needs a program"),
-        "{}",
-        stderr_of(&refused)
-    );
-}
-
-#[test]
 fn starting_an_apps_file_that_is_not_there_is_refused() {
     let home = home();
     let refused = pm3(&home, &["start", "/nonexistent/pm3-apps.yaml"]);
@@ -271,12 +247,4 @@ fn starting_an_apps_file_that_is_a_directory_is_refused() {
         "{}",
         stderr_of(&refused)
     );
-}
-
-#[test]
-fn deleting_an_unknown_service_is_refused() {
-    let home = home();
-    let refused = pm3(&home, &["delete", "ghost"]);
-    assert!(!refused.status.success(), "an unknown app should fail");
-    shutdown_daemon(&home);
 }

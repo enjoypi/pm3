@@ -1,39 +1,8 @@
-use entities::AppSpec;
-
 use super::*;
 use crate::{
-    ports::SpecResolveError,
-    ports_test_helpers::{FakePorts, LOGS_DIR, spec},
+    ports_test_helpers::{FakePorts, LOGS_DIR, StaticResolver, spec, supervisor},
     start::start_apps,
 };
-
-const KILL_TIMEOUT_MS: u64 = 1600;
-const READY_TIMEOUT_MS: u64 = 30000;
-const READY_POLL_MS: u64 = 200;
-
-struct NoResolver;
-
-#[expect(
-    clippy::unused_async_trait_impl,
-    reason = "桩实现直接返回既有值，无 await；改 impl Future + ready 会让测试夹具难读"
-)]
-impl SpecResolver for NoResolver {
-    async fn prepare(&self, name: &str) -> Result<AppSpec, SpecResolveError> {
-        Err(SpecResolveError::Missing {
-            name: name.to_string(),
-            reason: "this resolver resolves nothing".to_string(),
-        })
-    }
-}
-
-fn supervisor() -> Supervisor {
-    Supervisor::new(
-        LOGS_DIR.to_string(),
-        KILL_TIMEOUT_MS,
-        READY_TIMEOUT_MS,
-        READY_POLL_MS,
-    )
-}
 
 async fn running_supervisor(ports: &FakePorts) -> Supervisor {
     let mut supervisor = supervisor();
@@ -56,7 +25,11 @@ async fn a_save_failure_during_stop_all_still_arms_every_force_kill() {
     let mut supervisor = running_supervisor(&ports).await;
     ports.fail_save();
     let (outcome, effects) = supervisor
-        .handle(SupervisionRequest::StopAll, &NoResolver, &ports)
+        .handle(
+            SupervisionRequest::StopAll,
+            &StaticResolver::always(),
+            &ports,
+        )
         .await;
     assert!(outcome.is_ok(), "got: {outcome:?}");
     assert!(arms_force_kill(&effects, 100), "got: {effects:?}");
@@ -70,7 +43,7 @@ async fn a_save_failure_after_the_stop_signal_still_arms_the_force_kill() {
     let (outcome, effects) = supervisor
         .handle(
             SupervisionRequest::Stop(AppSelector::Id(1)),
-            &NoResolver,
+            &StaticResolver::always(),
             &ports,
         )
         .await;
@@ -86,7 +59,7 @@ async fn a_save_failure_after_the_delete_signal_still_arms_the_force_kill() {
     let (outcome, effects) = supervisor
         .handle(
             SupervisionRequest::Delete(AppSelector::Id(1)),
-            &NoResolver,
+            &StaticResolver::always(),
             &ports,
         )
         .await;
@@ -102,7 +75,7 @@ async fn a_failed_delete_keeps_the_draining_record_tracked() {
     let (outcome, _effects) = supervisor
         .handle(
             SupervisionRequest::Delete(AppSelector::Id(1)),
-            &NoResolver,
+            &StaticResolver::always(),
             &ports,
         )
         .await;
@@ -121,7 +94,7 @@ async fn stopping_an_unknown_service_reports_not_found_without_effects() {
     let (outcome, effects) = supervisor
         .handle(
             SupervisionRequest::Stop(AppSelector::Id(9)),
-            &NoResolver,
+            &StaticResolver::always(),
             &ports,
         )
         .await;
@@ -154,7 +127,7 @@ async fn a_force_kill_for_a_replaced_instance_still_fires_when_the_token_matches
     let (outcome, effects) = supervisor
         .handle(
             SupervisionRequest::Delete(AppSelector::Id(1)),
-            &NoResolver,
+            &StaticResolver::always(),
             &ports,
         )
         .await;
@@ -176,7 +149,7 @@ async fn a_force_kill_for_a_replaced_instance_without_a_token_stays_dropped() {
     let (outcome, effects) = supervisor
         .handle(
             SupervisionRequest::Delete(AppSelector::Id(1)),
-            &NoResolver,
+            &StaticResolver::always(),
             &ports,
         )
         .await;
@@ -199,7 +172,7 @@ async fn a_refused_stop_signal_arms_no_force_kill() {
     let (outcome, effects) = supervisor
         .handle(
             SupervisionRequest::Stop(AppSelector::Id(1)),
-            &NoResolver,
+            &StaticResolver::always(),
             &ports,
         )
         .await;

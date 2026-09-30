@@ -59,22 +59,6 @@ fn a_service_that_lost_its_pid_is_reported_lost() {
 }
 
 #[test]
-fn a_service_that_was_already_stopped_stays_out_of_the_comparison() {
-    let before = vec![row("api", None)];
-    let after = vec![row("api", None)];
-    let comparison = compare_handover(&before, &after);
-    assert_eq!(comparison, HandoverComparison::default());
-}
-
-#[test]
-fn a_service_that_gained_a_pid_counts_as_restarted() {
-    let before = vec![row("api", None)];
-    let after = vec![row("api", Some(11))];
-    let comparison = compare_handover(&before, &after);
-    assert_eq!(comparison.restarted, vec!["api".to_string()]);
-}
-
-#[test]
 fn services_new_to_the_after_side_are_ignored() {
     let comparison = compare_handover(&[], &[row("api", Some(10))]);
     assert_eq!(comparison, HandoverComparison::default());

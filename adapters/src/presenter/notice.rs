@@ -1,3 +1,5 @@
+use usecases::{EnvOrigin, ProcessStatus};
+
 use crate::http::ProcessViewDto;
 
 const NOTICE_GAP: &str = ",";
@@ -5,8 +7,8 @@ const SEALED_ENV: &str = "env:sealed";
 const BREAKER: &str = "breaker";
 const NO_SELF_HEAL: &str = "noselfheal";
 const FLAPPING: &str = "flapping";
-const ERRORED: &str = "errored";
-const SEALED_ORIGIN: &str = "sealed";
+const ERRORED: &str = ProcessStatus::Errored.as_str();
+const SEALED_ORIGIN: &str = EnvOrigin::Sealed.as_str();
 #[must_use]
 pub fn format_notice(view: &ProcessViewDto) -> String {
     let mut marks: Vec<String> = Vec::new();

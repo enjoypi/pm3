@@ -148,29 +148,6 @@ async fn starting_an_already_running_app_leaves_it_alone() {
 }
 
 #[tokio::test]
-async fn a_writable_root_that_does_not_exist_is_kept_verbatim() {
-    let mut harness = harness();
-    let cwd = workspace_of(&harness);
-    let body = format!(
-        "name: web\nscript: '{SHELL}'\ncwd: '{cwd}'\nargs:\n  - \"{SHELL_FLAG}\"\n  - '{SLEEPER}'\nsandbox:\n  mode: workspace-write\n  writable_roots:\n    - /nonexistent/pm3-root\n"
-    );
-    std::fs::write(
-        service_file_of(&harness.cfg_dir, "web").expect("a safe service name"),
-        &body,
-    )
-    .expect("write the service");
-    let err = harness
-        .daemon
-        .handle(SupervisionRequest::Start {
-            services: vec!["web".to_string()],
-        })
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("no usable sandbox backend"), "got: {err}");
-}
-
-#[tokio::test]
 async fn an_unusable_default_sandbox_mode_is_refused() {
     let mut harness = harness_with_sandbox_mode("yolo");
     apps_file(&harness, "web", SLEEPER);

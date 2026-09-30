@@ -6,7 +6,9 @@ use super::*;
 
 #[tokio::test]
 async fn a_finished_command_reports_its_output() {
-    let outcome = capture_timed(Command::new("/usr/bin/true"), 5000).await;
+    let outcome = capture_timed(Command::new("/usr/bin/true"), 5000)
+        .await
+        .outcome;
     let CommandOutcome::Finished(output) = outcome else {
         panic!("true should finish: {outcome:?}")
     };
@@ -15,7 +17,9 @@ async fn a_finished_command_reports_its_output() {
 
 #[tokio::test]
 async fn a_missing_program_reports_a_spawn_failure() {
-    let outcome = capture_timed(Command::new("/nonexistent/pm3-timed"), 5000).await;
+    let outcome = capture_timed(Command::new("/nonexistent/pm3-timed"), 5000)
+        .await
+        .outcome;
     assert!(
         matches!(outcome, CommandOutcome::SpawnFailed(_)),
         "got: {outcome:?}"
@@ -26,7 +30,7 @@ async fn a_missing_program_reports_a_spawn_failure() {
 async fn a_command_past_its_budget_reports_a_stall() {
     let mut command = Command::new("/bin/sh");
     command.args(["-c", "exec sleep 30"]).kill_on_drop(true);
-    let outcome = capture_timed(command, 50).await;
+    let outcome = capture_timed(command, 50).await.outcome;
     assert!(
         matches!(outcome, CommandOutcome::Stalled),
         "got: {outcome:?}"

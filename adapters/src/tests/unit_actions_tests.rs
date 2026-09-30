@@ -40,7 +40,7 @@ async fn a_dry_run_install_prints_the_plan_and_leaves_the_disk_alone() {
 }
 
 #[tokio::test]
-async fn an_install_writes_the_unit_and_activates_it() {
+async fn an_install_writes_the_unit_settles_the_config_and_activates_it() {
     let dir = tempfile::tempdir().expect("temp dir");
     let true_program = true_program(dir.path());
     let spec = spec_for(UnitKind::Systemd, dir.path());
@@ -58,6 +58,10 @@ async fn an_install_writes_the_unit_and_activates_it() {
         std::fs::read_to_string(spec.unit_path())
             .expect("read the unit")
             .contains("WantedBy=default.target")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&spec.config_path).expect("read the settled config"),
+        CONFIG_BODY
     );
 }
 
@@ -153,26 +157,6 @@ async fn an_install_reports_a_manager_refusal() {
 }
 
 #[tokio::test]
-async fn an_install_settles_the_config_into_the_pm3_home() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let true_program = true_program(dir.path());
-    let spec = spec_for(UnitKind::Systemd, dir.path());
-    install_unit(
-        &spec,
-        &program_set(&true_program),
-        CONFIG_BODY,
-        false,
-        TIMEOUT_MS,
-    )
-    .await
-    .expect("the install should succeed");
-    assert_eq!(
-        std::fs::read_to_string(&spec.config_path).expect("read the settled config"),
-        CONFIG_BODY
-    );
-}
-
-#[tokio::test]
 async fn a_dry_run_uninstall_prints_the_plan() {
     let dir = tempfile::tempdir().expect("temp dir");
     let false_program = false_program(dir.path());
@@ -229,20 +213,10 @@ async fn an_uninstall_the_manager_refuses_still_removes_the_unit() {
     let dir = tempfile::tempdir().expect("temp dir");
     let false_program = false_program(dir.path());
     let spec = installed_spec(dir.path(), UnitKind::Launchd);
-    uninstall_unit(&spec, &program_set(&false_program), false, TIMEOUT_MS)
-        .await
-        .expect("a refusal to unload must not strand the unit file");
-    assert!(!spec.unit_path().is_file());
-}
-
-#[tokio::test]
-async fn an_uninstall_the_manager_refuses_says_what_it_skipped() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let false_program = false_program(dir.path());
-    let spec = installed_spec(dir.path(), UnitKind::Launchd);
     let report = uninstall_unit(&spec, &program_set(&false_program), false, TIMEOUT_MS)
         .await
         .expect("a refusal to unload must not strand the unit file");
+    assert!(!spec.unit_path().is_file());
     assert!(report.contains("skipped: "), "got: {report}");
 }
 

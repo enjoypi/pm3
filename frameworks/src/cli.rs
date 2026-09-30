@@ -307,10 +307,10 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
     let Cli { config, command } = cli;
     match command {
         Commands::Start(args) => run_start(&config, &args).await,
-        Commands::Stop { selector } => act(&config, &selector, commands::STOP_ACTION).await,
-        Commands::Restart { selector } => act(&config, &selector, commands::RESTART_ACTION).await,
+        Commands::Stop { selector } => act(&config, &selector, adapters::STOP_ACTION).await,
+        Commands::Restart { selector } => act(&config, &selector, adapters::RESTART_ACTION).await,
         Commands::Delete { selector } => commands::delete_app(&config, &selector).await.map(Some),
-        Commands::Reset { selector } => act(&config, &selector, commands::RESET_ACTION).await,
+        Commands::Reset { selector } => act(&config, &selector, adapters::RESET_ACTION).await,
         Commands::SendSignal { signal, selector } => {
             commands::signal_app(&config, &selector, &signal)
                 .await
@@ -437,9 +437,8 @@ async fn run_start(config: &str, args: &StartArgs) -> Result<Option<String>> {
                 ready_tcp: args.ready_tcp.as_deref(),
                 listen_timeout_ms: args.listen_timeout_ms,
                 stop_exit_codes: &args.stop_exit_codes,
-                force: args.force,
             };
-            commands::start_inline(config, &request).await?
+            commands::start_inline(config, &request, args.force).await?
         }
     };
     emit(&report.response);
@@ -455,7 +454,7 @@ async fn offer_restarts(
     let mut lines: Vec<String> = Vec::new();
     for name in pending {
         if confirm(name) {
-            lines.push(commands::act_on_app(config, name, commands::RESTART_ACTION).await?);
+            lines.push(commands::act_on_app(config, name, adapters::RESTART_ACTION).await?);
         } else {
             lines.push(prompt::keep_old_config_hint(name));
         }
@@ -478,6 +477,7 @@ fn run_config(config: &str, command: &ConfigCommands) -> Result<String> {
     }
 }
 
+#[must_use]
 pub fn report(outcome: Result<()>) -> std::process::ExitCode {
     match outcome {
         Ok(()) => std::process::ExitCode::SUCCESS,

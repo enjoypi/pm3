@@ -159,9 +159,3 @@ fn bwrap_accepts_a_writable_root_that_a_seatbelt_profile_cannot_render() {
         wrapped.args
     );
 }
-
-#[test]
-fn the_configured_backend_is_reported_for_logging() {
-    let sandbox = wrapper(Some(host(SandboxBackend::Bwrap)));
-    assert_eq!(sandbox.backend(), Some(SandboxBackend::Bwrap));
-}

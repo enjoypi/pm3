@@ -2,10 +2,10 @@ use std::{io, path::PathBuf, time::Duration};
 
 use adapters::{
     APPS_PATH, AppConfig, DAEMON_NOT_RUNNING, InlineStart, KillSignaler, Pm3Paths, Reconciled,
-    ReplyDto, SERVICES_STOP_ALL_PATH, STOP_SIGNAL_TERM, ServiceContext, ServiceUndo, SignalScope,
-    Signaler as _, StartSettlement, app_action_path, app_path, decode_reply, encode_signal_request,
-    encode_start_request, forget, load_and_parse_config, prepare_inline, render_daemon_gone,
-    render_daemon_stopped, settle_start, split_apps_file,
+    ReplyDto, SERVICES_STOP_ALL_PATH, SIGNAL_ACTION, STOP_SIGNAL_TERM, ServiceContext, ServiceUndo,
+    SignalScope, Signaler as _, StartSettlement, app_action_path, app_path, decode_reply,
+    encode_signal_request, encode_start_request, forget, load_and_parse_config, prepare_inline,
+    render_daemon_gone, render_daemon_stopped, settle_start, split_apps_file,
 };
 
 use crate::{
@@ -15,11 +15,6 @@ use crate::{
     layout::{Pm3Places, canonicalize, ensure_layout, host_home, read_pid_file, resolve_places},
     telemetry::init_cli_telemetry,
 };
-
-pub const STOP_ACTION: &str = "stop";
-pub const RESTART_ACTION: &str = "restart";
-pub const RESET_ACTION: &str = "reset";
-pub const SIGNAL_ACTION: &str = "signal";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartReport {
@@ -82,10 +77,15 @@ pub async fn start_apps(config_path: &str, apps_file: &str, force: bool) -> Resu
     finish_start(asked, split.changed, &split.undo).await
 }
 
-pub async fn start_inline(config_path: &str, request: &InlineStart<'_>) -> Result<StartReport> {
+pub async fn start_inline(
+    config_path: &str,
+    request: &InlineStart<'_>,
+    force: bool,
+) -> Result<StartReport> {
     let session = prepared_session(config_path).await?;
     let home = host_home();
-    let prepared = prepare_inline(&session.service_context(home.as_deref()), request).await?;
+    let prepared =
+        prepare_inline(&session.service_context(home.as_deref()), request, force).await?;
     let body = encode_start_request(std::slice::from_ref(&request.name.to_string()));
     let changed = if prepared.reconciled == Reconciled::Stale {
         vec![request.name.to_string()]

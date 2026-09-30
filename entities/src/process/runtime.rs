@@ -53,6 +53,21 @@ impl ProcessRuntime {
     }
 
     #[must_use]
+    pub fn identity_token(&self) -> Option<&str> {
+        self.identity
+            .as_ref()
+            .map(|identity| identity.token.as_str())
+    }
+
+    #[must_use]
+    pub const fn live_pid(&self) -> Option<u32> {
+        if self.status.is_settled() {
+            return None;
+        }
+        self.pid
+    }
+
+    #[must_use]
     pub fn uptime_ms(&self, now_ms: u64) -> Option<u64> {
         if !self.status.is_running() {
             return None;

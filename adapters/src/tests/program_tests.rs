@@ -65,12 +65,12 @@ fn an_absolute_program_resolves_to_itself() {
 
 #[test]
 fn an_absolute_program_is_available() {
-    assert!(program_available(crate::platform::ABSOLUTE_SHELL, None));
+    assert!(resolve_program(crate::platform::ABSOLUTE_SHELL, None).is_some());
 }
 
 #[test]
 fn a_missing_absolute_program_is_not_found() {
-    assert!(!program_available("/nonexistent/pm3-probe", None));
+    assert!(resolve_program("/nonexistent/pm3-probe", None).is_none());
 }
 
 #[test]
@@ -102,12 +102,12 @@ fn the_first_matching_search_path_entry_wins() {
 fn a_bare_program_missing_from_the_search_path_is_not_found() {
     let dir = tempfile::tempdir().expect("temp dir");
     let path_env = dir.path().to_string_lossy().into_owned();
-    assert!(!program_available(PROBE_TARGET, Some(&path_env)));
+    assert!(resolve_program(PROBE_TARGET, Some(&path_env)).is_none());
 }
 
 #[test]
 fn a_bare_program_without_a_search_path_is_not_found() {
-    assert!(!program_available(PROBE_TARGET, None));
+    assert!(resolve_program(PROBE_TARGET, None).is_none());
 }
 
 #[test]

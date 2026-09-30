@@ -1,7 +1,10 @@
 use entities::ProcessStatus;
 
 use super::*;
-use crate::ports_test_helpers::{FakePorts, started_table};
+use crate::{
+    UsecaseError,
+    ports_test_helpers::{FakePorts, started_table},
+};
 
 #[tokio::test]
 async fn resetting_a_known_app_clears_its_restart_counters() {

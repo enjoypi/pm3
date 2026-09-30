@@ -1,5 +1,5 @@
 use chrono::{Local, TimeZone as _};
-use usecases::EnvOrigin;
+use usecases::{EnvOrigin, ReadScope, SandboxMode};
 
 pub const MISSING: &str = "-";
 const FLAG_OFF: &str = "-";
@@ -7,13 +7,13 @@ const FLAG_WORKSPACE: &str = "W";
 const FLAG_FULL_ACCESS: &str = "F";
 const FLAG_READ_FULL: &str = "R";
 const FLAG_NETWORK: &str = "N";
-const SANDBOX_FULL_ACCESS: &str = "danger-full-access";
-const SANDBOX_WORKSPACE_WRITE: &str = "workspace-write";
-const READ_SCOPE_FULL: &str = "full";
+const SANDBOX_FULL_ACCESS: &str = SandboxMode::DangerFullAccess.as_str();
+const SANDBOX_WORKSPACE_WRITE: &str = SandboxMode::WorkspaceWrite.as_str();
+const READ_SCOPE_FULL: &str = ReadScope::Full.as_str();
 pub const NETWORK_SUFFIX: &str = "+net";
 
-const PLAIN_ENV: &str = "plain";
-const ENCRYPTED_ENV: &str = "encrypted";
+const PLAIN_ENV: &str = EnvOrigin::Plain.as_str();
+const ENCRYPTED_ENV: &str = EnvOrigin::Encrypted.as_str();
 const SEALED_ENV: &str = "encrypted, not opened";
 const SINGLE_VALUE: &str = "value";
 const MANY_VALUES: &str = "values";

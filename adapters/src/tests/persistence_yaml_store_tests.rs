@@ -22,6 +22,12 @@ fn fixture() -> Fixture {
     Fixture { dir, store, source }
 }
 
+impl Fixture {
+    fn dump_file(&self) -> PathBuf {
+        self.dir.path().join("dump.yaml")
+    }
+}
+
 fn store_at(root: &TempDir, path: PathBuf) -> YamlDumpStore {
     YamlDumpStore::new(path, spec_source_in(root.path()))
 }
@@ -38,9 +44,13 @@ async fn rejoined(fixture: &Fixture, name: &str) -> ProcessRecord {
     }
 }
 
-async fn saved_yaml(store: &YamlDumpStore, records: &[ProcessRecord]) -> String {
-    store.save(records, None).await.expect("should save");
-    tokio::fs::read_to_string(store.path())
+async fn saved_yaml(fixture: &Fixture, records: &[ProcessRecord]) -> String {
+    fixture
+        .store
+        .save(records, None)
+        .await
+        .expect("should save");
+    tokio::fs::read_to_string(fixture.dump_file())
         .await
         .expect("should read back")
 }
@@ -60,7 +70,7 @@ async fn save_creates_the_dump_file() {
         .save(&[sample_record("web")], None)
         .await
         .expect("save");
-    assert!(fixture.store.path().is_file(), "dump file should exist");
+    assert!(fixture.dump_file().is_file(), "dump file should exist");
 }
 
 #[tokio::test]
@@ -80,7 +90,7 @@ async fn save_leaves_no_temporary_file_behind() {
 #[tokio::test]
 async fn save_keeps_the_launch_parameters_out_of_the_dump() {
     let fixture = fixture();
-    let yaml = saved_yaml(&fixture.store, &[sample_record("web")]).await;
+    let yaml = saved_yaml(&fixture, &[sample_record("web")]).await;
     assert!(!yaml.contains("script"), "got: {yaml}");
     assert!(!yaml.contains("sandbox"), "got: {yaml}");
 }
@@ -187,7 +197,7 @@ async fn save_replaces_a_previous_dump() {
 #[tokio::test]
 async fn save_writes_an_empty_document_for_no_records() {
     let fixture = fixture();
-    let yaml = saved_yaml(&fixture.store, &[]).await;
+    let yaml = saved_yaml(&fixture, &[]).await;
     assert!(yaml.contains("services"), "got: {yaml}");
     assert_eq!(
         fixture.store.load().await.expect("load"),
@@ -323,7 +333,7 @@ async fn load_refuses_rather_than_stranding_an_app_it_cannot_decrypt() {
 #[tokio::test]
 async fn load_reports_a_broken_document() {
     let fixture = fixture();
-    tokio::fs::write(fixture.store.path(), "{{not yaml")
+    tokio::fs::write(fixture.dump_file(), "{{not yaml")
         .await
         .expect("write");
     let err = fixture.store.load().await.unwrap_err().to_string();
@@ -334,8 +344,8 @@ async fn load_reports_a_broken_document() {
 async fn load_strands_a_record_with_an_unknown_status() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
-    let yaml = saved_yaml(&fixture.store, &[sample_record("web")]).await;
-    tokio::fs::write(fixture.store.path(), yaml.replace("online", "zombie"))
+    let yaml = saved_yaml(&fixture, &[sample_record("web")]).await;
+    tokio::fs::write(fixture.dump_file(), yaml.replace("online", "zombie"))
         .await
         .expect("write");
     let loaded = fixture.store.load().await.expect("load");
@@ -355,11 +365,11 @@ async fn load_strands_a_record_with_an_unknown_status() {
 async fn load_strands_a_running_record_without_a_pid() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
-    let yaml = saved_yaml(&fixture.store, &[sample_record("web")]).await;
+    let yaml = saved_yaml(&fixture, &[sample_record("web")]).await;
     let mut doc: DumpDocument = serde_yaml2::from_str(&yaml).expect("the saved dump parses");
     doc.services[0].runtime.pid = None;
     let broken = serde_yaml2::to_string(&doc).expect("the edited dump serializes");
-    tokio::fs::write(fixture.store.path(), broken)
+    tokio::fs::write(fixture.dump_file(), broken)
         .await
         .expect("write");
     let loaded = fixture.store.load().await.expect("load");
@@ -379,8 +389,8 @@ async fn load_keeps_the_records_around_a_corrupt_one() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
     register_service(&fixture.source, "db");
-    let yaml = saved_yaml(&fixture.store, &[sample_record("web"), sample_record("db")]).await;
-    tokio::fs::write(fixture.store.path(), yaml.replacen("online", "zombie", 1))
+    let yaml = saved_yaml(&fixture, &[sample_record("web"), sample_record("db")]).await;
+    tokio::fs::write(fixture.dump_file(), yaml.replacen("online", "zombie", 1))
         .await
         .expect("write");
     let loaded = fixture.store.load().await.expect("load");
@@ -444,8 +454,8 @@ async fn a_saved_dump_carries_the_boot_it_was_written_under() {
 async fn a_dump_written_before_pm3_recorded_boots_still_loads() {
     let fixture = fixture();
     register_service(&fixture.source, "web");
-    let without_boot = saved_yaml(&fixture.store, &[sample_record("web")]).await;
-    tokio::fs::write(fixture.store.path(), &without_boot)
+    let without_boot = saved_yaml(&fixture, &[sample_record("web")]).await;
+    tokio::fs::write(fixture.dump_file(), &without_boot)
         .await
         .expect("seed a dump from an older pm3");
     let loaded = fixture.store.load().await.expect("should load");

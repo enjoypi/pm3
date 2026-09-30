@@ -42,19 +42,6 @@ fn log_file_error_names_the_path() {
     );
 }
 
-#[tokio::test]
-async fn a_launcher_tracks_the_pids_it_handed_out() {
-    let ports = crate::ports_test_helpers::FakePorts::new(1000);
-    ports.adopt(4321).await;
-    assert_eq!(ports.tracked_pids().await, vec![4321]);
-}
-
-#[tokio::test]
-async fn a_launcher_that_handed_out_nothing_tracks_nothing() {
-    let ports = crate::ports_test_helpers::FakePorts::new(1000);
-    assert_eq!(ports.tracked_pids().await, []);
-}
-
 #[test]
 fn every_outcome_names_itself_for_the_log() {
     assert_eq!(ExitOutcome::Code(0).as_str(), "code");

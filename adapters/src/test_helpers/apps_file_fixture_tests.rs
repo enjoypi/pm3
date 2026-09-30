@@ -30,7 +30,16 @@ static FIXTURE_CONFIG: std::sync::LazyLock<Pm3Config> =
     std::sync::LazyLock::new(|| pm3_config(SandboxMode::WorkspaceWrite.as_str()));
 
 pub fn fixture_roots() -> SpecRoots<'static> {
-    SpecRoots::single(HOME_DIR, CFG_DIR, LOGS_DIR).with_tmp(Some(TMP_DIR))
+    SpecRoots {
+        home_dir: HOME_DIR,
+        cfg_dir: CFG_DIR,
+        apps_dir: HOME_DIR,
+        state_dir: HOME_DIR,
+        runtime_dir: HOME_DIR,
+        data_dir: HOME_DIR,
+        logs_dir: LOGS_DIR,
+        tmp_dir: Some(TMP_DIR),
+    }
 }
 
 pub fn defaults() -> SpecDefaults<'static> {

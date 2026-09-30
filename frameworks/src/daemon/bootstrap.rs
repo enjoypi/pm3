@@ -155,10 +155,7 @@ async fn wait_until_ready(client: &UdsClient, launch: &DaemonLaunch<'_>) -> Resu
 }
 
 fn open_for_append(path: &Path) -> Result<File> {
-    append_private_blocking(path).map_err(|e| Error::Layout {
-        path: path.to_string_lossy().into_owned(),
-        reason: e.to_string(),
-    })
+    append_private_blocking(path).map_err(|error| crate::layout::layout_error(path, &error))
 }
 
 #[cfg(test)]

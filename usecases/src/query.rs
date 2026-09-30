@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use entities::{ProcessStatus, ReadyProbe, decide_memory_verdict};
 
 use crate::{
-    Result, UsecaseError,
+    Result,
     ports::Readiness,
     record::{ProcessRecord, ProcessView},
     selector::AppSelector,
@@ -26,10 +26,7 @@ pub fn describe_app(
     selector: &AppSelector,
     now_ms: u64,
 ) -> Result<ProcessView> {
-    table
-        .find(selector)
-        .map(|record| record.view(now_ms))
-        .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))
+    table.require(selector).map(|record| record.view(now_ms))
 }
 
 #[must_use]
@@ -119,8 +116,8 @@ pub fn schedule_of(table: &ProcessTable, name: &str) -> Option<String> {
 pub fn identity_token_of(table: &ProcessTable, selector: &AppSelector) -> Option<String> {
     table
         .find(selector)
-        .and_then(|record| record.runtime.identity.as_ref())
-        .map(|identity| identity.token.clone())
+        .and_then(|record| record.runtime.identity_token())
+        .map(str::to_owned)
 }
 
 #[must_use]
@@ -141,11 +138,7 @@ pub fn owner_of_pid(table: &ProcessTable, pid: u32) -> (String, Option<String>) 
         .map_or_else(
             || (format!("{STRAY_LABEL}-{pid}"), None),
             |record| {
-                let token = record
-                    .runtime
-                    .identity
-                    .as_ref()
-                    .map(|identity| identity.token.clone());
+                let token = record.runtime.identity_token().map(str::to_owned);
                 (record.runtime.name.clone(), token)
             },
         )

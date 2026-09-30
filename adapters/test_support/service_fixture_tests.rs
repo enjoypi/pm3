@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use crate::service::{InlineStart, PreparedService, ServiceContext, prepare_inline};
+use crate::{
+    apps_file::InlineStart,
+    service::{PreparedService, ServiceContext, prepare_inline},
+};
 
 pub const NAME: &str = "sleeper";
 pub use crate::platform::{SEARCH_PATH, SHELL, SHELL_NAME};
@@ -32,12 +35,7 @@ pub fn context(home: &Home) -> ServiceContext<'_> {
     }
 }
 
-pub fn request<'s>(
-    program: &'s str,
-    args: &'s [String],
-    cwd: Option<&'s str>,
-    force: bool,
-) -> InlineStart<'s> {
+pub fn request<'s>(program: &'s str, args: &'s [String], cwd: Option<&'s str>) -> InlineStart<'s> {
     InlineStart {
         name: NAME,
         program,
@@ -53,7 +51,6 @@ pub fn request<'s>(
         ready_tcp: None,
         listen_timeout_ms: None,
         stop_exit_codes: &[],
-        force,
     }
 }
 
@@ -62,7 +59,7 @@ pub fn shell_args() -> Vec<String> {
 }
 
 pub async fn prepared(home: &Home, force: bool) -> PreparedService {
-    prepare_inline(&context(home), &request(SHELL, &shell_args(), None, force))
+    prepare_inline(&context(home), &request(SHELL, &shell_args(), None), force)
         .await
         .expect("the inline request should resolve")
 }

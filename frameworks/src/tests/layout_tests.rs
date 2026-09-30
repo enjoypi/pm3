@@ -65,7 +65,7 @@ fn the_host_uid_falls_back_to_the_owner_of_the_home_directory() {
 
 #[test]
 fn the_host_runtime_directory_follows_the_environment_and_the_owner() {
-    let declared = std::env::var(RUNTIME_DIR_VARIABLE).ok();
+    let declared = std::env::var(adapters::RUNTIME_DIR_VARIABLE).ok();
     assert_eq!(
         host_runtime_dir(None),
         runtime_dir_of(declared.as_deref(), host_uid(None))
@@ -290,7 +290,9 @@ async fn a_runtime_file_that_cannot_be_removed_only_warns() {
 fn the_service_directory_comes_from_the_config() {
     let mut config = pm3_config_with_home(&abs("/srv/pm3"));
     config.cfg_dir = "~/.config/pm3".to_string();
-    let resolved = resolve_cfg_dir(&config, Some("/home/dev")).expect("tilde expands");
+    let resolved = resolve_places(&config, Some("/home/dev"))
+        .expect("tilde expands")
+        .cfg_dir;
     assert_eq!(resolved, std::path::Path::new("/home/dev/.config/pm3"));
 }
 
@@ -298,7 +300,7 @@ fn the_service_directory_comes_from_the_config() {
 fn a_relative_service_directory_is_rejected() {
     let mut config = pm3_config_with_home(&abs("/srv/pm3"));
     config.cfg_dir = "relative/service".to_string();
-    let err = resolve_cfg_dir(&config, Some("/home/dev"))
+    let err = resolve_places(&config, Some("/home/dev"))
         .unwrap_err()
         .to_string();
     assert!(err.contains("must be absolute"), "got: {err}");
@@ -308,7 +310,9 @@ fn a_relative_service_directory_is_rejected() {
 fn a_declared_cfg_dir_survives_the_config_root_variable() {
     let mut config = pm3_config_with_home(&abs("/srv/pm3"));
     config.cfg_dir = abs("/srv/pm3/service");
-    let cfg_dir = resolve_cfg_dir(&config, None).expect("the cfg dir should resolve");
+    let cfg_dir = resolve_places(&config, None)
+        .expect("the cfg dir should resolve")
+        .cfg_dir;
     assert_eq!(
         cfg_dir,
         Path::new(&abs("/srv/pm3/service")),
@@ -339,8 +343,9 @@ fn an_empty_home_derives_the_split_layout_from_the_configured_roots() {
 
 #[test]
 fn an_empty_cfg_dir_follows_the_config_root() {
-    let cfg_dir =
-        resolve_cfg_dir(&split_config(), Some("/home/dev")).expect("the cfg dir should resolve");
+    let cfg_dir = resolve_places(&split_config(), Some("/home/dev"))
+        .expect("the cfg dir should resolve")
+        .cfg_dir;
     assert!(
         cfg_dir.ends_with("pm3"),
         "the service directory follows the config root, got {}",
@@ -385,14 +390,6 @@ fn a_socket_path_past_the_unix_limit_is_refused() {
         err.to_string().contains("cannot accept the socket path"),
         "got: {err}"
     );
-}
-
-#[test]
-fn a_relative_cfg_dir_is_refused() {
-    let mut config = split_config();
-    config.cfg_dir = "service".to_string();
-    let err = resolve_cfg_dir(&config, Some("/home/dev")).unwrap_err();
-    assert!(err.to_string().contains("must be absolute"), "got: {err}");
 }
 
 #[test]

@@ -261,9 +261,7 @@ async fn launch(
     ports: &impl Ports,
     mode: StartMode,
 ) -> Result<StartOutcome> {
-    let Some(record) = table.find_by_name_mut(name) else {
-        return Err(UsecaseError::NotFound(name.to_string()));
-    };
+    let record = table.require_by_name_mut(name)?;
 
     if !record.runtime.status.is_settled() {
         record.runtime.arm_schedule();
@@ -367,11 +365,7 @@ pub(crate) fn build_launch_spec(
 }
 
 fn launch_environment(env: &[EnvValue]) -> Vec<(String, String)> {
-    env.iter().map(pair_of).collect()
-}
-
-fn pair_of(entry: &EnvValue) -> (String, String) {
-    (entry.key.clone(), entry.value.clone())
+    env.iter().map(EnvValue::pair).collect()
 }
 
 #[must_use]

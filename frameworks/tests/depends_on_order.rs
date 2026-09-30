@@ -66,7 +66,7 @@ fn both_apps_record_themselves() {
 }
 
 #[test]
-fn a_dependency_cycle_is_refused() {
+fn a_dependency_cycle_is_refused_without_leaving_service_files() {
     let home = home();
     let apps = cyclic_apps(&home);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
@@ -76,15 +76,6 @@ fn a_dependency_cycle_is_refused() {
         "got: {}",
         stderr_of(&started)
     );
-    shutdown_daemon(&home);
-}
-
-#[test]
-fn a_refused_start_leaves_no_service_files_behind() {
-    let home = home();
-    let apps = cyclic_apps(&home);
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(!started.status.success(), "a cycle must fail the command");
     let leftovers: Vec<String> = std::fs::read_dir(home.root.join("service"))
         .expect("the service directory")
         .map(|entry| {

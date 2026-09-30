@@ -5,10 +5,10 @@ use std::{
 };
 
 use thiserror::Error;
-use tokio::process::Command;
-use usecases::{SpecError, validate_app_name};
+use usecases::SpecError;
 
 use crate::{
+    config::Pm3Config,
     exit_status::exit_code_of,
     process::{CommandOutcome, capture_timed},
 };
@@ -59,8 +59,7 @@ impl EncFileError {
 }
 
 pub fn enc_file_of(cfg_dir: &Path, name: &str) -> Result<PathBuf, SpecError> {
-    validate_app_name(name)?;
-    Ok(cfg_dir.join(format!("{name}.{ENC_FILE_SUFFIX}")))
+    super::named_file(cfg_dir, name, ENC_FILE_SUFFIX)
 }
 
 pub async fn enc_file_present(path: &Path) -> Result<bool, EncFileError> {
@@ -90,10 +89,7 @@ pub struct Decryptor<'d> {
 
 pub async fn load_enc_file(decryptor: &Decryptor<'_>, path: &Path) -> Result<String, EncFileError> {
     let shown = path.to_string_lossy().into_owned();
-    let mut command = Command::new(decryptor.program);
-    command.env_clear();
-    #[cfg(windows)]
-    command.envs(crate::process::windows_system_env());
+    let mut command = crate::process::clean_command(decryptor.program.as_ref());
     for (key, value) in decryptor.extra_env {
         command.env(key, value);
     }
@@ -105,10 +101,9 @@ pub async fn load_enc_file(decryptor: &Decryptor<'_>, path: &Path) -> Result<Str
         .arg(OUTPUT_TYPE_FLAG)
         .arg(OUTPUT_TYPE)
         .arg(path);
-    let started = Instant::now();
-    let outcome = capture_timed(command, decryptor.timeout_ms).await;
-    let duration_ms = started.elapsed().as_millis();
-    let output = match outcome {
+    let timed = capture_timed(command, decryptor.timeout_ms).await;
+    let duration_ms = timed.duration_ms;
+    let output = match timed.outcome {
         CommandOutcome::Stalled => {
             return Err(refused(
                 EncFileError::Stalled {
@@ -149,6 +144,25 @@ pub async fn load_enc_file(decryptor: &Decryptor<'_>, path: &Path) -> Result<Str
             EncFileError::Unreadable { path: shown },
             duration_ms,
         )),
+    }
+}
+
+pub async fn open_declared(
+    config: &Pm3Config,
+    path: &Path,
+    extra_env: &[(String, String)],
+) -> Result<Option<String>, EncFileError> {
+    let decryptor = Decryptor {
+        program: &config.sops_program,
+        identity: &config.sops_identity_file,
+        search_path: &config.search_path,
+        timeout_ms: config.sops_timeout_ms,
+        extra_env,
+    };
+    match load_enc_file(&decryptor, path).await {
+        Ok(text) => Ok(Some(text)),
+        Err(error) if !config.sops_identity_file.is_empty() => Err(error),
+        Err(_error) => Ok(None),
     }
 }
 

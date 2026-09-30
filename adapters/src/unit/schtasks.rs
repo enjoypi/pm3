@@ -1,4 +1,7 @@
-use super::{escape::escape_xml, spec::UnitSpec};
+use super::{
+    escape::escape_xml,
+    spec::{CONFIG_FLAG, DAEMON_SUBCOMMAND, UnitSpec},
+};
 
 const UTF16_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n";
 const TASK_OPENING: &str =
@@ -75,7 +78,7 @@ pub fn render_wrapper(spec: &UnitSpec) -> String {
     let config = spec.config_path.to_string_lossy();
     let log_path = spec.log_path.to_string_lossy();
     let command_line = format!(
-        "\"{program}\" daemon --config \"{config}\" >> \"{log_path}\" 2>&1\r\nexit /b 1\r\n"
+        "\"{program}\" {DAEMON_SUBCOMMAND} {CONFIG_FLAG} \"{config}\" >> \"{log_path}\" 2>&1\r\nexit /b 1\r\n"
     );
     script.push_str(&command_line);
     script

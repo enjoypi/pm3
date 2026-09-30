@@ -63,7 +63,7 @@ async fn rotate_if_oversized(
 }
 
 fn backup_path(path: &Path) -> std::path::PathBuf {
-    std::path::PathBuf::from(format!("{}{BACKUP_SUFFIX}", path.to_string_lossy()))
+    crate::fs_util::with_suffix(path, BACKUP_SUFFIX)
 }
 
 fn scan_error(logs_dir: &str, error: &std::io::Error) -> LogRotateError {

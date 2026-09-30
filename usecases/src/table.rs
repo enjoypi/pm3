@@ -64,6 +64,24 @@ impl ProcessTable {
             .find(|record| record.runtime.name == name)
     }
 
+    pub fn require(&self, selector: &AppSelector) -> Result<&ProcessRecord, UsecaseError> {
+        self.find(selector)
+            .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))
+    }
+
+    pub fn require_mut(
+        &mut self,
+        selector: &AppSelector,
+    ) -> Result<&mut ProcessRecord, UsecaseError> {
+        self.find_mut(selector)
+            .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))
+    }
+
+    pub fn require_by_name_mut(&mut self, name: &str) -> Result<&mut ProcessRecord, UsecaseError> {
+        self.find_by_name_mut(name)
+            .ok_or_else(|| UsecaseError::NotFound(name.to_string()))
+    }
+
     #[must_use]
     pub fn find_by_name(&self, name: &str) -> Option<&ProcessRecord> {
         self.records
@@ -140,9 +158,6 @@ pub(crate) fn dependency_order(table: &ProcessTable, on_cycle: fn(&UsecaseError)
     }
 }
 
-#[cfg(test)]
-#[path = "test_helpers/table_fixture_tests.rs"]
-mod test_helpers;
 #[cfg(test)]
 #[path = "tests/table_tests.rs"]
 mod tests;

@@ -1,7 +1,7 @@
 use entities::ProcessStatus;
 
 use super::*;
-use crate::ports_test_helpers::spec;
+use crate::{UsecaseError, ports_test_helpers::spec};
 
 #[test]
 fn listing_an_empty_table_yields_no_views() {

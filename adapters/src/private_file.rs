@@ -8,6 +8,7 @@ use tokio::{
 };
 
 pub const OWNER_ONLY_FILE: u32 = 0o600;
+pub const OWNER_ONLY_DIR: u32 = 0o700;
 pub const SWEEP_PROOF_FILE: u32 = 0o1600;
 
 pub async fn write_private(path: &Path, contents: &str) -> Result<()> {

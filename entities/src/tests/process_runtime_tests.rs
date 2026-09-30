@@ -346,3 +346,23 @@ fn a_relaunch_clears_the_liveness_tally() {
         "a fresh process starts from zero"
     );
 }
+
+#[test]
+fn the_identity_token_is_read_from_the_recorded_identity() {
+    let runtime = ProcessRuntime {
+        identity: Some(identity()),
+        ..online_at(1000)
+    };
+    assert_eq!(runtime.identity_token(), Some("Tue Jul 28 14:06:28 2026"));
+    assert_eq!(online_at(1000).identity_token(), None);
+}
+
+#[test]
+fn only_an_unsettled_runtime_has_a_live_pid() {
+    assert_eq!(online_at(1000).live_pid(), Some(4242));
+    let stopped = ProcessRuntime {
+        status: ProcessStatus::Stopped,
+        ..online_at(1000)
+    };
+    assert_eq!(stopped.live_pid(), None);
+}

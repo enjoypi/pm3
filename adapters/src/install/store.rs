@@ -3,11 +3,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use super::InstallError;
+#[cfg(unix)]
+use crate::private_file::{OWNER_ONLY_DIR, OWNER_ONLY_FILE};
 
-#[cfg(unix)]
-const DIRECTORY_MODE: u32 = 0o700;
-#[cfg(unix)]
-const FILE_MODE: u32 = 0o600;
 const INCOMING_SUFFIX: &str = ".incoming";
 #[cfg(windows)]
 const RETIRED_SUFFIX: &str = ".retired";
@@ -67,11 +65,9 @@ pub async fn replace_binary(source: &Path, destination: &Path) -> Result<(), Ins
 #[cfg(windows)]
 async fn retire_current(destination: &Path) -> Result<(), InstallError> {
     let retired = retired_path(destination);
-    match tokio::fs::remove_file(&retired).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(InstallError::replace_io(&retired, &error)),
-    }
+    crate::fs_util::remove_if_present(&retired)
+        .await
+        .map_err(|error| InstallError::replace_io(&retired, &error))?;
     match tokio::fs::try_exists(destination).await {
         Ok(true) => tokio::fs::rename(destination, &retired)
             .await
@@ -83,9 +79,7 @@ async fn retire_current(destination: &Path) -> Result<(), InstallError> {
 
 #[cfg(windows)]
 fn retired_path(destination: &Path) -> PathBuf {
-    let mut retired = destination.as_os_str().to_owned();
-    retired.push(RETIRED_SUFFIX);
-    PathBuf::from(retired)
+    crate::fs_util::with_suffix(destination, RETIRED_SUFFIX)
 }
 
 async fn prepare_dir(path: &Path) -> Result<(), InstallError> {
@@ -113,7 +107,7 @@ async fn copy_into(path: &Path, dir: &Path) -> Result<(), InstallError> {
 
 #[cfg(unix)]
 async fn restrict_dir(path: &Path) -> Result<(), InstallError> {
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(DIRECTORY_MODE))
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(OWNER_ONLY_DIR))
         .await
         .map_err(|error| InstallError::backup_directory(path, &error))
 }
@@ -129,7 +123,7 @@ async fn restrict_dir(_path: &Path) -> Result<(), InstallError> {
 
 #[cfg(unix)]
 async fn restrict_file(path: &Path) -> Result<(), InstallError> {
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(FILE_MODE))
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(OWNER_ONLY_FILE))
         .await
         .map_err(|error| InstallError::backup_io(path, &error))
 }
@@ -144,9 +138,7 @@ async fn restrict_file(_path: &Path) -> Result<(), InstallError> {
 }
 
 fn staged_path(destination: &Path) -> PathBuf {
-    let mut staged = destination.as_os_str().to_owned();
-    staged.push(INCOMING_SUFFIX);
-    PathBuf::from(staged)
+    crate::fs_util::with_suffix(destination, INCOMING_SUFFIX)
 }
 
 #[cfg(test)]

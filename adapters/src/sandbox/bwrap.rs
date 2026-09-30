@@ -15,7 +15,6 @@ const DEVICES_PATH: &str = "/dev";
 const PROCESSES: &str = "--proc";
 const PROCESSES_PATH: &str = "/proc";
 const FILESYSTEM_ROOT: &str = "/";
-const ARGUMENT_TERMINATOR: &str = "--";
 const PATH_SEPARATOR: char = '/';
 
 #[must_use]
@@ -49,13 +48,7 @@ pub fn bwrap_argv(
     for hidden in nested_in(&policy.hidden_paths(), &granted) {
         push_pair(&mut sandbox_args, TMPFS, hidden);
     }
-    sandbox_args.push(ARGUMENT_TERMINATOR.to_string());
-    sandbox_args.push(program.to_string());
-    sandbox_args.extend_from_slice(args);
-    WrappedCommand {
-        program: sandbox_program.to_string(),
-        args: sandbox_args,
-    }
+    super::finish_wrapped(sandbox_program, sandbox_args, program, args)
 }
 
 fn push_read_layer(

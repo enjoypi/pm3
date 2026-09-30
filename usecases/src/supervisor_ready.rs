@@ -21,10 +21,7 @@ impl Supervisor {
         ports: &impl Ports,
     ) -> Vec<SupervisionEffect> {
         let mut effects = Vec::new();
-        if !self.timers.is_current(name, generation) {
-            return effects;
-        }
-        if !self.is_launching(name) {
+        if !self.awaits_ready(name, generation) {
             return effects;
         }
         self.table
@@ -48,10 +45,7 @@ impl Supervisor {
         ports: &impl Ports,
     ) -> Vec<SupervisionEffect> {
         let mut effects = Vec::new();
-        if !self.timers.is_current(name, generation) {
-            return effects;
-        }
-        if !self.is_launching(name) {
+        if !self.awaits_ready(name, generation) {
             return effects;
         }
         log_ready_timeout(name, reason);
@@ -66,11 +60,7 @@ impl Supervisor {
                 .runtime
                 .pid
                 .expect("internal error: a launching service always has a pid");
-            let token = record
-                .runtime
-                .identity
-                .as_ref()
-                .map(|identity| identity.token.clone());
+            let token = record.runtime.identity_token().map(str::to_owned);
             (pid, token)
         };
         if let Err(error) = ports.terminate(pid, SignalScope::ProcessGroup).await {
@@ -91,6 +81,13 @@ impl Supervisor {
         effects.push(SupervisionEffect::CancelReady {
             name: name.to_string(),
         });
+    }
+
+    fn awaits_ready(&self, name: &str, generation: u64) -> bool {
+        if !self.timers.is_current(name, generation) {
+            return false;
+        }
+        self.is_launching(name)
     }
 
     fn is_launching(&self, name: &str) -> bool {
@@ -133,20 +130,22 @@ impl Supervisor {
         ports: &impl Ports,
         effects: &mut Vec<SupervisionEffect>,
     ) {
-        let Ok(outcome) = register_one(&mut self.table, waiter, &self.logs_dir, ports).await else {
-            self.mark_errored_if_settled(waiter);
-            self.fail_downstream(waiter);
-            if let Err(error) = save_table(&self.table, ports).await {
-                log_failure("start", waiter, &error);
+        let released = match register_one(&mut self.table, waiter, &self.logs_dir, ports).await {
+            Ok(outcome) => {
+                self.watch(&outcome, effects);
+                self.arm_timer(waiter, ports, effects);
+                self.releases_waiters(waiter, outcome.kind)
             }
-            return;
+            Err(_error) => {
+                self.mark_errored_if_settled(waiter);
+                self.fail_downstream(waiter);
+                false
+            }
         };
-        self.watch(&outcome, effects);
-        self.arm_timer(waiter, ports, effects);
         if let Err(error) = save_table(&self.table, ports).await {
             log_failure("start", waiter, &error);
         }
-        if self.releases_waiters(waiter, outcome.kind) {
+        if released {
             queue.push(waiter.to_string());
         }
     }

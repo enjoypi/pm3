@@ -10,6 +10,9 @@ pub use self::{
         ReplyDecodeError, app_action_path, app_path, decode_reply, encode_signal_request,
         encode_start_request,
     },
-    routes::{APPS_PATH, HEALTH_PATH, REQUEST_ID_HEADER, SERVICES_STOP_ALL_PATH, router},
+    routes::{
+        APPS_PATH, HEALTH_PATH, REQUEST_ID_HEADER, RESET_ACTION, RESTART_ACTION,
+        SERVICES_STOP_ALL_PATH, SIGNAL_ACTION, STOP_ACTION, router,
+    },
     view_dto::{EnvDisplayDto, ProcessViewDto},
 };

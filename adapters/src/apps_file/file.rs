@@ -96,28 +96,6 @@ pub struct SpecRoots<'d> {
     pub tmp_dir: Option<&'d str>,
 }
 
-impl<'d> SpecRoots<'d> {
-    #[must_use]
-    pub const fn single(home_dir: &'d str, cfg_dir: &'d str, logs_dir: &'d str) -> Self {
-        Self {
-            home_dir,
-            cfg_dir,
-            apps_dir: home_dir,
-            state_dir: home_dir,
-            runtime_dir: home_dir,
-            data_dir: home_dir,
-            logs_dir,
-            tmp_dir: None,
-        }
-    }
-
-    #[must_use]
-    pub const fn with_tmp(mut self, tmp_dir: Option<&'d str>) -> Self {
-        self.tmp_dir = tmp_dir;
-        self
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct SpecDefaults<'d> {
     pub restart: RestartConfig,

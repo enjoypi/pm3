@@ -26,7 +26,7 @@ async fn an_inline_request_leaves_the_working_directory_to_the_daemon() {
 #[tokio::test]
 async fn a_bare_program_is_stored_without_resolving_it() {
     let home = home();
-    let path = prepare_inline(&context(&home), &request(SHELL_NAME, &[], None, false))
+    let path = prepare_inline(&context(&home), &request(SHELL_NAME, &[], None), false)
         .await
         .expect("the inline request should resolve")
         .path;
@@ -41,8 +41,8 @@ async fn a_bare_program_is_stored_without_resolving_it() {
 async fn an_explicit_working_directory_folds_the_home_away() {
     let home = home();
     let args = shell_args();
-    let asked = request(SHELL, &args, Some("/home/dev/work"), false);
-    let path = prepare_inline(&context(&home), &asked)
+    let asked = request(SHELL, &args, Some("/home/dev/work"));
+    let path = prepare_inline(&context(&home), &asked, false)
         .await
         .expect("the inline request should resolve")
         .path;
@@ -55,7 +55,7 @@ async fn program_arguments_fold_the_home_away() {
     let home = home();
     let mut args = shell_args();
     args.push("/home/dev/.config/mihomo/rule.yaml".to_string());
-    let path = prepare_inline(&context(&home), &request(SHELL, &args, None, false))
+    let path = prepare_inline(&context(&home), &request(SHELL, &args, None), false)
         .await
         .expect("the inline request should resolve")
         .path;
@@ -71,7 +71,7 @@ async fn a_bare_service_cwd_token_is_stored_as_a_braced_placeholder() {
     let home = home();
     let mut args = shell_args();
     args.push("PM3_SERVICE_CWD".to_string());
-    let path = prepare_inline(&context(&home), &request(SHELL, &args, None, false))
+    let path = prepare_inline(&context(&home), &request(SHELL, &args, None), false)
         .await
         .expect("the inline request should resolve")
         .path;
@@ -105,7 +105,8 @@ async fn a_program_missing_from_the_search_path_is_reported() {
     let home = home();
     let err = prepare_inline(
         &context(&home),
-        &request("pm3-not-a-real-program", &[], None, false),
+        &request("pm3-not-a-real-program", &[], None),
+        false,
     )
     .await
     .unwrap_err()
@@ -157,7 +158,7 @@ async fn a_changed_config_needs_force() {
     let path = prepared(&home, false).await.path;
     std::fs::write(&path, "apps:\n  - name: sleeper\n    script: /bin/echo\n")
         .expect("edit the config file");
-    let err = prepare_inline(&context(&home), &request(SHELL, &shell_args(), None, false))
+    let err = prepare_inline(&context(&home), &request(SHELL, &shell_args(), None), false)
         .await
         .unwrap_err()
         .to_string();
@@ -187,7 +188,7 @@ async fn a_config_directory_that_is_missing_is_reported() {
         search_path: SEARCH_PATH,
         home: Some(FAKE_HOME),
     };
-    let err = prepare_inline(&context, &request(SHELL, &shell_args(), None, false))
+    let err = prepare_inline(&context, &request(SHELL, &shell_args(), None), false)
         .await
         .unwrap_err()
         .to_string();

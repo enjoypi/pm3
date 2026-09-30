@@ -91,11 +91,7 @@ async fn judge(
     observed: &HashMap<u32, Liveness>,
     ports: &impl Ports,
 ) -> (Verdict, Option<String>) {
-    let expected = record
-        .runtime
-        .identity
-        .as_ref()
-        .map(|identity| identity.token.clone());
+    let expected = record.runtime.identity_token().map(str::to_owned);
     let verdict = judge_verdict(record, trust, observed, ports).await;
     (verdict, expected)
 }
@@ -110,11 +106,7 @@ async fn judge_verdict(
         let stale = surviving_pid(
             &record.runtime.name,
             record.runtime.pid,
-            record
-                .runtime
-                .identity
-                .as_ref()
-                .map(|identity| identity.token.as_str()),
+            record.runtime.identity_token(),
             trust,
             observed,
         );

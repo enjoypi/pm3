@@ -27,7 +27,7 @@ fn service_file_at(home: &Home, name: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn a_batch_that_only_half_starts_fails_the_command() {
+fn a_batch_that_only_half_starts_fails_but_keeps_the_service_it_started() {
     let home = home();
     let apps = half_startable_apps(&home);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
@@ -41,15 +41,6 @@ fn a_batch_that_only_half_starts_fails_the_command() {
         "{}",
         stderr_of(&started)
     );
-    shutdown_daemon(&home);
-}
-
-#[test]
-fn a_batch_that_only_half_starts_keeps_the_service_it_started() {
-    let home = home();
-    let apps = half_startable_apps(&home);
-    pm3(&home, &["start", apps.to_str().expect("path")]);
-
     assert!(
         service_file_at(&home, "web").is_file(),
         "the service that started keeps its service file"
