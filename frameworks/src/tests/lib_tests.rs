@@ -35,13 +35,6 @@ fn a_log_clear_failure_is_passed_through() {
 }
 
 #[test]
-fn a_telemetry_failure_is_passed_through() {
-    let inner = telemetry::TelemetryError::InvalidFilter("bad".to_string());
-    let expected = inner.to_string();
-    assert_eq!(Error::from(inner).to_string(), expected);
-}
-
-#[test]
 fn a_serve_failure_is_passed_through() {
     let inner = server::ServerError::Serve(std::io::Error::other("boom"));
     let expected = inner.to_string();

@@ -7,7 +7,7 @@ mod common;
 
 use self::common::{
     EXEC_SLEEPER, NAP, SHELL, SHELL_FLAG, daemon_log, home, pm3, shutdown_daemon, stdout_of,
-    verbose_home, wait_for_listing, write_apps,
+    wait_for_listing, write_apps,
 };
 
 fn probe_exec(command: &str) -> String {
@@ -53,7 +53,7 @@ fn an_app_that_never_becomes_ready_is_marked_errored() {
 
 #[test]
 fn a_dependent_app_starts_after_its_dependency_is_ready() {
-    let home = verbose_home();
+    let home = home();
     let cwd = home.root.to_string_lossy();
     let nap = probe_exec(NAP);
     let apps = write_apps(

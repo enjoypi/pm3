@@ -129,3 +129,9 @@ pub(crate) mod ports_test_helpers;
 #[cfg(test)]
 #[path = "tests/lib_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[ctor::ctor(unsafe)]
+fn trace_every_callsite() {
+    test_trace::install();
+}

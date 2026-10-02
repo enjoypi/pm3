@@ -115,14 +115,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
-
       - uses: Swatinem/rust-cache@v2
 
       - name: e2e
-        run: cargo nextest run --locked --workspace --release
+        run: cargo test --locked --workspace --release
         timeout-minutes: 30
 
   release:

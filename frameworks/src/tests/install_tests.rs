@@ -330,7 +330,7 @@ async fn an_install_reports_a_config_it_cannot_load() {
     let fixture = systemd_fixture(HEALTHY_SYSTEMD);
     let emit = |_line: &str| {};
     let error = run_install(
-        "/nonexistent/pm3-config.yaml",
+        "nonexistent/pm3-config.yaml",
         None,
         &context(&fixture, UnitKind::Systemd, None),
         &emit,
@@ -340,6 +340,89 @@ async fn an_install_reports_a_config_it_cannot_load() {
     assert!(
         error.to_string().contains("cannot resolve the config path"),
         "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn an_install_reports_a_default_config_it_cannot_write() {
+    let fixture = systemd_fixture(HEALTHY_SYSTEMD);
+    let blocker = fixture.dir.path().join("blocker");
+    std::fs::write(&blocker, "").expect("seed a file where the config directory belongs");
+    let config = blocker.join("config.yaml");
+    let emit = |_line: &str| {};
+    let error = run_install(
+        &config.to_string_lossy(),
+        None,
+        &context(&fixture, UnitKind::Systemd, None),
+        &emit,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("cannot prepare the pm3 home"),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn an_install_announces_the_config_it_seeded() {
+    let fixture = systemd_fixture(HEALTHY_SYSTEMD);
+    let config = fixture.dir.path().join("fresh/config.yaml");
+    let lines = std::sync::Mutex::new(Vec::new());
+    let emit = |line: &str| lines.lock().expect("lock").push(line.to_string());
+    let mut context = context(&fixture, UnitKind::Systemd, None);
+    context.home_env = None;
+    context.destination_env = None;
+    run_install(&config.to_string_lossy(), None, &context, &emit)
+        .await
+        .unwrap_err();
+    let output = lines.lock().expect("lock").join("\n");
+    assert_eq!(
+        output,
+        format!("created default config {}", config.display())
+    );
+}
+
+#[tokio::test]
+async fn a_default_config_that_cannot_be_written_is_reported() {
+    let dir = tempfile::tempdir().expect("create a temp dir");
+    let path = dir.path().join("x".repeat(300));
+    let error = seed_config(&path).await.unwrap_err();
+    assert!(
+        error.to_string().contains("cannot prepare the pm3 home"),
+        "got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_missing_config_is_seeded_with_the_default() {
+    let dir = tempfile::tempdir().expect("create a temp dir");
+    let path = dir.path().join("pm3/config.yaml");
+    let seeded = seed_config(&path).await.expect("seed the config");
+    assert_eq!(seeded.as_deref(), Some(path.as_path()));
+    let written = std::fs::read_to_string(&path).expect("read the seeded config");
+    assert_eq!(written, DEFAULT_CONFIG);
+    adapters::load_config_file(&path.to_string_lossy()).expect("the default config loads");
+    #[cfg(unix)]
+    assert_eq!(
+        std::fs::metadata(&path)
+            .expect("stat the config")
+            .permissions()
+            .mode()
+            & 0o777,
+        adapters::OWNER_ONLY_FILE
+    );
+}
+
+#[tokio::test]
+async fn an_existing_config_is_left_untouched() {
+    let dir = tempfile::tempdir().expect("create a temp dir");
+    let path = dir.path().join("config.yaml");
+    std::fs::write(&path, "kept").expect("seed an operator config");
+    assert_eq!(seed_config(&path).await.expect("skip the seed"), None);
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read the config"),
+        "kept"
     );
 }
 

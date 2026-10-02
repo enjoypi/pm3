@@ -40,9 +40,9 @@ pub use self::{
         load_global_env, service_file_of, warn_misplaced_global_env,
     },
     config::{
-        AppConfig, ConfigError, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig, STOP_SIGNAL_TERM,
-        SandboxConfig, ServiceConfig, TelemetryConfig, check_config, load_and_parse_config,
-        load_config_file, parse_config, show_config,
+        AppConfig, ConfigError, DEFAULT_CONFIG, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
+        STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig, check_config,
+        load_and_parse_config, load_config_file, parse_config, show_config,
     },
     exit_status::{describe_refusal, exit_code_of},
     fs_util::remove_if_present,
@@ -131,3 +131,9 @@ pub(crate) mod spec_sources;
 #[cfg(test)]
 #[path = "../test_support/unit_specs_fixture_tests.rs"]
 pub(crate) mod unit_specs;
+
+#[cfg(test)]
+#[ctor::ctor(unsafe)]
+fn trace_every_callsite() {
+    test_trace::install();
+}

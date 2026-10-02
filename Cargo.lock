@@ -4,11 +4,12 @@ version = 4
 
 [[package]]
 name = "adapters"
-version = "1.17.0"
+version = "1.17.1"
 dependencies = [
  "axum",
  "chrono",
  "croner",
+ "ctor",
  "fastrand",
  "futures-util",
  "serde",
@@ -17,6 +18,7 @@ dependencies = [
  "sha2",
  "sysinfo",
  "tempfile",
+ "test_trace",
  "thiserror 2.0.21",
  "tokio",
  "tower",
@@ -112,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "arch_tests"
-version = "1.17.0"
+version = "1.17.1"
 dependencies = [
  "toml",
 ]
@@ -341,6 +343,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "1.0.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d"
+dependencies = [
+ "link-section",
+ "linktime-proc-macro",
+]
+
+[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -432,7 +444,7 @@ dependencies = [
 
 [[package]]
 name = "entities"
-version = "1.17.0"
+version = "1.17.1"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -482,14 +494,16 @@ dependencies = [
 
 [[package]]
 name = "frameworks"
-version = "1.17.0"
+version = "1.17.1"
 dependencies = [
  "adapters",
  "axum",
  "clap",
  "clap_complete",
+ "ctor",
  "fastrand",
  "tempfile",
+ "test_trace",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -735,6 +749,18 @@ name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "link-section"
+version = "0.19.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39c29a617ce3df32c08497bdc1ab6e2376e0b17948ac166a2fbe5977c5954cd9"
+
+[[package]]
+name = "linktime-proc-macro"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e57c38c1e860fd37c604281cdfb1dd2216977fd76a50f85ba2f388ef3219616"
 
 [[package]]
 name = "linux-raw-sys"
@@ -1208,6 +1234,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_trace"
+version = "1.17.1"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1336,7 +1369,6 @@ dependencies = [
  "tokio",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -1357,7 +1389,6 @@ version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
 dependencies = [
- "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
@@ -1440,10 +1471,12 @@ checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "usecases"
-version = "1.17.0"
+version = "1.17.1"
 dependencies = [
+ "ctor",
  "entities",
  "futures-util",
+ "test_trace",
  "thiserror 2.0.21",
  "tokio",
  "tracing",

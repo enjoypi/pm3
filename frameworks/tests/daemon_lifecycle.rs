@@ -7,7 +7,7 @@ mod common;
 
 use self::common::{
     SLEEPER, abs, app_log, daemon_pid, home, pm3, shell_app, shutdown_daemon, sleeper_apps,
-    stdout_of, wait_for_file,
+    stderr_of, stdout_of, wait_for_file,
 };
 
 #[test]
@@ -106,6 +106,24 @@ fn config_check_needs_no_daemon() {
     assert!(
         !home.root.join("pm3.sock").exists(),
         "config check must not start a daemon"
+    );
+}
+
+#[test]
+fn a_pretty_log_format_renders_human_readable_telemetry() {
+    let home = home();
+    let config = std::fs::read_to_string(&home.config).expect("read the pm3 config");
+    std::fs::write(
+        &home.config,
+        config.replace("log_format: \"json\"", "log_format: \"pretty\""),
+    )
+    .expect("switch the log format");
+    let stopped = pm3(&home, &["shutdown"]);
+    assert!(stopped.status.success(), "{}", stderr_of(&stopped));
+    let telemetry = stderr_of(&stopped);
+    assert!(
+        telemetry.contains("telemetry subscriber installed") && !telemetry.contains("{\""),
+        "{telemetry}"
     );
 }
 

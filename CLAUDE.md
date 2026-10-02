@@ -19,11 +19,19 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 - `pm_id` starts at **1** and reuses the gaps deleted services leave (`ProcessTable::lowest_free_pm_id`). `ProcessTable` therefore keeps no `next_pm_id` cursor — the records are the only source of truth, so a sparse `dump.yaml` cannot push new ids to the far end
 - liveness watching MUST skip `autorestart: false` services: the failure path is stop → breaker → `GiveUp` → `Errored`, so watching a service the operator asked pm3 not to heal only kills it
 
+## 覆盖率
+
+- 门禁是 `just cov`（`dev_scripts/cov.ts`）：非测试代码行与分支 MUST 100%
+- tracing 的 `log` 特性 MUST 保持关闭：开启后每个日志宏多展开一份「无订阅者时转发给 log crate」的分支，复用同一批字面量且永不执行 ⇒ 所有日志参数行恒为 0。它由 axum 默认特性 `tower-log` 引入，故 axum 关默认特性并显式列出其余特性
+- 日志宏只在已启用时才求值参数 ⇒ 各 lib 测试二进制 MUST 经 `ctor` 装 `test_trace`（全级别、只求值不输出），e2e 的 config MUST 用 `log_level: "trace"`
+- 同一函数在 lib 测试二进制与 `pm3` 二进制各有一份覆盖记录，llvm-cov 合并时任一份为 0 都可能判为未覆盖 ⇒ 只有单测能走到、生产路径不可达的分支 MUST 删掉，而不是补单测
+
 ## 构建环境
 
 - MUST NOT 在本机用 `--target x86_64-unknown-linux-gnu` 编译或 clippy：unix 侧只在 macOS/Linux 真机上验证
 - macOS：Xcode 大版本升级后 `IDEXcodeVersionForAgreedToGMLicense` 作废，`cc` 以 exit 69 拒绝链接。症状会伪装成「依赖更新引入了坏 crate」——`cargo build --all-targets` 只编 lib/test 时不链接，一路绿灯，直到编 bin 或某个依赖带 build script/cdylib 才炸。pm3 只要 linker 与 macOS SDK，Xcode 的其余部分都不需要 ⇒ 用 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`（免 sudo、只影响当次）或 `sudo xcode-select -s /Library/Developer/CommandLineTools`（永久）。`sudo xcodebuild -license accept` 也非交互，但每次 Xcode 升级都要重跑
-- `just install` MUST 自行解析真机 config（`PM3_CONFIG_DIR` → `$XDG_CONFIG_HOME/pm3` → `~/.pm3`），找不到就失败：recipe 原先硬写 `--config config.yaml`，而仓内那份的 roots 全为空，装上去会让机器直接跳到推导出的 XDG 布局，而 `dump.yaml` 与服务文件还在旧位置 ⇒ 下一个 daemon rejoin 不到任何东西，所有在跑的服务变成孤儿
+- `just install` MUST 自行解析真机 config（`PM3_CONFIG_DIR` → `$XDG_CONFIG_HOME/pm3` → `~/.pm3`），MUST NOT 硬写 `--config config.yaml`：仓内那份的 roots 全为空，装上去会让机器直接跳到推导出的 XDG 布局，而 `dump.yaml` 与服务文件还在旧位置 ⇒ 下一个 daemon rejoin 不到任何东西，所有在跑的服务变成孤儿。三处都找不到才视为全新机器，由 `pm3 install` 在 XDG 路径写入内嵌的默认 config（`adapters::DEFAULT_CONFIG`）
+- Linux：Ubuntu 24.04+ 默认 `kernel.apparmor_restrict_unprivileged_userns=1`，只装 bubblewrap 不够，bwrap 报 `setting up uid map: Permission denied` ⇒ 被管服务起不来，沙箱 e2e 只表现为「日志里等不到 done」。MUST 给 `/usr/bin/bwrap` 加带 `userns,` 的 AppArmor profile（`/etc/apparmor.d/bwrap`，`flags=(unconfined)`）并 `apparmor_parser -r`
 - macOS：ld 自动加的 ad-hoc 签名在 TCC 眼里按 cdhash 记账 ⇒ 任何 rebuild 后 `just install` 都静默吊销既有授权（含完全磁盘访问，设置面板勾选仍在但对新二进制无效），被管服务访问云盘/文档目录时弹窗反复出现且归账到 daemon（responsible process，如 gdrive 服务跑 Google Drive 本体 ⇒ 弹窗挂在「pm3」头上）⇒ `just install` 与 release CI MUST 用同一把 `pm3-local` 自签证书（`just signing-identity` 生成并导入 login keychain，CI 侧配 secrets `PM3_CODESIGN_P12`/`PM3_CODESIGN_P12_PASSWORD`）把 binary 签成稳定身份，TCC 改按证书记账，跨重装稳定；本机与 CI 各生成一把同名证书 = 两个身份，授权照样失效
 - `windows-e2e` 不在 release 的 `needs` 里 ⇒ 红叉不影响产物。CI runner 是管理员 ⇒ 只有非管理员才触发的权限缺陷（如 schtasks 缺 `UserId`）在 CI 上永远绿，MUST 在本机非管理员账户跑一遍才算验证
 - Windows：Bash hook 的 `env -i` 会剥掉 `PROGRAMDATA`/`TMP`/`TEMP`/`USERNAME` ⇒ rustc 找不到 VS，回退到 Git 自带的 GNU `link`（报 `extra operand`）；`link.exe` 把临时文件写到 `C:\WINDOWS`（LNK1104）；schtasks 的 e2e 拿不到账户 ⇒ cargo 命令 MUST 显式传入这四个变量。rustup default host 为 gnu 时，`+nightly` 会解析到 gnu 工具链 ⇒ MUST `rustup set default-host x86_64-pc-windows-msvc`

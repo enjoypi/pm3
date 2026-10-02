@@ -29,9 +29,6 @@ pub enum Error {
     LogClear(#[from] adapters::LogClearError),
 
     #[error(transparent)]
-    Telemetry(#[from] telemetry::TelemetryError),
-
-    #[error(transparent)]
     Server(#[from] server::ServerError),
 
     #[error(transparent)]
@@ -145,3 +142,9 @@ pub(crate) mod test_support;
 #[cfg(test)]
 #[path = "tests/lib_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[ctor::ctor(unsafe)]
+fn trace_every_callsite() {
+    test_trace::install();
+}

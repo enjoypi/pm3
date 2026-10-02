@@ -17,7 +17,7 @@ use self::common::{
     shutdown_daemon, stdout_of, wait_for_file, write_apps,
 };
 #[cfg(unix)]
-use self::common::{daemon_log, detach_daemon, stderr_of, verbose_home, wait_for_log};
+use self::common::{daemon_log, detach_daemon, stderr_of, wait_for_log};
 
 const SERVICE: &str = "keeper";
 
@@ -65,7 +65,7 @@ fn script_at(dir: &Path, body: &str) -> PathBuf {
 #[cfg(unix)]
 #[test]
 fn an_unchanged_service_outlives_its_daemon_and_is_reclaimed_by_the_next() {
-    let home = verbose_home();
+    let home = home();
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
@@ -97,7 +97,7 @@ fn an_unchanged_service_outlives_its_daemon_and_is_reclaimed_by_the_next() {
 #[cfg(unix)]
 #[test]
 fn a_service_whose_config_changed_is_replaced_by_the_new_daemon() {
-    let home = verbose_home();
+    let home = home();
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
@@ -122,7 +122,7 @@ fn a_service_whose_config_changed_is_replaced_by_the_new_daemon() {
 #[cfg(unix)]
 #[test]
 fn a_survivor_the_new_daemon_cannot_read_is_stopped_instead_of_orphaned() {
-    let home = verbose_home();
+    let home = home();
     let pid = start_sleeper(&home);
 
     detach_daemon(&home);
@@ -140,7 +140,7 @@ fn a_survivor_the_new_daemon_cannot_read_is_stopped_instead_of_orphaned() {
 #[cfg(unix)]
 #[test]
 fn a_service_whose_program_changed_is_restarted_by_the_new_daemon() {
-    let home = verbose_home();
+    let home = home();
     let script = script_at(home.dir.path(), "while true; do sleep 1; done");
     let cwd = home.root.to_string_lossy();
     let apps = write_apps(

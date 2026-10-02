@@ -24,5 +24,7 @@ thiserror = { workspace = true }
 fastrand = { workspace = true }
 
 [dev-dependencies]
+ctor = { workspace = true }
+test_trace = { path = "../test_trace" }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

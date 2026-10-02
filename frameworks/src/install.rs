@@ -5,9 +5,10 @@ use std::{
 };
 
 use adapters::{
-    UnitKind, UnitProgramSet, UnitStatus, back_up, backup_name, backup_root, binary_matches,
-    binary_version, compare_handover, describe_handover, destination_of, dump_snapshot,
-    hand_back_to_manager, query_status, query_supervised_pid, replace_binary, write_targets,
+    DEFAULT_CONFIG, UnitKind, UnitProgramSet, UnitStatus, back_up, backup_name, backup_root,
+    binary_matches, binary_version, compare_handover, describe_handover, destination_of,
+    dump_snapshot, hand_back_to_manager, query_status, query_supervised_pid, replace_binary,
+    write_targets,
 };
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
     commands,
     layout::{
         host_account, host_home, host_install_backups, host_install_destination, host_pm3_env,
-        host_runtime_dir, host_uid, read_pid_file,
+        host_runtime_dir, host_uid, layout_error, prepare_directory, read_pid_file,
     },
     service::{
         HOST_SERVICE_KIND, ServiceAction, ServiceContext, ServiceSession, dispatch_service,
@@ -62,6 +63,9 @@ pub async fn run_install(
     emit: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<()> {
     let source = resolve_source(source, context)?;
+    if let Some(seeded) = seed_config(Path::new(config_path)).await? {
+        emit(&format!("created default config {}", seeded.display()));
+    }
     let destination = destination_of(
         context.destination_env.as_deref(),
         context.home_env.as_deref(),
@@ -122,6 +126,17 @@ pub async fn run_install(
     Err(Error::InstallLost {
         report: description,
     })
+}
+
+async fn seed_config(path: &Path) -> Result<Option<PathBuf>> {
+    if !path.is_absolute() || path.exists() {
+        return Ok(None);
+    }
+    prepare_directory(path.parent().unwrap_or(path)).await?;
+    adapters::write_private(path, DEFAULT_CONFIG)
+        .await
+        .map_err(|error| layout_error(path, &error))?;
+    Ok(Some(path.to_path_buf()))
 }
 
 fn resolve_source(source: Option<PathBuf>, context: &InstallContext) -> Result<PathBuf> {

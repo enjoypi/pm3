@@ -47,7 +47,6 @@ fn split_config_yaml() -> String {
         "workspace-write",
         "minimal",
         false,
-        "debug",
         5000,
         &common::HomeTunables::default(),
     );

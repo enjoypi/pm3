@@ -1,5 +1,4 @@
 use adapters::{LOG_FORMAT_PRETTY, TelemetryConfig};
-use thiserror::Error;
 use tracing_subscriber::{
     EnvFilter, Layer as _, Registry, fmt::writer::BoxMakeWriter, layer::SubscriberExt,
     util::SubscriberInitExt,
@@ -11,17 +10,11 @@ pub enum LogSink {
     Stderr,
 }
 
-#[derive(Debug, Error)]
-pub enum TelemetryError {
-    #[error("cannot parse log_level filter: {0}")]
-    InvalidFilter(String),
-}
-
 pub fn init_cli_telemetry(cfg: &TelemetryConfig) {
-    init_telemetry(cfg, LogSink::Stderr).ok();
+    init_telemetry(cfg, LogSink::Stderr);
 }
 
-pub fn init_telemetry(cfg: &TelemetryConfig, sink: LogSink) -> Result<(), TelemetryError> {
+pub fn init_telemetry(cfg: &TelemetryConfig, sink: LogSink) {
     let writer = match sink {
         LogSink::Stdout => BoxMakeWriter::new(std::io::stdout),
         LogSink::Stderr => BoxMakeWriter::new(std::io::stderr),
@@ -39,8 +32,7 @@ pub fn init_telemetry(cfg: &TelemetryConfig, sink: LogSink) -> Result<(), Teleme
             .boxed()
     };
 
-    let filter = EnvFilter::try_new(&cfg.log_level)
-        .map_err(|e| TelemetryError::InvalidFilter(e.to_string()))?;
+    let filter = EnvFilter::new(&cfg.log_level);
 
     match Registry::default().with(filter).with(fmt_layer).try_init() {
         Ok(()) => tracing::debug!(
@@ -61,8 +53,6 @@ pub fn init_telemetry(cfg: &TelemetryConfig, sink: LogSink) -> Result<(), Teleme
             "telemetry subscriber already installed, this config is ignored",
         ),
     }
-
-    Ok(())
 }
 
 #[cfg(test)]

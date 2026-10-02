@@ -8,5 +8,5 @@ The single task list; delete entries when done. Project description in `docs/req
 
 ## 覆盖率（按平台）
 
-- [ ] macOS/Linux：跑 `/rust-cov-100` 确认仍为 100%（本轮只在 Windows 上验证过，unix 侧未验证）
+- [ ] macOS/Linux：跑 `just cov` 确认仍为 100%（本轮只在 Windows 上验证过，unix 侧未验证）
 - [ ] Windows：从基线 functions 1459/1683、branches 918/1090（2026-09-27 UTC）推到 100%。缺口来自 `frameworks/tests/` 24 个 `cfg(unix)` e2e 未移植，按缺口大小依次移植：`logs_streams`（`logs.rs` 缺 23/32）→ `daemon_lifecycle`（`commands.rs`、`daemon/bootstrap.rs`、`daemon/socket.rs`、`cli.rs`）→ `install`（`install.rs`、`adapters/src/install/store.rs`）→ 其余。adapters 侧 `apps_file/env_file.rs`、`process/watcher.rs`、`unit/runner.rs` 的缺口来自单测里的 `cfg(unix)` 块

@@ -3,6 +3,8 @@ mod loader;
 mod schema;
 mod validate;
 
+pub const DEFAULT_CONFIG: &str = include_str!("../../../config.yaml");
+
 pub use self::{
     app::{
         LoadedConfig, check_config, load_and_parse_config, load_config_file, parse_config,

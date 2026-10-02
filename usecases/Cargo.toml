@@ -13,4 +13,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+ctor = { workspace = true }
+test_trace = { path = "../test_trace" }
 tokio = { workspace = true }

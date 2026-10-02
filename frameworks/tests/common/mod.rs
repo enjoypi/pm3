@@ -55,36 +55,27 @@ pub const FULL_READ: &str = "full";
 pub const MINIMAL_READ: &str = "minimal";
 
 pub fn home_with_sandbox(mode: &str, network: bool) -> Home {
-    home_with(mode, network, "info")
+    home_with(mode, network)
 }
 
 pub fn home_with_read_scope(mode: &str, network: bool, read: &str) -> Home {
-    build_home(mode, read, network, "info", START_TIMEOUT_MS)
+    build_home(mode, read, network, START_TIMEOUT_MS)
 }
 
 pub fn home() -> Home {
-    home_with("danger-full-access", true, "info")
-}
-
-pub fn verbose_home() -> Home {
-    home_with("danger-full-access", true, "debug")
+    home_with("danger-full-access", true)
 }
 
 pub fn impatient_home() -> Home {
-    home_with_timeout("danger-full-access", true, "info", 200)
+    home_with_timeout("danger-full-access", true, 200)
 }
 
-pub fn home_with(mode: &str, network: bool, log_level: &str) -> Home {
-    home_with_timeout(mode, network, log_level, START_TIMEOUT_MS)
+pub fn home_with(mode: &str, network: bool) -> Home {
+    home_with_timeout(mode, network, START_TIMEOUT_MS)
 }
 
-pub fn home_with_timeout(
-    mode: &str,
-    network: bool,
-    log_level: &str,
-    start_timeout_ms: u64,
-) -> Home {
-    build_home(mode, FULL_READ, network, log_level, start_timeout_ms)
+pub fn home_with_timeout(mode: &str, network: bool, start_timeout_ms: u64) -> Home {
+    build_home(mode, FULL_READ, network, start_timeout_ms)
 }
 
 #[derive(Copy, Clone)]
@@ -115,7 +106,6 @@ pub fn home_waiting_for_network() -> Home {
         "danger-full-access",
         FULL_READ,
         true,
-        "info",
         START_TIMEOUT_MS,
         HomeTunables {
             wait_for_network: true,
@@ -129,7 +119,6 @@ pub fn home_with_liveness_poll(liveness_poll_interval_ms: u64) -> Home {
         "danger-full-access",
         FULL_READ,
         true,
-        "info",
         START_TIMEOUT_MS,
         HomeTunables {
             liveness_poll_interval_ms,
@@ -144,7 +133,6 @@ pub fn home_with_memory_poll(memory_poll_interval_ms: u64) -> Home {
         "danger-full-access",
         FULL_READ,
         true,
-        "info",
         START_TIMEOUT_MS,
         HomeTunables {
             memory_poll_interval_ms,
@@ -158,7 +146,6 @@ pub fn home_with_log_rotate(max_bytes: u64, interval_ms: u64) -> Home {
         "danger-full-access",
         FULL_READ,
         true,
-        "debug",
         START_TIMEOUT_MS,
         HomeTunables {
             log_rotate_max_bytes: max_bytes,
@@ -168,18 +155,11 @@ pub fn home_with_log_rotate(max_bytes: u64, interval_ms: u64) -> Home {
     )
 }
 
-fn build_home(
-    mode: &str,
-    read: &str,
-    network: bool,
-    log_level: &str,
-    start_timeout_ms: u64,
-) -> Home {
+fn build_home(mode: &str, read: &str, network: bool, start_timeout_ms: u64) -> Home {
     build_home_full(
         mode,
         read,
         network,
-        log_level,
         start_timeout_ms,
         HomeTunables::default(),
     )
@@ -189,7 +169,6 @@ fn build_home_full(
     mode: &str,
     read: &str,
     network: bool,
-    log_level: &str,
     start_timeout_ms: u64,
     tunables: HomeTunables,
 ) -> Home {
@@ -204,7 +183,6 @@ fn build_home_full(
             mode,
             read,
             network,
-            log_level,
             start_timeout_ms,
             &tunables,
         ),
@@ -218,7 +196,6 @@ pub fn config_yaml(
     sandbox_mode: &str,
     sandbox_read: &str,
     network: bool,
-    log_level: &str,
     start_timeout_ms: u64,
     tunables: &HomeTunables,
 ) -> String {
@@ -281,7 +258,7 @@ pub fn config_yaml(
 
 telemetry:
   service_name: "pm3"
-  log_level: "{log_level}"
+  log_level: "trace"
   log_format: "json"
 "#
     )

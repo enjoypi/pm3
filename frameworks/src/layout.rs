@@ -148,7 +148,7 @@ fn owned_directories<'p>(paths: &'p Pm3Paths, cfg_dir: &'p Path) -> Vec<&'p Path
     wanted
 }
 
-async fn prepare_directory(path: &Path) -> Result<()> {
+pub(crate) async fn prepare_directory(path: &Path) -> Result<()> {
     tokio::fs::create_dir_all(path)
         .await
         .map_err(|e| layout_error(path, &e))?;

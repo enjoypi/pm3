@@ -32,7 +32,7 @@ fn unique_label() -> String {
 }
 
 fn patient_home() -> common::Home {
-    home_with_timeout("danger-full-access", true, "info", 30_000)
+    home_with_timeout("danger-full-access", true, 30_000)
 }
 
 struct InstallFixture {

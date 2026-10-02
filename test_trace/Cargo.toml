@@ -1,0 +1,11 @@
+[package]
+name = "test_trace"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+tracing = { workspace = true }

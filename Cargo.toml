@@ -5,11 +5,12 @@ members = [
     "adapters",
     "frameworks",
     "arch_tests",
+    "test_trace",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "1.17.0"
+version = "1.17.1"
 edition = "2024"
 
 [workspace.dependencies]
@@ -25,11 +26,12 @@ croner = "3"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 fastrand = "2"
 
-axum = "0.8"
+axum = { version = "0.8", default-features = false, features = ["form", "http1", "json", "matched-path", "original-uri", "query", "tokio", "tracing"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 
 tracing = "0.1"
+ctor = "1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 clap = { version = "4", features = ["derive"] }

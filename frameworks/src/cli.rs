@@ -477,7 +477,6 @@ fn run_config(config: &str, command: &ConfigCommands) -> Result<String> {
     }
 }
 
-#[must_use]
 pub fn report(outcome: Result<()>) -> std::process::ExitCode {
     match outcome {
         Ok(()) => std::process::ExitCode::SUCCESS,

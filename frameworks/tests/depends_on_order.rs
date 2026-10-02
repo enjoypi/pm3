@@ -7,7 +7,7 @@ mod common;
 
 use self::common::{
     Home, SHELL, SHELL_FLAG, SLEEPER, daemon_log, home, pm3, record_then_sleep, shutdown_daemon,
-    stderr_of, stdout_of, verbose_home, wait_for_log, write_apps,
+    stderr_of, stdout_of, wait_for_log, write_apps,
 };
 
 const ORDER_FILE: &str = "order.txt";
@@ -36,7 +36,7 @@ fn cyclic_apps(home: &Home) -> std::path::PathBuf {
 
 #[test]
 fn a_dependency_is_spawned_before_the_app_that_needs_it() {
-    let home = verbose_home();
+    let home = home();
     let apps = ordered_apps(&home);
     let started = pm3(&home, &["start", apps.to_str().expect("path")]);
     assert!(started.status.success(), "{}", stdout_of(&started));

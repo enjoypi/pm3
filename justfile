@@ -30,9 +30,13 @@ check-windows:
     cargo check {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc
     cargo clippy {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc --no-deps -- -D warnings
 
-[doc("nextest；覆盖率门禁走 /rust-cov-100；跑前跑后自动 reap 泄漏的 e2e daemon")]
+[doc("cargo test；覆盖率门禁走 just cov；跑前跑后自动 reap 泄漏的 e2e daemon")]
 test *args:
-    bun dev_scripts/reap.ts; cargo nextest run {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status
+    bun dev_scripts/reap.ts; cargo test {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status
+
+[doc("覆盖率门禁：nightly llvm-cov 跑全部测试（含 e2e 子进程），非测试代码行与分支均须 100%")]
+cov *args:
+    bun dev_scripts/cov.ts "$@"
 
 [doc("装到真机：opt-level 3 构建，有 pm3-local 身份则签名（TCC 授权跨重装稳定），再交给 pm3 install")]
 install:
@@ -49,8 +53,8 @@ install:
     echo "just install: 无 pm3-local 签名身份（just signing-identity 生成），二进制保持 ad-hoc 签名，TCC 授权将随 cdhash 失效" >&2; \
     fi; \
     cfg="${PM3_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pm3}/config.yaml"; \
-    [ -f "$cfg" ] || cfg="${PM3_HOME:-$HOME/.pm3}/config.yaml"; \
-    [ -f "$cfg" ] || { echo "just install: 找不到真机 config.yaml，MUST NOT 用仓内那份（它的 roots 全为空）" >&2; exit 1; }; \
+    legacy="${PM3_HOME:-$HOME/.pm3}/config.yaml"; \
+    [ -f "$cfg" ] || [ ! -f "$legacy" ] || cfg="$legacy"; \
     target/release/pm3 --config "$cfg" install "$src"
 
 [doc("一次性：生成 pm3-local 自签名证书导入 login keychain；本机与 CI MUST 共用同一把")]
