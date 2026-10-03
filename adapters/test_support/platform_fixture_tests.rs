@@ -76,7 +76,15 @@ pub fn script(dir: &std::path::Path, name: &str, unix: &str, _windows: &str) -> 
     use std::os::unix::fs::PermissionsExt as _;
 
     let path = dir.join(name);
-    std::fs::write(&path, format!("#!/bin/sh\n{unix}\n")).expect("write the script");
+    let body = dir.join(format!("{name}.body"));
+    std::fs::write(&body, format!("#!/bin/sh\n{unix}\n")).expect("write the script body");
+    let copied = std::process::Command::new("cp")
+        .arg(&body)
+        .arg(&path)
+        .status()
+        .expect("run cp");
+    assert!(copied.success(), "cp should place the script");
+    std::fs::remove_file(&body).expect("remove the script body");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
         .expect("make the script executable");
     path
