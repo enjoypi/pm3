@@ -5,7 +5,7 @@ use usecases::ExitOutcome;
 pub const UNKNOWN_EXIT_CODE: i32 = -1;
 
 #[must_use]
-pub fn exit_code_of(status: &ExitStatus) -> i32 {
+pub fn exit_code_of(status: ExitStatus) -> i32 {
     status.code().unwrap_or(UNKNOWN_EXIT_CODE)
 }
 

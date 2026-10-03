@@ -148,7 +148,7 @@ fn owned_directories<'p>(paths: &'p Pm3Paths, cfg_dir: &'p Path) -> Vec<&'p Path
     wanted
 }
 
-pub(crate) async fn prepare_directory(path: &Path) -> Result<()> {
+pub async fn prepare_directory(path: &Path) -> Result<()> {
     tokio::fs::create_dir_all(path)
         .await
         .map_err(|e| layout_error(path, &e))?;
@@ -284,7 +284,7 @@ pub async fn clear_runtime_files(paths: &Pm3Paths) {
     remove_runtime_file(&paths.socket).await;
 }
 
-pub(crate) async fn remove_runtime_file(path: &Path) {
+pub async fn remove_runtime_file(path: &Path) {
     if let Err(error) = adapters::remove_if_present(path).await {
         log_stuck_removal(path, &error.to_string());
     }
@@ -433,7 +433,7 @@ pub fn host_runtime_dir(home_env: Option<&str>) -> Option<String> {
     runtime_dir_of(declared.as_deref(), host_uid(home_env))
 }
 
-pub(crate) fn layout_error(path: &Path, source: &std::io::Error) -> Error {
+pub fn layout_error(path: &Path, source: &std::io::Error) -> Error {
     Error::Layout {
         path: path.to_string_lossy().into_owned(),
         reason: source.to_string(),

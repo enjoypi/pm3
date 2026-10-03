@@ -35,9 +35,8 @@ use thiserror::Error;
 
 pub use self::{
     delete::delete_app,
-    fingerprint::{pid_was_recycled, render_identity},
     handover::{ServiceSnapshot, compare_handover, describe_handover},
-    log_paths::{LogStream, log_path, log_paths},
+    log_paths::{LogStream, log_path},
     ports::{
         Clock, CommandWrapper, DumpContents, DumpError, DumpStore, ExitOutcome, FingerprintError,
         Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess, Liveness, LogRotateError,
@@ -50,7 +49,6 @@ pub use self::{
     selector::AppSelector,
     signal::signal_app,
     start::{StartKind, StartOutcome, StartReport, StartSettlement, settle_start, start_apps},
-    stop::stop_app,
     supervision::{
         SupervisionEffect, SupervisionFailure, SupervisionOutcome, SupervisionReply,
         SupervisionRequest,

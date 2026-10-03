@@ -129,7 +129,7 @@ pub async fn load_enc_file(decryptor: &Decryptor<'_>, path: &Path) -> Result<Str
         return Err(refused(
             EncFileError::Refused {
                 path: shown,
-                code: exit_code_of(&output.status),
+                code: exit_code_of(output.status),
             },
             duration_ms,
         ));

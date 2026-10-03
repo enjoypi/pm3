@@ -13,14 +13,14 @@ pub use self::{
     depgraph::{DependencyError, DependencyNode, topo_sort},
     env::{EnvScope, EnvValue, merge_environment},
     limits::{MemoryVerdict, decide_memory_verdict, parse_memory_limit},
-    ready::{ReadyProbe, validate_liveness_probe, validate_probe},
+    ready::ReadyProbe,
     restart::{RestartDecision, RestartPolicy, decide_restart},
     runtime::{ProcessIdentity, ProcessRuntime, RuntimeError},
-    secret::{ELIDED, MIN_MASKABLE_CHARS, mask_secret},
+    secret::mask_secret,
     signal::{SignalNameError, VALID_SIGNALS, parse_signal_name},
     spec::{
-        AppSpec, EnvOrigin, RESERVED_ALL_SELECTOR, RESERVED_ENCRYPTED_SUFFIX, SpecError,
-        is_name_letter, validate_app_name, validate_spec,
+        AppSpec, EnvOrigin, RESERVED_ALL_SELECTOR, SpecError, is_name_letter, validate_app_name,
+        validate_spec,
     },
     status::ProcessStatus,
 };

@@ -27,7 +27,7 @@ pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
 #[cfg(windows)]
 pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::WinSchtasks;
 #[cfg(all(unix, not(target_os = "macos")))]
-pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Systemd;
+pub const HOST_SERVICE_KIND: UnitKind = UnitKind::Systemd;
 
 #[derive(Debug)]
 pub struct ServiceContext<'c> {

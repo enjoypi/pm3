@@ -16,7 +16,7 @@ use tokio::{
 use crate::{
     Result,
     client::UdsClient,
-    daemon::run_daemon_with_shutdown,
+    daemon::service::run_daemon_with_shutdown,
     platform::{SHELL, SHELL_FLAG, SLEEPER},
     test_support::{REQUEST_TIMEOUT_MS, write_apps_file, write_config},
 };

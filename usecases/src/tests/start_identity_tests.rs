@@ -5,7 +5,7 @@ async fn starting_a_service_that_is_still_stopping_queues_a_restart() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
-    crate::stop_app(&mut table, &AppSelector::Name("api".to_string()), &ports)
+    crate::stop::stop_app(&mut table, &AppSelector::Name("api".to_string()), &ports)
         .await
         .expect("stop should succeed");
 
@@ -25,7 +25,7 @@ async fn starting_a_service_that_is_still_stopping_re_arms_its_schedule() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
-    crate::stop_app(&mut table, &AppSelector::Name("api".to_string()), &ports)
+    crate::stop::stop_app(&mut table, &AppSelector::Name("api".to_string()), &ports)
         .await
         .expect("stop should succeed");
 

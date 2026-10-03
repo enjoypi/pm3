@@ -58,7 +58,7 @@ impl KillSignaler {
             }
             CommandOutcome::Finished(output) => output,
         };
-        let code = exit_code_of(&output.status);
+        let code = exit_code_of(output.status);
         tracing::debug!(
             feature = "supervisor",
             pid,

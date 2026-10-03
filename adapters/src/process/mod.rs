@@ -12,7 +12,6 @@ mod win_probe;
 
 #[cfg(unix)]
 pub use self::ps_probe::PsProcessProbe as HostProcessProbe;
-pub(crate) use self::tokio_launcher::clean_command;
 #[cfg(windows)]
 pub use self::win_probe::WinProcessProbe as HostProcessProbe;
 pub use self::{
@@ -20,7 +19,7 @@ pub use self::{
     ready_probe::HostReadyProber,
     sha256_fingerprinter::Sha256Fingerprinter,
     system_clock::SystemClock,
-    timed::{CommandOutcome, capture_timed, next_pause},
-    tokio_launcher::TokioProcessLauncher,
+    timed::{CommandOutcome, capture_timed},
+    tokio_launcher::{TokioProcessLauncher, clean_command},
     watcher::{AdoptedWatch, PollCadence, wait_for_exit, wait_until_released},
 };

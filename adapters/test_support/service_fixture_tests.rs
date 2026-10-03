@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     apps_file::InlineStart,
-    service::{PreparedService, ServiceContext, prepare_inline},
+    service::{ServiceContext, prepare::PreparedService, prepare_inline},
 };
 
 pub const NAME: &str = "sleeper";

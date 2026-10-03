@@ -9,8 +9,8 @@ use super::{
 use crate::sandbox::{PolicyError, SandboxPolicy, validate_policy};
 
 pub const RESERVED_ALL_SELECTOR: &str = "all";
-pub const RESERVED_ENCRYPTED_SUFFIX: &str = ".enc";
-pub const RESERVED_FILE_NAMES: [&str; 2] = ["config", "pm3"];
+const RESERVED_ENCRYPTED_SUFFIX: &str = ".enc";
+const RESERVED_FILE_NAMES: [&str; 2] = ["config", "pm3"];
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum EnvOrigin {

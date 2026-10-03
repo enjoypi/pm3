@@ -1,23 +1,23 @@
-pub mod apps_file;
-pub mod config;
-pub mod exit_status;
-pub mod fs_util;
-pub mod http;
-pub mod install;
-pub mod logs;
-pub mod paths;
-pub mod persistence;
-pub mod presenter;
-pub mod private_file;
-pub mod process;
-pub mod program;
-pub mod sandbox;
-pub mod schedule;
-pub mod service;
-pub mod startup;
-pub mod state;
-pub mod unit;
-pub mod workspace;
+mod apps_file;
+mod config;
+mod exit_status;
+mod fs_util;
+mod http;
+mod install;
+mod logs;
+mod paths;
+mod persistence;
+mod presenter;
+mod private_file;
+mod process;
+mod program;
+mod sandbox;
+mod schedule;
+mod service;
+mod startup;
+mod state;
+mod unit;
+mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
@@ -26,31 +26,26 @@ pub use usecases::{
     Liveness, LogRotateError, LogRotator, LogStream, Ports, ProcessLauncher, ProcessProbe,
     ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness, ReadyProbe,
     ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
-    SignalError, SignalScope, Signaler, SpecError, SpecResolveError, StartKind, StartOutcome,
-    StartSettlement, SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest,
-    Supervisor, WrappedCommand, compare_handover, describe_handover, log_path, settle_start,
-    validate_app_name,
+    SignalError, SignalScope, Signaler, SpecError, StartKind, StartOutcome, StartSettlement,
+    SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor,
+    WrappedCommand, compare_handover, describe_handover, log_path, settle_start, validate_app_name,
 };
 
 pub use self::{
     apps_file::{
-        AppsFile, AppsFileError, ENC_FILE_SUFFIX, ENV_FILE_SUFFIX, GLOBAL_ENV_STEM, InlineStart,
-        SERVICE_FILE_SUFFIX, SpecDefaults, SpecRoots, SpecSource, decryptor_env, enc_file_of,
-        encode_service_file, env_file_of, fold_entry, inline_entry, load_apps_file,
-        load_global_env, service_file_of, warn_misplaced_global_env,
+        AppsFileError, ENV_FILE_SUFFIX, GLOBAL_ENV_STEM, InlineStart, SERVICE_FILE_SUFFIX,
+        SpecSource, decryptor_env, load_global_env, service_file_of, warn_misplaced_global_env,
     },
     config::{
-        AppConfig, ConfigError, DEFAULT_CONFIG, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig,
-        STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig, check_config,
-        load_and_parse_config, load_config_file, parse_config, show_config,
+        AppConfig, DEFAULT_CONFIG, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig, STOP_SIGNAL_TERM,
+        SandboxConfig, ServiceConfig, TelemetryConfig, check_config, load_and_parse_config,
+        load_config_file, show_config,
     },
-    exit_status::{describe_refusal, exit_code_of},
     fs_util::remove_if_present,
     http::{
-        APPS_PATH, HEALTH_OK, HEALTH_PATH, ProcessViewDto, REQUEST_ID_HEADER, RESET_ACTION,
-        RESTART_ACTION, ReplyDecodeError, ReplyDto, SERVICES_STOP_ALL_PATH, SIGNAL_ACTION,
-        STOP_ACTION, app_action_path, app_path, decode_reply, encode_signal_request,
-        encode_start_request, router,
+        APPS_PATH, HEALTH_PATH, REQUEST_ID_HEADER, RESET_ACTION, RESTART_ACTION, ReplyDecodeError,
+        ReplyDto, SERVICES_STOP_ALL_PATH, SIGNAL_ACTION, STOP_ACTION, app_action_path, app_path,
+        decode_reply, encode_signal_request, encode_start_request, router,
     },
     install::{
         InstallError, back_up, backup_name, backup_root, binary_matches, binary_version,
@@ -65,9 +60,8 @@ pub use self::{
     },
     persistence::{YamlDumpStore, dump_snapshot},
     presenter::{
-        DAEMON_NOT_RUNNING, EMPTY_NOTICE, Listing, affected_service, already_running_names,
-        render_daemon_gone, render_daemon_stopped, render_json_list, render_json_one, render_reply,
-        render_table, unsaved_reason,
+        DAEMON_NOT_RUNNING, Listing, render_daemon_gone, render_daemon_stopped, render_json_list,
+        render_json_one, render_table,
     },
     private_file::{
         OWNER_ONLY_DIR, OWNER_ONLY_FILE, SWEEP_PROOF_FILE, append_private_blocking, write_private,
@@ -99,7 +93,7 @@ pub enum AdapterError {
     Config(#[from] config::ConfigLoadError),
 
     #[error(transparent)]
-    Parse(#[from] ConfigError),
+    Parse(#[from] config::ConfigError),
 }
 
 pub type Result<T> = std::result::Result<T, AdapterError>;

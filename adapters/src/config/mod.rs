@@ -1,4 +1,4 @@
-mod app;
+pub mod app;
 mod loader;
 mod schema;
 mod validate;
@@ -6,15 +6,11 @@ mod validate;
 pub const DEFAULT_CONFIG: &str = include_str!("../../../config.yaml");
 
 pub use self::{
-    app::{
-        LoadedConfig, check_config, load_and_parse_config, load_config_file, parse_config,
-        show_config,
-    },
+    app::{check_config, load_and_parse_config, load_config_file, show_config},
     loader::{ConfigLoadError, load_config, substitute_env_vars},
     schema::{
-        AppConfig, ConfigError, LOG_FORMAT_JSON, LOG_FORMAT_PRETTY, Pm3Config,
-        RESTART_CONDITION_ALWAYS, RESTART_CONDITION_ON_FAILURE, RestartConfig, STOP_SIGNAL_TERM,
-        SandboxConfig, ServiceConfig, TelemetryConfig,
+        AppConfig, ConfigError, LOG_FORMAT_PRETTY, Pm3Config, RESTART_CONDITION_ON_FAILURE,
+        RestartConfig, STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig,
     },
-    validate::{validate_config, validate_pm3_config, validate_telemetry_config},
+    validate::validate_config,
 };

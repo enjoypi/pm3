@@ -24,7 +24,7 @@ async fn clean_exit() -> ExitStatus {
 
 #[tokio::test]
 async fn a_clean_exit_reports_zero() {
-    assert_eq!(exit_code_of(&clean_exit().await), 0);
+    assert_eq!(exit_code_of(clean_exit().await), 0);
 }
 
 #[cfg(unix)]
@@ -35,7 +35,7 @@ async fn a_process_killed_by_a_signal_has_no_code() {
         .status()
         .await
         .expect("should run /bin/sh");
-    assert_eq!(exit_code_of(&status), UNKNOWN_EXIT_CODE);
+    assert_eq!(exit_code_of(status), UNKNOWN_EXIT_CODE);
 }
 
 #[tokio::test]

@@ -7,7 +7,7 @@ fn config() -> Pm3Config {
         pm3_section("/tmp/pm3-fixture", 1600, "workspace-write"),
         telemetry_section("info"),
     );
-    crate::config::parse_config(&yaml)
+    crate::config::app::parse_config(&yaml)
         .expect("the fixture config should parse")
         .pm3
 }

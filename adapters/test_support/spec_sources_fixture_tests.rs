@@ -4,8 +4,8 @@ use usecases::SandboxMode;
 
 use crate::{
     SpecSource,
+    config::app::parse_config,
     config_sections::{pm3_section, telemetry_section},
-    parse_config,
 };
 
 pub const SERVICE_SCRIPT: &str = crate::platform::SHELL;
@@ -53,12 +53,12 @@ pub fn write_service_file(source: &SpecSource, name: &str, body: &str) {
 }
 
 pub fn write_env_file(source: &SpecSource, name: &str, body: &str) {
-    let path = crate::env_file_of(&source.cfg_dir, name).expect("a safe service name");
+    let path = crate::apps_file::env_file_of(&source.cfg_dir, name).expect("a safe service name");
     std::fs::write(path, body).expect("write the environment file");
 }
 
 pub fn write_enc_file(source: &SpecSource, name: &str, body: &str) {
-    let path = crate::enc_file_of(&source.cfg_dir, name).expect("a safe service name");
+    let path = crate::apps_file::enc_file_of(&source.cfg_dir, name).expect("a safe service name");
     std::fs::write(path, body).expect("write the encrypted file");
 }
 

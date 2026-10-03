@@ -1,11 +1,11 @@
 mod controller;
-mod dto;
+pub mod dto;
 mod request;
 mod routes;
 mod view_dto;
 
 pub use self::{
-    dto::{HEALTH_OK, HealthDto, ReplyDto, StartRequestDto},
+    dto::ReplyDto,
     request::{
         ReplyDecodeError, app_action_path, app_path, decode_reply, encode_signal_request,
         encode_start_request,
@@ -14,5 +14,5 @@ pub use self::{
         APPS_PATH, HEALTH_PATH, REQUEST_ID_HEADER, RESET_ACTION, RESTART_ACTION,
         SERVICES_STOP_ALL_PATH, SIGNAL_ACTION, STOP_ACTION, router,
     },
-    view_dto::{EnvDisplayDto, ProcessViewDto},
+    view_dto::ProcessViewDto,
 };

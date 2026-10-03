@@ -200,7 +200,8 @@ async fn an_encrypted_value_reaches_the_service_exactly_as_it_was_decrypted() {
 async fn an_unreachable_encrypted_sidecar_stops_the_service_from_resolving() {
     let mut fixture = fixture();
     register_service(&fixture.source, "web");
-    let path = crate::enc_file_of(&fixture.source.cfg_dir, "web").expect("a safe service name");
+    let path =
+        crate::apps_file::enc_file_of(&fixture.source.cfg_dir, "web").expect("a safe service name");
     crate::platform::link_dir(&path, &path);
     with_decryptor(&mut fixture.source, "printf 'A=b\\n'", "echo A=b");
     let err = fixture

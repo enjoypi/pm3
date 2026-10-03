@@ -3,7 +3,7 @@ use usecases::SandboxMode;
 use super::*;
 use crate::{
     apps_sections::{apps_section, every_optional_field_section},
-    config::parse_config,
+    config::app::parse_config,
     config_sections::{pm3_section, telemetry_section},
 };
 

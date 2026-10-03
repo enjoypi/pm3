@@ -1,7 +1,7 @@
-use usecases::{DumpError, SpecError, StartKind, StartOutcome};
+use usecases::{DumpError, SpecError, SpecResolveError, StartKind, StartOutcome};
 
 use super::{test_helpers::*, *};
-use crate::{SpecResolveError, http::HEALTH_OK, process_views::running_view};
+use crate::{http::dto::HEALTH_OK, process_views::running_view};
 
 const SERVICE: &str = "web";
 

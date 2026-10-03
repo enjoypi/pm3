@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    presenter::EMPTY_NOTICE,
+    presenter::table::EMPTY_NOTICE,
     process_views::{RUNNING_PID, idle_view, running_view},
 };
 

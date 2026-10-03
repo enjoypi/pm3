@@ -85,6 +85,7 @@ pub struct ReadyProbeEntry {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[expect(clippy::struct_field_names, reason = "字段名与 SpecSource 一一对应")]
 pub struct SpecRoots<'d> {
     pub home_dir: &'d str,
     pub cfg_dir: &'d str,

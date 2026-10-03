@@ -1,5 +1,5 @@
-pub const ELIDED: &str = "..";
-pub const MIN_MASKABLE_CHARS: usize = 12;
+const ELIDED: &str = "..";
+const MIN_MASKABLE_CHARS: usize = 12;
 
 const VISIBLE_CHARS: usize = 4;
 

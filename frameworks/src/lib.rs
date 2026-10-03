@@ -1,16 +1,16 @@
 pub mod cli;
-pub mod client;
-pub mod commands;
-pub mod daemon;
-pub mod install;
-pub mod layout;
-pub mod logs;
-pub mod prompt;
-pub mod sandbox_probe;
-pub mod server;
-pub mod service;
-pub mod signal;
-pub mod telemetry;
+mod client;
+mod commands;
+mod daemon;
+mod install;
+mod layout;
+mod logs;
+mod prompt;
+mod sandbox_probe;
+mod server;
+mod service;
+mod signal;
+mod telemetry;
 
 use thiserror::Error;
 

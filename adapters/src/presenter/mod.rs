@@ -4,16 +4,14 @@ mod fields;
 mod json;
 mod notice;
 mod reply;
-mod table;
+pub mod table;
 
 pub use self::{
     daemon::{DAEMON_NOT_RUNNING, render_daemon_gone, render_daemon_stopped},
-    describe::render_describe,
     json::{render_json_list, render_json_one},
-    notice::local_offset_label,
     reply::{
-        NOTHING_STARTED, affected_service, already_running_names, deleted_names, refused_names,
-        render_reply, render_started, unsaved_reason,
+        affected_service, already_running_names, deleted_names, refused_names, render_reply,
+        unsaved_reason,
     },
-    table::{EMPTY_NOTICE, Listing, render_table},
+    table::{Listing, render_table},
 };

@@ -2,12 +2,12 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-pub(crate) const SOCKET_FILE: &str = "pm3.sock";
-pub(crate) const PID_FILE: &str = "pm3.pid";
-pub(crate) const LOCK_FILE: &str = "pm3.lock";
+pub const SOCKET_FILE: &str = "pm3.sock";
+pub const PID_FILE: &str = "pm3.pid";
+pub const LOCK_FILE: &str = "pm3.lock";
 pub const CONFIG_FILE: &str = "config.yaml";
-pub(crate) const DUMP_FILE: &str = "dump.yaml";
-pub(crate) const DAEMON_LOG_FILE: &str = "pm3.log";
+pub const DUMP_FILE: &str = "dump.yaml";
+pub const DAEMON_LOG_FILE: &str = "pm3.log";
 pub const LOGS_DIR: &str = "logs";
 pub const APPS_DIR: &str = "apps";
 pub const BACKUPS_DIR: &str = "install-backups";
@@ -17,7 +17,7 @@ const RUNTIME_SUBDIR: &str = "run";
 const XDG_CONFIG_FALLBACK: &str = "~/.config";
 pub const XDG_STATE_FALLBACK: &str = "~/.local/state";
 const XDG_DATA_FALLBACK: &str = "~/.local/share";
-pub(crate) const RUNTIME_DIR_ROOT: &str = "/run/user";
+pub const RUNTIME_DIR_ROOT: &str = "/run/user";
 pub const RUNTIME_DIR_VARIABLE: &str = "XDG_RUNTIME_DIR";
 #[cfg(windows)]
 const VERBATIM_PREFIX: &str = r"\\?\";

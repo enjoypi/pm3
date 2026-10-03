@@ -385,7 +385,7 @@ async fn forgetting_a_service_removes_its_config() {
 async fn forgetting_a_service_removes_its_environment_too() {
     let home = home();
     prepared(&home, false).await;
-    let secrets = crate::env_file_of(&home.cfg_dir, NAME).expect("a safe service name");
+    let secrets = crate::apps_file::env_file_of(&home.cfg_dir, NAME).expect("a safe service name");
     std::fs::write(&secrets, "TUNNEL_TOKEN=eyJhIjoiZjQ2\n").expect("write the environment file");
     forget(&home.cfg_dir, NAME).await;
     assert!(!secrets.exists(), "a deleted service keeps no secrets");

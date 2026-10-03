@@ -5,7 +5,7 @@ mod store;
 
 pub use self::{
     error::InstallError,
-    layout::{backup_name, backup_root, destination_of, parse_version_output},
+    layout::{backup_name, backup_root, destination_of},
     probe::binary_version,
     store::{back_up, binary_matches, replace_binary},
 };

@@ -2,10 +2,11 @@ use usecases::{ReadScope, SandboxMode};
 
 use super::*;
 use crate::{
-    SpecDefaults, SpecRoots,
-    apps_file::{load_service_file, parse_service_file, resolve_checked},
+    apps_file::file::{
+        SpecDefaults, SpecRoots, load_service_file, parse_service_file, resolve_checked,
+    },
+    config::app::parse_config,
     config_sections::{pm3_section, telemetry_section},
-    parse_config,
 };
 
 const NAME: &str = "mihomo-rule";

@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    apps_file::{ENC_FILE_SUFFIX, ENV_FILE_SUFFIX, InlineStart},
+    apps_file::{ENV_FILE_SUFFIX, InlineStart, enc_file::ENC_FILE_SUFFIX},
     service::{prepare_inline, split_apps_file},
     service_fixtures::*,
 };
