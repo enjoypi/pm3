@@ -341,3 +341,41 @@ fn scheduled_waiter(name: &str, depends_on: &[&str]) -> entities::AppSpec {
         ..spec_with_deps(name, depends_on)
     }
 }
+
+#[tokio::test]
+async fn a_dependency_giving_up_while_launching_fails_its_waiters() {
+    let mut supervisor = supervisor();
+    let ports = FakePorts::new(0);
+    let specs = vec![
+        entities::AppSpec {
+            autorestart: false,
+            ..spec_probed("db")
+        },
+        spec_with_deps("web", &["db"]),
+        spec_with_deps("api", &["web"]),
+    ];
+    let generation = start_batch(&mut supervisor, &ports, &specs).await;
+
+    supervisor
+        .on_exit("db", generation, crate::ports::ExitOutcome::Code(1), &ports)
+        .await;
+
+    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Errored);
+    assert_eq!(status_of(&supervisor, "api"), ProcessStatus::Errored);
+    assert!(supervisor.waiters.is_empty());
+}
+
+#[tokio::test]
+async fn a_dependency_restarting_while_launching_keeps_its_waiters() {
+    let mut supervisor = supervisor();
+    let ports = FakePorts::new(0);
+    let specs = vec![spec_probed("db"), spec_with_deps("web", &["db"])];
+    let generation = start_batch(&mut supervisor, &ports, &specs).await;
+
+    supervisor
+        .on_exit("db", generation, crate::ports::ExitOutcome::Code(1), &ports)
+        .await;
+
+    assert_eq!(status_of(&supervisor, "web"), ProcessStatus::Stopped);
+    assert_eq!(supervisor.waiters.get("db"), Some(&vec!["web".to_string()]));
+}

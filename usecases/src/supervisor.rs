@@ -176,7 +176,10 @@ impl Supervisor {
             ExitAction::RestartAfter { delay_ms } => {
                 effects.push(self.queue_restart(name, delay_ms));
             }
-            ExitAction::Settled { status } => log_settled(name, status, outcome),
+            ExitAction::Settled { status } => {
+                log_settled(name, status, outcome);
+                self.fail_downstream(name);
+            }
         }
         effects
     }
@@ -378,7 +381,7 @@ impl Supervisor {
             return;
         };
         let now_ms = ports.now_ms();
-        let Some(fire_at_ms) = ports.next_fire_ms(&cron, now_ms) else {
+        let Some(fire_at_ms) = ports.next_fire_ms(name, &cron, now_ms) else {
             log_unschedulable(name, &cron);
             return;
         };

@@ -208,7 +208,7 @@ impl Clock for FakePorts {
 }
 
 impl Scheduler for FakePorts {
-    fn next_fire_ms(&self, cron: &str, after_ms: u64) -> Option<u64> {
+    fn next_fire_ms(&self, _app: &str, cron: &str, after_ms: u64) -> Option<u64> {
         if cron == UNSCHEDULABLE_CRON {
             return None;
         }

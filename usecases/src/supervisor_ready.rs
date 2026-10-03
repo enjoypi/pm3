@@ -159,7 +159,7 @@ impl Supervisor {
             .is_some_and(|record| record.runtime.status == ProcessStatus::Online)
     }
 
-    fn fail_downstream(&mut self, name: &str) {
+    pub(crate) fn fail_downstream(&mut self, name: &str) {
         let mut dead = self.waiters.remove(name).unwrap_or_default();
         while let Some(doomed) = dead.pop() {
             self.forget_waiter(&doomed);

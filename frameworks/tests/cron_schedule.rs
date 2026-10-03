@@ -98,25 +98,21 @@ fn stopping_a_scheduled_task_clears_its_next_fire() {
 }
 
 #[test]
-fn a_random_schedule_re_rolls_when_the_cycle_restarts() {
+fn a_random_schedule_keeps_its_draw_when_restarted_within_its_window() {
     let home = home();
-    let started = start_task(&home, "~ * * * *", &[]);
+    let started = start_task(&home, "0 0 1 ~ *", &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
 
     let first = described(&home, "next fire");
-    let mut moved = false;
-    for _ in 0..16 {
+    for _ in 0..4 {
         let restarted = pm3(&home, &["restart", TASK]);
         assert!(restarted.status.success(), "{}", stderr_of(&restarted));
-        if described(&home, "next fire") != first {
-            moved = true;
-            break;
-        }
+        assert_eq!(
+            described(&home, "next fire"),
+            first,
+            "a restart inside a window must not redraw it"
+        );
     }
-    assert!(
-        moved,
-        "a tilde schedule must land on a new minute eventually"
-    );
     shutdown_daemon(&home);
 }
 

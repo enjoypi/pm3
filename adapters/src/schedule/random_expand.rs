@@ -25,6 +25,14 @@ pub enum ExpandError {
 }
 
 pub fn expand_random(pattern: &str, rng: &mut fastrand::Rng) -> Result<String, ExpandError> {
+    expand(pattern, Some(rng))
+}
+
+pub fn widen_random(pattern: &str) -> Result<String, ExpandError> {
+    expand(pattern, None)
+}
+
+fn expand(pattern: &str, mut rng: Option<&mut fastrand::Rng>) -> Result<String, ExpandError> {
     let fields: Vec<&str> = pattern.split_whitespace().collect();
     if fields.len() != FIELD_COUNT {
         return Ok(pattern.to_string());
@@ -33,7 +41,7 @@ pub fn expand_random(pattern: &str, rng: &mut fastrand::Rng) -> Result<String, E
     let mut expanded = String::with_capacity(pattern.len());
     for (index, field) in fields.iter().enumerate() {
         let bounds = FIELD_BOUNDS[index];
-        let rendered = expand_field(field, bounds, index == WEEKDAY_INDEX, rng)?;
+        let rendered = expand_field(field, bounds, index == WEEKDAY_INDEX, rng.as_deref_mut())?;
         let separator = if index == 0 { "" } else { " " };
         let _ = write!(expanded, "{separator}{rendered}");
     }
@@ -44,13 +52,16 @@ fn expand_field(
     field: &str,
     bounds: (u32, u32),
     weekday: bool,
-    rng: &mut fastrand::Rng,
+    rng: Option<&mut fastrand::Rng>,
 ) -> Result<String, ExpandError> {
     let Some((low_text, tail)) = field.split_once(RANDOM_MARK) else {
         return Ok(field.to_string());
     };
     let (high_text, step) = split_step(field, tail)?;
     let (low, high) = parse_bounds(field, low_text, high_text, bounds)?;
+    let Some(rng) = rng else {
+        return Ok(format!("{low}-{high}"));
+    };
 
     let Some(step) = step else {
         return Ok(normalise_weekday(rng.u32(low..=high), weekday).to_string());

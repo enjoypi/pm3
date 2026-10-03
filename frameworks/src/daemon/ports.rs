@@ -83,8 +83,8 @@ impl Clock for DaemonPorts {
 }
 
 impl Scheduler for DaemonPorts {
-    fn next_fire_ms(&self, cron: &str, after_ms: u64) -> Option<u64> {
-        self.scheduler.next_fire_ms(cron, after_ms)
+    fn next_fire_ms(&self, app: &str, cron: &str, after_ms: u64) -> Option<u64> {
+        self.scheduler.next_fire_ms(app, cron, after_ms)
     }
 }
 

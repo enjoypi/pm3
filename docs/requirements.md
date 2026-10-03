@@ -89,7 +89,7 @@ Writing a 5-field cron expression in the service configuration schedules it:
 - With "no auto-restart," it is a one-shot job: it runs once at the scheduled time and finishes
 - With "auto-restart," it is a resident service that gets restarted once at the scheduled time
 
-OpenBSD-style random syntax `~` is supported: `~` picks a random value for that field, `a~b` picks randomly within the range, and `a~b/n` picks randomly within the range with a step. A new value is drawn after every trigger, so a requirement like "twice a day, morning and evening, at a random minute" lands on different minutes each time — a way to spread the load of scheduled jobs.
+OpenBSD-style random syntax `~` is supported: `~` picks a random value for that field, `a~b` picks randomly within the range, and `a~b/n` picks randomly within the range with a step. The draw is fixed per window and redrawn for the next one: the window is the period just above the coarsest random field (random minute → hour, random hour → day, random weekday → week, random day → month, random month → year), so `~ 8,20 * * *` runs exactly twice a day, each time at a different minute, and restarting a service mid-window never runs it twice in that window. Each service draws on its own, spreading the load of scheduled jobs.
 
 The `next` column of `pm3 list` shows the next trigger's local time; when this column is empty the service really is stopped — there is no pm2-style ambiguity of "the service is stopped but the timer is still running."
 
