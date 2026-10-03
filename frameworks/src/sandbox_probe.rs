@@ -1,11 +1,11 @@
-use adapters::{HostSandbox, SandboxBackend, SandboxProgramSet};
+#[cfg(unix)]
+use adapters::SandboxBackend;
+use adapters::{HostSandbox, SandboxProgramSet};
 
 #[cfg(target_os = "macos")]
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Seatbelt];
 #[cfg(all(unix, not(target_os = "macos")))]
 const PREFERRED_BACKENDS: [SandboxBackend; 1] = [SandboxBackend::Bwrap];
-#[cfg(windows)]
-const PREFERRED_BACKENDS: [SandboxBackend; 0] = [];
 
 #[cfg(unix)]
 #[must_use]
@@ -22,6 +22,7 @@ pub const fn detect_host_backend(
     None
 }
 
+#[cfg(unix)]
 #[must_use]
 pub fn probe_backend(
     resolve: &dyn Fn(SandboxBackend) -> Option<HostSandbox>,

@@ -48,30 +48,29 @@ pub fn render_identity(spec: &AppSpec) -> String {
         field(NETWORK_LABEL, network_label(sandbox.network)),
     ]
     .concat();
-    let with_args = args.iter().fold(head, |mut text, arg| {
-        text.push_str(&field(ARG_LABEL, arg));
-        text
-    });
-    let with_roots = sandbox
-        .writable_roots
+    let ordered_env = sorted_env(env);
+    let tail: String = args
         .iter()
-        .fold(with_args, |mut text, root| {
-            text.push_str(&field(ROOT_LABEL, root));
-            text
-        });
-    let with_readable = sandbox
-        .readable_roots
-        .iter()
-        .fold(with_roots, |mut text, root| {
-            text.push_str(&field(READABLE_ROOT_LABEL, root));
-            text
-        });
-    sorted_env(env)
-        .iter()
-        .fold(with_readable, |mut text, entry| {
-            text.push_str(&field(ENV_LABEL, &entry_line(entry)));
-            text
-        })
+        .map(|arg| field(ARG_LABEL, arg))
+        .chain(
+            sandbox
+                .writable_roots
+                .iter()
+                .map(|root| field(ROOT_LABEL, root)),
+        )
+        .chain(
+            sandbox
+                .readable_roots
+                .iter()
+                .map(|root| field(READABLE_ROOT_LABEL, root)),
+        )
+        .chain(
+            ordered_env
+                .iter()
+                .map(|entry| field(ENV_LABEL, &entry_line(entry))),
+        )
+        .collect();
+    head + &tail
 }
 
 #[must_use]

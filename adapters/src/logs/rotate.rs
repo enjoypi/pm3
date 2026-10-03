@@ -51,11 +51,7 @@ async fn rotate_if_oversized(
     }
     let backup = backup_path(path);
     tokio::fs::copy(path, &backup).await?;
-    tokio::fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(path)
-        .await?;
+    crate::fs_util::truncate(path).await?;
     Ok(Some(RotatedLog {
         path: path.to_string_lossy().into_owned(),
         bytes,

@@ -60,6 +60,11 @@ impl ProcessView {
 
 impl ProcessRecord {
     #[must_use]
+    pub fn awaits_ready(&self) -> bool {
+        self.spec.ready_probe.is_some() && self.runtime.status == ProcessStatus::Launching
+    }
+
+    #[must_use]
     pub fn view(&self, now_ms: u64) -> ProcessView {
         ProcessView {
             pm_id: self.runtime.pm_id,

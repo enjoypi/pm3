@@ -1,12 +1,11 @@
 use std::collections::HashSet;
 
-use entities::{
-    AppSpec, DependencyNode, EnvValue, ProcessIdentity, ProcessStatus, topo_sort, validate_spec,
-};
+use entities::{AppSpec, DependencyNode, EnvValue, ProcessIdentity, topo_sort, validate_spec};
 
 use crate::{
     Ports, Result, UsecaseError, fingerprint::render_identity, log_paths::log_paths,
-    persist::save_table, ports::LaunchSpec, selector::AppSelector, table::ProcessTable,
+    persist::save_table, ports::LaunchSpec, record::ProcessRecord, selector::AppSelector,
+    table::ProcessTable,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -160,12 +159,9 @@ fn defer_one(
 }
 
 fn awaits_ready(table: &ProcessTable, name: &str) -> bool {
-    table.find_by_name(name).is_some_and(|record| {
-        if record.spec.ready_probe.is_none() {
-            return false;
-        }
-        record.runtime.status == ProcessStatus::Launching
-    })
+    table
+        .find_by_name(name)
+        .is_some_and(ProcessRecord::awaits_ready)
 }
 
 fn forget_unlaunched(

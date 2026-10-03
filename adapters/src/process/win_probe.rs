@@ -1,13 +1,13 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    ops::ControlFlow,
     time::Duration,
 };
 
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tokio::time::{Instant, sleep};
 use usecases::{Liveness, ProcessProbe, ResourceSample};
 
-use super::timed::next_pause;
+use super::timed::{identity_of, poll_until, wait_gone_with};
 
 const BYTES_PER_KIB: u64 = 1024;
 
@@ -140,10 +140,7 @@ fn descends_from(rows: &HashMap<u32, Row>, pid: u32, root: u32) -> bool {
 
 impl ProcessProbe for WinProcessProbe {
     async fn identity(&self, pid: u32) -> Liveness {
-        self.identities(&[pid])
-            .await
-            .remove(&pid)
-            .unwrap_or(Liveness::Unreadable)
+        identity_of(self, pid).await
     }
 
     async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
@@ -163,32 +160,17 @@ impl ProcessProbe for WinProcessProbe {
     }
 
     async fn wait_group_gone(&self, pgid: u32, timeout_ms: u64) -> bool {
-        let started = Instant::now();
-        let budget = Duration::from_millis(timeout_ms);
-        loop {
+        poll_until(timeout_ms, self.step(), || async move {
             if off_the_runtime(read_tree_members, &[pgid]).await == 0 {
-                return true;
+                return ControlFlow::Break(true);
             }
-            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
-                return false;
-            };
-            sleep(pause).await;
-        }
+            ControlFlow::Continue(false)
+        })
+        .await
     }
 
     async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
-        let started = Instant::now();
-        let budget = Duration::from_millis(timeout_ms);
-        loop {
-            let liveness = self.identity(pid).await;
-            if matches!(liveness, Liveness::Gone) {
-                return liveness;
-            }
-            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
-                return liveness;
-            };
-            sleep(pause).await;
-        }
+        wait_gone_with(self, pid, timeout_ms, self.step()).await
     }
 }
 

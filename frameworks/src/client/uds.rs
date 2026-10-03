@@ -15,6 +15,7 @@ use tokio::{
     time::timeout,
 };
 
+use crate::layout::text;
 #[cfg(windows)]
 use crate::layout::{pipe_name_of, pipe_secret};
 
@@ -236,10 +237,6 @@ fn log_failed_request(
         action = "request",
         "pm3 client could not get an answer from the daemon",
     );
-}
-
-fn text(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
 }
 
 #[cfg(test)]

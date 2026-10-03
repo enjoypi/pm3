@@ -117,27 +117,23 @@ pub fn render_reply(reply: &SupervisionReply) -> String {
         SupervisionReply::Deleted { name } => format!("deleted {name}"),
         SupervisionReply::Reset { name } => format!("reset {name}"),
         SupervisionReply::Signalled { name, signal } => format!("sent {signal} to {name}"),
-        SupervisionReply::StoppedAll { names } => render_stopped_all(names),
-        SupervisionReply::RestartedAll { names } => render_batch("restarted", "restart", names),
-        SupervisionReply::DeletedAll { names } => render_batch("deleted", "delete", names),
-        SupervisionReply::ResetAll { names } => render_batch("reset", "reset", names),
+        SupervisionReply::StoppedAll { names } => render_batch("stopped", NOTHING_TO_STOP, names),
+        SupervisionReply::RestartedAll { names } => {
+            render_batch("restarted", "no apps to restart", names)
+        }
+        SupervisionReply::DeletedAll { names } => {
+            render_batch("deleted", "no apps to delete", names)
+        }
+        SupervisionReply::ResetAll { names } => render_batch("reset", "no apps to reset", names),
     }
 }
 
 #[must_use]
-pub fn render_batch(done: &str, base: &str, names: &[String]) -> String {
+pub fn render_batch(done: &str, empty: &str, names: &[String]) -> String {
     if names.is_empty() {
-        return format!("no apps to {base}");
+        return empty.to_string();
     }
     format!("{done} {}", names.join(", "))
-}
-
-#[must_use]
-pub fn render_stopped_all(names: &[String]) -> String {
-    if names.is_empty() {
-        return NOTHING_TO_STOP.to_string();
-    }
-    format!("stopped {}", names.join(", "))
 }
 
 #[must_use]

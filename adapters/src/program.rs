@@ -35,7 +35,7 @@ fn resolve_with(
 
 #[must_use]
 pub fn fold_home(value: &str, home: Option<&str>) -> String {
-    let Some(home) = home.filter(|candidate| !candidate.is_empty()) else {
+    let Some(home) = crate::paths::named(home) else {
         return value.to_string();
     };
     let Some(suffix) = value.strip_prefix(home) else {

@@ -8,10 +8,9 @@ use croner::Cron;
 use thiserror::Error;
 use usecases::Scheduler;
 
-use super::random_expand::{ExpandError, expand_random, widen_random};
+use super::random_expand::{ExpandError, RANDOM_MARK, expand_random, widen_random};
 
 const MILLIS_PER_SECOND: u64 = 1000;
-const RANDOM_MARK: char = '~';
 const FIELD_WINDOWS: [Window; 5] = [
     Window::Hour,
     Window::Day,

@@ -68,7 +68,7 @@ pub async fn resurrect(
 
 struct Eviction<'a> {
     name: &'a str,
-    stale: Option<u32>,
+    stale: u32,
     expected: Option<&'a str>,
     scope: SignalScope,
 }
@@ -84,7 +84,7 @@ async fn evict_all(
         .filter_map(|name| eviction_plan(name, verdicts.get(name)?))
         .collect();
     join_all(plans.iter().map(|plan| {
-        evict(
+        evict_pid(
             plan.name,
             plan.stale,
             plan.expected,
@@ -104,7 +104,7 @@ fn eviction_plan<'a>(name: &'a str, judged: &'a (Verdict, Option<String>)) -> Op
             log_settle(name);
             Some(Eviction {
                 name,
-                stale: *stale,
+                stale: (*stale)?,
                 expected: expected.as_deref(),
                 scope: SignalScope::ProcessGroup,
             })
@@ -113,7 +113,7 @@ fn eviction_plan<'a>(name: &'a str, judged: &'a (Verdict, Option<String>)) -> Op
             log_respawn(name, *change);
             Some(Eviction {
                 name,
-                stale: *stale,
+                stale: (*stale)?,
                 expected: expected.as_deref(),
                 scope: change.eviction_scope(),
             })
@@ -156,20 +156,6 @@ async fn sweep_stranded(
     }
 }
 
-async fn evict(
-    name: &str,
-    stale: Option<u32>,
-    expected: Option<&str>,
-    scope: SignalScope,
-    kill_timeout_ms: u64,
-    ports: &impl Ports,
-) {
-    let Some(pid) = stale else {
-        return;
-    };
-    evict_pid(name, pid, expected, scope, kill_timeout_ms, ports).await;
-}
-
 async fn evict_pid(
     name: &str,
     pid: u32,
@@ -182,12 +168,7 @@ async fn evict_pid(
         log_unverified_evict(name, pid);
     }
     let fresh = ports.identity(pid).await;
-    if matches!(fresh, Liveness::Gone) {
-        force_lingering_group(name, pid, scope, kill_timeout_ms, ports).await;
-        return;
-    }
-    if pid_was_recycled(&fresh, expected) {
-        log_spared_evict(name, pid);
+    if left_or_recycled(name, pid, &fresh, expected, scope, kill_timeout_ms, ports).await {
         return;
     }
     let refused = ports
@@ -197,12 +178,17 @@ async fn evict_pid(
         .map(|e| e.to_string());
     log_evict(name, pid, refused.as_deref());
     let liveness = ports.wait_gone(pid, kill_timeout_ms).await;
-    if matches!(liveness, Liveness::Gone) {
-        force_lingering_group(name, pid, scope, kill_timeout_ms, ports).await;
-        return;
-    }
-    if pid_was_recycled(&liveness, expected) {
-        log_spared_evict(name, pid);
+    if left_or_recycled(
+        name,
+        pid,
+        &liveness,
+        expected,
+        scope,
+        kill_timeout_ms,
+        ports,
+    )
+    .await
+    {
         return;
     }
     let forced = ports
@@ -211,6 +197,26 @@ async fn evict_pid(
         .err()
         .map(|e| e.to_string());
     log_force_evict(name, pid, forced.as_deref());
+}
+
+async fn left_or_recycled(
+    name: &str,
+    pid: u32,
+    liveness: &Liveness,
+    expected: Option<&str>,
+    scope: SignalScope,
+    kill_timeout_ms: u64,
+    ports: &impl Ports,
+) -> bool {
+    if matches!(liveness, Liveness::Gone) {
+        force_lingering_group(name, pid, scope, kill_timeout_ms, ports).await;
+        return true;
+    }
+    if pid_was_recycled(liveness, expected) {
+        log_spared_evict(name, pid);
+        return true;
+    }
+    false
 }
 
 async fn force_lingering_group(
@@ -239,7 +245,7 @@ async fn adopt(table: &mut ProcessTable, name: &str, ports: &impl Ports) -> Star
         let record = table
             .find_by_name_mut(name)
             .expect("internal error: the topological order only names records the table holds");
-        if record.runtime.status != ProcessStatus::Launching || record.spec.ready_probe.is_none() {
+        if !record.awaits_ready() {
             record.runtime.mark_online();
         }
         let pid = record

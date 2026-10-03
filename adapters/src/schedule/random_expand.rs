@@ -6,7 +6,7 @@ const FIELD_COUNT: usize = 5;
 const FIELD_BOUNDS: [(u32, u32); FIELD_COUNT] = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)];
 const WEEKDAY_INDEX: usize = 4;
 const SUNDAY_ALIAS: u32 = 7;
-const RANDOM_MARK: char = '~';
+pub const RANDOM_MARK: char = '~';
 const STEP_MARK: char = '/';
 
 #[derive(Debug, Eq, PartialEq, Error)]

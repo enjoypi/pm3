@@ -25,9 +25,7 @@ pub async fn materialise_workspace(
         if root_is_forbidden(forbidden_writable_roots, &real) {
             return Err(PolicyError::ForbiddenWritableRoot(root.clone()));
         }
-        if &real != root && !spec.sandbox.derived_roots.contains(&real) {
-            spec.sandbox.derived_roots.push(real);
-        }
+        derive(&mut spec.sandbox.derived_roots, root, real);
     }
     derive_readable_paths(spec, &mut resolved).await;
     for root in &mut spec.sandbox.unreadable_roots {
@@ -60,9 +58,13 @@ async fn derive_readable_paths(spec: &mut AppSpec, resolved: &mut BTreeMap<Strin
         .collect();
     for root in &declared {
         let real = resolve_cached(root, resolved).await;
-        if &real != root && !spec.sandbox.derived_readable_roots.contains(&real) {
-            spec.sandbox.derived_readable_roots.push(real);
-        }
+        derive(&mut spec.sandbox.derived_readable_roots, root, real);
+    }
+}
+
+fn derive(derived: &mut Vec<String>, root: &str, real: String) {
+    if real != root && !derived.contains(&real) {
+        derived.push(real);
     }
 }
 

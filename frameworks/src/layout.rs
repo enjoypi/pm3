@@ -421,16 +421,15 @@ pub fn owner_uid_of(path: &Path) -> Option<u32> {
     std::fs::metadata(path).ok().map(|owner| owner.uid())
 }
 
-#[cfg(not(unix))]
-#[must_use]
-pub const fn owner_uid_of(_path: &Path) -> Option<u32> {
-    None
-}
-
 #[must_use]
 pub fn host_runtime_dir(home_env: Option<&str>) -> Option<String> {
     let declared = std::env::var(adapters::RUNTIME_DIR_VARIABLE).ok();
     runtime_dir_of(declared.as_deref(), host_uid(home_env))
+}
+
+#[must_use]
+pub fn text(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 pub fn layout_error(path: &Path, source: &std::io::Error) -> Error {

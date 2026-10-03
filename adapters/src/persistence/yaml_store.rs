@@ -3,8 +3,7 @@ use std::path::{Path, PathBuf};
 use futures_util::future::join_all;
 use tokio::fs;
 use usecases::{
-    DumpContents, DumpError, DumpStore, ProcessRecord, ProcessRuntime, ServiceSnapshot,
-    StrandedProcess,
+    DumpContents, DumpError, DumpStore, ProcessRecord, ServiceSnapshot, StrandedProcess,
 };
 
 use super::dto::{DecodeError, DumpDocument, StateDto, decode_state, encode_states};
@@ -44,7 +43,7 @@ impl YamlDumpStore {
             }
             Err(error) => {
                 warn_unusable(&runtime.name, &error);
-                Ok(Rejoined::Stranded(stranded_from(runtime)))
+                Ok(Rejoined::Stranded(stranded_of(&state)))
             }
         }
     }
@@ -67,21 +66,11 @@ fn stranded_of(state: &StateDto) -> StrandedProcess {
     }
 }
 
-fn stranded_from(runtime: ProcessRuntime) -> StrandedProcess {
-    StrandedProcess {
-        name: runtime.name,
-        pid: runtime.pid,
-        token: runtime.identity.map(|identity| identity.token),
-    }
-}
-
 impl DumpStore for YamlDumpStore {
     async fn load(&self) -> Result<DumpContents, DumpError> {
-        let Some(raw) = read_optional(&self.path).await? else {
+        let Some(doc) = read_document(&self.path).await? else {
             return Ok(DumpContents::default());
         };
-        let doc: DumpDocument =
-            serde_yaml2::from_str(&raw).map_err(|e| read_error(&self.path, &e.to_string()))?;
         let rejoined = join_all(doc.services.into_iter().map(|state| self.rejoin(state))).await;
         let mut contents = DumpContents {
             records: Vec::with_capacity(rejoined.len()),
@@ -104,18 +93,22 @@ impl DumpStore for YamlDumpStore {
     }
 }
 
-async fn read_optional(path: &Path) -> Result<Option<String>, DumpError> {
-    crate::fs_util::read_optional(path)
+async fn read_document(path: &Path) -> Result<Option<DumpDocument>, DumpError> {
+    let Some(raw) = crate::fs_util::read_optional(path)
         .await
-        .map_err(|error| read_error(path, &error.to_string()))
+        .map_err(|error| read_error(path, &error.to_string()))?
+    else {
+        return Ok(None);
+    };
+    serde_yaml2::from_str(&raw)
+        .map(Some)
+        .map_err(|e| read_error(path, &e.to_string()))
 }
 
 pub async fn dump_snapshot(path: &Path) -> Result<Vec<ServiceSnapshot>, DumpError> {
-    let Some(raw) = read_optional(path).await? else {
+    let Some(doc) = read_document(path).await? else {
         return Ok(Vec::new());
     };
-    let doc: DumpDocument =
-        serde_yaml2::from_str(&raw).map_err(|e| read_error(path, &e.to_string()))?;
     Ok(doc.services.into_iter().map(snapshot_of).collect())
 }
 

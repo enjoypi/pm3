@@ -488,7 +488,7 @@ pub fn report(outcome: Result<()>) -> std::process::ExitCode {
 }
 
 #[expect(clippy::print_stdout, reason = "CLI command output")]
-fn emit(output: &str) {
+pub fn emit(output: &str) {
     println!("{output}");
 }
 

@@ -190,7 +190,7 @@ fn per_user_runtime_dir(uid: Option<u32>, exists: fn(&Path) -> bool) -> Option<P
     exists(&base).then(|| base.join(PM3_SUBDIR))
 }
 
-fn named(value: Option<&str>) -> Option<&str> {
+pub fn named(value: Option<&str>) -> Option<&str> {
     value.filter(|text| !text.is_empty())
 }
 
@@ -236,7 +236,7 @@ pub fn expand_home(raw: &str, home_env: Option<&str>) -> Result<PathBuf, PathErr
         if !suffix.is_empty() && !suffix.starts_with('/') {
             return Err(PathError::NamedHome(raw.to_string()));
         }
-        let Some(home) = home_env.filter(|value| !value.is_empty()) else {
+        let Some(home) = named(home_env) else {
             return Err(PathError::MissingHome(raw.to_string()));
         };
         let trimmed = suffix.trim_start_matches('/');

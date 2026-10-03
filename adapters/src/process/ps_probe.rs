@@ -1,15 +1,13 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    ops::ControlFlow,
     time::Duration,
 };
 
-use tokio::{
-    process::Command,
-    time::{Instant, sleep},
-};
+use tokio::{process::Command, time::Instant};
 use usecases::{Liveness, ProcessProbe, ResourceSample};
 
-use super::timed::{CommandOutcome, capture_timed, next_pause};
+use super::timed::{CommandOutcome, capture_timed, identity_of, poll_until, wait_gone_with};
 use crate::exit_status::UNKNOWN_EXIT_CODE;
 
 pub const PS_PROGRAM: &str = "/bin/ps";
@@ -264,10 +262,7 @@ fn parse_row(line: &str) -> Option<(u32, Option<String>)> {
 
 impl ProcessProbe for PsProcessProbe {
     async fn identity(&self, pid: u32) -> Liveness {
-        self.identities(&[pid])
-            .await
-            .remove(&pid)
-            .unwrap_or(Liveness::Unreadable)
+        identity_of(self, pid).await
     }
 
     async fn identities(&self, pids: &[u32]) -> HashMap<u32, Liveness> {
@@ -299,34 +294,18 @@ impl ProcessProbe for PsProcessProbe {
     }
 
     async fn wait_group_gone(&self, pgid: u32, timeout_ms: u64) -> bool {
-        let started = Instant::now();
-        let budget = Duration::from_millis(timeout_ms);
-        loop {
+        poll_until(timeout_ms, self.step(), || async move {
             match self.group_is_empty(pgid).await {
-                Some(true) => return true,
-                Some(false) => {}
-                None => return false,
+                Some(false) => ControlFlow::Continue(false),
+                Some(true) => ControlFlow::Break(true),
+                None => ControlFlow::Break(false),
             }
-            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
-                return false;
-            };
-            sleep(pause).await;
-        }
+        })
+        .await
     }
 
     async fn wait_gone(&self, pid: u32, timeout_ms: u64) -> Liveness {
-        let started = Instant::now();
-        let budget = Duration::from_millis(timeout_ms);
-        loop {
-            let liveness = self.identity(pid).await;
-            if matches!(liveness, Liveness::Gone) {
-                return liveness;
-            }
-            let Some(pause) = next_pause(started.elapsed(), budget, self.step()) else {
-                return liveness;
-            };
-            sleep(pause).await;
-        }
+        wait_gone_with(self, pid, timeout_ms, self.step()).await
     }
 }
 

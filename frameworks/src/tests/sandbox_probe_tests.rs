@@ -21,6 +21,7 @@ fn a_present_backend_is_selected() {
     assert!(probe_backend(&|backend| Some(found(backend))).is_some());
 }
 
+#[cfg(unix)]
 #[test]
 fn no_backend_is_selected_when_none_is_installed() {
     assert!(probe_backend(&|_backend| None).is_none());
@@ -54,15 +55,6 @@ fn the_host_offers_a_usable_sandbox_backend() {
 
 #[cfg(windows)]
 #[test]
-fn windows_offers_no_sandbox_backend_even_when_one_could_resolve() {
-    assert!(
-        probe_backend(&|backend| {
-            Some(HostSandbox {
-                backend,
-                program: "C:/pm3/sandbox.exe".to_string(),
-            })
-        })
-        .is_none()
-    );
+fn windows_offers_no_sandbox_backend() {
     assert!(detect_host_backend(&programs(), "C:/Windows/System32").is_none());
 }

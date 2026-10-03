@@ -23,9 +23,9 @@ const ROOT_VARIABLES: [&str; 4] = [
 ];
 
 #[cfg(target_os = "macos")]
-pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
+pub const HOST_SERVICE_KIND: UnitKind = UnitKind::Launchd;
 #[cfg(windows)]
-pub(crate) const HOST_SERVICE_KIND: UnitKind = UnitKind::WinSchtasks;
+pub const HOST_SERVICE_KIND: UnitKind = UnitKind::WinSchtasks;
 #[cfg(all(unix, not(target_os = "macos")))]
 pub const HOST_SERVICE_KIND: UnitKind = UnitKind::Systemd;
 

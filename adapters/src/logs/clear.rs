@@ -10,16 +10,12 @@ pub struct LogClearError {
 }
 
 pub async fn clear_log(path: &Path) -> Result<(), LogClearError> {
-    tokio::fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(path)
+    crate::fs_util::truncate(path)
         .await
         .map_err(|error| LogClearError {
             path: path.to_string_lossy().into_owned(),
             reason: error.to_string(),
-        })?;
-    Ok(())
+        })
 }
 
 #[cfg(test)]

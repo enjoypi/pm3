@@ -15,6 +15,7 @@ use tokio::net::{UnixListener, UnixStream, unix::SocketAddr};
 use crate::layout::owner_uid_of;
 #[cfg(windows)]
 use crate::layout::pipe_name_of;
+use crate::layout::text;
 
 #[cfg(unix)]
 const OWNER_ONLY_SOCKET: u32 = adapters::SWEEP_PROOF_FILE;
@@ -308,10 +309,6 @@ fn log_refused_peer(peer: Option<u32>, owner: Option<u32>) {
         ?owner,
         "pm3 dropped a connection from another user before it could send a request",
     );
-}
-
-fn text(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
 }
 
 #[cfg(test)]

@@ -1,9 +1,11 @@
 use std::{
+    ops::ControlFlow,
     process::Output,
     time::{Duration, Instant},
 };
 
 use tokio::{process::Command, time::timeout};
+use usecases::{Liveness, ProcessProbe};
 
 #[derive(Debug)]
 pub enum CommandOutcome {
@@ -38,6 +40,48 @@ pub fn next_pause(elapsed: Duration, budget: Duration, step: Duration) -> Option
         return None;
     }
     Some(remaining.min(step))
+}
+
+pub async fn poll_until<T, F>(timeout_ms: u64, step: Duration, mut check: impl FnMut() -> F) -> T
+where
+    F: Future<Output = ControlFlow<T, T>>,
+{
+    let started = tokio::time::Instant::now();
+    let budget = Duration::from_millis(timeout_ms);
+    loop {
+        let last = match check().await {
+            ControlFlow::Break(settled) => return settled,
+            ControlFlow::Continue(last) => last,
+        };
+        let Some(pause) = next_pause(started.elapsed(), budget, step) else {
+            return last;
+        };
+        tokio::time::sleep(pause).await;
+    }
+}
+
+pub async fn identity_of(probe: &impl ProcessProbe, pid: u32) -> Liveness {
+    probe
+        .identities(&[pid])
+        .await
+        .remove(&pid)
+        .unwrap_or(Liveness::Unreadable)
+}
+
+pub async fn wait_gone_with(
+    probe: &impl ProcessProbe,
+    pid: u32,
+    timeout_ms: u64,
+    step: Duration,
+) -> Liveness {
+    poll_until(timeout_ms, step, || async move {
+        let liveness = probe.identity(pid).await;
+        if matches!(liveness, Liveness::Gone) {
+            return ControlFlow::Break(liveness);
+        }
+        ControlFlow::Continue(liveness)
+    })
+    .await
 }
 
 #[cfg(test)]

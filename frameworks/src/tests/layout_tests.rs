@@ -38,6 +38,7 @@ fn a_readable_path_reports_the_uid_that_owns_it() {
     assert_eq!(owner_uid_of(dir.path()), Some(owner.uid()));
 }
 
+#[cfg(unix)]
 #[test]
 fn a_path_this_platform_does_not_offer_reports_no_owner() {
     assert_eq!(owner_uid_of(Path::new("/nonexistent/pm3-owner")), None);

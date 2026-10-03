@@ -25,6 +25,15 @@ pub async fn remove_if_present(path: &Path) -> io::Result<()> {
     }
 }
 
+pub async fn truncate(path: &Path) -> io::Result<()> {
+    tokio::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .await
+        .map(drop)
+}
+
 #[cfg(test)]
 #[path = "tests/fs_util_tests.rs"]
 mod tests;

@@ -53,7 +53,7 @@ pub async fn run(config_path: &str, source: Option<PathBuf>) -> Result<()> {
         kind: HOST_SERVICE_KIND,
         programs: None,
     };
-    run_install(config_path, source, &context, &emit).await
+    run_install(config_path, source, &context, &crate::cli::emit).await
 }
 
 pub async fn run_install(
@@ -266,11 +266,6 @@ fn log_step(action: &'static str, from: &Path, to: &Path) {
         to,
         "pm3 install finished a step"
     );
-}
-
-#[expect(clippy::print_stdout, reason = "CLI command output")]
-fn emit(line: &str) {
-    println!("{line}");
 }
 
 #[cfg(test)]

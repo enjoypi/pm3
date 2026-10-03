@@ -72,8 +72,7 @@ impl ProcessRuntime {
         if !self.status.is_running() {
             return None;
         }
-        self.started_at_ms
-            .and_then(|started| now_ms.checked_sub(started))
+        self.since_start(now_ms)
     }
 
     #[must_use]
@@ -81,6 +80,10 @@ impl ProcessRuntime {
         if self.status.is_settled() {
             return None;
         }
+        self.since_start(now_ms)
+    }
+
+    fn since_start(&self, now_ms: u64) -> Option<u64> {
         self.started_at_ms
             .and_then(|started| now_ms.checked_sub(started))
     }
