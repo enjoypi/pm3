@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(unix)]
+use crate::platform::mode_of;
 
 const NAME: &str = "cloudflared";
 const SHOWN: &str = "/srv/pm3/service/cloudflared";
@@ -33,15 +35,6 @@ fn written_with_mode(text: &str, mode: u32) -> (tempfile::TempDir, std::path::Pa
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
         .expect("set the starting permissions");
     (dir, path)
-}
-
-#[cfg(unix)]
-fn mode_of(path: &std::path::Path) -> u32 {
-    std::fs::metadata(path)
-        .expect("read the metadata")
-        .permissions()
-        .mode()
-        & 0o777
 }
 
 #[test]

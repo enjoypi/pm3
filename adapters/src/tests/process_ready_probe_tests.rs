@@ -78,13 +78,8 @@ async fn an_exec_probe_fails_fast_when_the_program_cannot_start() {
 #[cfg(unix)]
 #[tokio::test]
 async fn an_exec_probe_finds_a_bare_program_on_the_search_path() {
-    use std::os::unix::fs::PermissionsExt as _;
-
     let dir = tempfile::tempdir().expect("temp dir");
-    let program = dir.path().join("probe-ok");
-    std::fs::write(&program, "#!/bin/sh\nexit 0\n").expect("write the probe program");
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
-        .expect("make the probe program executable");
+    crate::platform::script(dir.path(), "probe-ok", "exit 0", "");
     let prober = HostReadyProber::new(5_000, dir.path().to_string_lossy().into_owned());
     let probe = exec_probe(&["probe-ok"]);
     assert_eq!(prober.check_ready(&probe).await, Readiness::Ready);

@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use std::{os::unix::fs::PermissionsExt as _, process::Stdio, time::Duration};
+use std::{process::Stdio, time::Duration};
 
 use tempfile::TempDir;
 use tokio::{
@@ -78,11 +78,9 @@ async fn outlives_its_group(pid: u32) -> bool {
 }
 
 fn stalling_kill(dir: &TempDir) -> String {
-    let path = dir.path().join("stalling-kill");
-    std::fs::write(&path, "#!/bin/sh\nsleep 5\n").expect("write the stand-in");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-        .expect("make the stand-in executable");
-    path.to_string_lossy().into_owned()
+    crate::platform::script(dir.path(), "stalling-kill", "sleep 5", "")
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[tokio::test]

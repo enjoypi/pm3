@@ -3,6 +3,27 @@ use usecases::{
     SandboxMode, SandboxPolicy,
 };
 
+pub fn sandbox_policy(
+    mode: SandboxMode,
+    read: ReadScope,
+    network: bool,
+    writable_roots: &[&str],
+) -> SandboxPolicy {
+    SandboxPolicy {
+        mode,
+        read,
+        network,
+        writable_roots: writable_roots
+            .iter()
+            .map(|root| (*root).to_string())
+            .collect(),
+        readable_roots: Vec::new(),
+        derived_readable_roots: Vec::new(),
+        derived_roots: Vec::new(),
+        unreadable_roots: Vec::new(),
+    }
+}
+
 pub const CREATED_AT_MS: u64 = 1_700_000_000_000;
 pub const STARTED_AT_MS: u64 = 1_700_000_001_000;
 pub const SAMPLE_PID: u32 = 4242;
@@ -39,16 +60,12 @@ pub fn sample_spec(name: &str) -> AppSpec {
         max_restart_delay_ms: 15000,
         schedule: None,
         depends_on: vec!["db".to_string()],
-        sandbox: SandboxPolicy {
-            mode: SandboxMode::WorkspaceWrite,
-            read: ReadScope::Minimal,
-            network: false,
-            writable_roots: vec!["/srv/web".to_string()],
-            readable_roots: Vec::new(),
-            derived_readable_roots: Vec::new(),
-            derived_roots: Vec::new(),
-            unreadable_roots: Vec::new(),
-        },
+        sandbox: sandbox_policy(
+            SandboxMode::WorkspaceWrite,
+            ReadScope::Minimal,
+            false,
+            &["/srv/web"],
+        ),
     }
 }
 

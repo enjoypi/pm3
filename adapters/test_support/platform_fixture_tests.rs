@@ -90,6 +90,22 @@ pub fn script(dir: &std::path::Path, name: &str, _unix: &str, windows: &str) -> 
 }
 
 #[cfg(unix)]
+pub fn full_mode_of(path: &std::path::Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    std::fs::metadata(path)
+        .expect("the path should exist")
+        .permissions()
+        .mode()
+        & 0o7777
+}
+
+#[cfg(unix)]
+pub fn mode_of(path: &std::path::Path) -> u32 {
+    full_mode_of(path) & 0o777
+}
+
+#[cfg(unix)]
 pub const ABSOLUTE_SHELL: &str = "/bin/sh";
 #[cfg(windows)]
 pub const ABSOLUTE_SHELL: &str = "C:/Windows/System32/cmd.exe";

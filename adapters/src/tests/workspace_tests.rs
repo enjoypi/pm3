@@ -3,7 +3,10 @@ use std::path::Path;
 use usecases::{PolicyError, ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
-use crate::platform::{link_dir, real_text, text};
+use crate::{
+    platform::{link_dir, real_text, text},
+    process_records::sandbox_policy,
+};
 
 const NOTHING_FORBIDDEN: &[String] = &[];
 
@@ -35,14 +38,8 @@ fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
         schedule: None,
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
-            mode: SandboxMode::WorkspaceWrite,
-            read: ReadScope::Minimal,
-            network: false,
             writable_roots,
-            readable_roots: Vec::new(),
-            derived_readable_roots: Vec::new(),
-            derived_roots: Vec::new(),
-            unreadable_roots: Vec::new(),
+            ..sandbox_policy(SandboxMode::WorkspaceWrite, ReadScope::Minimal, false, &[])
         },
     }
 }

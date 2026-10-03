@@ -1,6 +1,7 @@
 use usecases::{ReadScope, SandboxMode};
 
 use super::{super::backend::HostSandbox, *};
+use crate::process_records::sandbox_policy;
 
 const BWRAP_PROGRAM: &str = "bwrap";
 const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
@@ -24,16 +25,7 @@ fn wrapper(host: Option<HostSandbox>) -> SandboxCommandWrapper {
 }
 
 fn policy(mode: SandboxMode, writable_roots: &[&str]) -> SandboxPolicy {
-    SandboxPolicy {
-        mode,
-        read: ReadScope::Full,
-        network: false,
-        writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
-        readable_roots: Vec::new(),
-        derived_readable_roots: Vec::new(),
-        derived_roots: Vec::new(),
-        unreadable_roots: Vec::new(),
-    }
+    sandbox_policy(mode, ReadScope::Full, false, writable_roots)
 }
 
 #[test]

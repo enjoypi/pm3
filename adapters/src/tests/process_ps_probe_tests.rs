@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use std::{fs, os::unix::fs::PermissionsExt as _, path::PathBuf};
+use std::path::PathBuf;
 
 use super::*;
 
@@ -9,11 +9,7 @@ const UNUSABLE_PID: u32 = u32::MAX;
 const PROBE_TIMEOUT_MS: u64 = 5000;
 
 fn fake_ps(dir: &tempfile::TempDir, body: &str) -> PathBuf {
-    let path = dir.path().join("ps");
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("should write a fake ps");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
-        .expect("should make the fake ps executable");
-    path
+    crate::platform::script(dir.path(), "ps", body, "")
 }
 
 fn probe_with(body: &str) -> (tempfile::TempDir, PsProcessProbe) {

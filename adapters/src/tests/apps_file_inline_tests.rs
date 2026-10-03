@@ -5,8 +5,7 @@ use crate::{
     apps_file::file::{
         SpecDefaults, SpecRoots, load_service_file, parse_service_file, resolve_checked,
     },
-    config::app::parse_config,
-    config_sections::{pm3_section, telemetry_section},
+    config_sections::fixture_config,
 };
 
 const NAME: &str = "mihomo-rule";
@@ -175,16 +174,7 @@ fn an_encoded_app_with_no_collections_still_reads_back() {
 
 #[test]
 fn an_encoded_inline_app_resolves_into_a_spec() {
-    let yaml = format!(
-        "{}{}",
-        pm3_section(
-            "/tmp/pm3-fixture",
-            1600,
-            SandboxMode::WorkspaceWrite.as_str()
-        ),
-        telemetry_section("info")
-    );
-    let config = parse_config(&yaml).expect("the fixture config should parse");
+    let config = fixture_config("/tmp/pm3-fixture", SandboxMode::WorkspaceWrite.as_str());
     let defaults = SpecDefaults::from_config(
         &config.pm3,
         SpecRoots {

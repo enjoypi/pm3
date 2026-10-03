@@ -61,9 +61,18 @@ fn load_and_parse_config_reports_a_missing_file() {
 }
 
 #[test]
-fn parse_config_defaults_the_log_read_budget_for_a_config_written_before_it_existed() {
-    let older = valid_yaml().replace("  log_read_max_bytes: 4194304\n", "");
+fn parse_config_defaults_the_settings_a_config_written_before_them_lacks() {
+    let yaml = valid_yaml();
+    let kept: Vec<&str> = yaml
+        .lines()
+        .filter(|line| {
+            let key = line.trim_start();
+            !key.starts_with("log_read_max_bytes") && !key.starts_with("liveness_")
+        })
+        .collect();
+    let older = kept.join("\n");
     assert!(!older.contains("log_read_max_bytes"), "got: {older}");
+    assert!(!older.contains("liveness_"), "got: {older}");
 
     let cfg = parse_config(&older).expect("an older config must still start the daemon");
 
@@ -71,6 +80,8 @@ fn parse_config_defaults_the_log_read_budget_for_a_config_written_before_it_exis
         cfg.pm3.log_read_max_bytes,
         crate::config::schema::DEFAULT_LOG_READ_MAX_BYTES
     );
+    assert_eq!(cfg.pm3.liveness_poll_interval_ms, 30000);
+    assert_eq!(cfg.pm3.liveness_failure_threshold, 3);
     assert!(validate_config(&cfg).is_ok());
 }
 

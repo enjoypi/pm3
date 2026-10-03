@@ -1,21 +1,14 @@
-use std::path::Path;
-
 use super::*;
 
 const TIMEOUT_MS: u64 = 5000;
 use crate::{
-    UnitKind, UnitProgramSet, UnitSpec,
-    unit_specs::{fake_program_for, false_program, program_set, spec_for, true_program},
+    UnitKind, UnitProgramSet,
+    unit_specs::{
+        fake_program_for, false_program, installed_spec, program_set, spec_for, true_program,
+    },
 };
 
 const CONFIG_BODY: &str = "pm3:\n  home: \"~/.pm3\"\n";
-
-fn installed_spec(home: &Path, kind: UnitKind) -> UnitSpec {
-    let spec = spec_for(kind, home);
-    std::fs::create_dir_all(&spec.unit_dir).expect("prepare the unit directory");
-    std::fs::write(spec.unit_path(), "unit body").expect("install a unit file");
-    spec
-}
 
 #[tokio::test]
 async fn a_dry_run_install_prints_the_plan_and_leaves_the_disk_alone() {

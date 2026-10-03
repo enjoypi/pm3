@@ -318,12 +318,6 @@ async fn resolving_a_service_whose_file_declares_an_environment_is_refused() {
     assert!(!err.contains("eyJhIjoiZjQ2"), "got: {err}");
 }
 
-#[test]
-fn a_service_name_that_escapes_the_config_directory_has_no_path() {
-    let path = service_file_of(Path::new("/etc/pm3"), "../escape");
-    assert!(path.is_err(), "got: {path:?}");
-}
-
 #[tokio::test]
 async fn resolving_a_service_whose_name_escapes_the_config_directory_is_refused() {
     let fixture = fixture();

@@ -1,6 +1,7 @@
 use usecases::{ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
+use crate::process_records::sandbox_policy;
 
 const BWRAP_PROGRAM: &str = "bwrap";
 const PROGRAM: &str = "/usr/bin/node";
@@ -10,16 +11,12 @@ fn minimal_roots() -> Vec<String> {
 }
 
 fn policy(network: bool, writable_roots: &[&str]) -> SandboxPolicy {
-    SandboxPolicy {
-        mode: SandboxMode::WorkspaceWrite,
-        read: ReadScope::Full,
+    sandbox_policy(
+        SandboxMode::WorkspaceWrite,
+        ReadScope::Full,
         network,
-        writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
-        readable_roots: Vec::new(),
-        derived_readable_roots: Vec::new(),
-        derived_roots: Vec::new(),
-        unreadable_roots: Vec::new(),
-    }
+        writable_roots,
+    )
 }
 
 fn argv_for(policy: &SandboxPolicy) -> Vec<String> {

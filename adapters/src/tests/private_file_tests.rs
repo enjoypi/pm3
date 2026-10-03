@@ -1,18 +1,6 @@
 use super::*;
-
 #[cfg(unix)]
-fn mode_of(path: &Path) -> u32 {
-    full_mode_of(path) & 0o777
-}
-
-#[cfg(unix)]
-fn full_mode_of(path: &Path) -> u32 {
-    std::fs::metadata(path)
-        .expect("the file should exist")
-        .permissions()
-        .mode()
-        & 0o7777
-}
+use crate::platform::{full_mode_of, mode_of};
 
 #[tokio::test]
 async fn a_written_file_is_readable_by_its_owner_alone() {

@@ -5,7 +5,10 @@ use super::*;
 const TIMEOUT_MS: u64 = 5000;
 use crate::{
     UnitKind,
-    unit_specs::{MISSING_PROGRAM, fake_program_for, program_set, program_set_for_user, spec_for},
+    unit_specs::{
+        MISSING_PROGRAM, fake_program_for, installed_spec, program_set, program_set_for_user,
+        spec_for,
+    },
 };
 
 #[cfg(unix)]
@@ -41,13 +44,6 @@ fn write_step(dir: &Path, path: &Path) -> UnitStep {
         path: path.to_path_buf(),
         contents: "unit body".to_string(),
     }
-}
-
-fn installed_spec(home: &Path, kind: UnitKind) -> UnitSpec {
-    let spec = spec_for(kind, home);
-    std::fs::create_dir_all(&spec.unit_dir).expect("prepare the unit directory");
-    std::fs::write(spec.unit_path(), "unit body").expect("install a unit file");
-    spec
 }
 
 #[tokio::test]

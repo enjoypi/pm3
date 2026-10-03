@@ -4,15 +4,8 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::install::InstallError;
-
 #[cfg(unix)]
-fn mode_of(path: &Path) -> u32 {
-    std::fs::metadata(path)
-        .expect("the path exists")
-        .permissions()
-        .mode()
-        & 0o777
-}
+use crate::platform::mode_of;
 
 #[tokio::test]
 async fn a_binary_matching_the_destination_is_detected() {

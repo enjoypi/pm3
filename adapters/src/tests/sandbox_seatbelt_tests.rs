@@ -1,21 +1,13 @@
 use usecases::{ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
+use crate::process_records::sandbox_policy;
 
 const SEATBELT_PROGRAM: &str = "/usr/bin/sandbox-exec";
 const PROGRAM: &str = "/usr/bin/node";
 
 fn policy(mode: SandboxMode, network: bool, writable_roots: &[&str]) -> SandboxPolicy {
-    SandboxPolicy {
-        mode,
-        read: ReadScope::Full,
-        network,
-        writable_roots: writable_roots.iter().map(|r| (*r).to_string()).collect(),
-        readable_roots: Vec::new(),
-        derived_readable_roots: Vec::new(),
-        derived_roots: Vec::new(),
-        unreadable_roots: Vec::new(),
-    }
+    sandbox_policy(mode, ReadScope::Full, network, writable_roots)
 }
 
 fn profile_of(policy: &SandboxPolicy) -> String {

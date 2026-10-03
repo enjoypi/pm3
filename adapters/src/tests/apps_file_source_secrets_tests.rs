@@ -23,6 +23,7 @@ async fn an_encrypted_environment_reaches_the_service() {
             EnvValue::new("TUNNEL_TOKEN", "eyJhIjoiZjQ2", EnvScope::App),
         ]
     );
+    assert_eq!(spec.env_origin, usecases::EnvOrigin::Encrypted);
 }
 
 #[tokio::test]
@@ -45,31 +46,6 @@ async fn an_encrypted_environment_wins_over_a_plaintext_one() {
         spec.env
             .contains(&EnvValue::new("SOURCE", "encrypted", EnvScope::App)),
         "the encrypted sidecar is the one that counts, got {:?}",
-        spec.env
-    );
-}
-
-#[tokio::test]
-async fn an_encrypted_environment_opens_without_a_declared_identity() {
-    let mut fixture = fixture();
-    register_service(&fixture.source, "web");
-    write_env_file(&fixture.source, "web", "SOURCE=plaintext\n");
-    write_enc_file(&fixture.source, "web", "SOURCE: ENC[fake]\n");
-    with_decryptor(
-        &mut fixture.source,
-        "printf 'SOURCE=encrypted\\n'",
-        "echo SOURCE=encrypted",
-    );
-    fixture.source.config.sops_identity_file = String::new();
-    let spec = fixture
-        .source
-        .resolve_service("web")
-        .await
-        .expect("the service should resolve");
-    assert!(
-        spec.env
-            .contains(&EnvValue::new("SOURCE", "encrypted", EnvScope::App)),
-        "a decryptor that finds its own key wins over the plain sidecar, got {:?}",
         spec.env
     );
 }
@@ -221,24 +197,6 @@ async fn an_unreachable_encrypted_sidecar_stops_the_service_from_resolving() {
 }
 
 #[tokio::test]
-async fn a_decrypted_environment_is_remembered_as_its_own_origin() {
-    let mut fixture = fixture();
-    register_service(&fixture.source, "web");
-    write_enc_file(&fixture.source, "web", "TOKEN: ENC[fake]\n");
-    with_decryptor(
-        &mut fixture.source,
-        "printf 'TOKEN=abc\\n'",
-        "echo TOKEN=abc",
-    );
-    let spec = fixture
-        .source
-        .resolve_service("web")
-        .await
-        .expect("the service should resolve");
-    assert_eq!(spec.env_origin, usecases::EnvOrigin::Encrypted);
-}
-
-#[tokio::test]
 async fn a_sidecar_pm3_never_opened_is_remembered_as_sealed() {
     let mut fixture = fixture();
     register_service(&fixture.source, "web");
@@ -314,34 +272,5 @@ async fn a_decryptor_that_needs_no_identity_still_opens_a_service_secret() {
         usecases::EnvOrigin::Encrypted,
         "got: {:?}",
         spec.env_origin
-    );
-}
-
-#[tokio::test]
-async fn a_refusal_without_an_identity_leaves_a_service_secret_sealed() {
-    let mut fixture = fixture();
-    with_decryptor(&mut fixture.source, "exit 1", "exit /b 1");
-    fixture.source.config.sops_identity_file = String::new();
-    register_service(&fixture.source, "web");
-    write_enc_file(&fixture.source, "web", "TOKEN: ENC[fake]\n");
-    write_env_file(&fixture.source, "web", "PORT=8080\n");
-
-    let spec = fixture
-        .source
-        .resolve_service("web")
-        .await
-        .expect("without a declared identity pm3 only tries, it does not insist");
-
-    assert_eq!(
-        spec.env_origin,
-        usecases::EnvOrigin::Sealed,
-        "got: {:?}",
-        spec.env_origin
-    );
-    assert!(
-        spec.env
-            .contains(&EnvValue::new("PORT", "8080", EnvScope::App)),
-        "the plain sidecar still stands, got: {:?}",
-        spec.env
     );
 }

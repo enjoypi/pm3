@@ -146,6 +146,7 @@ async fn stopping_an_app_forwards_the_selector() {
             "web".to_string()
         )))
     );
+    assert_eq!(reply_of(&exchange.body).report, "stopped web");
 }
 
 #[tokio::test]
@@ -160,14 +161,6 @@ async fn resetting_an_app_forwards_the_selector() {
             "web".to_string()
         )))
     );
-}
-
-#[tokio::test]
-async fn resetting_an_app_confirms_the_app() {
-    let outcome = Ok(SupervisionReply::Reset {
-        name: "web".to_string(),
-    });
-    let exchange = exchange(outcome, post_to("/apps/web/reset", "")).await;
     assert_eq!(reply_of(&exchange.body).report, "reset web");
 }
 
@@ -185,15 +178,6 @@ async fn signalling_an_app_forwards_the_selector_and_the_signal() {
             signal: "HUP".to_string(),
         })
     );
-}
-
-#[tokio::test]
-async fn signalling_an_app_confirms_the_delivery() {
-    let outcome = Ok(SupervisionReply::Signalled {
-        name: "web".to_string(),
-        signal: "HUP".to_string(),
-    });
-    let exchange = exchange(outcome, post_to("/apps/web/signal", r#"{"signal":"HUP"}"#)).await;
     assert_eq!(reply_of(&exchange.body).report, "sent HUP to web");
 }
 
@@ -216,12 +200,6 @@ async fn signalling_a_stopped_app_answers_conflict() {
     let outcome = Err(UsecaseError::NotRunning("web".to_string()).into());
     let exchange = exchange(outcome, post_to("/apps/web/signal", r#"{"signal":"HUP"}"#)).await;
     assert_eq!(exchange.status, StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn stopping_an_app_confirms_the_app() {
-    let exchange = exchange(Ok(acknowledged("web")), post_to("/apps/web/stop", "")).await;
-    assert_eq!(reply_of(&exchange.body).report, "stopped web");
 }
 
 #[tokio::test]
@@ -288,16 +266,10 @@ async fn deleting_a_service_others_depend_on_answers_conflict() {
 }
 
 #[tokio::test]
-async fn a_rejected_spec_answers_bad_request() {
+async fn a_rejected_spec_answers_bad_request_and_explains_itself() {
     let outcome = Err(UsecaseError::Spec(SpecError::EmptyName).into());
     let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
     assert_eq!(exchange.status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn a_rejected_spec_explains_itself_in_the_body() {
-    let outcome = Err(UsecaseError::Spec(SpecError::EmptyName).into());
-    let exchange = exchange(outcome, post_to("/apps", &start_body())).await;
     assert!(
         exchange.body.contains("blank app name"),
         "got: {}",

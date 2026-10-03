@@ -3,8 +3,7 @@ use usecases::SandboxMode;
 use super::*;
 use crate::{
     apps_sections::{apps_section, every_optional_field_section},
-    config::app::parse_config,
-    config_sections::{pm3_section, telemetry_section},
+    config_sections::fixture_config,
 };
 
 pub const APP_NAME: &str = "web";
@@ -16,14 +15,7 @@ pub const LOGS_DIR: &str = "/tmp/pm3-fixture/logs";
 pub const TMP_DIR: &str = "/tmp/pm3-fixture-tmp";
 
 pub fn pm3_config(sandbox_mode: &str) -> Pm3Config {
-    let yaml = format!(
-        "{}{}",
-        pm3_section("/tmp/pm3-fixture", 1600, sandbox_mode),
-        telemetry_section("info"),
-    );
-    parse_config(&yaml)
-        .expect("fixture config should parse")
-        .pm3
+    fixture_config(HOME_DIR, sandbox_mode).pm3
 }
 
 static FIXTURE_CONFIG: std::sync::LazyLock<Pm3Config> =

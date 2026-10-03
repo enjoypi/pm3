@@ -44,12 +44,6 @@ fn the_file_sits_beside_the_service_file() {
     );
 }
 
-#[test]
-fn an_unsafe_name_never_becomes_a_path() {
-    enc_file_of(std::path::Path::new("/srv/pm3/service"), "../escape")
-        .expect_err("a traversing name should be refused");
-}
-
 #[tokio::test]
 async fn a_decrypted_file_yields_its_plain_text() {
     let text = decrypted("printf 'TOKEN=abc\\n'", "echo TOKEN=abc")

@@ -18,6 +18,13 @@ pub const UMASK: u32 = 0o077;
 pub const MAX_TASKS: u64 = 4096;
 pub const CPU_QUOTA_PERCENT: u64 = 0;
 
+pub fn installed_spec(home: &Path, kind: UnitKind) -> UnitSpec {
+    let spec = spec_for(kind, home);
+    std::fs::create_dir_all(&spec.unit_dir).expect("prepare the unit directory");
+    std::fs::write(spec.unit_path(), "unit body").expect("install a unit file");
+    spec
+}
+
 pub fn spec_for(kind: UnitKind, home: &Path) -> UnitSpec {
     let root = home.join(ROOT_DIR);
     UnitSpec {

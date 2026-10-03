@@ -67,3 +67,12 @@ pub fn telemetry_section(log_level: &str) -> String {
 "#
     )
 }
+
+pub fn fixture_config(home: &str, sandbox_mode: &str) -> crate::AppConfig {
+    let yaml = format!(
+        "{}{}",
+        pm3_section(home, 1600, sandbox_mode),
+        telemetry_section("info"),
+    );
+    crate::config::app::parse_config(&yaml).expect("the fixture config should parse")
+}
