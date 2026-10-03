@@ -114,8 +114,5 @@ fn masked_entry(entry: &EnvValue) -> EnvDisplay {
 }
 
 #[cfg(test)]
-#[path = "test_helpers/record_fixture_tests.rs"]
-pub(crate) mod test_helpers;
-#[cfg(test)]
 #[path = "tests/record_tests.rs"]
 mod tests;

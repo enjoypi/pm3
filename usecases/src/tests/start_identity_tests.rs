@@ -18,22 +18,6 @@ async fn starting_a_service_that_is_still_stopping_queues_a_restart() {
         record.runtime.pending_restart,
         "a start racing a stop must not leave the service settled and unwatched"
     );
-}
-
-#[tokio::test]
-async fn starting_a_service_that_is_still_stopping_re_arms_its_schedule() {
-    let ports = FakePorts::new(1000);
-    let mut table = ProcessTable::new();
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
-    crate::stop::stop_app(&mut table, &AppSelector::Name("api".to_string()), &ports)
-        .await
-        .expect("stop should succeed");
-
-    start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
-
-    let record = table
-        .find(&AppSelector::Name("api".to_string()))
-        .expect("record present");
     assert!(record.runtime.schedule_armed);
 }
 
@@ -43,20 +27,12 @@ async fn a_persistence_failure_lands_in_its_own_field() {
     ports.fail_save();
     let mut table = ProcessTable::new();
     let report = start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
+    assert!(report.failure.is_none(), "the service did start");
+    assert_eq!(report.outcomes.len(), 1);
     let err = report
         .unsaved
         .expect("the report should carry the persistence failure");
     assert!(matches!(err, UsecaseError::Dump(_)), "got: {err}");
-}
-
-#[tokio::test]
-async fn a_persistence_failure_does_not_pose_as_a_refused_service() {
-    let ports = FakePorts::new(1000);
-    ports.fail_save();
-    let mut table = ProcessTable::new();
-    let report = start_apps(&mut table, &[spec("api")], LOGS_DIR, &ports).await;
-    assert!(report.failure.is_none(), "the service did start");
-    assert_eq!(report.outcomes.len(), 1);
 }
 
 #[tokio::test]
@@ -81,13 +57,8 @@ async fn an_unconfined_app_runs_without_a_sandbox_wrapper() {
     let unconfined = AppSpec {
         sandbox: SandboxPolicy {
             mode: SandboxMode::DangerFullAccess,
-            read: ReadScope::Minimal,
             network: true,
-            writable_roots: Vec::new(),
-            readable_roots: Vec::new(),
-            derived_readable_roots: Vec::new(),
-            derived_roots: Vec::new(),
-            unreadable_roots: Vec::new(),
+            ..spec("api").sandbox
         },
         ..spec("api")
     };

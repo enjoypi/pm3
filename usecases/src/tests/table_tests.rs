@@ -1,7 +1,7 @@
 use entities::topo_sort;
 
 use super::*;
-use crate::record::test_helpers::{record, spec, spec_with_deps};
+use crate::ports_test_helpers::{record, spec, spec_with_deps};
 
 #[test]
 fn a_new_table_holds_no_records() {

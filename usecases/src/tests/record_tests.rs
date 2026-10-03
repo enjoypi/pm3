@@ -1,6 +1,6 @@
 use entities::{EnvScope, EnvValue, ProcessStatus, SandboxMode};
 
-use super::test_helpers::*;
+use crate::ports_test_helpers::record;
 
 #[test]
 fn view_projects_identity_and_spec_fields() {

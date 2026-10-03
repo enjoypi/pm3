@@ -187,9 +187,7 @@ async fn a_digest_read_failure_keeps_the_confirmed_survivor_running() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.fail_file_digest_for("/usr/bin/true");
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
-        .await
-        .expect("resurrect should succeed");
+    let (_, outcomes) = revived(&ports).await;
     assert_eq!(outcomes[0].kind, StartKind::Adopted);
     assert_eq!(ports.spawned_names(), Vec::<String>::new());
     assert_eq!(ports.terminated(), []);
@@ -241,9 +239,7 @@ async fn reclaimed_and_restarted_services_can_be_mixed() {
     let mut lost = stored_record("web", 1, ProcessStatus::Online);
     lost.runtime.identity = None;
     ports.seed_stored(vec![kept, lost]);
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
-        .await
-        .expect("resurrect should succeed");
+    let (_, outcomes) = revived(&ports).await;
     let kinds: Vec<(&str, StartKind)> = outcomes
         .iter()
         .map(|outcome| (outcome.name.as_str(), outcome.kind))
@@ -267,9 +263,7 @@ async fn a_survivor_pm3_cannot_probe_is_replaced_rather_than_trusted() {
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.break_probe_for(SURVIVOR_PID);
-    let outcomes = resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
-        .await
-        .expect("resurrect should succeed");
+    let (_, outcomes) = revived(&ports).await;
     assert_eq!(outcomes[0].kind, StartKind::Spawned);
 }
 
@@ -278,9 +272,7 @@ async fn a_survivor_pm3_cannot_probe_is_stopped_before_its_replacement_starts() 
     let ports = FakePorts::new(1000);
     ports.seed_stored(vec![survivor(&ports, "api")]);
     ports.break_probe_for(SURVIVOR_PID);
-    resurrect(&mut ProcessTable::new(), LOGS_DIR, KILL_TIMEOUT_MS, &ports)
-        .await
-        .expect("resurrect should succeed");
+    resurrected(&ports).await;
     assert_eq!(ports.terminated(), vec![SURVIVOR_PID]);
 }
 

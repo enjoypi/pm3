@@ -1,4 +1,4 @@
-use entities::{AppSpec, EnvScope, ProcessStatus, ReadScope, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, EnvScope, ProcessStatus, SandboxMode, SandboxPolicy};
 
 use super::*;
 use crate::{
@@ -177,7 +177,7 @@ async fn a_spawn_failure_lands_in_the_report() {
 }
 
 #[tokio::test]
-async fn a_later_failure_keeps_the_services_that_already_started() {
+async fn a_later_failure_keeps_and_persists_only_the_services_that_already_started() {
     let ports = FakePorts::new(1000);
     ports.fail_spawn_for("web");
     let mut table = ProcessTable::new();
@@ -186,35 +186,8 @@ async fn a_later_failure_keeps_the_services_that_already_started() {
     assert_eq!(report.outcomes.len(), 1);
     assert_eq!(report.outcomes[0].name, "api");
     assert!(report.failure.is_some());
-}
-
-#[tokio::test]
-async fn a_later_failure_still_persists_the_services_that_already_started() {
-    let ports = FakePorts::new(1000);
-    ports.fail_spawn_for("web");
-    let mut table = ProcessTable::new();
-    let specs = [spec_with_deps("web", &["api"]), spec("api")];
-    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
-    assert_eq!(ports.save_count(), 1);
-}
-
-#[tokio::test]
-async fn a_failed_launch_leaves_no_record_of_the_unstarted_service() {
-    let ports = FakePorts::new(1000);
-    ports.fail_spawn_for("web");
-    let mut table = ProcessTable::new();
-    let specs = [spec_with_deps("web", &["api"]), spec("api")];
-    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
     assert!(table.find(&AppSelector::Name("web".to_string())).is_none());
-}
-
-#[tokio::test]
-async fn a_failed_launch_persists_only_the_services_that_started() {
-    let ports = FakePorts::new(1000);
-    ports.fail_spawn_for("web");
-    let mut table = ProcessTable::new();
-    let specs = [spec_with_deps("web", &["api"]), spec("api")];
-    start_apps(&mut table, &specs, LOGS_DIR, &ports).await;
+    assert_eq!(ports.save_count(), 1);
     let stored_names: Vec<String> = ports
         .stored()
         .iter()

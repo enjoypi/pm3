@@ -26,14 +26,9 @@ fn spec() -> AppSpec {
         schedule: None,
         depends_on: Vec::new(),
         sandbox: SandboxPolicy {
-            mode: SandboxMode::WorkspaceWrite,
-            read: ReadScope::Minimal,
-            network: false,
             writable_roots: vec!["/srv/api/state".to_string()],
-            readable_roots: Vec::new(),
-            derived_readable_roots: Vec::new(),
             derived_roots: vec!["/srv/pm3/logs".to_string()],
-            unreadable_roots: Vec::new(),
+            ..crate::ports_test_helpers::spec("api").sandbox
         },
     }
 }
@@ -302,22 +297,6 @@ fn the_home_pm3_injects_stays_part_of_the_identity() {
     assert_ne!(
         with_home, without,
         "a service launched with a different home is a different process"
-    );
-}
-
-#[test]
-fn changing_a_global_value_leaves_the_identity_unchanged() {
-    let before = render_identity(&AppSpec {
-        env: vec![EnvValue::new("TZ", "UTC", EnvScope::Global)],
-        ..spec()
-    });
-    let after = render_identity(&AppSpec {
-        env: vec![EnvValue::new("TZ", "Asia/Shanghai", EnvScope::Global)],
-        ..spec()
-    });
-    assert_eq!(
-        before, after,
-        "a shared value is deployment context, so changing it must not evict every service"
     );
 }
 

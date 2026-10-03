@@ -18,19 +18,25 @@ fn identity() -> ProcessIdentity {
 }
 
 #[test]
-fn new_runtime_starts_stopped_without_pid() {
-    let runtime = ProcessRuntime::new(7, "api".to_string(), 1000);
-    assert_eq!(runtime.status, ProcessStatus::Stopped);
-    assert_eq!(runtime.pid, None);
-    assert_eq!(runtime.restart_time, 0);
-    assert_eq!(runtime.unstable_restarts, 0);
-    assert_eq!(runtime.started_at_ms, None);
-}
-
-#[test]
-fn a_new_runtime_carries_no_identity() {
-    let runtime = ProcessRuntime::new(7, "api".to_string(), 1000);
-    assert_eq!(runtime.identity, None);
+fn new_runtime_starts_stopped_with_nothing_recorded() {
+    assert_eq!(
+        ProcessRuntime::new(7, "api".to_string(), 1000),
+        ProcessRuntime {
+            pm_id: 7,
+            name: "api".to_string(),
+            pid: None,
+            status: ProcessStatus::Stopped,
+            restart_time: 0,
+            unstable_restarts: 0,
+            created_at_ms: 1000,
+            started_at_ms: None,
+            identity: None,
+            pending_restart: false,
+            supervised_restart: false,
+            liveness_failures: 0,
+            schedule_armed: false,
+        }
+    );
 }
 
 #[test]
@@ -45,14 +51,6 @@ fn record_identity_can_clear_an_unusable_capture() {
     let mut runtime = online_at(1000);
     runtime.record_identity(Some(identity()));
     runtime.record_identity(None);
-    assert_eq!(runtime.identity, None);
-}
-
-#[test]
-fn mark_exited_drops_the_identity_along_with_the_pid() {
-    let mut runtime = online_at(1000);
-    runtime.record_identity(Some(identity()));
-    runtime.mark_exited(ProcessStatus::Stopped);
     assert_eq!(runtime.identity, None);
 }
 
@@ -117,12 +115,14 @@ fn mark_stopping_keeps_the_pid_for_signalling() {
 }
 
 #[test]
-fn mark_exited_clears_pid_and_applies_status() {
+fn mark_exited_clears_pid_and_identity_and_applies_status() {
     let mut runtime = online_at(1000);
+    runtime.record_identity(Some(identity()));
     runtime.mark_exited(ProcessStatus::Errored);
     assert_eq!(runtime.status, ProcessStatus::Errored);
     assert_eq!(runtime.pid, None);
     assert_eq!(runtime.started_at_ms, None);
+    assert_eq!(runtime.identity, None);
 }
 
 #[test]
@@ -134,16 +134,11 @@ fn count_restart_increments_total_and_stores_unstable_counter() {
 }
 
 #[test]
-fn a_new_runtime_has_no_pending_restart() {
-    let runtime = ProcessRuntime::new(1, "api".to_string(), 1000);
-    assert!(!runtime.pending_restart);
-}
-
-#[test]
-fn request_restart_records_the_intent() {
+fn request_restart_records_an_unsupervised_intent() {
     let mut runtime = online_at(1000);
     runtime.request_restart();
     assert!(runtime.pending_restart);
+    assert!(!runtime.supervised_restart);
 }
 
 #[test]
@@ -249,12 +244,6 @@ fn resetting_an_errored_service_marks_it_stopped() {
 }
 
 #[test]
-fn a_new_runtime_holds_no_supervised_restart() {
-    let runtime = ProcessRuntime::new(1, "api".to_string(), 1000);
-    assert!(!runtime.supervised_restart);
-}
-
-#[test]
 fn a_supervised_request_also_expects_the_exit() {
     let mut runtime = online_at(1000);
     runtime.request_supervised_restart();
@@ -282,13 +271,6 @@ fn cancelling_clears_a_supervised_request_too() {
 }
 
 #[test]
-fn a_plain_request_is_not_supervised() {
-    let mut runtime = online_at(1000);
-    runtime.request_restart();
-    assert!(!runtime.supervised_restart);
-}
-
-#[test]
 fn a_stopping_runtime_still_reports_how_long_it_ran() {
     let mut runtime = online_at(1000);
     runtime.mark_stopping();
@@ -311,12 +293,6 @@ fn an_elapsed_run_survives_a_clock_rollback() {
     let mut runtime = online_at(1000);
     runtime.mark_stopping();
     assert_eq!(runtime.elapsed_since_launch_ms(500), None);
-}
-
-#[test]
-fn a_new_runtime_has_no_liveness_failures() {
-    let runtime = ProcessRuntime::new(1, "api".to_string(), 1000);
-    assert_eq!(runtime.liveness_failures, 0);
 }
 
 #[test]

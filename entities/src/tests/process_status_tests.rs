@@ -21,61 +21,21 @@ fn parse_rejects_unknown_status() {
 }
 
 #[test]
-fn launching_counts_as_running() {
-    assert!(ProcessStatus::Launching.is_running());
-}
-
-#[test]
-fn online_counts_as_running() {
-    assert!(ProcessStatus::Online.is_running());
-}
-
-#[test]
-fn stopping_does_not_count_as_running() {
-    assert!(!ProcessStatus::Stopping.is_running());
-}
-
-#[test]
-fn stopped_does_not_count_as_running() {
-    assert!(!ProcessStatus::Stopped.is_running());
-}
-
-#[test]
-fn errored_does_not_count_as_running() {
-    assert!(!ProcessStatus::Errored.is_running());
-}
-
-#[test]
-fn stopping_is_a_shutdown_request() {
-    assert!(ProcessStatus::Stopping.is_shutting_down());
-}
-
-#[test]
-fn online_is_not_a_shutdown_request() {
-    assert!(!ProcessStatus::Online.is_shutting_down());
-}
-
-#[test]
-fn stopped_is_settled() {
-    assert!(ProcessStatus::Stopped.is_settled());
-}
-
-#[test]
-fn errored_is_settled() {
-    assert!(ProcessStatus::Errored.is_settled());
-}
-
-#[test]
-fn launching_is_not_settled() {
-    assert!(!ProcessStatus::Launching.is_settled());
-}
-
-#[test]
-fn online_is_not_settled() {
-    assert!(!ProcessStatus::Online.is_settled());
-}
-
-#[test]
-fn stopping_is_not_settled_because_pm3_still_owns_the_process() {
-    assert!(!ProcessStatus::Stopping.is_settled());
+fn each_status_answers_every_predicate() {
+    let expected = [
+        (ProcessStatus::Launching, true, false, false),
+        (ProcessStatus::Online, true, false, false),
+        (ProcessStatus::Stopping, false, true, false),
+        (ProcessStatus::Stopped, false, false, true),
+        (ProcessStatus::Errored, false, false, true),
+    ];
+    for (status, running, shutting_down, settled) in expected {
+        assert_eq!(status.is_running(), running, "{status:?} is_running");
+        assert_eq!(
+            status.is_shutting_down(),
+            shutting_down,
+            "{status:?} is_shutting_down"
+        );
+        assert_eq!(status.is_settled(), settled, "{status:?} is_settled");
+    }
 }

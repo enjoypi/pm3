@@ -1,14 +1,10 @@
 use entities::{AppSpec, ProcessIdentity, ProcessRuntime, ProcessStatus};
 
 use super::*;
-use crate::{ports_test_helpers::spec, record::ProcessRecord};
-
-fn plain(name: &str, pm_id: u32) -> ProcessRecord {
-    ProcessRecord {
-        spec: spec(name),
-        runtime: ProcessRuntime::new(pm_id, name.to_string(), 1000),
-    }
-}
+use crate::{
+    ports_test_helpers::{record, spec},
+    record::ProcessRecord,
+};
 
 fn armed(name: &str, pm_id: u32, cron: &str) -> ProcessRecord {
     let mut record = ProcessRecord {
@@ -23,7 +19,7 @@ fn armed(name: &str, pm_id: u32, cron: &str) -> ProcessRecord {
 }
 
 fn launched(name: &str, pm_id: u32, pid: u32, token: &str) -> ProcessRecord {
-    let mut record = plain(name, pm_id);
+    let mut record = record(name, pm_id);
     record.runtime.pid = Some(pid);
     record.runtime.status = ProcessStatus::Online;
     record.runtime.identity = Some(ProcessIdentity {
@@ -57,7 +53,7 @@ fn a_running_record_without_a_pid_is_not_preserved() {
 
 #[test]
 fn a_settled_table_reports_no_survivor() {
-    let table = ProcessTable::from_records(vec![plain("api", 0)]);
+    let table = ProcessTable::from_records(vec![record("api", 0)]);
     assert_eq!(unsettled_count(&table), 0);
 }
 
@@ -65,7 +61,7 @@ fn a_settled_table_reports_no_survivor() {
 fn a_record_that_is_still_stopping_counts_as_a_survivor() {
     let mut stopping = launched("api", 0, 100, "t1");
     stopping.runtime.status = ProcessStatus::Stopping;
-    let table = ProcessTable::from_records(vec![stopping, plain("web", 1)]);
+    let table = ProcessTable::from_records(vec![stopping, record("web", 1)]);
     assert_eq!(unsettled_count(&table), 1);
 }
 
@@ -85,7 +81,7 @@ fn a_scheduled_record_the_operator_stopped_is_not_armed_again() {
 
 #[test]
 fn a_record_without_a_schedule_is_never_armed() {
-    let mut armless = plain("api", 0);
+    let mut armless = record("api", 0);
     armless.runtime.schedule_armed = true;
     let table = ProcessTable::from_records(vec![armless]);
     assert_eq!(armed_schedule_names(&table), Vec::<String>::new());
@@ -111,7 +107,7 @@ fn an_identity_token_is_read_back_from_its_record() {
 
 #[test]
 fn a_record_that_never_launched_has_no_identity_token() {
-    let table = ProcessTable::from_records(vec![plain("api", 0)]);
+    let table = ProcessTable::from_records(vec![record("api", 0)]);
     assert!(identity_token_of(&table, &AppSelector::Id(1)).is_none());
 }
 

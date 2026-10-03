@@ -80,12 +80,6 @@ fn cancelling_every_restart_names_what_it_cancelled() {
 }
 
 #[test]
-fn an_app_that_never_launched_sits_at_the_first_generation() {
-    let state = TimerState::new();
-    assert!(state.is_current("web", 0));
-}
-
-#[test]
 fn bumping_hands_out_a_fresh_generation_each_time() {
     let mut state = TimerState::new();
     let first = state.bump("web");

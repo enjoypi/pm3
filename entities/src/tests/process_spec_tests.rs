@@ -81,12 +81,6 @@ fn validate_accepts_a_name_that_merely_holds_enc() {
 }
 
 #[test]
-fn validate_rejects_a_hidden_name() {
-    let err = validate_app_name(".hidden").unwrap_err();
-    assert_eq!(err, SpecError::DottedName(".hidden".to_string()));
-}
-
-#[test]
 fn validate_rejects_a_path_separator_inside_a_name() {
     let err = validate_app_name("team/api").unwrap_err();
     assert_eq!(

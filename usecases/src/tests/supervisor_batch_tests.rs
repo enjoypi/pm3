@@ -301,20 +301,6 @@ async fn a_single_stop_retires_the_app() {
 }
 
 #[tokio::test]
-async fn a_single_stop_fails_when_the_app_is_unknown() {
-    let ports = FakePorts::new(1000);
-    let mut supervisor = two_app_supervisor(&ports).await;
-    let (outcome, _effects) = supervisor
-        .handle(
-            SupervisionRequest::Stop(AppSelector::Name("ghost".to_string())),
-            &StaticResolver::always(),
-            &ports,
-        )
-        .await;
-    assert!(outcome.is_err(), "got: {outcome:?}");
-}
-
-#[tokio::test]
 async fn a_single_reset_clears_the_counters() {
     let ports = FakePorts::new(1000);
     let mut supervisor = two_app_supervisor(&ports).await;

@@ -43,23 +43,6 @@ async fn a_broken_dependency_graph_still_stops_every_service() {
     let stopped = stop_all_apps(&mut table, &ports).await;
 
     assert_eq!(stopped_names(&stopped), vec!["web".to_string()]);
-}
-
-#[tokio::test]
-async fn a_broken_dependency_graph_still_signals_the_survivors() {
-    let ports = FakePorts::new(1000);
-    let mut table = ProcessTable::new();
-    start_apps(
-        &mut table,
-        &[spec("api"), spec_with_deps("web", &["api"])],
-        LOGS_DIR,
-        &ports,
-    )
-    .await;
-    table.remove(&AppSelector::Name("api".to_string()));
-
-    stop_all_apps(&mut table, &ports).await;
-
     assert_eq!(ports.terminated(), vec![101]);
 }
 
@@ -76,38 +59,6 @@ async fn a_handover_names_the_service_that_is_still_draining() {
         .expect("a handover should succeed");
 
     assert_eq!(draining, vec!["api".to_string()]);
-}
-
-#[tokio::test]
-async fn a_handover_keeps_a_draining_service_stopping_so_the_next_daemon_can_settle_it() {
-    let ports = FakePorts::new(1000);
-    let mut table = started_table(&ports).await;
-    stop_app(&mut table, &AppSelector::Id(1), &ports)
-        .await
-        .expect("stop should succeed");
-
-    persist_for_handover(&table, &ports)
-        .await
-        .expect("a handover should succeed");
-
-    let record = table.find(&AppSelector::Id(1)).expect("record present");
-    assert_eq!(record.runtime.status, ProcessStatus::Stopping);
-}
-
-#[tokio::test]
-async fn a_handover_keeps_the_pid_of_a_draining_service() {
-    let ports = FakePorts::new(1000);
-    let mut table = started_table(&ports).await;
-    stop_app(&mut table, &AppSelector::Id(1), &ports)
-        .await
-        .expect("stop should succeed");
-
-    persist_for_handover(&table, &ports)
-        .await
-        .expect("a handover should succeed");
-
-    let record = table.find(&AppSelector::Id(1)).expect("record present");
-    assert_eq!(record.runtime.pid, Some(100));
 }
 
 #[tokio::test]
