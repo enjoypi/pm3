@@ -75,16 +75,6 @@ fn deep_runtime(home: &SplitHome) -> PathBuf {
     home.dir.path().join("d".repeat(120))
 }
 
-#[cfg(unix)]
-fn owner_only(path: &Path) -> u32 {
-    use std::os::unix::fs::PermissionsExt as _;
-    std::fs::metadata(path)
-        .expect("the directory should exist")
-        .permissions()
-        .mode()
-        & 0o777
-}
-
 #[test]
 fn a_daemon_started_with_the_split_layout_serves_the_cli() {
     let home = split_home();
@@ -134,7 +124,7 @@ fn the_split_layout_keeps_every_root_to_its_owner() {
         home.data_root(),
     ] {
         assert_eq!(
-            owner_only(&root),
+            common::mode_of(&root),
             0o700,
             "every pm3 root stays private: {}",
             root.to_string_lossy()
@@ -163,7 +153,7 @@ fn a_confined_app_writes_its_cwd_while_the_state_root_stays_hidden() {
     let started = pm3_split(&home, &["start", apps.to_str().expect("path")]);
     assert!(started.status.success(), "{}", stdout_of(&started));
     let log = home.state_root().join("logs").join("probe-out.log");
-    wait_for_line(&log, "done");
+    common::wait_for_log(&log, "done");
 
     let cwd = home.state_root().join("apps").join("probe");
     assert!(
@@ -180,37 +170,6 @@ fn a_confined_app_writes_its_cwd_while_the_state_root_stays_hidden() {
 }
 
 #[cfg(unix)]
-fn wait_for_line(log: &Path, needle: &str) {
-    for _ in 0..200 {
-        if std::fs::read_to_string(log).is_ok_and(|text| text.contains(needle)) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    panic!(
-        "the probe never logged '{needle}': {}",
-        std::fs::read_to_string(log).unwrap_or_default()
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn a_runtime_root_that_overflows_the_socket_limit_is_refused() {
-    let home = split_home();
-    let refused = pm3_split_at(&home, &deep_runtime(&home), &["list"]);
-
-    assert!(
-        !refused.status.success(),
-        "a socket pm3 cannot bind must fail"
-    );
-    let complaint = String::from_utf8_lossy(&refused.stderr);
-    assert!(
-        complaint.contains("cannot accept the socket path"),
-        "the refusal must name the limit, got: {complaint}"
-    );
-}
-
-#[cfg(unix)]
 fn refuse_with_deep_runtime(home: &SplitHome, args: &[&str]) -> String {
     let refused = pm3_split_at(home, &deep_runtime(home), args);
     assert!(
@@ -223,24 +182,19 @@ fn refuse_with_deep_runtime(home: &SplitHome, args: &[&str]) -> String {
 
 #[cfg(unix)]
 #[test]
-fn a_daemon_refuses_a_runtime_root_that_overflows_the_socket_limit() {
+fn every_entry_refuses_a_runtime_root_that_overflows_the_socket_limit() {
     let home = split_home();
-    let complaint = refuse_with_deep_runtime(&home, &["daemon"]);
-    assert!(
-        complaint.contains("cannot accept the socket path"),
-        "the daemon must refuse before binding, got: {complaint}"
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn startup_refuses_a_runtime_root_that_overflows_the_socket_limit() {
-    let home = split_home();
-    let complaint = refuse_with_deep_runtime(&home, &["startup", "--dry-run"]);
-    assert!(
-        complaint.contains("cannot accept the socket path"),
-        "rendering a unit must refuse the same way, got: {complaint}"
-    );
+    for args in [
+        ["list"].as_slice(),
+        ["daemon"].as_slice(),
+        ["startup", "--dry-run"].as_slice(),
+    ] {
+        let complaint = refuse_with_deep_runtime(&home, args);
+        assert!(
+            complaint.contains("cannot accept the socket path"),
+            "{args:?} must refuse before binding, got: {complaint}"
+        );
+    }
 }
 
 #[cfg(windows)]

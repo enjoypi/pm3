@@ -33,13 +33,6 @@ fn task_row(home: &Home) -> String {
         .to_string()
 }
 
-fn described(home: &Home, label: &str) -> String {
-    stdout_of(&pm3(home, &["describe", TASK]))
-        .lines()
-        .find(|line| line.trim_start().starts_with(label))
-        .map_or_default(|line| line.trim_start_matches(label).trim().to_string())
-}
-
 #[test]
 fn a_scheduled_task_is_registered_without_running() {
     let home = home();
@@ -72,9 +65,12 @@ fn a_scheduled_task_advertises_its_next_fire() {
         next.contains(':'),
         "the next column reads as HH:MM, the header carries the offset, got: {next}"
     );
-    assert_eq!(described(&home, "schedule"), "* * * * *");
+    assert_eq!(
+        common::described_field(&home, TASK, "schedule"),
+        "* * * * *"
+    );
     assert!(
-        described(&home, "next fire").contains("UTC+"),
+        common::described_field(&home, TASK, "next fire").contains("UTC+"),
         "describe should stamp the zone"
     );
     shutdown_daemon(&home);
@@ -103,12 +99,12 @@ fn a_random_schedule_keeps_its_draw_when_restarted_within_its_window() {
     let started = start_task(&home, "0 0 1 ~ *", &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
 
-    let first = described(&home, "next fire");
+    let first = common::described_field(&home, TASK, "next fire");
     for _ in 0..4 {
         let restarted = pm3(&home, &["restart", TASK]);
         assert!(restarted.status.success(), "{}", stderr_of(&restarted));
         assert_eq!(
-            described(&home, "next fire"),
+            common::described_field(&home, TASK, "next fire"),
             first,
             "a restart inside a window must not redraw it"
         );

@@ -288,22 +288,6 @@ async fn a_relative_service_directory_stops_the_daemon() {
     assert!(err.contains("must be absolute"), "got: {err}");
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn a_daemon_refuses_a_home_that_overflows_the_socket_limit() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let deep = dir.path().join("d".repeat(120));
-    let config_path = write_config(dir.path(), &deep.to_string_lossy());
-    let signals = ShutdownSignals::register().expect("register the shutdown handlers");
-
-    let err = run_daemon_with_signals(&config_path.to_string_lossy(), Ok(signals))
-        .await
-        .unwrap_err()
-        .to_string();
-
-    assert!(err.contains("cannot accept the socket path"), "got: {err}");
-}
-
 #[tokio::test]
 async fn a_daemon_refuses_an_unreadable_shared_environment() {
     let dir = tempfile::tempdir().expect("temp dir");

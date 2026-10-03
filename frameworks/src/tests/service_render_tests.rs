@@ -188,14 +188,7 @@ async fn an_install_that_cannot_prepare_the_home_is_reported() {
     let home = dir.path().join("home");
     std::fs::write(&home, "blocked").expect("occupy the pm3 home");
     let config = write_config(dir.path(), &home.to_string_lossy());
-    let programs = UnitProgramSet {
-        launchctl: true_program(),
-        systemctl: true_program(),
-        loginctl: true_program(),
-        schtasks: true_program(),
-        runtime_dir: None,
-        uid: None,
-    };
+    let programs = crate::test_support::programs_all(&true_program());
     let fake_home = dir.path().to_string_lossy().into_owned();
     let context = ServiceContext {
         programs: Some(&programs),

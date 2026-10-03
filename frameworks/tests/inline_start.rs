@@ -11,10 +11,6 @@ use self::common::{
 
 const NAME: &str = "sleeper";
 
-fn service_file_at(home: &self::common::Home) -> std::path::PathBuf {
-    home.root.join("service").join(format!("{NAME}.yaml"))
-}
-
 fn start_inline(home: &self::common::Home, extra: &[&str]) -> std::process::Output {
     let mut args = vec!["start", "--name", NAME];
     args.extend_from_slice(extra);
@@ -57,7 +53,7 @@ fn an_inline_program_becomes_a_managed_service() {
     );
 
     assert!(
-        service_file_at(&home).is_file(),
+        common::service_file(&home, NAME).is_file(),
         "the service file should exist"
     );
     assert!(
@@ -73,7 +69,8 @@ fn the_config_file_carries_no_machine_specific_paths() {
     let home = home();
     let started = start_inline(&home, &[]);
     assert!(started.status.success(), "{}", stderr_of(&started));
-    let written = std::fs::read_to_string(service_file_at(&home)).expect("read the config file");
+    let written =
+        std::fs::read_to_string(common::service_file(&home, NAME)).expect("read the config file");
     assert!(written.contains("__sleep"), "{written}");
     assert!(
         !written.contains("cwd:"),
@@ -95,7 +92,7 @@ fn the_config_file_carries_no_machine_specific_paths() {
 fn a_changed_service_file_blocks_a_restart_until_forced() {
     let home = home();
     assert!(start_inline(&home, &[]).status.success(), "first start");
-    std::fs::write(service_file_at(&home), "apps: []\n").expect("edit the service file");
+    std::fs::write(common::service_file(&home, NAME), "apps: []\n").expect("edit the service file");
 
     let refused = start_inline(&home, &[]);
     assert!(!refused.status.success(), "a changed file needs --force");
@@ -204,7 +201,7 @@ fn deleting_a_service_removes_its_file() {
     let deleted = pm3(&home, &["delete", NAME]);
     assert!(deleted.status.success(), "{}", stderr_of(&deleted));
     assert!(
-        !service_file_at(&home).exists(),
+        !common::service_file(&home, NAME).exists(),
         "the service file should be removed"
     );
     shutdown_daemon(&home);

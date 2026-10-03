@@ -44,14 +44,6 @@ fn the_err_and_all_log_flags_conflict() {
 }
 
 #[tokio::test]
-async fn the_sleep_target_returns_nothing_to_print() {
-    let printed = execute(parse(&["pm3", "__sleep", "1"]))
-        .await
-        .expect("should sleep");
-    assert_eq!(printed, None);
-}
-
-#[tokio::test]
 async fn dispatching_a_command_prints_its_output() {
     let dir = tempfile::tempdir().expect("temp dir");
     let config = crate::test_support::write_config(dir.path(), "/tmp/pm3-cli-check");

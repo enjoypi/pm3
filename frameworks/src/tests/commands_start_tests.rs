@@ -82,21 +82,6 @@ async fn starting_inline_without_a_config_fails() {
 }
 
 #[tokio::test]
-async fn starting_inline_with_a_program_off_the_search_path_fails() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let config = usable_config(dir.path());
-    let err = start_inline(
-        &config,
-        &inline_request("pm3-not-a-real-program", &[]),
-        false,
-    )
-    .await
-    .unwrap_err()
-    .to_string();
-    assert!(err.contains("cannot find"), "got: {err}");
-}
-
-#[tokio::test]
 async fn starting_inline_reports_a_blocked_home() {
     let dir = tempfile::tempdir().expect("temp dir");
     let config = blocked_home_config(dir.path());

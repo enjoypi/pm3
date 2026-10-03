@@ -5,36 +5,13 @@
 
 mod common;
 
-#[cfg(unix)]
-use std::{
-    io::{Read as _, Write as _},
-    os::unix::{fs::PermissionsExt as _, net::UnixListener},
-    path::Path,
-};
-
-#[cfg(unix)]
-use self::common::stderr_of;
 use self::common::{daemon_pid, home, pm3, shutdown_daemon, stdout_of, wait_for_file};
+#[cfg(unix)]
+use self::common::{mode_of, stderr_of};
 
 #[cfg(unix)]
 const IMPOSTOR_REPLY: &[u8] =
     b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok";
-#[cfg(unix)]
-const REQUEST_SINK: usize = 1024;
-
-#[cfg(unix)]
-fn serve_plain_text(socket: &Path) {
-    let listener = UnixListener::bind(socket).expect("bind the impostor socket");
-    std::thread::spawn(move || {
-        while let Ok((mut stream, _addr)) = listener.accept() {
-            let mut sink = vec![0_u8; REQUEST_SINK];
-            let read = stream.read(&mut sink).unwrap_or_default();
-            sink.truncate(read);
-            stream.write_all(IMPOSTOR_REPLY).ok();
-        }
-    });
-}
-
 #[test]
 fn an_orphan_socket_file_is_replaced() {
     let home = home();
@@ -55,7 +32,7 @@ fn an_orphan_socket_file_is_replaced() {
 #[test]
 fn a_socket_that_answers_something_other_than_a_pm3_reply_is_reported() {
     let home = home();
-    serve_plain_text(&home.root.join("pm3.sock"));
+    common::serve_canned(&home.root.join("pm3.sock"), vec![IMPOSTOR_REPLY], false);
 
     let listed = pm3(&home, &["list"]);
     assert!(
@@ -68,15 +45,6 @@ fn a_socket_that_answers_something_other_than_a_pm3_reply_is_reported() {
         "got: {}",
         stderr_of(&listed)
     );
-}
-
-#[cfg(unix)]
-fn mode_of(path: &Path) -> u32 {
-    std::fs::metadata(path)
-        .expect("stat the path")
-        .permissions()
-        .mode()
-        & 0o777
 }
 
 #[cfg(unix)]

@@ -35,17 +35,6 @@ async fn a_live_socket_means_another_daemon_owns_it() {
     );
 }
 
-#[tokio::test]
-async fn a_stale_socket_file_is_replaced() {
-    let dir = temp_dir();
-    let path = dir.path().join("pm3.sock");
-    std::fs::write(&path, "orphan").expect("seed a stale socket file");
-    let outcome = bind_uds(&path, ACCEPT_RETRY_MS)
-        .await
-        .expect("should self-heal");
-    assert!(matches!(outcome, BindOutcome::Bound(_)), "got: {outcome:?}");
-}
-
 #[cfg(unix)]
 #[tokio::test]
 async fn a_socket_path_blocked_by_a_directory_is_reported() {

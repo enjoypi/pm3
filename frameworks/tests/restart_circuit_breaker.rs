@@ -5,12 +5,9 @@
 
 mod common;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use self::common::{
-    PROBE_INTERVAL, READY_BUDGET, SHELL, SHELL_FLAG, home, pm3, shutdown_daemon, stdout_of,
-    write_apps,
-};
+use self::common::{SHELL, SHELL_FLAG, home, pm3, shutdown_daemon, stdout_of, write_apps};
 
 fn crashing_apps(home: &common::Home) -> std::path::PathBuf {
     let cwd = home.root.to_string_lossy();
@@ -22,25 +19,12 @@ fn crashing_apps(home: &common::Home) -> std::path::PathBuf {
     )
 }
 
-fn wait_for_status(home: &common::Home, status: &str) -> String {
-    let deadline = Instant::now() + READY_BUDGET;
-    while Instant::now() < deadline {
-        let described = stdout_of(&pm3(home, &["describe", "flapper"]));
-        if described.contains(status) {
-            return described;
-        }
-        std::thread::sleep(PROBE_INTERVAL);
-    }
-    panic!("flapper should reach {status} inside the budget")
-}
-
 #[test]
 fn a_crash_loop_trips_the_breaker_and_a_reset_clears_it() {
     let home = home();
     let apps = crashing_apps(&home);
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
-    let errored = wait_for_status(&home, "errored");
+    common::start_ok(&home, &apps);
+    let errored = common::wait_for_report(&home, &["describe", "flapper"], "errored");
     assert!(
         errored.contains("restarts"),
         "describe should report the restart counter: {errored}"
@@ -86,10 +70,9 @@ fn clean_exit_apps(home: &common::Home, code: i32) -> std::path::PathBuf {
 fn a_listed_exit_code_settles_without_tripping_the_breaker() {
     let home = home();
     let apps = clean_exit_apps(&home, 3);
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
 
-    let described = wait_for_status(&home, "stopped");
+    let described = common::wait_for_report(&home, &["describe", "flapper"], "stopped");
     let restarts = described
         .lines()
         .find(|line| line.starts_with("restarts"))

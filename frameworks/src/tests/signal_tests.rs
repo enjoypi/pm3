@@ -1,37 +1,11 @@
-use std::{io, time::Duration};
+use std::io;
+#[cfg(windows)]
+use std::time::Duration;
 
 use super::*;
 
+#[cfg(windows)]
 const HANDLER_SETTLE: Duration = Duration::from_millis(200);
-
-#[cfg(unix)]
-async fn signal_self(name: &str) {
-    let pid = std::process::id().to_string();
-    let status = tokio::process::Command::new("/bin/kill")
-        .args([name, &pid])
-        .status()
-        .await
-        .expect("should signal this process");
-    assert!(status.success(), "kill {name} should succeed");
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn sigint_is_swallowed_and_only_sigterm_stops_the_daemon() {
-    let signals = ShutdownSignals::register().expect("register the shutdown handlers");
-    let waiting = tokio::spawn(signals.wait());
-    tokio::time::sleep(HANDLER_SETTLE).await;
-
-    signal_self("-INT").await;
-    tokio::time::sleep(HANDLER_SETTLE).await;
-    assert!(!waiting.is_finished(), "SIGINT must not stop the daemon");
-
-    signal_self("-TERM").await;
-    tokio::time::timeout(Duration::from_secs(5), waiting)
-        .await
-        .expect("SIGTERM should stop the daemon")
-        .expect("join");
-}
 
 #[cfg(unix)]
 #[tokio::test]

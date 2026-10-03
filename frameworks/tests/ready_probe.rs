@@ -6,7 +6,7 @@
 mod common;
 
 use self::common::{
-    EXEC_SLEEPER, NAP, SHELL, SHELL_FLAG, daemon_log, home, pm3, shutdown_daemon, stdout_of,
+    EXEC_SLEEPER, NAP, SHELL, SHELL_FLAG, daemon_log, home, shutdown_daemon, stdout_of,
     wait_for_listing, write_apps,
 };
 
@@ -32,8 +32,7 @@ fn probed_apps(
 fn an_app_with_a_passing_probe_comes_online() {
     let home = home();
     let apps = probed_apps(&home, &probe_exec("exit 0"), 5000);
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
 
     wait_for_listing(&home, "online");
     shutdown_daemon(&home);
@@ -43,8 +42,7 @@ fn an_app_with_a_passing_probe_comes_online() {
 fn an_app_that_never_becomes_ready_is_marked_errored() {
     let home = home();
     let apps = probed_apps(&home, &probe_exec("exit 1"), 500);
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
 
     let shown = wait_for_listing(&home, "errored");
     assert!(shown.contains("web"), "got: {shown}");
@@ -62,8 +60,7 @@ fn a_dependent_app_starts_after_its_dependency_is_ready() {
             "apps:\n  - name: db\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    listen_timeout_ms: 8000\n    ready_probe:\n      exec:\n{nap}    args:\n      - \"{SHELL_FLAG}\"\n      - '{EXEC_SLEEPER}'\n  - name: web\n    script: '{SHELL}'\n    cwd: '{cwd}'\n    depends_on:\n      - db\n    args:\n      - \"{SHELL_FLAG}\"\n      - '{EXEC_SLEEPER}'\n"
         ),
     );
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    let started = common::start_ok(&home, &apps);
     assert!(
         stdout_of(&started).contains("queued web"),
         "web should be queued behind the probe: {}",

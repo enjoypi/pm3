@@ -6,39 +6,26 @@
 mod common;
 
 #[cfg(unix)]
-use std::{
-    io::{Read as _, Write as _},
-    os::unix::net::UnixListener,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use self::common::{
     EXEC_SLEEPER, Home, SHELL, SHELL_FLAG, described_pid, home, pm3, process_is_alive,
-    shutdown_daemon, stdout_of, wait_for_file, write_apps,
+    shutdown_daemon, stdout_of, wait_for_file,
 };
 #[cfg(unix)]
-use self::common::{daemon_log, detach_daemon, stderr_of, wait_for_log};
+use self::common::{daemon_log, detach_daemon, stderr_of, wait_for_log, write_apps};
 
 const SERVICE: &str = "keeper";
 
 fn start_sleeper(home: &Home) -> u32 {
-    let cwd = home.root.to_string_lossy();
-    let apps = write_apps(
-        home,
-        &format!(
-            "apps:\n  - name: {SERVICE}\n    script: {}\n    cwd: '{cwd}'\n    args:\n      - \"__sleep\"\n      - \"30000\"\n",
-            common::PM3
-        ),
-    );
-    let started = pm3(home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(home, &common::sleeper_apps(home, SERVICE));
     wait_for_file(&home.root.join("pm3.pid"));
     described_pid(home, SERVICE)
 }
 
 #[cfg(unix)]
 fn secrets(home: &Home) -> PathBuf {
-    home.root.join("service").join(format!("{SERVICE}.env"))
+    common::service_dir(home).join(format!("{SERVICE}.env"))
 }
 
 #[cfg(unix)]
@@ -150,8 +137,7 @@ fn a_service_whose_program_changed_is_restarted_by_the_new_daemon() {
             script.display()
         ),
     );
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     let pid = described_pid(&home, SERVICE);
 
     detach_daemon(&home);
@@ -188,52 +174,19 @@ fn killing_the_daemon_with_its_services_leaves_nothing_running() {
     );
 }
 
-#[test]
-fn killing_with_services_tolerates_a_dump_it_cannot_write() {
-    let home = home();
-    start_sleeper(&home);
-    let dump = home.root.join("dump.yaml");
-    std::fs::remove_file(&dump).expect("drop the dump file");
-    std::fs::create_dir_all(&dump).expect("block the dump path");
-    std::fs::write(dump.join("occupied"), "state").expect("fill the blocked dump path");
-
-    let killed = pm3(&home, &["shutdown", "--with-services"]);
-
-    assert!(killed.status.success(), "{}", stdout_of(&killed));
-    std::fs::remove_dir_all(&dump).expect("unblock the dump path");
-}
-
 #[cfg(unix)]
 const IMPOSTOR_REFUSAL: &[u8] =
     b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\noops";
-#[cfg(unix)]
-const HEALTH_PROBES: usize = 2;
-
-#[cfg(unix)]
-fn serve_health_then_refusal(socket: &Path) {
-    let listener = UnixListener::bind(socket).expect("bind the impostor daemon");
-    std::thread::spawn(move || {
-        let mut probes = HEALTH_PROBES;
-        while let Ok((mut stream, _addr)) = listener.accept() {
-            let mut sink = vec![0_u8; REQUEST_SINK];
-            let read = stream.read(&mut sink).unwrap_or_default();
-            sink.truncate(read);
-            let reply = if probes > 0 {
-                probes -= 1;
-                HEALTH_REPLY
-            } else {
-                IMPOSTOR_REFUSAL
-            };
-            stream.write_all(reply).ok();
-        }
-    });
-}
 
 #[cfg(unix)]
 #[test]
 fn killing_with_services_reports_a_daemon_that_refuses_the_stop() {
     let home = home();
-    serve_health_then_refusal(&home.root.join("pm3.sock"));
+    common::serve_canned(
+        &home.root.join("pm3.sock"),
+        vec![HEALTH_REPLY, HEALTH_REPLY, IMPOSTOR_REFUSAL],
+        false,
+    );
 
     let killed = pm3(&home, &["shutdown", "--with-services"]);
 
@@ -268,30 +221,12 @@ fn killing_the_daemon_alone_leaves_the_service_running() {
 
 #[cfg(unix)]
 const HEALTH_REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
-#[cfg(unix)]
-const REQUEST_SINK: usize = 1024;
-
-#[cfg(unix)]
-fn answer_one_probe_then_vanish(socket: &Path) {
-    let listener = UnixListener::bind(socket).expect("bind the impostor socket");
-    let socket = socket.to_path_buf();
-    std::thread::spawn(move || {
-        if let Ok((mut stream, _addr)) = listener.accept() {
-            let mut sink = vec![0_u8; REQUEST_SINK];
-            let read = stream.read(&mut sink).unwrap_or_default();
-            sink.truncate(read);
-            stream.write_all(HEALTH_REPLY).ok();
-        }
-        drop(listener);
-        std::fs::remove_file(&socket).ok();
-    });
-}
 
 #[cfg(unix)]
 #[test]
 fn killing_a_daemon_that_already_left_is_treated_as_stopped() {
     let home = home();
-    answer_one_probe_then_vanish(&home.root.join("pm3.sock"));
+    common::serve_canned(&home.root.join("pm3.sock"), vec![HEALTH_REPLY], true);
 
     let killed = pm3(&home, &["shutdown"]);
     assert!(killed.status.success(), "{}", common::stderr_of(&killed));
@@ -358,7 +293,7 @@ fn killing_a_daemon_whose_pid_file_is_bogus_reports_the_refused_signal() {
 fn killing_with_services_needs_a_usable_service_directory() {
     let home = home();
     start_sleeper(&home);
-    let cfg_dir = home.root.join("service");
+    let cfg_dir = common::service_dir(&home);
     std::fs::remove_dir_all(&cfg_dir).expect("clear the service directory");
     std::fs::write(&cfg_dir, "not a directory").expect("occupy the service directory");
 

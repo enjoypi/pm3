@@ -7,8 +7,8 @@
 mod common;
 
 use self::common::{
-    Home, MINIMAL_READ, app_log, home_with_read_scope, home_with_sandbox, pm3, shutdown_daemon,
-    stdout_of, wait_for_log, workspace_of, write_apps,
+    Home, MINIMAL_READ, app_log, home_with, home_with_read_scope, shutdown_daemon, wait_for_log,
+    workspace_of, write_apps,
 };
 
 const LEAKED: &str = "leaked";
@@ -28,8 +28,7 @@ fn probe_app(home: &Home, name: &str, script: &str) -> std::path::PathBuf {
 
 fn run_probe(home: &Home, name: &str, script: &str) -> String {
     let apps = probe_app(home, name, script);
-    let started = pm3(home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(home, &apps);
     let seen = wait_for_log(&app_log(home, name), "done");
     shutdown_daemon(home);
     seen
@@ -37,7 +36,7 @@ fn run_probe(home: &Home, name: &str, script: &str) -> String {
 
 #[test]
 fn a_confined_app_cannot_read_the_credentials_of_another_service() {
-    let home = home_with_sandbox("workspace-write", false);
+    let home = home_with("workspace-write", false);
     let cfg_dir = home.root.join("service");
     std::fs::create_dir_all(&cfg_dir).expect("prepare the service directory");
     let secret = cfg_dir.join("other.env");
@@ -57,7 +56,7 @@ fn a_confined_app_cannot_read_the_credentials_of_another_service() {
 
 #[test]
 fn a_confined_app_cannot_see_the_daemon_control_socket() {
-    let home = home_with_sandbox("workspace-write", false);
+    let home = home_with("workspace-write", false);
     let socket = home.root.join("pm3.sock");
     let script = format!(
         "test -S {} && echo {VISIBLE} || echo {HIDDEN}; echo done",
@@ -73,7 +72,7 @@ fn a_confined_app_cannot_see_the_daemon_control_socket() {
 
 #[test]
 fn a_confined_app_still_reads_its_own_working_directory() {
-    let home = home_with_sandbox("workspace-write", false);
+    let home = home_with("workspace-write", false);
     let readable = std::path::PathBuf::from(workspace_of(&home)).join("payload.txt");
     std::fs::write(&readable, "payload\n").expect("write the payload");
     let script = format!(

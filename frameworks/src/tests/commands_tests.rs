@@ -143,19 +143,18 @@ async fn stopping_a_started_app_confirms_it() {
 }
 
 #[tokio::test]
-async fn a_selector_that_would_break_the_request_line_is_refused_before_dialling() {
-    let error = act_on_app("/nonexistent/config.yaml", "my app", STOP_ACTION)
-        .await
-        .unwrap_err();
-    assert!(matches!(error, Error::Spec(_)), "got: {error}");
-}
-
-#[tokio::test]
-async fn signalling_with_a_selector_that_would_escape_is_refused_before_dialling() {
-    let error = signal_app("/nonexistent/config.yaml", "my app", "HUP")
-        .await
-        .unwrap_err();
-    assert!(matches!(error, Error::Spec(_)), "got: {error}");
+async fn a_selector_that_would_escape_its_request_path_is_refused_before_dialling() {
+    let config = "/nonexistent/config.yaml";
+    let refusals = [
+        act_on_app(config, "my app", STOP_ACTION).await.map(drop),
+        signal_app(config, "my app", "HUP").await.map(drop),
+        describe_app(config, "../health", false).await.map(drop),
+        delete_app(config, "my app").await.map(drop),
+    ];
+    for refused in refusals {
+        let error = refused.unwrap_err();
+        assert!(matches!(error, Error::Spec(_)), "got: {error}");
+    }
 }
 
 #[tokio::test]
@@ -164,22 +163,6 @@ async fn signalling_without_a_config_is_reported() {
         .await
         .unwrap_err();
     assert!(!matches!(error, Error::Spec(_)), "got: {error}");
-}
-
-#[tokio::test]
-async fn a_selector_that_would_escape_the_apps_path_is_refused_before_dialling() {
-    let error = describe_app("/nonexistent/config.yaml", "../health", false)
-        .await
-        .unwrap_err();
-    assert!(matches!(error, Error::Spec(_)), "got: {error}");
-}
-
-#[tokio::test]
-async fn deleting_with_a_selector_that_would_escape_the_apps_path_is_refused() {
-    let error = delete_app("/nonexistent/config.yaml", "my app")
-        .await
-        .unwrap_err();
-    assert!(matches!(error, Error::Spec(_)), "got: {error}");
 }
 
 #[tokio::test]

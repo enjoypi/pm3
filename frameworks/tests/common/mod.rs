@@ -51,12 +51,8 @@ impl Drop for Home {
     }
 }
 
-pub const FULL_READ: &str = "full";
+const FULL_READ: &str = "full";
 pub const MINIMAL_READ: &str = "minimal";
-
-pub fn home_with_sandbox(mode: &str, network: bool) -> Home {
-    home_with(mode, network)
-}
 
 pub fn home_with_read_scope(mode: &str, network: bool, read: &str) -> Home {
     build_home(mode, read, network, START_TIMEOUT_MS)
@@ -85,7 +81,6 @@ pub struct HomeTunables {
     pub liveness_failure_threshold: u32,
     pub log_rotate_max_bytes: u64,
     pub log_rotate_interval_ms: u64,
-    pub wait_for_network: bool,
 }
 
 impl Default for HomeTunables {
@@ -96,22 +91,8 @@ impl Default for HomeTunables {
             liveness_failure_threshold: 3,
             log_rotate_max_bytes: 0,
             log_rotate_interval_ms: 60000,
-            wait_for_network: false,
         }
     }
-}
-
-pub fn home_waiting_for_network() -> Home {
-    build_home_full(
-        "danger-full-access",
-        FULL_READ,
-        true,
-        START_TIMEOUT_MS,
-        HomeTunables {
-            wait_for_network: true,
-            ..HomeTunables::default()
-        },
-    )
 }
 
 pub fn home_with_liveness_poll(liveness_poll_interval_ms: u64) -> Home {
@@ -204,7 +185,7 @@ pub fn config_yaml(
     let liveness_failure_threshold = tunables.liveness_failure_threshold;
     let log_rotate_max_bytes = tunables.log_rotate_max_bytes;
     let log_rotate_interval_ms = tunables.log_rotate_interval_ms;
-    let service = service_yaml(tunables.wait_for_network);
+    let service = service_yaml();
     format!(
         r#"pm3:
   home: '{home}'
@@ -264,7 +245,7 @@ telemetry:
     )
 }
 
-fn service_yaml(wait_for_network: bool) -> String {
+fn service_yaml() -> String {
     format!(
         r#"  service:
     label: "{SERVICE_LABEL}"
@@ -272,7 +253,7 @@ fn service_yaml(wait_for_network: bool) -> String {
     restart_condition: "always"
     max_tasks: 4096
     cpu_quota_percent: 0
-    wait_for_network: {wait_for_network}
+    wait_for_network: false
     launchctl_path: "/bin/launchctl"
     systemctl_path: "/usr/bin/systemctl"
     loginctl_path: "/usr/bin/loginctl"
@@ -323,6 +304,12 @@ pub fn pm3(home: &Home, args: &[&str]) -> Output {
             .arg(&home.config)
             .args(args),
     )
+}
+
+pub fn start_ok(home: &Home, apps: &Path) -> Output {
+    let started = pm3(home, &["start", apps.to_str().expect("path")]);
+    assert!(started.status.success(), "{}", stdout_of(&started));
+    started
 }
 
 pub fn pm3_with_stdin(home: &Home, args: &[&str], input: &str) -> Output {
@@ -388,16 +375,20 @@ pub fn wait_for_log(path: &Path, needle: &str) -> String {
 }
 
 pub fn wait_for_listing(home: &Home, needle: &str) -> String {
+    wait_for_report(home, &["list"], needle)
+}
+
+pub fn wait_for_report(home: &Home, args: &[&str], needle: &str) -> String {
     let deadline = std::time::Instant::now() + READY_BUDGET;
     let mut shown = String::new();
     while std::time::Instant::now() < deadline {
-        shown = stdout_of(&pm3(home, &["list"]));
+        shown = stdout_of(&pm3(home, args));
         if shown.contains(needle) {
             return shown;
         }
         std::thread::sleep(PROBE_INTERVAL);
     }
-    panic!("the listing should mention {needle} inside the budget, saw:\n{shown}")
+    panic!("{args:?} should mention {needle} inside the budget, saw:\n{shown}")
 }
 
 pub fn shutdown_daemon(home: &Home) {
@@ -415,17 +406,65 @@ pub fn detach_daemon(home: &Home) {
     wait_until_gone(&socket);
 }
 
-pub fn described_pid(home: &Home, name: &str) -> u32 {
-    let described = pm3(home, &["describe", name]);
-    let text = stdout_of(&described);
-    let line = text
+pub fn described_field(home: &Home, name: &str, label: &str) -> String {
+    stdout_of(&pm3(home, &["describe", name]))
         .lines()
-        .find(|line| line.trim_start().starts_with("pid"))
-        .unwrap_or_else(|| panic!("describe should report a pid, got: {text}"));
-    line.rsplit_once(' ')
-        .map(|(_label, pid)| pid.trim())
-        .and_then(|pid| pid.parse().ok())
-        .unwrap_or_else(|| panic!("describe should report a numeric pid, got: {line}"))
+        .map(str::trim_start)
+        .find(|line| line.starts_with(label))
+        .map_or_default(|line| line.trim_start_matches(label).trim().to_string())
+}
+
+pub fn described_pid(home: &Home, name: &str) -> u32 {
+    let pid = described_field(home, name, "pid");
+    pid.parse()
+        .unwrap_or_else(|_| panic!("describe should report a numeric pid, got: {pid:?}"))
+}
+
+#[cfg(unix)]
+const REQUEST_SINK: usize = 1024;
+
+#[cfg(unix)]
+pub fn serve_canned(socket: &Path, replies: Vec<&'static [u8]>, vanish: bool) {
+    use std::io::{Read as _, Write as _};
+    let listener =
+        std::os::unix::net::UnixListener::bind(socket).expect("bind the impostor socket");
+    let socket = socket.to_path_buf();
+    std::thread::spawn(move || {
+        let mut served = 0;
+        while let Ok((mut stream, _addr)) = listener.accept() {
+            let mut sink = vec![0_u8; REQUEST_SINK];
+            let read = stream.read(&mut sink).unwrap_or_default();
+            sink.truncate(read);
+            let reply = replies[served.min(replies.len() - 1)];
+            stream.write_all(reply).ok();
+            served += 1;
+            if vanish && served == replies.len() {
+                break;
+            }
+        }
+        if vanish {
+            drop(listener);
+            std::fs::remove_file(&socket).ok();
+        }
+    });
+}
+
+#[cfg(unix)]
+pub fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::metadata(path)
+        .expect("stat the path")
+        .permissions()
+        .mode()
+        & 0o777
+}
+
+pub fn service_dir(home: &Home) -> PathBuf {
+    home.root.join("service")
+}
+
+pub fn service_file(home: &Home, name: &str) -> PathBuf {
+    service_dir(home).join(format!("{name}.yaml"))
 }
 
 pub fn app_log(home: &Home, name: &str) -> PathBuf {

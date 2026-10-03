@@ -375,14 +375,6 @@ fn completion_rejects_an_unknown_shell() {
     assert!(Cli::try_parse_from(["pm3", "completion", "tcsh"]).is_err());
 }
 
-#[tokio::test]
-async fn completion_prints_the_script_and_has_no_report() {
-    let printed = execute(parse(&["pm3", "completion", "zsh"]))
-        .await
-        .expect("should generate");
-    assert!(printed.is_none(), "got: {printed:?}");
-}
-
 #[test]
 fn delete_takes_a_selector() {
     let cli = parse(&["pm3", "delete", "web"]);

@@ -22,10 +22,6 @@ fn half_startable_apps(home: &Home) -> std::path::PathBuf {
     )
 }
 
-fn service_file_at(home: &Home, name: &str) -> std::path::PathBuf {
-    home.root.join("service").join(format!("{name}.yaml"))
-}
-
 #[test]
 fn a_batch_that_only_half_starts_fails_but_keeps_the_service_it_started() {
     let home = home();
@@ -42,11 +38,11 @@ fn a_batch_that_only_half_starts_fails_but_keeps_the_service_it_started() {
         stderr_of(&started)
     );
     assert!(
-        service_file_at(&home, "web").is_file(),
+        common::service_file(&home, "web").is_file(),
         "the service that started keeps its service file"
     );
     assert!(
-        !service_file_at(&home, "broken").exists(),
+        !common::service_file(&home, "broken").exists(),
         "the service that never started is rolled back"
     );
 
@@ -124,7 +120,7 @@ fn a_start_the_daemon_cannot_record_fails_but_keeps_the_service_file() {
         stderr_of(&started)
     );
     assert!(
-        service_file_at(&home, "web").exists(),
+        common::service_file(&home, "web").exists(),
         "a service that is running must keep its service file"
     );
     std::fs::remove_dir_all(&dump).expect("unblock the dump path");

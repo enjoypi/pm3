@@ -22,16 +22,12 @@ const SHARED_STEM: &str = "pm3";
 const PLAIN_SUFFIX: &str = "env";
 const SEALED_SUFFIX: &str = "enc.yaml";
 
-fn service_dir(home: &Home) -> PathBuf {
-    home.root.join("service")
-}
-
 fn shared_file(home: &Home, suffix: &str) -> PathBuf {
     home.root.join(format!("{SHARED_STEM}.{suffix}"))
 }
 
 fn own_file(home: &Home) -> PathBuf {
-    service_dir(home).join(format!("{NAME}.{PLAIN_SUFFIX}"))
+    common::service_dir(home).join(format!("{NAME}.{PLAIN_SUFFIX}"))
 }
 
 fn seen_file(home: &Home) -> PathBuf {
@@ -39,7 +35,7 @@ fn seen_file(home: &Home) -> PathBuf {
 }
 
 fn prepare(home: &Home) {
-    std::fs::create_dir_all(service_dir(home)).expect("prepare the service directory");
+    std::fs::create_dir_all(common::service_dir(home)).expect("prepare the service directory");
 }
 
 fn write_shared(home: &Home, suffix: &str, body: &str) {
@@ -60,8 +56,7 @@ fn seen_value(home: &Home) -> String {
 
 fn start_and_wait(home: &Home) {
     let apps = echoing_app(home);
-    let started = pm3(home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(home, &apps);
     wait_for_log(&app_log(home, NAME), "done");
 }
 
@@ -171,8 +166,7 @@ fn a_shared_value_never_evicts_an_app_across_a_handover() {
             "apps:\n  - name: {NAME}\n    script: /bin/sh\n    args:\n      - \"-c\"\n      - \"echo up; sleep 300\"\n"
         ),
     );
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     wait_for_log(&app_log(&home, NAME), "up");
     let before = common::described_pid(&home, NAME);
 

@@ -11,8 +11,7 @@ use self::common::{home, pm3, shutdown_daemon, sleeper_apps, stdout_of, wait_for
 fn the_listing_reports_memory_and_cpu_for_a_running_service() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
 
     let listing = wait_for_listing(&home, "web");
     let row = listing
@@ -33,8 +32,7 @@ fn the_listing_reports_memory_and_cpu_for_a_running_service() {
 fn the_listing_renders_json_when_asked() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
 
     let shown = stdout_of(&pm3(&home, &["list", "--json"]));
     assert!(shown.contains("\"name\":\"web\""), "got: {shown}");
@@ -50,8 +48,7 @@ fn the_listing_renders_json_when_asked() {
 fn the_full_listing_adds_the_pid_and_the_sandbox() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     wait_for_listing(&home, "web");
 
     let shown = stdout_of(&pm3(&home, &["list", "--full"]));

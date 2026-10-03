@@ -14,8 +14,7 @@ use self::common::{home, pm3, shutdown_daemon, sleeper_apps, wait_for_file};
 fn a_restarted_daemon_resurrects_the_managed_apps() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     wait_for_file(&home.root.join("dump.yaml"));
 
     let first_pid = daemon_pid(&home);

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use adapters::{Pm3Config, RestartConfig, SandboxConfig, ServiceConfig};
+use adapters::{Pm3Config, RestartConfig, SandboxConfig, ServiceConfig, UnitProgramSet};
 
 pub const STOP_SIGNAL: &str = "TERM";
 pub const KILL_TIMEOUT_MS: u64 = 400;
@@ -205,4 +205,15 @@ pub fn write_apps_file(dir: &Path, body: &str) -> PathBuf {
     let path = dir.join("apps.yaml");
     std::fs::write(&path, body).expect("write the apps file");
     path
+}
+
+pub fn programs_all(program: &str) -> UnitProgramSet {
+    UnitProgramSet {
+        launchctl: program.to_string(),
+        systemctl: program.to_string(),
+        loginctl: program.to_string(),
+        schtasks: program.to_string(),
+        runtime_dir: None,
+        uid: None,
+    }
 }

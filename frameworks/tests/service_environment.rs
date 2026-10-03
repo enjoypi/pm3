@@ -18,7 +18,7 @@ use self::common::{
 };
 #[cfg(unix)]
 use self::common::{
-    PM3, daemon_log, described_pid, process_is_alive, wait_for_log, wait_until_gone,
+    PM3, daemon_log, described_pid, mode_of, process_is_alive, wait_for_log, wait_until_gone,
 };
 
 const NAME: &str = "keeper";
@@ -32,12 +32,8 @@ const OWNER_ONLY_MODE: u32 = 0o600;
 const CONTENT_BUDGET: Duration = Duration::from_secs(10);
 const CONTENT_PAUSE: Duration = Duration::from_millis(50);
 
-fn service_file(home: &Home) -> PathBuf {
-    home.root.join("service").join(format!("{NAME}.yaml"))
-}
-
 fn env_file(home: &Home) -> PathBuf {
-    home.root.join("service").join(format!("{NAME}.env"))
+    common::service_dir(home).join(format!("{NAME}.env"))
 }
 
 fn token_file(home: &Home) -> PathBuf {
@@ -45,7 +41,7 @@ fn token_file(home: &Home) -> PathBuf {
 }
 
 fn enc_file(home: &Home) -> PathBuf {
-    home.root.join("service").join(format!("{NAME}.enc.yaml"))
+    common::service_dir(home).join(format!("{NAME}.enc.yaml"))
 }
 
 fn decryptor_veto(home: &Home) -> PathBuf {
@@ -97,7 +93,7 @@ fn with_decryptor(home: &Home, token: &str) {
         1,
     );
     std::fs::write(&home.config, patched).expect("rewrite the pm3 config");
-    std::fs::create_dir_all(home.root.join("service")).expect("create the service directory");
+    std::fs::create_dir_all(common::service_dir(home)).expect("create the service directory");
     std::fs::write(
         enc_file(home),
         format!("{TOKEN_KEY}: ENC[AES256_GCM,data:x]\n"),
@@ -143,15 +139,6 @@ fn wait_for_content(path: &Path, expected: &str) -> String {
     seen
 }
 
-#[cfg(unix)]
-fn mode_of(path: &Path) -> u32 {
-    std::fs::metadata(path)
-        .expect("read the metadata")
-        .permissions()
-        .mode()
-        & 0o777
-}
-
 #[test]
 fn an_environment_file_reaches_the_process_but_never_the_service_file() {
     let home = home();
@@ -169,7 +156,8 @@ fn an_environment_file_reaches_the_process_but_never_the_service_file() {
     );
     #[cfg(unix)]
     assert_eq!(mode_of(&env_file(&home)), OWNER_ONLY_MODE);
-    let declaration = std::fs::read_to_string(service_file(&home)).expect("the service file");
+    let declaration =
+        std::fs::read_to_string(common::service_file(&home, NAME)).expect("the service file");
     assert!(
         !declaration.contains(FIRST_TOKEN),
         "the service file must stay free of credentials: {declaration}"
@@ -223,7 +211,7 @@ fn pm3_hands_the_home_to_a_managed_process() {
 fn a_declared_home_wins_over_the_one_pm3_hands_out() {
     let home = home();
     let chosen = home.root.join("elsewhere");
-    std::fs::create_dir_all(home.root.join("service")).expect("create the service directory");
+    std::fs::create_dir_all(common::service_dir(&home)).expect("create the service directory");
     std::fs::write(
         env_file(&home),
         format!("HOME={}\n", chosen.to_string_lossy()),
@@ -250,7 +238,7 @@ fn deleting_an_app_removes_its_environment_file() {
     let deleted = pm3(&home, &["delete", NAME]);
     assert!(deleted.status.success(), "{}", stdout_of(&deleted));
     assert!(!env_file(&home).exists(), "a deleted app keeps no secrets");
-    assert!(!service_file(&home).exists());
+    assert!(!common::service_file(&home, NAME).exists());
     shutdown_daemon(&home);
 }
 
@@ -285,8 +273,7 @@ fn a_decryptor_that_fails_stops_the_takeover_instead_of_evicting() {
             home.root.to_string_lossy()
         ),
     );
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     let survivor = described_pid(&home, NAME);
 
     let parted = pm3(&home, &["shutdown"]);

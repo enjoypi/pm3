@@ -28,14 +28,7 @@ struct Fixture {
 fn fixture(dir: tempfile::TempDir, config_path: String, manager: &str) -> Fixture {
     let home = dir.path().join("home");
     std::fs::create_dir_all(&home).expect("prepare the pm3 home");
-    let programs = UnitProgramSet {
-        launchctl: manager.to_string(),
-        systemctl: manager.to_string(),
-        loginctl: manager.to_string(),
-        schtasks: manager.to_string(),
-        runtime_dir: None,
-        uid: None,
-    };
+    let programs = crate::test_support::programs_all(manager);
     Fixture {
         destination: dir.path().join("dest/pm3"),
         backups: dir.path().join("backups"),

@@ -89,13 +89,8 @@ fn assert_forbidden(cargo_toml: &str, forbidden: &[&str], tables: &[&str]) {
 }
 
 #[test]
-fn frameworks_must_not_depend_on_usecases() {
-    assert_no_dependency("frameworks/Cargo.toml", &["usecases"]);
-}
-
-#[test]
-fn frameworks_must_not_depend_on_entities() {
-    assert_no_dependency("frameworks/Cargo.toml", &["entities"]);
+fn frameworks_reaches_inner_layers_only_through_adapters() {
+    assert_no_dependency("frameworks/Cargo.toml", &["usecases", "entities"]);
 }
 
 #[test]
@@ -104,13 +99,19 @@ fn frameworks_must_not_depend_on_serde_json_at_runtime() {
 }
 
 #[test]
-fn entities_must_not_depend_on_serde() {
-    assert_no_dependency("entities/Cargo.toml", &["serde"]);
-}
-
-#[test]
-fn entities_must_not_depend_on_tokio() {
-    assert_no_dependency("entities/Cargo.toml", &["tokio"]);
+fn entities_depend_on_no_outer_layer_or_serialization() {
+    assert_no_dependency(
+        "entities/Cargo.toml",
+        &[
+            "serde",
+            "tokio",
+            "usecases",
+            "adapters",
+            "frameworks",
+            "serde_yaml2",
+            "serde_json",
+        ],
+    );
 }
 
 #[test]
@@ -119,63 +120,23 @@ fn usecases_must_not_depend_on_tokio_at_runtime() {
 }
 
 #[test]
-fn usecases_must_not_depend_on_axum() {
-    assert_no_dependency("usecases/Cargo.toml", &["axum"]);
-}
-
-#[test]
-fn entities_must_not_depend_on_usecases() {
-    assert_no_dependency("entities/Cargo.toml", &["usecases"]);
-}
-
-#[test]
-fn entities_must_not_depend_on_adapters() {
-    assert_no_dependency("entities/Cargo.toml", &["adapters"]);
-}
-
-#[test]
-fn entities_must_not_depend_on_frameworks() {
-    assert_no_dependency("entities/Cargo.toml", &["frameworks"]);
-}
-
-#[test]
-fn usecases_must_not_depend_on_adapters() {
-    assert_no_dependency("usecases/Cargo.toml", &["adapters"]);
-}
-
-#[test]
-fn usecases_must_not_depend_on_frameworks() {
-    assert_no_dependency("usecases/Cargo.toml", &["frameworks"]);
+fn usecases_depend_on_no_outer_layer_or_serialization() {
+    assert_no_dependency(
+        "usecases/Cargo.toml",
+        &[
+            "axum",
+            "adapters",
+            "frameworks",
+            "serde_yaml2",
+            "serde_json",
+            "serde",
+        ],
+    );
 }
 
 #[test]
 fn adapters_must_not_depend_on_frameworks() {
     assert_no_dependency("adapters/Cargo.toml", &["frameworks"]);
-}
-
-#[test]
-fn entities_must_not_depend_on_serde_yaml2() {
-    assert_no_dependency("entities/Cargo.toml", &["serde_yaml2"]);
-}
-
-#[test]
-fn entities_must_not_depend_on_serde_json() {
-    assert_no_dependency("entities/Cargo.toml", &["serde_json"]);
-}
-
-#[test]
-fn usecases_must_not_depend_on_serde_yaml2() {
-    assert_no_dependency("usecases/Cargo.toml", &["serde_yaml2"]);
-}
-
-#[test]
-fn usecases_must_not_depend_on_serde_json() {
-    assert_no_dependency("usecases/Cargo.toml", &["serde_json"]);
-}
-
-#[test]
-fn usecases_must_not_depend_on_serde() {
-    assert_no_dependency("usecases/Cargo.toml", &["serde"]);
 }
 
 fn read_file_content(relative_path: &str) -> String {

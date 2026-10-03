@@ -19,14 +19,7 @@ fn fixture(program: &str) -> Fixture {
     let home = dir.path().join("home");
     let config = write_config(dir.path(), &home.to_string_lossy());
     let config_path = config.to_string_lossy().into_owned();
-    let programs = UnitProgramSet {
-        launchctl: program.to_string(),
-        systemctl: program.to_string(),
-        loginctl: program.to_string(),
-        schtasks: program.to_string(),
-        runtime_dir: None,
-        uid: None,
-    };
+    let programs = crate::test_support::programs_all(program);
     Fixture {
         dir,
         config_path,
@@ -309,36 +302,4 @@ fn a_session_replaces_an_inherited_root_variable_with_the_resolved_one() {
         Some("/stale"),
         "an inherited value must not shadow the root this session resolved"
     );
-}
-
-#[cfg(unix)]
-#[test]
-fn a_session_refuses_a_home_that_overflows_the_socket_limit() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let deep = dir.path().join("d".repeat(120));
-    let config_path = write_config(dir.path(), &deep.to_string_lossy());
-    let programs = UnitProgramSet {
-        launchctl: true_program(),
-        systemctl: true_program(),
-        loginctl: true_program(),
-        schtasks: true_program(),
-        runtime_dir: None,
-        uid: None,
-    };
-    let context = ServiceContext {
-        programs: Some(&programs),
-        kind: UnitKind::Systemd,
-        pm3_env: Vec::new(),
-        home_env: Some("/home/dev"),
-        runtime_dir: None,
-        uid: None,
-        account: None,
-        binary: Ok(PathBuf::from(abs("/usr/local/bin/pm3"))),
-    };
-
-    let err = open_service_session(&config_path.to_string_lossy(), &context)
-        .unwrap_err()
-        .to_string();
-
-    assert!(err.contains("cannot accept the socket path"), "got: {err}");
 }

@@ -18,8 +18,7 @@ fn chatty_apps(home: &common::Home) -> std::path::PathBuf {
 
 fn start_chatty(home: &common::Home) {
     let apps = chatty_apps(home);
-    let started = pm3(home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(home, &apps);
     wait_for_log(&app_log(home, "web"), "web-out");
     wait_for_log(&app_error_log(home, "web"), "web-err");
     wait_for_log(&app_log(home, "api"), "api-out");

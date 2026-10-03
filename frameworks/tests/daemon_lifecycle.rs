@@ -15,8 +15,7 @@ fn the_whole_lifecycle_works_through_the_cli() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
 
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    let started = common::start_ok(&home, &apps);
     assert!(
         stdout_of(&started).contains("started web"),
         "{}",
@@ -79,8 +78,7 @@ fn an_unknown_app_fails_the_command() {
 fn a_signal_command_delivers_to_the_process_group() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     let pid = self::common::described_pid(&home, "web");
 
     let signalled = pm3(&home, &["sendSignal", "USR1", "web"]);
@@ -154,8 +152,7 @@ fn a_writable_root_that_does_not_exist_yet_is_accepted() {
             "apps:\n{web}    sandbox:\n      mode: danger-full-access\n      writable_roots:\n        - '{missing}'\n"
         ),
     );
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     shutdown_daemon(&home);
 }
 
@@ -164,6 +161,7 @@ fn the_hidden_sleep_target_exits_cleanly() {
     let home = home();
     let slept = pm3(&home, &["__sleep", "10"]);
     assert!(slept.status.success(), "__sleep should exit cleanly");
+    assert!(stdout_of(&slept).is_empty(), "{}", stdout_of(&slept));
 }
 
 #[cfg(unix)]
@@ -177,8 +175,7 @@ fn a_shutdown_force_kills_a_service_that_ignores_the_stop_signal() {
             "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
         ),
     );
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     let pid = self::common::described_pid(&home, "stubborn");
 
     shutdown_daemon(&home);
@@ -198,12 +195,7 @@ fn a_shutdown_force_kills_a_service_that_ignores_the_stop_signal() {
 fn a_plain_kill_spares_online_services_but_sweeps_a_stuck_stopping_one() {
     let home = home();
     let keeper_apps = sleeper_apps(&home, "keeper");
-    let keeper_started = pm3(&home, &["start", keeper_apps.to_str().expect("path")]);
-    assert!(
-        keeper_started.status.success(),
-        "{}",
-        stdout_of(&keeper_started)
-    );
+    common::start_ok(&home, &keeper_apps);
     let keeper_pid = self::common::described_pid(&home, "keeper");
 
     let cwd = home.root.to_string_lossy();
@@ -213,12 +205,7 @@ fn a_plain_kill_spares_online_services_but_sweeps_a_stuck_stopping_one() {
             "apps:\n  - name: stubborn\n    script: /bin/sh\n    cwd: '{cwd}'\n    args:\n      - \"-c\"\n      - \"trap '' TERM; while true; do sleep 1; done\"\n"
         ),
     );
-    let stubborn_started = pm3(&home, &["start", stubborn_apps.to_str().expect("path")]);
-    assert!(
-        stubborn_started.status.success(),
-        "{}",
-        stdout_of(&stubborn_started)
-    );
+    common::start_ok(&home, &stubborn_apps);
     let stubborn_pid = self::common::described_pid(&home, "stubborn");
 
     let stopped = pm3(&home, &["stop", "stubborn"]);
@@ -253,8 +240,7 @@ fn the_all_selector_applies_to_every_app() {
             "apps:\n  - name: web\n    script: {pm3_bin}\n    cwd: '{cwd}'\n    args:\n      - \"__sleep\"\n      - \"30000\"\n  - name: api\n    script: {pm3_bin}\n    cwd: '{cwd}'\n    args:\n      - \"__sleep\"\n      - \"30000\"\n"
         ),
     );
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
 
     let stopped = pm3(&home, &["stop", "all"]);
     assert!(stopped.status.success(), "{}", stdout_of(&stopped));
@@ -325,8 +311,7 @@ fn an_app_cannot_take_the_reserved_name_all() {
 fn a_restart_without_a_declaration_fails() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     std::fs::remove_file(home.root.join("service").join("web.yaml"))
         .expect("remove the declaration");
 
@@ -343,8 +328,7 @@ fn a_restart_without_a_declaration_fails() {
 fn a_signal_windows_cannot_deliver_is_refused_and_term_ends_the_tree() {
     let home = home();
     let apps = sleeper_apps(&home, "web");
-    let started = pm3(&home, &["start", apps.to_str().expect("path")]);
-    assert!(started.status.success(), "{}", stdout_of(&started));
+    common::start_ok(&home, &apps);
     let pid = self::common::described_pid(&home, "web");
 
     let refused = pm3(&home, &["sendSignal", "USR1", "web"]);
@@ -371,7 +355,7 @@ fn a_signal_windows_cannot_deliver_is_refused_and_term_ends_the_tree() {
 #[cfg(windows)]
 #[test]
 fn a_confined_app_is_refused_where_no_sandbox_backend_exists() {
-    let home = self::common::home_with_sandbox("workspace-write", false);
+    let home = self::common::home_with("workspace-write", false);
     let cwd = self::common::workspace_of(&home);
     let invocation = self::common::shell_invocation(SLEEPER);
     let apps = self::common::write_apps(
