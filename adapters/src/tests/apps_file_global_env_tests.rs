@@ -40,8 +40,8 @@ async fn every_shared_value_carries_the_global_scope() {
     assert_eq!(
         values,
         vec![
-            EnvValue::global("TZ", "UTC"),
-            EnvValue::global("XDG_DATA_HOME", "/srv/data"),
+            EnvValue::new("TZ", "UTC", EnvScope::Global),
+            EnvValue::new("XDG_DATA_HOME", "/srv/data", EnvScope::Global),
         ],
         "got: {values:?}"
     );
@@ -60,7 +60,11 @@ async fn a_shared_value_expands_the_home_placeholder() {
         .expect("the shared environment should load");
     assert_eq!(
         values,
-        vec![EnvValue::global("XDG_DATA_HOME", "/home/dev/.local/share")],
+        vec![EnvValue::new(
+            "XDG_DATA_HOME",
+            "/home/dev/.local/share",
+            EnvScope::Global
+        )],
         "got: {values:?}"
     );
 }
@@ -86,7 +90,7 @@ async fn an_undecryptable_sidecar_without_an_identity_falls_back_to_the_plain_on
         .expect("without a declared identity pm3 only tries, it does not insist");
     assert_eq!(
         values,
-        vec![EnvValue::global("TZ", "UTC")],
+        vec![EnvValue::new("TZ", "UTC", EnvScope::Global)],
         "got: {values:?}"
     );
 }
@@ -110,7 +114,7 @@ async fn an_opened_shared_environment_reaches_every_app() {
 
     assert_eq!(
         values,
-        vec![EnvValue::global("TZ", "UTC")],
+        vec![EnvValue::new("TZ", "UTC", EnvScope::Global)],
         "got: {values:?}"
     );
 }
@@ -133,7 +137,7 @@ async fn an_opened_shared_value_keeps_its_quotes_verbatim() {
 
     assert_eq!(
         values,
-        vec![EnvValue::global("PASSWORD", "\"p@ss")],
+        vec![EnvValue::new("PASSWORD", "\"p@ss", EnvScope::Global)],
         "sops already parsed the value, got: {values:?}"
     );
 }
@@ -171,7 +175,7 @@ async fn an_opened_shared_value_expands_the_home_placeholder() {
 
     assert_eq!(
         values,
-        vec![EnvValue::global("BIN", "/home/dev/bin")],
+        vec![EnvValue::new("BIN", "/home/dev/bin", EnvScope::Global)],
         "got: {values:?}"
     );
 }
@@ -229,7 +233,7 @@ async fn the_plain_layer_hands_its_xdg_values_to_the_decryptor() {
         .expect("the shared environment should load");
 
     assert!(
-        values.contains(&EnvValue::global("SEEN", "/srv/config")),
+        values.contains(&EnvValue::new("SEEN", "/srv/config", EnvScope::Global)),
         "the decryptor must see the plain layer's xdg values, got: {values:?}"
     );
 }
@@ -252,11 +256,11 @@ async fn an_opened_shared_value_wins_over_the_plain_one() {
         .expect("the shared environment should load");
 
     assert!(
-        values.contains(&EnvValue::global("TZ", "Asia/Shanghai")),
+        values.contains(&EnvValue::new("TZ", "Asia/Shanghai", EnvScope::Global)),
         "the encrypted layer owns a key it declares, got: {values:?}"
     );
     assert!(
-        values.contains(&EnvValue::global("LANG", "C")),
+        values.contains(&EnvValue::new("LANG", "C", EnvScope::Global)),
         "a plain-only key survives, got: {values:?}"
     );
 }
@@ -280,11 +284,15 @@ async fn a_sidecar_opens_with_the_xdg_values_from_the_plain_layer() {
         .expect("a decryptor that finds its own key needs no declared identity");
 
     assert!(
-        values.contains(&EnvValue::global("XDG_CONFIG_HOME", "/srv/cfg")),
+        values.contains(&EnvValue::new(
+            "XDG_CONFIG_HOME",
+            "/srv/cfg",
+            EnvScope::Global
+        )),
         "the plain layer still stands on its own, got: {values:?}"
     );
     assert!(
-        values.contains(&EnvValue::global("TOKEN", "/srv/cfg")),
+        values.contains(&EnvValue::new("TOKEN", "/srv/cfg", EnvScope::Global)),
         "the decryptor saw the plain layer's xdg values even without an identity, got: {values:?}"
     );
 }
@@ -292,9 +300,9 @@ async fn a_sidecar_opens_with_the_xdg_values_from_the_plain_layer() {
 #[test]
 fn the_decryptor_environment_keeps_only_the_xdg_values() {
     let global = vec![
-        EnvValue::global("XDG_CONFIG_HOME", "/srv/cfg"),
-        EnvValue::global("TZ", "UTC"),
-        EnvValue::global("XDG_DATA_HOME", "/srv/data"),
+        EnvValue::new("XDG_CONFIG_HOME", "/srv/cfg", EnvScope::Global),
+        EnvValue::new("TZ", "UTC", EnvScope::Global),
+        EnvValue::new("XDG_DATA_HOME", "/srv/data", EnvScope::Global),
     ];
     let kept = decryptor_env(&global);
     assert_eq!(
@@ -321,7 +329,7 @@ async fn a_decryptor_that_needs_no_identity_still_hands_over_its_values() {
 
     assert_eq!(
         values,
-        vec![EnvValue::global("TZ", "UTC")],
+        vec![EnvValue::new("TZ", "UTC", EnvScope::Global)],
         "got: {values:?}"
     );
 }

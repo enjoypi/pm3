@@ -25,7 +25,6 @@ const EVERY_PROCESS_FLAG: &str = "-A";
 const GROUP_FORMAT: &str = "pid=,pgid=";
 const GROUP_ACTION: &str = "probe_group";
 const IDENTITY_ACTION: &str = "probe";
-const MEMORY_ACTION: &str = "probe_memory";
 const RESOURCE_ACTION: &str = "probe_resources";
 const EMPTY_SAMPLE: ResourceSample = ResourceSample {
     rss_kib: 0,
@@ -60,34 +59,21 @@ impl PsProcessProbe {
         Duration::from_millis(self.poll_interval_ms.max(1))
     }
 
-    pub(crate) async fn resident_memory_kib(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
-        self.grouped_samples(pids, MEMORY_ACTION)
-            .await
-            .into_iter()
-            .map(|(pid, sample)| (pid, sample.rss_kib))
-            .collect()
-    }
-
-    pub(crate) async fn resource_samples(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
-        self.grouped_samples(pids, RESOURCE_ACTION).await
-    }
-
-    async fn grouped_samples(
-        &self,
-        pids: &[u32],
-        action: &'static str,
-    ) -> BTreeMap<u32, ResourceSample> {
+    async fn grouped_samples(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
         if pids.is_empty() {
             return BTreeMap::new();
         }
         let joined = join_pids(pids);
         let started = Instant::now();
-        let Some(stdout) = self.ask_every_process(SAMPLE_FORMAT, &joined, action).await else {
+        let Some(stdout) = self
+            .ask_every_process(SAMPLE_FORMAT, &joined, RESOURCE_ACTION)
+            .await
+        else {
             return BTreeMap::new();
         };
         let sampled = group_totals_for(&parse_group_rows(&stdout), pids);
         log_sample_probe(
-            action,
+            RESOURCE_ACTION,
             &joined,
             sampled.len(),
             started.elapsed().as_millis(),
@@ -301,11 +287,15 @@ impl ProcessProbe for PsProcessProbe {
     }
 
     async fn resident_memory(&self, pids: &[u32]) -> BTreeMap<u32, u64> {
-        self.resident_memory_kib(pids).await
+        self.grouped_samples(pids)
+            .await
+            .into_iter()
+            .map(|(pid, sample)| (pid, sample.rss_kib))
+            .collect()
     }
 
     async fn resource_usage(&self, pids: &[u32]) -> BTreeMap<u32, ResourceSample> {
-        self.resource_samples(pids).await
+        self.grouped_samples(pids).await
     }
 
     async fn wait_group_gone(&self, pgid: u32, timeout_ms: u64) -> bool {

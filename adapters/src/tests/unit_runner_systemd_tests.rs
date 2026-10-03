@@ -202,7 +202,7 @@ async fn a_launchd_supervised_pid_comes_from_the_listing() {
         "echo '\"PID\" = 4242;'",
         "echo \"PID\" = 4242;",
     );
-    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
+    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS, None)
         .await
         .expect("the listing should be readable");
     assert_eq!(pid, Some(4242));
@@ -213,7 +213,7 @@ async fn a_systemd_supervised_pid_comes_from_the_main_pid_property() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Systemd, dir.path());
     let program = fake_program_for(dir.path(), "systemctl", "echo 4242", "echo 4242");
-    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
+    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS, None)
         .await
         .expect("the property should be readable");
     assert_eq!(pid, Some(4242));
@@ -224,7 +224,7 @@ async fn a_zero_main_pid_means_nothing_is_supervised() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Systemd, dir.path());
     let program = fake_program_for(dir.path(), "systemctl", "echo 0", "echo 0");
-    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS)
+    let pid = query_supervised_pid(&spec, &program_set(&program), TIMEOUT_MS, None)
         .await
         .expect("a zero answer is not an error");
     assert_eq!(pid, None);
@@ -234,27 +234,27 @@ async fn a_zero_main_pid_means_nothing_is_supervised() {
 async fn a_refused_pid_query_means_nothing_is_supervised() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Systemd, dir.path());
-    let pid = query_supervised_pid(&spec, &program_set(FALSE_PROGRAM), TIMEOUT_MS)
+    let pid = query_supervised_pid(&spec, &program_set(FALSE_PROGRAM), TIMEOUT_MS, None)
         .await
         .expect("a refused query is not an error");
     assert_eq!(pid, None);
 }
 
 #[tokio::test]
-async fn a_schtasks_task_has_no_manager_pid_to_read() {
+async fn a_schtasks_task_keeps_the_filed_pid() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::WinSchtasks, dir.path());
-    let pid = query_supervised_pid(&spec, &program_set(TRUE_PROGRAM), TIMEOUT_MS)
+    let pid = query_supervised_pid(&spec, &program_set(TRUE_PROGRAM), TIMEOUT_MS, Some(7))
         .await
-        .expect("a successful query is not an error");
-    assert_eq!(pid, None);
+        .expect("a schtasks task never runs a query");
+    assert_eq!(pid, Some(7));
 }
 
 #[tokio::test]
 async fn a_missing_pid_query_program_is_an_error() {
     let dir = tempfile::tempdir().expect("temp dir");
     let spec = spec_for(UnitKind::Systemd, dir.path());
-    let err = query_supervised_pid(&spec, &program_set(MISSING_PROGRAM), TIMEOUT_MS)
+    let err = query_supervised_pid(&spec, &program_set(MISSING_PROGRAM), TIMEOUT_MS, None)
         .await
         .unwrap_err()
         .to_string();

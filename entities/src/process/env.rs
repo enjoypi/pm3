@@ -45,16 +45,6 @@ impl EnvValue {
     pub fn injected(key: &str, value: &str) -> Self {
         Self::new(key, value, EnvScope::Injected)
     }
-
-    #[must_use]
-    pub fn global(key: &str, value: &str) -> Self {
-        Self::new(key, value, EnvScope::Global)
-    }
-
-    #[must_use]
-    pub fn app(key: &str, value: &str) -> Self {
-        Self::new(key, value, EnvScope::App)
-    }
 }
 
 #[must_use]

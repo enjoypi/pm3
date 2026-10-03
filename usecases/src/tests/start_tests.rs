@@ -1,4 +1,4 @@
-use entities::{AppSpec, ProcessStatus, ReadScope, SandboxMode, SandboxPolicy};
+use entities::{AppSpec, EnvScope, ProcessStatus, ReadScope, SandboxMode, SandboxPolicy};
 
 use super::*;
 use crate::{
@@ -269,7 +269,7 @@ async fn a_launched_app_receives_its_environment_as_key_value_pairs() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();
     let with_env = AppSpec {
-        env: vec![entities::EnvValue::app("PORT", "8080")],
+        env: vec![entities::EnvValue::new("PORT", "8080", EnvScope::App)],
         ..spec("api")
     };
     start_apps(&mut table, &[with_env], LOGS_DIR, &ports).await;

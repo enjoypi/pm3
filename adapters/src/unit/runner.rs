@@ -134,16 +134,19 @@ pub async fn query_supervised_pid(
     spec: &UnitSpec,
     programs: &UnitProgramSet,
     timeout_ms: u64,
+    filed: Option<u32>,
 ) -> Result<Option<u32>, UnitCommandError> {
-    let captured = capture(&supervised_pid_command(spec, programs), timeout_ms).await?;
+    let Some(command) = supervised_pid_command(spec, programs) else {
+        return Ok(filed);
+    };
+    let captured = capture(&command, timeout_ms).await?;
     if !captured.success {
         return Ok(None);
     }
-    Ok(match spec.kind {
-        UnitKind::Launchd => parse_launchd_pid(&captured.stdout),
-        UnitKind::Systemd => parse_main_pid(&captured.stdout),
-        UnitKind::WinSchtasks => None,
-    })
+    if spec.kind == UnitKind::Launchd {
+        return Ok(parse_launchd_pid(&captured.stdout));
+    }
+    Ok(parse_main_pid(&captured.stdout))
 }
 
 pub async fn hand_back_to_manager(

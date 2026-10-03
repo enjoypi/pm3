@@ -262,9 +262,7 @@ async fn a_refused_signal_still_marks_the_service_stopping_so_its_exit_is_not_a_
     let record = table.find(&AppSelector::Id(1)).expect("record present");
     assert_eq!(record.runtime.status, ProcessStatus::Stopping);
     let exit = ExitOutcome::Signalled;
-    let action = handle_child_exit(&mut table, "api", exit, &ports)
-        .await
-        .expect("exit handled");
+    let action = handle_child_exit(&mut table, "api", exit, &ports).await;
     assert_eq!(
         action,
         ExitAction::Settled {
@@ -322,9 +320,7 @@ async fn a_stopped_service_stays_down_when_the_draining_process_finally_exits() 
         .expect("stop should succeed");
 
     let exit = ExitOutcome::Code(143);
-    let action = handle_child_exit(&mut table, "api", exit, &ports)
-        .await
-        .expect("exit handled");
+    let action = handle_child_exit(&mut table, "api", exit, &ports).await;
 
     assert_eq!(
         action,

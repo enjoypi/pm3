@@ -133,11 +133,11 @@ pub fn status_command(spec: &UnitSpec, programs: &UnitProgramSet) -> UnitCommand
 }
 
 #[must_use]
-pub fn supervised_pid_command(spec: &UnitSpec, programs: &UnitProgramSet) -> UnitCommand {
+pub fn supervised_pid_command(spec: &UnitSpec, programs: &UnitProgramSet) -> Option<UnitCommand> {
     match spec.kind {
-        UnitKind::Launchd => launchctl_list(programs, &spec.label),
-        UnitKind::Systemd => systemctl_show_main_pid(programs, &spec.unit_name()),
-        UnitKind::WinSchtasks => schtasks_query(programs, &spec.label),
+        UnitKind::Launchd => Some(launchctl_list(programs, &spec.label)),
+        UnitKind::Systemd => Some(systemctl_show_main_pid(programs, &spec.unit_name())),
+        UnitKind::WinSchtasks => None,
     }
 }
 

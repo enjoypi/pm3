@@ -15,8 +15,8 @@ fn spec() -> AppSpec {
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
         cwd: "/srv/api".to_string(),
         env: vec![
-            EnvValue::app("PORT", "8080"),
-            EnvValue::app("HOME", "/srv/api"),
+            EnvValue::new("PORT", "8080", EnvScope::App),
+            EnvValue::new("HOME", "/srv/api", EnvScope::App),
         ],
         autorestart: true,
         min_uptime_ms: 1000,
@@ -62,7 +62,10 @@ fn the_environment_renders_in_key_order_however_it_was_declared() {
 #[test]
 fn duplicate_environment_keys_render_in_value_order() {
     let one = AppSpec {
-        env: vec![EnvValue::app("PORT", "8080"), EnvValue::app("PORT", "9090")],
+        env: vec![
+            EnvValue::new("PORT", "8080", EnvScope::App),
+            EnvValue::new("PORT", "9090", EnvScope::App),
+        ],
         ..spec()
     };
     let other = AppSpec {
@@ -136,7 +139,7 @@ fn a_different_working_directory_renders_differently() {
 #[test]
 fn a_different_environment_value_renders_differently() {
     let retuned = AppSpec {
-        env: vec![EnvValue::app("PORT", "9090")],
+        env: vec![EnvValue::new("PORT", "9090", EnvScope::App)],
         ..spec()
     };
     assert_ne!(render_identity(&spec()), render_identity(&retuned));
@@ -273,7 +276,7 @@ fn the_ready_probe_leaves_the_identity_unchanged() {
 #[test]
 fn the_scope_of_a_value_stays_out_of_the_identity() {
     let declared = render_identity(&AppSpec {
-        env: vec![EnvValue::app("PORT", "8080")],
+        env: vec![EnvValue::new("PORT", "8080", EnvScope::App)],
         ..spec()
     });
     let injected = render_identity(&AppSpec {
@@ -305,11 +308,11 @@ fn the_home_pm3_injects_stays_part_of_the_identity() {
 #[test]
 fn changing_a_global_value_leaves_the_identity_unchanged() {
     let before = render_identity(&AppSpec {
-        env: vec![EnvValue::global("TZ", "UTC")],
+        env: vec![EnvValue::new("TZ", "UTC", EnvScope::Global)],
         ..spec()
     });
     let after = render_identity(&AppSpec {
-        env: vec![EnvValue::global("TZ", "Asia/Shanghai")],
+        env: vec![EnvValue::new("TZ", "Asia/Shanghai", EnvScope::Global)],
         ..spec()
     });
     assert_eq!(
@@ -321,7 +324,7 @@ fn changing_a_global_value_leaves_the_identity_unchanged() {
 #[test]
 fn a_global_value_never_reaches_the_identity_at_all() {
     let with_global = render_identity(&AppSpec {
-        env: vec![EnvValue::global("TZ", "UTC")],
+        env: vec![EnvValue::new("TZ", "UTC", EnvScope::Global)],
         ..spec()
     });
     let without = render_identity(&AppSpec {
@@ -334,11 +337,11 @@ fn a_global_value_never_reaches_the_identity_at_all() {
 #[test]
 fn an_app_value_that_shadows_a_global_one_still_counts() {
     let shadowed = render_identity(&AppSpec {
-        env: vec![EnvValue::app("TZ", "UTC")],
+        env: vec![EnvValue::new("TZ", "UTC", EnvScope::App)],
         ..spec()
     });
     let inherited = render_identity(&AppSpec {
-        env: vec![EnvValue::global("TZ", "UTC")],
+        env: vec![EnvValue::new("TZ", "UTC", EnvScope::Global)],
         ..spec()
     });
     assert_ne!(

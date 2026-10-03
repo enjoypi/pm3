@@ -7,7 +7,6 @@ forbidden_ts_syntax := ':\s*any\b|\bas\s+any\b|<\s*any\s*[,>]|,\s*any\s*>|\bany\
 
 export LC_ALL := "C.UTF-8"
 export CARGO_BUILD_JOBS := env_var_or_default("CARGO_BUILD_JOBS", half_of_cpus)
-export CARGO_FLAGS := cargo_locked + " " + cargo_common_flags
 
 [doc("列出全部可用命令")]
 help:
@@ -85,10 +84,6 @@ monitor kind:
 [doc("性能采集：临时 home 起 daemon，测冷启动/RSS/start 到 Online/list 热路径，输出 markdown 表格")]
 bench:
     bun dev_scripts/bench.ts
-
-[doc("模板改名：全仓当前项目名替换为新 crate 名，随后跑 cargo check 验证")]
-rename new_name:
-    bun dev_scripts/rename.ts "$@"
 
 [doc("dev_scripts 的 TypeScript 单元测试")]
 test-scripts *args:

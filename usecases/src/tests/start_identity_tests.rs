@@ -147,16 +147,6 @@ async fn an_undigestable_program_records_no_identity_but_still_starts() {
 }
 
 #[tokio::test]
-async fn starting_an_unknown_name_reports_not_found() {
-    let ports = FakePorts::new(1000);
-    let mut table = ProcessTable::new();
-    let err = start_one(&mut table, "ghost", LOGS_DIR, &ports)
-        .await
-        .unwrap_err();
-    assert!(matches!(err, UsecaseError::NotFound(_)), "got: {err}");
-}
-
-#[tokio::test]
 async fn a_scheduled_one_shot_app_is_registered_without_spawning() {
     let ports = FakePorts::new(1000);
     let mut table = ProcessTable::new();

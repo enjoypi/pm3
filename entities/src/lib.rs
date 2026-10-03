@@ -6,7 +6,7 @@ pub use self::{
         AppSpec, DependencyError, DependencyNode, EnvOrigin, EnvScope, EnvValue, ProcessIdentity,
         ProcessRuntime, ProcessStatus, RESERVED_ALL_SELECTOR, ReadyProbe, RestartDecision,
         RestartPolicy, RuntimeError, SignalNameError, SpecError, VALID_SIGNALS,
-        decide_memory_verdict, decide_restart, is_name_letter, mask_secret, merge_environment,
+        breaches_memory_limit, decide_restart, is_name_letter, mask_secret, merge_environment,
         parse_memory_limit, parse_signal_name, topo_sort, validate_app_name, validate_spec,
     },
     sandbox::{

@@ -16,13 +16,13 @@ pub async fn handle_child_exit(
     name: &str,
     outcome: ExitOutcome,
     ports: &impl Ports,
-) -> Result<ExitAction> {
+) -> ExitAction {
     let now_ms = ports.now_ms();
-    let action = classify_exit(table, name, outcome, now_ms)?;
+    let action = classify_exit(table, name, outcome, now_ms);
     if let Err(error) = save_table(table, ports).await {
         log_unsaved_exit(name, &error);
     }
-    Ok(action)
+    action
 }
 
 fn log_unsaved_exit(app: &str, error: &UsecaseError) {
@@ -41,7 +41,9 @@ pub async fn settle_failed_probe(
     name: &str,
     ports: &impl Ports,
 ) -> Result<()> {
-    let record = table.require_by_name_mut(name)?;
+    let record = table
+        .find_by_name_mut(name)
+        .expect("internal error: the exit guard checked the record");
     record.runtime.mark_exited(ProcessStatus::Errored);
     save_table(table, ports).await?;
     Ok(())
@@ -61,12 +63,7 @@ fn settle_without_the_breaker(
         }
         return Some(ExitAction::RestartAfter { delay_ms: 0 });
     }
-    if was_stopping {
-        return Some(ExitAction::Settled {
-            status: ProcessStatus::Stopped,
-        });
-    }
-    if stops_on_this_code(record, outcome) {
+    if was_stopping || stops_on_this_code(record, outcome) {
         return Some(ExitAction::Settled {
             status: ProcessStatus::Stopped,
         });
@@ -87,12 +84,14 @@ fn classify_exit(
     name: &str,
     outcome: ExitOutcome,
     now_ms: u64,
-) -> Result<ExitAction> {
-    let record = table.require_by_name_mut(name)?;
+) -> ExitAction {
+    let record = table
+        .find_by_name_mut(name)
+        .expect("internal error: the exit guard checked the record");
 
     if let Some(settled) = settle_without_the_breaker(record, outcome) {
         record.runtime.mark_exited(ProcessStatus::Stopped);
-        return Ok(settled);
+        return settled;
     }
 
     let decision = decide_restart(
@@ -107,13 +106,13 @@ fn classify_exit(
         } => {
             record.runtime.mark_exited(ProcessStatus::Stopped);
             record.runtime.count_restart(unstable_restarts);
-            Ok(ExitAction::RestartAfter { delay_ms })
+            ExitAction::RestartAfter { delay_ms }
         }
         RestartDecision::GiveUp { unstable_restarts } => {
             let status = settled_status(outcome);
             record.runtime.mark_exited(status);
             record.runtime.unstable_restarts = unstable_restarts;
-            Ok(ExitAction::Settled { status })
+            ExitAction::Settled { status }
         }
     }
 }

@@ -75,6 +75,6 @@ pub fn service_yaml(name: &str) -> String {
 pub fn with_global_env(source: &mut SpecSource, declared: &[(&str, &str)]) {
     source.global_env = declared
         .iter()
-        .map(|(key, value)| usecases::EnvValue::global(key, value))
+        .map(|(key, value)| usecases::EnvValue::new(key, value, usecases::EnvScope::Global))
         .collect();
 }

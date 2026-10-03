@@ -58,36 +58,17 @@ fn an_amount_that_overflows_is_refused() {
 }
 
 #[test]
-fn no_limit_never_breaches() {
-    assert_eq!(decide_memory_verdict(None, u64::MAX), MemoryVerdict::Within);
-}
-
-#[test]
-fn usage_below_the_limit_stays_within() {
-    assert_eq!(
-        decide_memory_verdict(Some(1000), 999),
-        MemoryVerdict::Within
+fn only_usage_above_the_limit_breaches() {
+    assert!(
+        !breaches_memory_limit(1000, 999),
+        "below the limit stays within"
     );
-}
-
-#[test]
-fn usage_at_the_limit_stays_within() {
-    assert_eq!(
-        decide_memory_verdict(Some(1000), 1000),
-        MemoryVerdict::Within
+    assert!(
+        !breaches_memory_limit(1000, 1000),
+        "at the limit stays within"
     );
-}
-
-#[test]
-fn usage_above_the_limit_breaches() {
-    assert_eq!(
-        decide_memory_verdict(Some(1000), 1001),
-        MemoryVerdict::Breached
+    assert!(
+        breaches_memory_limit(1000, 1001),
+        "above the limit breaches"
     );
-}
-
-#[test]
-fn only_a_breach_reports_itself_as_one() {
-    assert!(MemoryVerdict::Breached.is_breached());
-    assert!(!MemoryVerdict::Within.is_breached());
 }

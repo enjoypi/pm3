@@ -241,7 +241,7 @@ async fn a_declared_home_wins_over_the_one_pm3_hands_out() {
         .expect("the service should resolve");
     assert_eq!(
         spec.env,
-        [EnvValue::app("HOME", "/srv/web")],
+        [EnvValue::new("HOME", "/srv/web", EnvScope::App)],
         "got: {:?}",
         spec.env
     );
@@ -278,8 +278,8 @@ async fn resolving_a_service_loads_the_environment_beside_its_file() {
         spec.env,
         [
             EnvValue::injected("HOME", HOST_HOME),
-            EnvValue::app("PORT", "8080"),
-            EnvValue::app("TUNNEL_TOKEN", "eyJhIjoiZjQ2"),
+            EnvValue::new("PORT", "8080", EnvScope::App),
+            EnvValue::new("TUNNEL_TOKEN", "eyJhIjoiZjQ2", EnvScope::App),
         ]
     );
 }
@@ -398,7 +398,8 @@ async fn a_shared_value_reaches_an_app_that_declares_nothing() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env.contains(&EnvValue::global("TZ", "UTC")),
+        spec.env
+            .contains(&EnvValue::new("TZ", "UTC", EnvScope::Global)),
         "got: {:?}",
         spec.env
     );
@@ -416,7 +417,8 @@ async fn an_app_value_wins_over_a_shared_one_with_the_same_key() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env.contains(&EnvValue::app("TZ", "Asia/Shanghai")),
+        spec.env
+            .contains(&EnvValue::new("TZ", "Asia/Shanghai", EnvScope::App)),
         "the app that spells a value out owns it, got: {:?}",
         spec.env
     );
@@ -434,7 +436,7 @@ async fn a_shared_value_wins_over_the_home_pm3_injects() {
         .expect("the service should resolve");
     assert_eq!(
         spec.env,
-        [EnvValue::global("HOME", "/srv/shared")],
+        [EnvValue::new("HOME", "/srv/shared", EnvScope::Global)],
         "got: {:?}",
         spec.env
     );

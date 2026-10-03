@@ -12,7 +12,7 @@ mod status;
 pub use self::{
     depgraph::{DependencyError, DependencyNode, topo_sort},
     env::{EnvScope, EnvValue, merge_environment},
-    limits::{MemoryVerdict, decide_memory_verdict, parse_memory_limit},
+    limits::{breaches_memory_limit, parse_memory_limit},
     ready::ReadyProbe,
     restart::{RestartDecision, RestartPolicy, decide_restart},
     runtime::{ProcessIdentity, ProcessRuntime, RuntimeError},

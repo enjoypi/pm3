@@ -233,14 +233,9 @@ async fn supervised_pid_of(
     programs: &UnitProgramSet,
     filed: Option<u32>,
 ) -> Result<Option<u32>> {
-    match session.spec.kind {
-        UnitKind::WinSchtasks => Ok(filed),
-        UnitKind::Launchd | UnitKind::Systemd => {
-            query_supervised_pid(&session.spec, programs, session.command_timeout_ms)
-                .await
-                .map_err(Error::from)
-        }
-    }
+    query_supervised_pid(&session.spec, programs, session.command_timeout_ms, filed)
+        .await
+        .map_err(Error::from)
 }
 
 fn takeover_satisfied(

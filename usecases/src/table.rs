@@ -77,11 +77,6 @@ impl ProcessTable {
             .ok_or_else(|| UsecaseError::NotFound(selector.to_string()))
     }
 
-    pub fn require_by_name_mut(&mut self, name: &str) -> Result<&mut ProcessRecord, UsecaseError> {
-        self.find_by_name_mut(name)
-            .ok_or_else(|| UsecaseError::NotFound(name.to_string()))
-    }
-
     #[must_use]
     pub fn find_by_name(&self, name: &str) -> Option<&ProcessRecord> {
         self.records

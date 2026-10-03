@@ -31,7 +31,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
         cwd: "/srv/web".to_string(),
-        env: vec![EnvValue::app("PORT", "8080")],
+        env: vec![EnvValue::new("PORT", "8080", usecases::EnvScope::App)],
         autorestart: true,
         min_uptime_ms: 1000,
         max_restarts: 15,

@@ -1,4 +1,4 @@
 # dev_scripts — gates and development scripts
 
-`just`'s complex recipes are all driven by the Bun/TypeScript here: `reap.ts` (leftover reaping), `monitor.ts`, `rename.ts`, `cargo_invocation.ts`, `bench.ts`, `cov.ts`（覆盖率门禁）.
+`just`'s complex recipes are all driven by the Bun/TypeScript here: `reap.ts` (leftover reaping), `monitor.ts`, `cargo_invocation.ts`, `bench.ts`, `cov.ts`（覆盖率门禁）.
 

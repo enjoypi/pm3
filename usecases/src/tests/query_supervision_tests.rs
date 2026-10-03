@@ -236,23 +236,18 @@ fn a_running_service_without_a_pid_is_not_watched() {
 fn a_queued_restart_is_handed_to_the_breaker() {
     let mut record = launched("api", 0, 4242, "token");
     record.runtime.request_restart();
-    hand_to_the_breaker(Some(&mut record));
+    hand_to_the_breaker(&mut record);
     assert!(record.runtime.supervised_restart);
 }
 
 #[test]
 fn a_restart_that_never_queued_is_left_alone() {
     let mut record = launched("api", 0, 4242, "token");
-    hand_to_the_breaker(Some(&mut record));
+    hand_to_the_breaker(&mut record);
     assert!(
         !record.runtime.supervised_restart,
         "nothing is awaiting an exit"
     );
-}
-
-#[test]
-fn a_missing_record_is_no_breaker_at_all() {
-    hand_to_the_breaker(None);
 }
 
 fn probed(name: &str, pm_id: u32, pid: u32, port: u16) -> ProcessRecord {
@@ -312,7 +307,7 @@ fn a_stopping_service_is_not_probed() {
 fn a_liveness_pass_clears_the_failure_tally() {
     let mut record = probed("api", 0, 4242, 8080);
     record.runtime.fail_liveness(3);
-    let tripped = record_liveness(Some(&mut record), &crate::ports::Readiness::Ready, 3);
+    let tripped = record_liveness(&mut record, &crate::ports::Readiness::Ready, 3);
     assert!(!tripped);
     assert_eq!(record.runtime.liveness_failures, 0);
 }
@@ -321,17 +316,8 @@ fn a_liveness_pass_clears_the_failure_tally() {
 fn a_liveness_failure_trips_at_the_threshold() {
     let mut record = probed("api", 0, 4242, 8080);
     let down = crate::ports::Readiness::Failed("down".to_string());
-    assert!(!record_liveness(Some(&mut record), &down, 2));
-    assert!(record_liveness(Some(&mut record), &down, 2));
-}
-
-#[test]
-fn a_liveness_verdict_for_a_missing_record_trips_nothing() {
-    assert!(!record_liveness(
-        None,
-        &crate::ports::Readiness::Failed("down".to_string()),
-        1
-    ));
+    assert!(!record_liveness(&mut record, &down, 2));
+    assert!(record_liveness(&mut record, &down, 2));
 }
 
 #[test]

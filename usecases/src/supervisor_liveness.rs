@@ -1,7 +1,7 @@
 use crate::{
     Ports,
     persist::save_table,
-    query::{liveness_watch_list, record_liveness, settle_stability},
+    query::{hand_to_the_breaker, liveness_watch_list, record_liveness, settle_stability},
     supervision::SupervisionEffect,
     supervisor::Supervisor,
     supervisor_log::{log_failure, log_liveness_failure, log_stability_settled},
@@ -23,15 +23,19 @@ impl Supervisor {
         }];
         for watch in liveness_watch_list(&self.table) {
             let verdict = ports.check_ready(&watch.probe).await;
-            let tripped = record_liveness(
-                self.table.find_by_name_mut(&watch.name),
-                &verdict,
-                threshold,
-            );
+            let record = self
+                .table
+                .find_by_name_mut(&watch.name)
+                .expect("internal error: the watch list only names records the table holds");
+            let tripped = record_liveness(record, &verdict, threshold);
             if tripped {
                 log_liveness_failure(&watch.name, threshold);
                 self.restart_now(&watch.name, ports, &mut effects).await;
-                self.hand_liveness_to_the_breaker(&watch.name);
+                hand_to_the_breaker(
+                    self.table
+                        .find_by_name_mut(&watch.name)
+                        .expect("internal error: a restart keeps the record in the table"),
+                );
             }
         }
         self.settle_the_stable(ports).await;
@@ -49,10 +53,6 @@ impl Supervisor {
         if let Err(error) = save_table(&self.table, ports).await {
             log_failure("settle_stability", "-", &error);
         }
-    }
-
-    fn hand_liveness_to_the_breaker(&mut self, name: &str) {
-        crate::query::hand_to_the_breaker(self.table.find_by_name_mut(name));
     }
 }
 

@@ -214,7 +214,7 @@ fn validate_rejects_zero_listen_timeout() {
 #[test]
 fn validate_rejects_empty_env_key() {
     let candidate = AppSpec {
-        env: vec![EnvValue::app("", "value")],
+        env: vec![EnvValue::new("", "value", EnvScope::App)],
         ..spec("api")
     };
     let err = validate_spec(&candidate).unwrap_err();
@@ -457,8 +457,8 @@ fn the_declared_env_count_excludes_the_values_pm3_injects() {
     let spec = AppSpec {
         env: vec![
             EnvValue::injected("HOME", "/home/dev"),
-            EnvValue::global("TZ", "UTC"),
-            EnvValue::app("PORT", "8080"),
+            EnvValue::new("TZ", "UTC", EnvScope::Global),
+            EnvValue::new("PORT", "8080", EnvScope::App),
         ],
         ..spec("api")
     };

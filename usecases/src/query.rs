@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use entities::{ProcessStatus, ReadyProbe, decide_memory_verdict};
+use entities::{ProcessStatus, ReadyProbe, breaches_memory_limit};
 
 use crate::{
     Result,
@@ -68,13 +68,11 @@ pub fn breached_memory(watched: &[MemoryWatch], sampled: &BTreeMap<u32, u64>) ->
         .iter()
         .filter_map(|watch| {
             let rss_kib = *sampled.get(&watch.pid)?;
-            decide_memory_verdict(Some(watch.limit_kib), rss_kib)
-                .is_breached()
-                .then(|| MemoryBreach {
-                    name: watch.name.clone(),
-                    rss_kib,
-                    limit_kib: watch.limit_kib,
-                })
+            breaches_memory_limit(watch.limit_kib, rss_kib).then(|| MemoryBreach {
+                name: watch.name.clone(),
+                rss_kib,
+                limit_kib: watch.limit_kib,
+            })
         })
         .collect()
 }
@@ -151,10 +149,7 @@ mod supervision_tests;
 #[path = "tests/query_tests.rs"]
 mod tests;
 
-pub const fn hand_to_the_breaker(record: Option<&mut ProcessRecord>) {
-    let Some(record) = record else {
-        return;
-    };
+pub const fn hand_to_the_breaker(record: &mut ProcessRecord) {
     if record.runtime.pending_restart {
         record.runtime.request_supervised_restart();
     }
@@ -184,13 +179,10 @@ pub fn liveness_watch_list(table: &ProcessTable) -> Vec<LivenessWatch> {
 
 #[must_use]
 pub const fn record_liveness(
-    record: Option<&mut ProcessRecord>,
+    record: &mut ProcessRecord,
     verdict: &Readiness,
     threshold: u32,
 ) -> bool {
-    let Some(record) = record else {
-        return false;
-    };
     if matches!(verdict, Readiness::Ready) {
         record.runtime.pass_liveness();
         return false;

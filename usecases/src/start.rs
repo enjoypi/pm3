@@ -261,7 +261,9 @@ async fn launch(
     ports: &impl Ports,
     mode: StartMode,
 ) -> Result<StartOutcome> {
-    let record = table.require_by_name_mut(name)?;
+    let record = table
+        .find_by_name_mut(name)
+        .expect("internal error: the caller only launches records the table holds");
 
     if !record.runtime.status.is_settled() {
         record.runtime.arm_schedule();

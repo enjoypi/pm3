@@ -169,9 +169,7 @@ impl Supervisor {
             }
             return effects;
         }
-        let action = handle_child_exit(&mut self.table, name, outcome, ports)
-            .await
-            .expect("internal error: the exit guard checked the record");
+        let action = handle_child_exit(&mut self.table, name, outcome, ports).await;
         match action {
             ExitAction::RestartAfter { delay_ms } => {
                 effects.push(self.queue_restart(name, delay_ms));
@@ -233,7 +231,11 @@ impl Supervisor {
         for breach in breached_memory(&watched, &sampled) {
             log_memory_breach(&breach);
             self.restart_now(&breach.name, ports, &mut effects).await;
-            hand_to_the_breaker(self.table.find_by_name_mut(&breach.name));
+            hand_to_the_breaker(
+                self.table
+                    .find_by_name_mut(&breach.name)
+                    .expect("internal error: a restart keeps the record in the table"),
+            );
         }
         effects
     }

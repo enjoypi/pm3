@@ -20,7 +20,7 @@ async fn an_encrypted_environment_reaches_the_service() {
         spec.env,
         [
             EnvValue::injected("HOME", HOST_HOME),
-            EnvValue::app("TUNNEL_TOKEN", "eyJhIjoiZjQ2"),
+            EnvValue::new("TUNNEL_TOKEN", "eyJhIjoiZjQ2", EnvScope::App),
         ]
     );
 }
@@ -42,7 +42,8 @@ async fn an_encrypted_environment_wins_over_a_plaintext_one() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env.contains(&EnvValue::app("SOURCE", "encrypted")),
+        spec.env
+            .contains(&EnvValue::new("SOURCE", "encrypted", EnvScope::App)),
         "the encrypted sidecar is the one that counts, got {:?}",
         spec.env
     );
@@ -66,7 +67,8 @@ async fn an_encrypted_environment_opens_without_a_declared_identity() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env.contains(&EnvValue::app("SOURCE", "encrypted")),
+        spec.env
+            .contains(&EnvValue::new("SOURCE", "encrypted", EnvScope::App)),
         "a decryptor that finds its own key wins over the plain sidecar, got {:?}",
         spec.env
     );
@@ -103,7 +105,8 @@ async fn an_encrypted_value_may_hold_spaces() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env.contains(&EnvValue::app("MOTTO", "two words")),
+        spec.env
+            .contains(&EnvValue::new("MOTTO", "two words", EnvScope::App)),
         "an unquoted dotenv value keeps its spaces, got {:?}",
         spec.env
     );
@@ -125,8 +128,11 @@ async fn an_encrypted_environment_expands_the_host_home() {
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env
-            .contains(&EnvValue::app("BIN", &format!("{HOST_HOME}/bin"))),
+        spec.env.contains(&EnvValue::new(
+            "BIN",
+            &format!("{HOST_HOME}/bin"),
+            EnvScope::App
+        )),
         "the decrypted path goes through the same $HOME expansion, got {:?}",
         spec.env
     );
@@ -148,7 +154,8 @@ async fn a_service_without_an_encrypted_sidecar_still_reads_its_plaintext_one() 
         .await
         .expect("the service should resolve");
     assert!(
-        spec.env.contains(&EnvValue::app("SOURCE", "plaintext")),
+        spec.env
+            .contains(&EnvValue::new("SOURCE", "plaintext", EnvScope::App)),
         "a configured identity alone must not conjure an encrypted sidecar, got {:?}",
         spec.env
     );
@@ -190,7 +197,7 @@ async fn an_encrypted_value_reaches_the_service_exactly_as_it_was_decrypted() {
         .expect("the service should resolve");
     assert!(
         spec.env
-            .contains(&EnvValue::app("PASSWORD", "\"p@ss\\word\"")),
+            .contains(&EnvValue::new("PASSWORD", "\"p@ss\\word\"", EnvScope::App)),
         "a decrypted secret is handed over untouched, got {:?}",
         spec.env
     );
@@ -250,7 +257,8 @@ async fn a_sidecar_pm3_never_opened_is_remembered_as_sealed() {
         "an app falling back to plaintext because no identity is configured must still stand out"
     );
     assert!(
-        spec.env.contains(&EnvValue::app("SOURCE", "plaintext")),
+        spec.env
+            .contains(&EnvValue::new("SOURCE", "plaintext", EnvScope::App)),
         "got {:?}",
         spec.env
     );
@@ -296,7 +304,8 @@ async fn a_decryptor_that_needs_no_identity_still_opens_a_service_secret() {
         .expect("a decryptor that finds its own key needs no declared identity");
 
     assert!(
-        spec.env.contains(&EnvValue::app("TOKEN", "opened")),
+        spec.env
+            .contains(&EnvValue::new("TOKEN", "opened", EnvScope::App)),
         "got: {:?}",
         spec.env
     );
@@ -330,7 +339,8 @@ async fn a_refusal_without_an_identity_leaves_a_service_secret_sealed() {
         spec.env_origin
     );
     assert!(
-        spec.env.contains(&EnvValue::app("PORT", "8080")),
+        spec.env
+            .contains(&EnvValue::new("PORT", "8080", EnvScope::App)),
         "the plain sidecar still stands, got: {:?}",
         spec.env
     );

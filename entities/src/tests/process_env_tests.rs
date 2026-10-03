@@ -10,12 +10,12 @@ fn every_environment_scope_renders_its_label() {
 
 #[test]
 fn an_app_value_wins_over_a_global_value_with_the_same_key() {
-    let global = [EnvValue::global("PORT", "8080")];
-    let app = [EnvValue::app("PORT", "9090")];
+    let global = [EnvValue::new("PORT", "8080", EnvScope::Global)];
+    let app = [EnvValue::new("PORT", "9090", EnvScope::App)];
     let merged = merge_environment(&[&global, &app]);
     assert_eq!(
         merged,
-        vec![EnvValue::app("PORT", "9090")],
+        vec![EnvValue::new("PORT", "9090", EnvScope::App)],
         "got: {merged:?}"
     );
 }
@@ -23,19 +23,19 @@ fn an_app_value_wins_over_a_global_value_with_the_same_key() {
 #[test]
 fn a_global_value_wins_over_an_injected_one() {
     let injected = [EnvValue::injected("HOME", "/root")];
-    let global = [EnvValue::global("HOME", "/home/dev")];
+    let global = [EnvValue::new("HOME", "/home/dev", EnvScope::Global)];
     let merged = merge_environment(&[&injected, &global]);
     assert_eq!(
         merged,
-        vec![EnvValue::global("HOME", "/home/dev")],
+        vec![EnvValue::new("HOME", "/home/dev", EnvScope::Global)],
         "got: {merged:?}"
     );
 }
 
 #[test]
 fn merging_keeps_every_distinct_key_in_ascending_order() {
-    let global = [EnvValue::global("TZ", "UTC")];
-    let app = [EnvValue::app("PORT", "8080")];
+    let global = [EnvValue::new("TZ", "UTC", EnvScope::Global)];
+    let app = [EnvValue::new("PORT", "8080", EnvScope::App)];
     let merged = merge_environment(&[&global, &app]);
     let keys: Vec<&str> = merged.iter().map(|entry| entry.key.as_str()).collect();
     assert_eq!(keys, ["PORT", "TZ"], "got: {keys:?}");
@@ -49,11 +49,11 @@ fn merging_no_layer_yields_nothing() {
 
 #[test]
 fn an_empty_layer_leaves_the_others_alone() {
-    let app = [EnvValue::app("PORT", "8080")];
+    let app = [EnvValue::new("PORT", "8080", EnvScope::App)];
     let merged = merge_environment(&[&[], &app]);
     assert_eq!(
         merged,
-        vec![EnvValue::app("PORT", "8080")],
+        vec![EnvValue::new("PORT", "8080", EnvScope::App)],
         "got: {merged:?}"
     );
 }

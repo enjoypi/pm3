@@ -170,14 +170,14 @@ fn contents_of(steps: &[UnitStep]) -> String {
 #[test]
 fn launchd_supervision_reads_the_pid_from_the_listing() {
     let spec = spec_for(UnitKind::Launchd, Path::new("/home/dev"));
-    let command = supervised_pid_command(&spec, &program_set(FAKE));
+    let command = supervised_pid_command(&spec, &program_set(FAKE)).expect("a launchd pid query");
     assert_eq!(command.args, ["list", "pm3-test"]);
 }
 
 #[test]
 fn systemd_supervision_reads_the_main_pid_property() {
     let spec = spec_for(UnitKind::Systemd, Path::new("/home/dev"));
-    let command = supervised_pid_command(&spec, &program_set(FAKE));
+    let command = supervised_pid_command(&spec, &program_set(FAKE)).expect("a systemd pid query");
     assert_eq!(
         command.args,
         [
@@ -242,16 +242,6 @@ fn a_schtasks_install_carries_the_rendered_task_xml() {
 fn schtasks_status_queries_the_task_listing() {
     let spec = spec_for(UnitKind::WinSchtasks, Path::new("/home/dev"));
     let command = status_command(&spec, &program_set(FAKE));
-    assert_eq!(
-        command.args,
-        ["/Query", "/TN", "pm3-test", "/V", "/FO", "LIST"]
-    );
-}
-
-#[test]
-fn schtasks_supervision_has_no_manager_pid_to_read() {
-    let spec = spec_for(UnitKind::WinSchtasks, Path::new("/home/dev"));
-    let command = supervised_pid_command(&spec, &program_set(FAKE));
     assert_eq!(
         command.args,
         ["/Query", "/TN", "pm3-test", "/V", "/FO", "LIST"]
