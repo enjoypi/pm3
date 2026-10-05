@@ -43,6 +43,8 @@ async fn run_daemon_with_signals(
 pub async fn run_daemon_with_shutdown(config_path: &str, shutdown: ShutdownFuture) -> Result<()> {
     let config = load_and_parse_config(config_path)?;
     init_telemetry(&config.telemetry, LogSink::Stdout);
+    #[cfg(unix)]
+    crate::fd_limit::lift_open_file_limit();
     let home = host_home();
     let Pm3Places { paths, cfg_dir } = resolve_places(&config.pm3, home.as_deref())?;
     ensure_layout(&paths, &cfg_dir).await?;

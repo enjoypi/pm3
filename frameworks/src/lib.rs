@@ -2,6 +2,8 @@ pub mod cli;
 mod client;
 mod commands;
 mod daemon;
+#[cfg(unix)]
+mod fd_limit;
 mod install;
 mod layout;
 mod logs;

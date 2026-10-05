@@ -502,6 +502,7 @@ dependencies = [
  "clap_complete",
  "ctor",
  "fastrand",
+ "rustix",
  "tempfile",
  "test_trace",
  "thiserror 2.0.21",
