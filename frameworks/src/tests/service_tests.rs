@@ -303,3 +303,17 @@ fn a_session_replaces_an_inherited_root_variable_with_the_resolved_one() {
         "an inherited value must not shadow the root this session resolved"
     );
 }
+
+#[test]
+fn a_home_under_another_account_cannot_open_a_service_session() {
+    let fixture = fixture(MISSING_PROGRAM);
+    let config = write_config(fixture.dir.path(), "~nobody/pm3");
+    let home = home_of(&fixture);
+    let Err(err) = open_service_session(
+        &config.to_string_lossy(),
+        &context(&fixture, UnitKind::Systemd, &home),
+    ) else {
+        panic!("a home under another account should be refused");
+    };
+    assert!(err.to_string().contains("~nobody/pm3"), "got: {err}");
+}

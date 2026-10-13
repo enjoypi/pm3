@@ -359,6 +359,7 @@ pub(crate) fn build_launch_spec(
         env: launch_environment(&spec.env),
         stdout_path: paths.stdout,
         stderr_path: paths.stderr,
+        self_responsible: spec.self_responsible,
     })
 }
 

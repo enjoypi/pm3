@@ -33,7 +33,7 @@ check-windows:
 test *args:
     bun dev_scripts/reap.ts; cargo test {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status
 
-[doc("覆盖率门禁：nightly llvm-cov 跑全部测试（含 e2e 子进程），非测试代码行与分支均须 100%")]
+[doc("覆盖率门禁：nightly llvm-cov 跑全部测试（含 e2e 子进程），非测试代码行、分支与 region 均须 100%")]
 cov *args:
     bun dev_scripts/cov.ts "$@"
 

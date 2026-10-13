@@ -376,3 +376,19 @@ fn resolve_specs_refuses_a_liveness_endpoint_without_a_port() {
     let err = resolve_one_err(&defaults(), &entry);
     assert!(err.contains("host:port"), "got: {err}");
 }
+
+#[test]
+fn a_service_file_reads_self_responsible() {
+    let entry = parse_service_file("name: web\nscript: /bin/sh\nself_responsible: true\n")
+        .expect("should parse");
+    let defaults = SpecDefaults {
+        sandbox_mode: SandboxMode::DangerFullAccess,
+        ..defaults()
+    };
+    assert!(resolve_one(&defaults, &entry).self_responsible);
+}
+
+#[test]
+fn an_app_is_not_self_responsible_unless_it_says_so() {
+    assert!(!resolve_one(&defaults(), &minimal_entry()).self_responsible);
+}

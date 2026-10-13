@@ -277,6 +277,19 @@ async fn starting_without_a_target_explains_the_usage() {
 }
 
 #[tokio::test]
+async fn starting_an_apps_file_without_a_config_fails() {
+    let outcome = execute(parse(&[
+        "pm3",
+        "--config",
+        "/nonexistent/pm3.yaml",
+        "start",
+        "apps.yaml",
+    ]))
+    .await;
+    assert!(outcome.is_err(), "got: {outcome:?}");
+}
+
+#[tokio::test]
 async fn starting_two_apps_files_is_rejected() {
     let err = execute(parse(&["pm3", "start", "a.yaml", "b.yaml"]))
         .await

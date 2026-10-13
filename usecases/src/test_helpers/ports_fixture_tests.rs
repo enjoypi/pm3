@@ -443,6 +443,7 @@ pub fn spec(name: &str) -> AppSpec {
         liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
+        self_responsible: false,
         name: name.to_string(),
         script: "/usr/bin/true".to_string(),
         args: Vec::new(),

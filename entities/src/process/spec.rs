@@ -51,6 +51,7 @@ pub struct AppSpec {
     pub liveness_probe: Option<ReadyProbe>,
     pub listen_timeout_ms: Option<u64>,
     pub stop_exit_codes: Vec<i32>,
+    pub self_responsible: bool,
     pub sandbox: SandboxPolicy,
 }
 
@@ -124,6 +125,11 @@ pub enum SpecError {
 
     #[error("cannot accept stop_exit_code {code} for app '{app}': use a code of 0-255")]
     InvalidStopExitCode { app: String, code: i32 },
+
+    #[error(
+        "cannot make app '{0}' self-responsible: only a danger-full-access app is launched directly, set sandbox mode to danger-full-access"
+    )]
+    ConfinedSelfResponsible(String),
 
     #[error("cannot accept sandbox policy for app '{app}': {source}")]
     Sandbox { app: String, source: PolicyError },
@@ -256,6 +262,9 @@ pub fn validate_spec(spec: &AppSpec) -> Result<(), SpecError> {
             app: spec.name.clone(),
             code,
         });
+    }
+    if spec.self_responsible && !spec.sandbox.mode.is_unconfined() {
+        return Err(SpecError::ConfinedSelfResponsible(spec.name.clone()));
     }
     validate_policy(&spec.sandbox).map_err(|source| SpecError::Sandbox {
         app: spec.name.clone(),

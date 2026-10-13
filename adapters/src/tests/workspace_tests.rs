@@ -25,6 +25,7 @@ fn spec_at(cwd: &str, writable_roots: Vec<String>) -> AppSpec {
         liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
+        self_responsible: false,
         name: "web".to_string(),
         script: "/pm3-fixture/no-such-script".to_string(),
         args: Vec::new(),

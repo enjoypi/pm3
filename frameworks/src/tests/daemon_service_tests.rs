@@ -56,6 +56,17 @@ async fn a_missing_config_stops_the_daemon() {
 }
 
 #[tokio::test]
+async fn a_home_under_another_account_stops_the_daemon() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = write_config(dir.path(), "~nobody/pm3");
+    let err = run_daemon_with_shutdown(config.to_str().expect("path"), Box::pin(async {}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("~nobody/pm3"), "got: {err}");
+}
+
+#[tokio::test]
 async fn a_blocked_home_stops_the_daemon() {
     let dir = tempfile::tempdir().expect("temp dir");
     let home = dir.path().join("home");

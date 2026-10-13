@@ -66,6 +66,7 @@ fn launch_spec(dir: &Path, program: &str, args: &[&str]) -> LaunchSpec {
         env: Vec::new(),
         stdout_path: dir.join("web-out.log").to_string_lossy().into_owned(),
         stderr_path: dir.join("web-err.log").to_string_lossy().into_owned(),
+        self_responsible: false,
     }
 }
 
@@ -78,6 +79,7 @@ fn stored_record() -> ProcessRecord {
             liveness_probe: None,
             listen_timeout_ms: None,
             stop_exit_codes: Vec::new(),
+            self_responsible: false,
             name: "web".to_string(),
             script: "/bin/echo".to_string(),
             args: Vec::new(),

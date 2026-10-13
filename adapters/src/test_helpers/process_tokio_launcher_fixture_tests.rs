@@ -17,6 +17,7 @@ pub fn spec_in(dir: &Path, program: &str, args: &[&str]) -> LaunchSpec {
         env: Vec::new(),
         stdout_path: text(&dir.join(OUT_LOG)),
         stderr_path: text(&dir.join(ERR_LOG)),
+        self_responsible: false,
     }
 }
 

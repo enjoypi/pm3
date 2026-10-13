@@ -64,6 +64,8 @@ No matter how far reads are opened, pm3's own two directories — the one holdin
 
 Programs that bring their own sandbox (sshd, for example) cannot fit inside pm3's sandbox — the system does not allow sandbox nesting, and such a program is rejected when it initializes its own layer. These programs must turn the sandbox off entirely in their configuration and rely on their own isolation mechanism.
 
+On macOS a service with its sandbox turned off can declare `self_responsible: true` to become its own responsible process: privacy permissions (Developer Tools, Full Disk Access, …) for it and everything it launches are then judged against its own program instead of pm3. A service like sshd uses this so that sessions opened through it, and a tmux server started from one, are judged against the sshd program. Declaring it on a sandboxed service is rejected; other platforms ignore it. Changing it does not restart a running service; it takes effect at the next restart of that service.
+
 To refer in arguments to "this service's own writable working directory," write the `${PM3_SERVICE_CWD}` placeholder, which pm3 replaces with the real path at startup.
 
 ## Crashes and circuit breaking

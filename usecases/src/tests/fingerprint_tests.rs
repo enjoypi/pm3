@@ -10,6 +10,7 @@ fn spec() -> AppSpec {
         liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
+        self_responsible: false,
         name: "api".to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
@@ -327,4 +328,13 @@ fn an_app_value_that_shadows_a_global_one_still_counts() {
         shadowed, inherited,
         "declaring a value pins it to the process, inheriting it does not"
     );
+}
+
+#[test]
+fn self_responsibility_leaves_the_identity_unchanged() {
+    let disclaimed = AppSpec {
+        self_responsible: true,
+        ..spec()
+    };
+    assert_eq!(render_identity(&spec()), render_identity(&disclaimed));
 }

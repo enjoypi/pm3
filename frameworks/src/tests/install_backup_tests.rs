@@ -97,6 +97,28 @@ async fn an_install_reports_a_failed_uninstall() {
     assert!(error.to_string().contains("cannot"), "got: {error}");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn an_install_reports_a_binary_it_cannot_replace() {
+    let fixture = systemd_fixture(HEALTHY_SYSTEMD);
+    seed_source(&fixture);
+    let dir = fixture.destination.parent().expect("the dest dir");
+    std::fs::create_dir_all(dir).expect("prepare the dest dir");
+    std::fs::write(&fixture.destination, "an older pm3").expect("seed the installed binary");
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o500)).expect("lock the dir");
+    let emit = |_line: &str| {};
+    let outcome = run_install(
+        &fixture.config_path,
+        None,
+        &context(&fixture, UnitKind::Systemd, None),
+        &emit,
+    )
+    .await;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).expect("unlock the dir");
+    let error = outcome.unwrap_err();
+    assert!(error.to_string().contains("cannot replace"), "got: {error}");
+}
+
 #[tokio::test]
 async fn an_install_reports_a_daemon_whose_pid_is_unknown() {
     let fixture = systemd_fixture(HEALTHY_SYSTEMD);

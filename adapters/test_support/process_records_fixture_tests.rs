@@ -48,6 +48,7 @@ pub fn sample_spec(name: &str) -> AppSpec {
         liveness_probe: None,
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
+        self_responsible: false,
         name: name.to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],

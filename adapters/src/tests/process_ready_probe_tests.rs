@@ -2,6 +2,7 @@ use super::*;
 use crate::platform::{SEARCH_PATH, SHELL, shell_args};
 
 const TIMEOUT_MS: u64 = 500;
+const FIRST_EXEC_TIMEOUT_MS: u64 = 5000;
 
 fn exec_probe(command: &[&str]) -> ReadyProbe {
     ReadyProbe::Exec {
@@ -95,7 +96,10 @@ async fn an_exec_probe_fails_fast_when_the_program_cannot_start() {
     std::fs::write(&program, "#!/nonexistent/interpreter\n").expect("write the probe program");
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
         .expect("make the probe program executable");
-    let prober = HostReadyProber::new(TIMEOUT_MS, dir.path().to_string_lossy().into_owned());
+    let prober = HostReadyProber::new(
+        FIRST_EXEC_TIMEOUT_MS,
+        dir.path().to_string_lossy().into_owned(),
+    );
     let probe = exec_probe(&["probe-broken"]);
     let outcome = prober.check_ready(&probe).await;
     assert!(matches!(outcome, Readiness::Failed(_)), "got: {outcome:?}");
@@ -174,7 +178,10 @@ async fn an_exec_probe_runs_a_script_that_needs_the_host_system_variables() {
         .expect("the script has a file name")
         .to_string_lossy()
         .into_owned();
-    let prober = HostReadyProber::new(TIMEOUT_MS, dir.path().to_string_lossy().into_owned());
+    let prober = HostReadyProber::new(
+        FIRST_EXEC_TIMEOUT_MS,
+        dir.path().to_string_lossy().into_owned(),
+    );
     assert_eq!(
         prober.check_ready(&exec_probe(&[&name])).await,
         Readiness::Ready

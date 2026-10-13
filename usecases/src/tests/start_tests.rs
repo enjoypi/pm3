@@ -253,5 +253,24 @@ async fn a_launched_app_receives_its_environment_as_key_value_pairs() {
     );
 }
 
+#[tokio::test]
+async fn a_self_responsible_app_asks_the_launcher_to_disclaim_it() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let disclaimed = AppSpec {
+        self_responsible: true,
+        sandbox: SandboxPolicy {
+            mode: SandboxMode::DangerFullAccess,
+            ..spec("api").sandbox
+        },
+        ..spec("api")
+    };
+    start_apps(&mut table, &[disclaimed], LOGS_DIR, &ports).await;
+    let launched = ports.spawned();
+    let launch = launched.first().expect("one spawn recorded");
+    assert!(launch.self_responsible);
+    assert_eq!(launch.program, "/usr/bin/true");
+}
+
 #[path = "start_identity_tests.rs"]
 mod identity;

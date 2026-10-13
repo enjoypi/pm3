@@ -462,6 +462,14 @@ fn deriving_the_roots_falls_back_to_the_xdg_defaults() {
 }
 
 #[test]
+fn a_relative_runtime_root_is_refused_while_deriving() {
+    let mut config = derived_config();
+    config.runtime_dir = "run".to_string();
+    let err = roots_from(&config, &bare_sources(Some("/home/dev"))).unwrap_err();
+    assert!(err.to_string().contains("must be absolute"), "got: {err}");
+}
+
+#[test]
 fn a_relative_data_root_is_refused_while_deriving() {
     let mut config = derived_config();
     config.data_dir = "share".to_string();

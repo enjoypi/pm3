@@ -59,6 +59,8 @@ pub struct AppEntry {
     #[serde(default)]
     pub stop_exit_codes: Vec<i32>,
     #[serde(default)]
+    pub self_responsible: bool,
+    #[serde(default)]
     pub sandbox: Option<SandboxEntry>,
 }
 
@@ -293,6 +295,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         schedule: entry.schedule.clone(),
         depends_on: entry.depends_on.clone(),
         stop_exit_codes: entry.stop_exit_codes.clone(),
+        self_responsible: entry.self_responsible,
         sandbox,
     })
 }

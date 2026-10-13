@@ -254,6 +254,20 @@ fn a_tilde_xdg_runtime_directory_expands_too() {
 }
 
 #[test]
+fn a_relative_xdg_runtime_directory_is_refused() {
+    let err = resolve_runtime_root(&RuntimeSources {
+        declared: None,
+        xdg: Some("xdgrun"),
+        uid: Some(1000),
+        state: Path::new("/s/pm3"),
+        home: Some("/home/dev"),
+        exists: |_| false,
+    })
+    .unwrap_err();
+    assert_eq!(err, PathError::NotAbsolute("xdgrun".to_string()));
+}
+
+#[test]
 fn the_runtime_root_takes_the_xdg_runtime_directory_when_it_is_declared() {
     let xdg = abs("/x/run");
     let root = resolve_runtime_root(&RuntimeSources {

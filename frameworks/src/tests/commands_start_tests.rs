@@ -93,6 +93,17 @@ async fn starting_inline_reports_a_blocked_home() {
 }
 
 #[tokio::test]
+async fn starting_inline_reports_a_program_it_cannot_find() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let config = usable_config(dir.path());
+    let err = start_inline(&config, &inline_request("/nonexistent/probe", &[]), false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("/nonexistent/probe"), "got: {err}");
+}
+
+#[tokio::test]
 async fn deleting_without_a_config_fails() {
     assert!(delete_app("/nonexistent/pm3.yaml", "web").await.is_err());
 }

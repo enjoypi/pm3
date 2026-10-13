@@ -16,7 +16,7 @@ interface Tally {
 
 interface FileCoverage {
   filename: string;
-  summary: { lines: Tally; branches: Tally };
+  summary: { lines: Tally; branches: Tally; regions: Tally };
 }
 
 export interface CoverageReport {
@@ -27,6 +27,7 @@ export interface CoverageGap {
   file: string;
   lines: number;
   branches: number;
+  regions: number;
 }
 
 export function coverageGaps(report: CoverageReport, root: string): CoverageGap[] {
@@ -38,16 +39,20 @@ export function coverageGaps(report: CoverageReport, root: string): CoverageGap[
         : file.filename,
       lines: file.summary.lines.count - file.summary.lines.covered,
       branches: file.summary.branches.count - file.summary.branches.covered,
+      regions: file.summary.regions.count - file.summary.regions.covered,
     }))
-    .filter((gap) => gap.lines > 0 || gap.branches > 0);
+    .filter((gap) => gap.lines > 0 || gap.branches > 0 || gap.regions > 0);
 }
 
 export function describeGaps(gaps: readonly CoverageGap[]): string {
   if (gaps.length === 0) {
-    return "cov: 100% line, 100% branch";
+    return "cov: 100% line, 100% branch, 100% region";
   }
   return gaps
-    .map((gap) => `${gap.file}: ${gap.lines} line(s), ${gap.branches} branch(es) uncovered`)
+    .map(
+      (gap) =>
+        `${gap.file}: ${gap.lines} line(s), ${gap.branches} branch(es), ${gap.regions} region(s) uncovered`,
+    )
     .join("\n");
 }
 

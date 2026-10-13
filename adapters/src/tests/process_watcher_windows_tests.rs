@@ -33,6 +33,7 @@ fn exiting_spec(dir: &tempfile::TempDir) -> LaunchSpec {
         env: Vec::new(),
         stdout_path: dir.path().join("out.log").to_string_lossy().into_owned(),
         stderr_path: dir.path().join("err.log").to_string_lossy().into_owned(),
+        self_responsible: false,
     }
 }
 

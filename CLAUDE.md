@@ -21,10 +21,10 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 
 ## 覆盖率
 
-- 门禁是 `just cov`（`dev_scripts/cov.ts`）：非测试代码行与分支 MUST 100%
+- 门禁是 `just cov`（`dev_scripts/cov.ts`）：非测试代码行、分支与 region MUST 100%
 - tracing 的 `log` 特性 MUST 保持关闭：开启后每个日志宏多展开一份「无订阅者时转发给 log crate」的分支，复用同一批字面量且永不执行 ⇒ 所有日志参数行恒为 0。它由 axum 默认特性 `tower-log` 引入，故 axum 关默认特性并显式列出其余特性
 - 日志宏只在已启用时才求值参数 ⇒ 各 lib 测试二进制 MUST 经 `ctor` 装 `test_trace`（全级别、只求值不输出），e2e 的 config MUST 用 `log_level: "trace"`
-- 同一函数在 lib 测试二进制与 `pm3` 二进制各有一份覆盖记录，llvm-cov 合并时任一份为 0 都可能判为未覆盖 ⇒ 只有单测能走到、生产路径不可达的分支 MUST 删掉，而不是补单测
+- 同一函数在 lib 测试二进制与 `pm3` 二进制各有一份覆盖记录：line 与 branch 按合并计，region 只取覆盖最多的那一份 ⇒ 两份互补不算数，补测试要让同一份覆盖全部 region（`?` 的错误返回最常漏，通常补 lib 单测）；只有单测能走到、生产路径不可达的分支 MUST 删掉，而不是补单测
 
 ## 构建环境
 
@@ -37,3 +37,4 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 - Windows：Bash hook 的 `env -i` 会剥掉 `PROGRAMDATA`/`TMP`/`TEMP`/`USERNAME` ⇒ rustc 找不到 VS，回退到 Git 自带的 GNU `link`（报 `extra operand`）；`link.exe` 把临时文件写到 `C:\WINDOWS`（LNK1104）；schtasks 的 e2e 拿不到账户 ⇒ cargo 命令 MUST 显式传入这四个变量。rustup default host 为 gnu 时，`+nightly` 会解析到 gnu 工具链 ⇒ MUST `rustup set default-host x86_64-pc-windows-msvc`
 - Windows 覆盖率：`std::process::exit`（含 clap 的 `--version`/`--help`/解析失败）直接 `ExitProcess`，不跑 CRT atexit ⇒ 子进程 profraw 不落盘，这些路径在 Windows 门禁里恒为 0 命中；只有 `main` 返回 `ExitCode` 的路径计入。`frameworks/tests/` 25 个 e2e 里 24 个是 `cfg(unix)` ⇒ Windows 的 frameworks 覆盖率只能靠逐个移植 e2e 补
 - `target/llvm-cov-target` 出现 `os error 1392`（文件或目录损坏）或 `ls` 报 `File exists` 时，门禁数字不可信（子进程计数丢失），MUST 先 `mv` 走该目录重跑，再对该盘跑 `chkdsk`
+- macOS `self_responsible`：负责进程在进程诞生时定死，后代继承 ⇒ 跳板 `pm3 __disclaim` MUST 在 argv 最外层并用 `POSIX_SPAWN_SETEXEC`（pid、`ps lstart` 身份不变），故只许 `danger-full-access`（受限服务最外层是 `sandbox-exec`）。exec 成功后跳板进程的 profraw 不落盘 ⇒ `disclaim::exec_disclaimed` MUST 保持无分支直线代码，由失败用例覆盖全部行。该字段不进启动指纹：改它不该让 daemon 重启时连带重启 sshd 断开会话。tmux server 归属取决于首个启动它的会话

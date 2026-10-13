@@ -38,6 +38,7 @@ clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 
 rustix = { version = "1", default-features = false, features = ["std", "process"] }
+libc = "0.2"
 
 toml = "1"
 tower = { version = "0.5", features = ["util"] }

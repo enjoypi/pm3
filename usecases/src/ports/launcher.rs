@@ -11,6 +11,7 @@ pub struct LaunchSpec {
     pub env: Vec<(String, String)>,
     pub stdout_path: String,
     pub stderr_path: String,
+    pub self_responsible: bool,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

@@ -36,6 +36,7 @@ pub fn render_identity(spec: &AppSpec) -> String {
         liveness_probe: _,
         listen_timeout_ms: _,
         stop_exit_codes: _,
+        self_responsible: _,
         sandbox,
     } = spec;
 

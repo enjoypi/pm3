@@ -451,3 +451,9 @@ async fn a_real_group_that_truly_emptied_drains() {
         "a group whose every member left must read as drained"
     );
 }
+
+#[test]
+fn rows_that_are_not_a_pid_and_a_pgid_are_not_counted() {
+    let stdout = "\nheader 7\n12\n12 7\n";
+    assert_eq!(count_group_members(stdout, 7), 1);
+}

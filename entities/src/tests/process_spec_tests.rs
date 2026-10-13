@@ -459,3 +459,26 @@ fn the_declared_env_count_excludes_the_values_pm3_injects() {
     let counted = spec.declared_env_count();
     assert_eq!(counted, 2, "got: {counted}");
 }
+
+#[test]
+fn validate_rejects_a_confined_self_responsible_app() {
+    let candidate = AppSpec {
+        self_responsible: true,
+        ..spec("api")
+    };
+    let err = validate_spec(&candidate).unwrap_err();
+    assert_eq!(err, SpecError::ConfinedSelfResponsible("api".to_string()));
+}
+
+#[test]
+fn validate_accepts_an_unconfined_self_responsible_app() {
+    let candidate = AppSpec {
+        self_responsible: true,
+        sandbox: SandboxPolicy {
+            mode: crate::SandboxMode::DangerFullAccess,
+            ..confined_policy()
+        },
+        ..spec("api")
+    };
+    validate_spec(&candidate).expect("an app launched directly may disclaim");
+}

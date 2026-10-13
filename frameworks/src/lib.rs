@@ -2,6 +2,8 @@ pub mod cli;
 mod client;
 mod commands;
 mod daemon;
+#[cfg(target_os = "macos")]
+mod disclaim;
 #[cfg(unix)]
 mod fd_limit;
 mod install;
@@ -12,6 +14,7 @@ mod sandbox_probe;
 mod server;
 mod service;
 mod signal;
+mod start_command;
 mod telemetry;
 
 use thiserror::Error;
@@ -119,6 +122,13 @@ pub enum Error {
 
     #[error(transparent)]
     Undecodable(#[from] adapters::ReplyDecodeError),
+
+    #[cfg(target_os = "macos")]
+    #[error("cannot launch '{}' as its own responsible process: {source}", program.display())]
+    Disclaim {
+        program: std::ffi::OsString,
+        source: std::io::Error,
+    },
 
     #[error(
         "cannot confirm the pm3 daemon (pid {pid}) stopped: '{path}' is still there after {timeout_ms} ms"

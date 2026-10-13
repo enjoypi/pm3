@@ -25,6 +25,8 @@ pub struct DaemonPorts {
     cadence: PollCadence,
     rotator: CopyTruncateRotator,
     prober: HostReadyProber,
+    #[cfg(target_os = "macos")]
+    executable: PathBuf,
 }
 
 impl DaemonPorts {
@@ -60,6 +62,8 @@ impl DaemonPorts {
             cadence,
             rotator: CopyTruncateRotator,
             prober: HostReadyProber::new(command_timeout_ms, search_path),
+            #[cfg(target_os = "macos")]
+            executable: std::env::current_exe().unwrap_or_default(),
         }
     }
 
@@ -122,6 +126,11 @@ impl Fingerprinter for DaemonPorts {
 
 impl ProcessLauncher for DaemonPorts {
     async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
+        #[cfg(target_os = "macos")]
+        if spec.self_responsible {
+            let trampolined = crate::disclaim::through_trampoline(&self.executable, spec);
+            return self.launcher.spawn(&trampolined).await;
+        }
         self.launcher.spawn(spec).await
     }
 

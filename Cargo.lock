@@ -502,6 +502,7 @@ dependencies = [
  "clap_complete",
  "ctor",
  "fastrand",
+ "libc",
  "rustix",
  "tempfile",
  "test_trace",

@@ -52,6 +52,7 @@ pub fn inline_entry(request: &InlineStart<'_>, home: Option<&str>) -> AppEntry {
         schedule: request.cron.map(ToString::to_string),
         max_memory: request.max_memory.map(ToString::to_string),
         stop_exit_codes: request.stop_exit_codes.to_vec(),
+        self_responsible: false,
         listen_timeout_ms: request.listen_timeout_ms,
         ready_probe: ready_probe_of(request),
         liveness_tcp: None,
@@ -143,6 +144,10 @@ fn encode_entry(entry: &AppEntry) -> String {
     text.push_str(&optional_text("schedule", entry.schedule.as_deref()));
     text.push_str(&optional_text("max_memory", entry.max_memory.as_deref()));
     text.push_str(&number_sequence("stop_exit_codes", &entry.stop_exit_codes));
+    text.push_str(&optional(
+        "self_responsible",
+        entry.self_responsible.then_some(true),
+    ));
     text.push_str(&optional("listen_timeout_ms", entry.listen_timeout_ms));
     text.push_str(&optional_text(
         "liveness_tcp",
