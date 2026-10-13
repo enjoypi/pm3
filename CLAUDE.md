@@ -6,6 +6,31 @@
 
 pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and the long-running daemon, talking over a unix socket (a named pipe on Windows). CLAUDE.md records only pitfalls; cross-layer ones live here, single-layer ones sink into each crate's own CLAUDE.md.
 
+## 全局优先原则
+
+1. 文档与沟通精简无歧义、人工可维护
+2. 使用简体中文（全角标点），不用繁体中文、日文、韩文。文件名用英文
+3. 给用户的选项带数字编号，第 1 项为推荐或 All
+4. 批量改动用脚本或工具完成；脚本用 Bun + TypeScript
+5. SOLID：一个类/模块/函数只负责一项功能；针对接口编程；拆分胖接口；用 Interface/Trait 而非继承
+6. DRY：同一逻辑只保留一份，抽取为函数/模块
+7. YAGNI：只写当前需要的功能；依次优先复用仓内代码、stdlib、平台原生能力、已装依赖，都不行才写能跑通的最小实现
+8. 代码文件（含测试）不超过 512 行、函数不超过 64 行，超限即拆分
+9. 不写注释或 docstring，删除已有注释
+10. 存储与日志时间用 UTC；面向人展示时标注时区（如 2026-07-17 09:20:09 UTC+8）并支持 TZ 环境变量
+11. 新配置文件用 yaml；默认值、数值常量、业务字符串常量从配置读取
+12. secret 只经环境变量加载、不设默认值，写法 db_password: "${DB_PASSWORD}"
+13. 输出 debug 级结构化日志（request_id、feature、user、action、req、resp 等），供 AI 分析
+14. 测试先行：先写失败的测试再实现；覆盖率先保证 branch 100% 再保证 region 100%；Web 前端用 happy-dom 断言 DOM 与数据，不截图
+15. 测试与业务代码分文件
+16. 不自行新建 git branch 或 worktree
+17. 多轮改动合并为一个 git commit；commit message 单行、少于 64 个 UTF-8 字符、不含 Co-Authored-By 或 Claude 签名，格式 [TASK-ID ]type: 业务描述，type ∈ build/chore/ci/docs/feat/fix/perf/refactor/revert/style/test，TASK-ID 由用户提供或取自最近 git log，没有则留空
+18. 可复用的规则、原则、坑写进对应领域的 CLAUDE.md（与既有规则去重合并，单个 CLAUDE.md 少于 256 行），不记入 TODO.md 或 MEMORY.md；一次性规则丢弃
+19. TODO.md 是任务清单，任务完成即删除
+20. Plan 用 subagent 从至少 3 个角度（含 1 个批判角度）推敲
+21. Plan 定稿后把 ~/.claude/plans/<name>.md 移到当前项目目录，无需确认。Plan 完成后删除。
+22. 新建文档（.md .rst .adoc .txt 等）先征得用户同意
+
 ## Layout and runtime files
 
 - **macOS and Linux keep the identical XDG layout on purpose** (one layout = one test suite = one migration doc); the platform difference is absorbed by probing whether `/run/user/<uid>` exists, never by branching on the operating system. MUST NOT switch macOS to native `~/Library/...`
@@ -33,8 +58,8 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 - `just install` MUST 自行解析真机 config（`PM3_CONFIG_DIR` → `$XDG_CONFIG_HOME/pm3` → `~/.pm3`），MUST NOT 硬写 `--config config.yaml`：仓内那份的 roots 全为空，装上去会让机器直接跳到推导出的 XDG 布局，而 `dump.yaml` 与服务文件还在旧位置 ⇒ 下一个 daemon rejoin 不到任何东西，所有在跑的服务变成孤儿。三处都找不到才视为全新机器，由 `pm3 install` 在 XDG 路径写入内嵌的默认 config（`adapters::DEFAULT_CONFIG`）
 - Linux：Ubuntu 24.04+ 默认 `kernel.apparmor_restrict_unprivileged_userns=1`，只装 bubblewrap 不够，bwrap 报 `setting up uid map: Permission denied` ⇒ 被管服务起不来，沙箱 e2e 只表现为「日志里等不到 done」。MUST 给 `/usr/bin/bwrap` 加带 `userns,` 的 AppArmor profile（`/etc/apparmor.d/bwrap`，`flags=(unconfined)`）并 `apparmor_parser -r`
 - macOS：ld 自动加的 ad-hoc 签名在 TCC 眼里按 cdhash 记账 ⇒ 任何 rebuild 后 `just install` 都静默吊销既有授权（含完全磁盘访问，设置面板勾选仍在但对新二进制无效），被管服务访问云盘/文档目录时弹窗反复出现且归账到 daemon（responsible process，如 gdrive 服务跑 Google Drive 本体 ⇒ 弹窗挂在「pm3」头上）⇒ `just install` 与 release CI MUST 用同一把 `pm3-local` 自签证书（`just signing-identity` 生成并导入 login keychain，CI 侧配 secrets `PM3_CODESIGN_P12`/`PM3_CODESIGN_P12_PASSWORD`）把 binary 签成稳定身份，TCC 改按证书记账，跨重装稳定；本机与 CI 各生成一把同名证书 = 两个身份，授权照样失效
+- macOS `self_responsible`：负责进程在进程诞生时定死，后代继承 ⇒ 跳板 `pm3 __disclaim` MUST 在 argv 最外层并用 `POSIX_SPAWN_SETEXEC`（pid、`ps lstart` 身份不变），故只许 `danger-full-access`（受限服务最外层是 `sandbox-exec`）。exec 成功后跳板进程的 profraw 不落盘 ⇒ `disclaim::exec_disclaimed` MUST 保持无分支直线代码，由失败用例覆盖全部行。该字段不进启动指纹：改它不该让 daemon 重启时连带重启 sshd 断开会话。tmux server 归属取决于首个启动它的会话
 - `windows-e2e` 不在 release 的 `needs` 里 ⇒ 红叉不影响产物。CI runner 是管理员 ⇒ 只有非管理员才触发的权限缺陷（如 schtasks 缺 `UserId`）在 CI 上永远绿，MUST 在本机非管理员账户跑一遍才算验证
 - Windows：Bash hook 的 `env -i` 会剥掉 `PROGRAMDATA`/`TMP`/`TEMP`/`USERNAME` ⇒ rustc 找不到 VS，回退到 Git 自带的 GNU `link`（报 `extra operand`）；`link.exe` 把临时文件写到 `C:\WINDOWS`（LNK1104）；schtasks 的 e2e 拿不到账户 ⇒ cargo 命令 MUST 显式传入这四个变量。rustup default host 为 gnu 时，`+nightly` 会解析到 gnu 工具链 ⇒ MUST `rustup set default-host x86_64-pc-windows-msvc`
 - Windows 覆盖率：`std::process::exit`（含 clap 的 `--version`/`--help`/解析失败）直接 `ExitProcess`，不跑 CRT atexit ⇒ 子进程 profraw 不落盘，这些路径在 Windows 门禁里恒为 0 命中；只有 `main` 返回 `ExitCode` 的路径计入。`frameworks/tests/` 25 个 e2e 里 24 个是 `cfg(unix)` ⇒ Windows 的 frameworks 覆盖率只能靠逐个移植 e2e 补
 - `target/llvm-cov-target` 出现 `os error 1392`（文件或目录损坏）或 `ls` 报 `File exists` 时，门禁数字不可信（子进程计数丢失），MUST 先 `mv` 走该目录重跑，再对该盘跑 `chkdsk`
-- macOS `self_responsible`：负责进程在进程诞生时定死，后代继承 ⇒ 跳板 `pm3 __disclaim` MUST 在 argv 最外层并用 `POSIX_SPAWN_SETEXEC`（pid、`ps lstart` 身份不变），故只许 `danger-full-access`（受限服务最外层是 `sandbox-exec`）。exec 成功后跳板进程的 profraw 不落盘 ⇒ `disclaim::exec_disclaimed` MUST 保持无分支直线代码，由失败用例覆盖全部行。该字段不进启动指纹：改它不该让 daemon 重启时连带重启 sshd 断开会话。tmux server 归属取决于首个启动它的会话
