@@ -232,7 +232,7 @@ pub struct TelemetryConfig {
 pub const DEFAULT_LOG_READ_MAX_BYTES: u64 = 4 * 1024 * 1024;
 pub const DEFAULT_LIVENESS_POLL_INTERVAL_MS: u64 = 30000;
 pub const DEFAULT_LIVENESS_FAILURE_THRESHOLD: u32 = 3;
-pub const DEFAULT_SOPS_TIMEOUT_MS: u64 = 5000;
+pub const DEFAULT_SOPS_TIMEOUT_MS: u64 = 30000;
 
 fn default_sops_program() -> String {
     crate::apps_file::SOPS_PROGRAM.to_string()
