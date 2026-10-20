@@ -23,12 +23,13 @@ use thiserror::Error;
 pub use usecases::{
     AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, EnvOrigin,
     ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess,
-    Liveness, LogRotateError, LogRotator, LogStream, Ports, ProcessLauncher, ProcessProbe,
-    ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness, ReadyProbe,
-    ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy, Scheduler,
-    SignalError, SignalScope, Signaler, SpecError, StartKind, StartOutcome, StartSettlement,
-    SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest, Supervisor,
-    WrappedCommand, compare_handover, describe_handover, log_path, settle_start, validate_app_name,
+    Liveness, LogRotateError, LogRotator, LogStream, Ports, Priority, ProcessLauncher,
+    ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness,
+    ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy,
+    Scheduler, SignalError, SignalScope, Signaler, SpecError, StartKind, StartOutcome,
+    StartSettlement, SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest,
+    Supervisor, WrappedCommand, compare_handover, describe_handover, log_path, settle_start,
+    validate_app_name,
 };
 
 pub use self::{
@@ -71,6 +72,7 @@ pub use self::{
         AdoptedWatch, HostProcessProbe, HostReadyProber, KillSignaler, PollCadence,
         Sha256Fingerprinter, SystemClock, TokioProcessLauncher, wait_for_exit, wait_until_released,
     },
+    program::resolve_executable,
     sandbox::{HostSandbox, SandboxBackend, SandboxCommandWrapper, SandboxProgramSet},
     schedule::{CronError, CronScheduler, validate_cron},
     service::{

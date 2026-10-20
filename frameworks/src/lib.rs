@@ -10,6 +10,7 @@ mod install;
 mod layout;
 mod logs;
 mod prompt;
+mod runtime;
 mod sandbox_probe;
 mod server;
 mod service;
@@ -18,6 +19,8 @@ mod start_command;
 mod telemetry;
 
 use thiserror::Error;
+
+pub use self::runtime::runtime_for;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -124,7 +127,7 @@ pub enum Error {
     Undecodable(#[from] adapters::ReplyDecodeError),
 
     #[cfg(target_os = "macos")]
-    #[error("cannot launch '{}' as its own responsible process: {source}", program.display())]
+    #[error("cannot launch '{}' with its macOS spawn attributes: {source}", program.display())]
     Disclaim {
         program: std::ffi::OsString,
         source: std::io::Error,

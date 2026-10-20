@@ -11,6 +11,7 @@ fn spec() -> AppSpec {
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
         self_responsible: false,
+        priority: crate::Priority::Background,
         name: "api".to_string(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
@@ -337,4 +338,13 @@ fn self_responsibility_leaves_the_identity_unchanged() {
         ..spec()
     };
     assert_eq!(render_identity(&spec()), render_identity(&disclaimed));
+}
+
+#[test]
+fn priority_leaves_the_identity_unchanged() {
+    let interactive = AppSpec {
+        priority: crate::Priority::Interactive,
+        ..spec()
+    };
+    assert_eq!(render_identity(&spec()), render_identity(&interactive));
 }

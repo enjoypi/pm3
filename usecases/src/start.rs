@@ -360,6 +360,7 @@ pub(crate) fn build_launch_spec(
         stdout_path: paths.stdout,
         stderr_path: paths.stderr,
         self_responsible: spec.self_responsible,
+        priority: spec.priority,
     })
 }
 

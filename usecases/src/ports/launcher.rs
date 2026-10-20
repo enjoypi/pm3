@@ -2,6 +2,8 @@ use std::future::Future;
 
 use thiserror::Error;
 
+use crate::Priority;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LaunchSpec {
     pub name: String,
@@ -12,6 +14,7 @@ pub struct LaunchSpec {
     pub stdout_path: String,
     pub stderr_path: String,
     pub self_responsible: bool,
+    pub priority: Priority,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

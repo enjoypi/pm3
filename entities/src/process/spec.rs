@@ -3,6 +3,7 @@ use thiserror::Error;
 use super::{
     depgraph::DependencyNode,
     env::{EnvScope, EnvValue},
+    priority::Priority,
     ready::{ReadyProbe, validate_liveness_probe, validate_probe},
     restart::RestartPolicy,
 };
@@ -52,6 +53,7 @@ pub struct AppSpec {
     pub listen_timeout_ms: Option<u64>,
     pub stop_exit_codes: Vec<i32>,
     pub self_responsible: bool,
+    pub priority: Priority,
     pub sandbox: SandboxPolicy,
 }
 

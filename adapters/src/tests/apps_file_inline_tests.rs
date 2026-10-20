@@ -263,6 +263,7 @@ fn fully_declared_entry() -> AppEntry {
         max_memory: Some("300M".to_string()),
         stop_exit_codes: Vec::new(),
         self_responsible: true,
+        priority: Some("interactive".to_string()),
         sandbox: Some(SandboxEntry {
             mode: Some(SandboxMode::WorkspaceWrite.as_str().to_string()),
             read: Some(ReadScope::Minimal.as_str().to_string()),
@@ -287,6 +288,7 @@ fn a_fully_declared_app_encodes_every_field() {
         "network: false",
         "writable_roots:",
         "self_responsible: true",
+        "priority: \"interactive\"",
     ] {
         assert!(yaml.contains(needle), "{needle} missing from: {yaml}");
     }
@@ -300,6 +302,7 @@ fn a_fully_declared_app_reads_back_unchanged() {
     assert_eq!(reparsed.autorestart, Some(false));
     assert_eq!(reparsed.max_restarts, Some(7));
     assert!(reparsed.self_responsible);
+    assert_eq!(reparsed.priority.as_deref(), Some("interactive"));
 }
 
 #[test]

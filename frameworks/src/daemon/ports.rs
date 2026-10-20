@@ -11,6 +11,14 @@ use adapters::{
     wait_for_exit,
 };
 
+#[cfg(all(target_os = "macos", test))]
+use crate::platform::trampoline_program;
+
+#[cfg(all(target_os = "macos", not(test)))]
+fn trampoline_program() -> PathBuf {
+    std::env::current_exe().unwrap_or_default()
+}
+
 #[derive(Debug)]
 pub struct DaemonPorts {
     launcher: TokioProcessLauncher,
@@ -63,7 +71,7 @@ impl DaemonPorts {
             rotator: CopyTruncateRotator,
             prober: HostReadyProber::new(command_timeout_ms, search_path),
             #[cfg(target_os = "macos")]
-            executable: std::env::current_exe().unwrap_or_default(),
+            executable: trampoline_program(),
         }
     }
 
@@ -127,10 +135,7 @@ impl Fingerprinter for DaemonPorts {
 impl ProcessLauncher for DaemonPorts {
     async fn spawn(&self, spec: &LaunchSpec) -> Result<LaunchedProcess, LaunchError> {
         #[cfg(target_os = "macos")]
-        if spec.self_responsible {
-            let trampolined = crate::disclaim::through_trampoline(&self.executable, spec);
-            return self.launcher.spawn(&trampolined).await;
-        }
+        let spec = &crate::disclaim::wrap(&self.executable, spec)?;
         self.launcher.spawn(spec).await
     }
 

@@ -50,9 +50,12 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "start carries the whole inline declaration once per CLI invocation"
+#[cfg_attr(
+    not(target_os = "macos"),
+    expect(
+        clippy::large_enum_variant,
+        reason = "start carries the whole inline declaration once per CLI invocation"
+    )
 )]
 #[derive(Debug, Subcommand)]
 pub enum Commands {
@@ -170,9 +173,15 @@ pub enum Commands {
     #[command(
         name = "__disclaim",
         hide = true,
-        about = "Become PROGRAM as its own responsible process"
+        about = "Become PROGRAM with the given macOS spawn attributes"
     )]
     Disclaim {
+        #[arg(long, default_value_t = crate::disclaim::DISCLAIM)]
+        disclaim: std::ffi::c_int,
+        #[arg(long, default_value_t = crate::disclaim::INHERIT)]
+        process_type: std::ffi::c_int,
+        #[arg(long, default_value_t = crate::disclaim::NO_CLAMP)]
+        qos_clamp: u64,
         program: std::ffi::OsString,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<std::ffi::OsString>,
@@ -353,8 +362,22 @@ pub async fn execute(cli: Cli) -> Result<Option<String>> {
             Ok(None)
         }
         #[cfg(target_os = "macos")]
-        Commands::Disclaim { program, args } => Err(Error::Disclaim {
-            source: crate::disclaim::exec_disclaimed(&program, &args),
+        Commands::Disclaim {
+            disclaim,
+            process_type,
+            qos_clamp,
+            program,
+            args,
+        } => Err(Error::Disclaim {
+            source: crate::disclaim::exec_disclaimed(
+                &program,
+                &args,
+                crate::disclaim::SpawnTraits {
+                    disclaim,
+                    process_type,
+                    qos_clamp,
+                },
+            ),
             program,
         }),
     }

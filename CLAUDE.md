@@ -59,6 +59,16 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 - Linux：Ubuntu 24.04+ 默认 `kernel.apparmor_restrict_unprivileged_userns=1`，只装 bubblewrap 不够，bwrap 报 `setting up uid map: Permission denied` ⇒ 被管服务起不来，沙箱 e2e 只表现为「日志里等不到 done」。MUST 给 `/usr/bin/bwrap` 加带 `userns,` 的 AppArmor profile（`/etc/apparmor.d/bwrap`，`flags=(unconfined)`）并 `apparmor_parser -r`
 - macOS：ld 自动加的 ad-hoc 签名在 TCC 眼里按 cdhash 记账 ⇒ 任何 rebuild 后 `just install` 都静默吊销既有授权（含完全磁盘访问，设置面板勾选仍在但对新二进制无效），被管服务访问云盘/文档目录时弹窗反复出现且归账到 daemon（responsible process，如 gdrive 服务跑 Google Drive 本体 ⇒ 弹窗挂在「pm3」头上）⇒ `just install` 与 release CI MUST 用同一把 `pm3-local` 自签证书（`just signing-identity` 生成并导入 login keychain，CI 侧配 secrets `PM3_CODESIGN_P12`/`PM3_CODESIGN_P12_PASSWORD`）把 binary 签成稳定身份，TCC 改按证书记账，跨重装稳定；本机与 CI 各生成一把同名证书 = 两个身份，授权照样失效
 - macOS `self_responsible`：负责进程在进程诞生时定死，后代继承 ⇒ 跳板 `pm3 __disclaim` MUST 在 argv 最外层并用 `POSIX_SPAWN_SETEXEC`（pid、`ps lstart` 身份不变），故只许 `danger-full-access`（受限服务最外层是 `sandbox-exec`）。exec 成功后跳板进程的 profraw 不落盘 ⇒ `disclaim::exec_disclaimed` MUST 保持无分支直线代码，由失败用例覆盖全部行。该字段不进启动指纹：改它不该让 daemon 重启时连带重启 sshd 断开会话。tmux server 归属取决于首个启动它的会话。服务的 `script` MUST 直接写需要授权的程序，MUST NOT 用 `sh -c 'exec …'` 包一层：TCC 按 disclaim 时被启动的程序记账（同系统 sshd 要给 `sshd-keygen-wrapper` 授权），包一层就得给 `/bin/sh` 授权，所有 sh 脚本跟着获权
+- macOS `priority`：
+  - 机制：apptype 与 QoS 夹紧在 spawn 时设定并遗传给全部后代 ⇒ macOS 上每个服务都经跳板 `pm3 __disclaim --disclaim <0|1> --process-type <N> --qos-clamp <N>` 启动，三个 setter 无条件调用，0 表示继承
+  - 默认值：clap 默认 `--disclaim 1`、其余为 0，MUST 保持，使旧形态 `__disclaim -- prog` 语义不变。原因：`just install` 换完二进制、交接之前，旧 daemon 会用新二进制拉起服务
+  - plist 的 `ProcessType` MUST 为 `Interactive`：
+    - `Standard` 会被 launchd 加 utility 夹紧，子进程无法解除，任何服务都到不了 interactive
+    - `Background` 会让 daemon 整体落到 pri 4
+  - daemon 自降 MUST 只用线程 QoS（`runtime_for` 的 `on_thread_start`）：线程 QoS 不遗传，夹紧与 darwinbg 会遗传给服务
+  - 跳板让 spawn 本身恒成功 ⇒ `disclaim::wrap` 先同步拒绝不可执行的 `program`，保住「批量启动半成功即回滚」；ENOEXEC 仍只能由跳板写入服务的错误日志
+  - lib 单测里 `current_exe` 是测试二进制，跳板由 `platform::trampoline_program` 的 sh 替身顶替
+  - 观测：读 `proc_pidinfo` 的 `pti_priority`/`pth_priority`（`getpriority` 恒为 0）；e2e MUST NOT 用 `taskpolicy` 模拟后台父进程（它设的 ext darwinbg 无法解除）
 - `windows-e2e` 不在 release 的 `needs` 里 ⇒ 红叉不影响产物。CI runner 是管理员 ⇒ 只有非管理员才触发的权限缺陷（如 schtasks 缺 `UserId`）在 CI 上永远绿，MUST 在本机非管理员账户跑一遍才算验证
 - Windows：Bash hook 的 `env -i` 会剥掉 `PROGRAMDATA`/`TMP`/`TEMP`/`USERNAME` ⇒ rustc 找不到 VS，回退到 Git 自带的 GNU `link`（报 `extra operand`）；`link.exe` 把临时文件写到 `C:\WINDOWS`（LNK1104）；schtasks 的 e2e 拿不到账户 ⇒ cargo 命令 MUST 显式传入这四个变量。rustup default host 为 gnu 时，`+nightly` 会解析到 gnu 工具链 ⇒ MUST `rustup set default-host x86_64-pc-windows-msvc`
 - Windows 覆盖率：`std::process::exit`（含 clap 的 `--version`/`--help`/解析失败）直接 `ExitProcess`，不跑 CRT atexit ⇒ 子进程 profraw 不落盘，这些路径在 Windows 门禁里恒为 0 命中；只有 `main` 返回 `ExitCode` 的路径计入。`frameworks/tests/` 25 个 e2e 里 24 个是 `cfg(unix)` ⇒ Windows 的 frameworks 覆盖率只能靠逐个移植 e2e 补

@@ -392,3 +392,34 @@ fn a_service_file_reads_self_responsible() {
 fn an_app_is_not_self_responsible_unless_it_says_so() {
     assert!(!resolve_one(&defaults(), &minimal_entry()).self_responsible);
 }
+
+#[test]
+fn a_service_file_reads_its_priority() {
+    let entry = parse_service_file("name: web\nscript: /bin/sh\npriority: interactive\n")
+        .expect("should parse");
+    assert_eq!(
+        resolve_one(&defaults(), &entry).priority,
+        Priority::Interactive
+    );
+}
+
+#[test]
+fn an_app_runs_in_the_background_unless_it_says_otherwise() {
+    assert_eq!(
+        resolve_one(&defaults(), &minimal_entry()).priority,
+        Priority::Background
+    );
+}
+
+#[test]
+fn resolve_specs_refuses_an_unknown_priority() {
+    let entry = AppEntry {
+        priority: Some("realtime".to_string()),
+        ..minimal_entry()
+    };
+    let err = resolve_one_err(&defaults(), &entry);
+    assert!(
+        err.contains("cannot accept priority 'realtime' for app"),
+        "got: {err}"
+    );
+}

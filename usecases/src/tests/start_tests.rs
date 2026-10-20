@@ -272,5 +272,19 @@ async fn a_self_responsible_app_asks_the_launcher_to_disclaim_it() {
     assert_eq!(launch.program, "/usr/bin/true");
 }
 
+#[tokio::test]
+async fn an_app_hands_its_priority_to_the_launcher() {
+    let ports = FakePorts::new(1000);
+    let mut table = ProcessTable::new();
+    let interactive = AppSpec {
+        priority: crate::Priority::Interactive,
+        ..spec("api")
+    };
+    start_apps(&mut table, &[interactive], LOGS_DIR, &ports).await;
+    let launched = ports.spawned();
+    let launch = launched.first().expect("one spawn recorded");
+    assert_eq!(launch.priority, crate::Priority::Interactive);
+}
+
 #[path = "start_identity_tests.rs"]
 mod identity;

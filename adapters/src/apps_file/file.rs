@@ -6,8 +6,8 @@ use std::{
 use serde::Deserialize;
 use thiserror::Error;
 use usecases::{
-    AppSpec, EnvOrigin, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy, SpecError, covers_path,
-    parse_memory_limit, validate_forbidden_roots, validate_spec,
+    AppSpec, EnvOrigin, Priority, ReadScope, ReadyProbe, SandboxMode, SandboxPolicy, SpecError,
+    covers_path, parse_memory_limit, validate_forbidden_roots, validate_spec,
 };
 
 use super::roots::{dedup_roots, dominant_roots};
@@ -60,6 +60,8 @@ pub struct AppEntry {
     pub stop_exit_codes: Vec<i32>,
     #[serde(default)]
     pub self_responsible: bool,
+    #[serde(default)]
+    pub priority: Option<String>,
     #[serde(default)]
     pub sandbox: Option<SandboxEntry>,
 }
@@ -145,6 +147,11 @@ pub enum AppsFileError {
 
     #[error("cannot accept sandbox read '{read}' for {scope}: must be one of full, minimal")]
     InvalidSandboxRead { scope: String, read: String },
+
+    #[error(
+        "cannot accept priority '{priority}' for app '{app}': must be one of background, standard, interactive"
+    )]
+    InvalidPriority { app: String, priority: String },
 
     #[error(
         "cannot accept max_memory '{limit}' for app '{app}': use a byte count or a size like 300M"
@@ -269,6 +276,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
     let max_memory_kib = resolve_memory_limit(entry)?;
     let ready_probe = resolve_ready_probe(entry)?;
     let liveness_probe = resolve_liveness_probe(entry)?;
+    let priority = resolve_priority(entry)?;
     Ok(AppSpec {
         env_origin: EnvOrigin::Plain,
 
@@ -296,6 +304,7 @@ fn resolve_entry(defaults: &SpecDefaults<'_>, entry: &AppEntry) -> Result<AppSpe
         depends_on: entry.depends_on.clone(),
         stop_exit_codes: entry.stop_exit_codes.clone(),
         self_responsible: entry.self_responsible,
+        priority,
         sandbox,
     })
 }
@@ -357,6 +366,16 @@ fn resolve_memory_limit(entry: &AppEntry) -> Result<Option<u64>, AppsFileError> 
             app: entry.name.clone(),
             limit: declared.to_string(),
         })
+}
+
+fn resolve_priority(entry: &AppEntry) -> Result<Priority, AppsFileError> {
+    let Some(declared) = entry.priority.as_deref() else {
+        return Ok(Priority::default());
+    };
+    Priority::parse(declared).ok_or_else(|| AppsFileError::InvalidPriority {
+        app: entry.name.clone(),
+        priority: declared.to_string(),
+    })
 }
 
 fn resolve_liveness_probe(entry: &AppEntry) -> Result<Option<ReadyProbe>, AppsFileError> {

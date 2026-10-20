@@ -444,6 +444,7 @@ pub fn spec(name: &str) -> AppSpec {
         listen_timeout_ms: None,
         stop_exit_codes: Vec::new(),
         self_responsible: false,
+        priority: crate::Priority::Background,
         name: name.to_string(),
         script: "/usr/bin/true".to_string(),
         args: Vec::new(),

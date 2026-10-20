@@ -50,7 +50,7 @@ pub fn render_plist(spec: &UnitSpec) -> String {
     <key>AbandonProcessGroup</key>
     <true/>
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Interactive</string>
     <key>Umask</key>
     <integer>{umask}</integer>
     <key>HardResourceLimits</key>

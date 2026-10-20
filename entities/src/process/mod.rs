@@ -1,6 +1,7 @@
 mod depgraph;
 mod env;
 mod limits;
+mod priority;
 mod ready;
 mod restart;
 mod runtime;
@@ -13,6 +14,7 @@ pub use self::{
     depgraph::{DependencyError, DependencyNode, topo_sort},
     env::{EnvScope, EnvValue, merge_environment},
     limits::{breaches_memory_limit, parse_memory_limit},
+    priority::Priority,
     ready::ReadyProbe,
     restart::{RestartDecision, RestartPolicy, decide_restart},
     runtime::{ProcessIdentity, ProcessRuntime, RuntimeError},

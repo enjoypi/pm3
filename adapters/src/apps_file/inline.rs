@@ -53,6 +53,7 @@ pub fn inline_entry(request: &InlineStart<'_>, home: Option<&str>) -> AppEntry {
         max_memory: request.max_memory.map(ToString::to_string),
         stop_exit_codes: request.stop_exit_codes.to_vec(),
         self_responsible: false,
+        priority: None,
         listen_timeout_ms: request.listen_timeout_ms,
         ready_probe: ready_probe_of(request),
         liveness_tcp: None,
@@ -148,6 +149,7 @@ fn encode_entry(entry: &AppEntry) -> String {
         "self_responsible",
         entry.self_responsible.then_some(true),
     ));
+    text.push_str(&optional_text("priority", entry.priority.as_deref()));
     text.push_str(&optional("listen_timeout_ms", entry.listen_timeout_ms));
     text.push_str(&optional_text(
         "liveness_tcp",

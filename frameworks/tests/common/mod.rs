@@ -4,6 +4,8 @@
     reason = "each integration test binary consumes a different subset of these helpers"
 )]
 
+#[cfg(target_os = "macos")]
+pub mod darwin;
 mod platform;
 
 use std::{

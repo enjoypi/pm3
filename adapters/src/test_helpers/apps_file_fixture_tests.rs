@@ -59,6 +59,7 @@ pub fn minimal_entry() -> AppEntry {
         max_memory: None,
         stop_exit_codes: Vec::new(),
         self_responsible: false,
+        priority: None,
         sandbox: None,
     }
 }

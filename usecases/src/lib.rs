@@ -25,7 +25,7 @@ mod persist;
 mod supervisor_log;
 
 pub use entities::{
-    AppSpec, EnvOrigin, EnvScope, EnvValue, PolicyError, ProcessIdentity, ProcessRuntime,
+    AppSpec, EnvOrigin, EnvScope, EnvValue, PolicyError, Priority, ProcessIdentity, ProcessRuntime,
     ProcessStatus, ReadScope, ReadyProbe, RestartPolicy, RuntimeError, SandboxMode, SandboxPolicy,
     SignalNameError, SpecError, VALID_SIGNALS, covers_path, is_absolute_path, is_name_letter,
     mask_secret, merge_environment, normalize_root, parse_memory_limit, root_is_forbidden,
