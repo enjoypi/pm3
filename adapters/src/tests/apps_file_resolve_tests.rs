@@ -395,8 +395,11 @@ fn an_app_is_not_self_responsible_unless_it_says_so() {
 
 #[test]
 fn a_service_file_reads_its_priority() {
-    let entry = parse_service_file("name: web\nscript: /bin/sh\npriority: interactive\n")
-        .expect("should parse");
+    let script = minimal_entry().script;
+    let entry = parse_service_file(&format!(
+        "name: web\nscript: '{script}'\npriority: interactive\n"
+    ))
+    .expect("should parse");
     assert_eq!(
         resolve_one(&defaults(), &entry).priority,
         Priority::Interactive
