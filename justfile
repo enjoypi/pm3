@@ -1,7 +1,8 @@
 set positional-arguments
 
 cargo_locked := "--locked"
-cargo_common_flags := "--all-targets --workspace --release"
+cargo_common_flags := "--all-targets --workspace"
+dev_cargo := "bun dev_scripts/cargo_invocation.ts"
 half_of_cpus := shell('n=$(( $(getconf _NPROCESSORS_ONLN) / 2 )); [ "$n" -ge 1 ] || n=1; echo "$n"')
 forbidden_ts_syntax := ':\s*any\b|\bas\s+any\b|<\s*any\s*[,>]|,\s*any\s*>|\bany\s*\[\]|[\w\)\]]!\s*([.\[;,)}]|$)|@ts-(ignore|expect-error|nocheck)'
 
@@ -12,34 +13,37 @@ export CARGO_BUILD_JOBS := env_var_or_default("CARGO_BUILD_JOBS", half_of_cpus)
 help:
     just --list
 
-[doc("编译 workspace")]
+[doc("nightly 编译 workspace 的 debug 插桩产物，与 cov 共享 target/llvm-cov-target")]
 build *args:
-    cargo build {{ cargo_locked }} {{ cargo_common_flags }} "$@"
+    {{ dev_cargo }} --cov build {{ cargo_locked }} {{ cargo_common_flags }} "$@"
 
 [doc("格式化全部 Rust 源码，nightly rustfmt 才能重排 import")]
 fmt:
-    cargo +nightly fmt --all
+    {{ dev_cargo }} fmt --all
 
 [doc("clippy 四组 lint 全开，任何 warning 即失败")]
 lint *args:
-    cargo clippy {{ cargo_locked }} {{ cargo_common_flags }} --no-deps "$@" -- -D warnings
+    {{ dev_cargo }} clippy {{ cargo_locked }} {{ cargo_common_flags }} --no-deps "$@" -- -D warnings
 
-[doc("Windows 交叉编译检查：check + clippy（只编译不链接，msvc 链接器缺失不阻塞）")]
+[doc("nightly cargo check，与 lint 共享依赖的 rmeta")]
+check *args:
+    {{ dev_cargo }} check {{ cargo_locked }} {{ cargo_common_flags }} "$@"
+
+[doc("Windows 交叉编译检查：clippy 已含 check（只编译不链接，msvc 链接器缺失不阻塞）")]
 check-windows:
-    cargo check {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc
-    cargo clippy {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc --no-deps -- -D warnings
+    {{ dev_cargo }} clippy {{ cargo_locked }} {{ cargo_common_flags }} --target x86_64-pc-windows-msvc --no-deps -- -D warnings
 
-[doc("cargo test；覆盖率门禁走 just cov；跑前跑后自动 reap 泄漏的 e2e daemon")]
+[doc("nightly 插桩 cargo nextest，与 cov 共享产物；跑前跑后自动 reap 泄漏的 e2e daemon")]
 test *args:
-    bun dev_scripts/reap.ts; cargo test {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status
+    bun dev_scripts/reap.ts; {{ dev_cargo }} --cov nextest run {{ cargo_locked }} {{ cargo_common_flags }} "$@"; status=$?; bun dev_scripts/reap.ts; exit $status
 
-[doc("覆盖率门禁：nightly llvm-cov 跑全部测试（含 e2e 子进程），非测试代码行、分支与 region 均须 100%")]
+[doc("覆盖率门禁：nightly 插桩跑全部测试（含 e2e 子进程），先 line 与 branch 100%，再 region 100%")]
 cov *args:
     bun dev_scripts/cov.ts "$@"
 
-[doc("装到真机：opt-level 3 构建，有 pm3-local 身份则签名（TCC 授权跨重装稳定），再交给 pm3 install")]
+[doc("装到真机：stable release 构建（与 CI 产物一致），有 pm3-local 身份则签名（TCC 授权跨重装稳定），再交给 pm3 install")]
 install:
-    CARGO_PROFILE_RELEASE_OPT_LEVEL=3 cargo build {{ cargo_locked }} -p frameworks --release
+    cargo build {{ cargo_locked }} -p frameworks --release
     src=target/release/pm3; \
     if command -v security >/dev/null 2>&1 && security find-identity -p codesigning | rg -q pm3-local; then \
     src=target/release/pm3.signed; \

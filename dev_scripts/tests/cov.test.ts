@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import { type CoverageReport, coverageGaps, describeGaps, ignoredFiles } from "../cov.ts";
+import {
+  type CoverageReport,
+  coverageGaps,
+  describeGaps,
+  executablesOf,
+  ignoredFiles,
+  instrumentationProblem,
+  staleObjects,
+} from "../cov.ts";
 
 type Row = [string, number, number, number, number, number, number];
 
@@ -52,15 +60,81 @@ describe("describeGaps", () => {
     expect(describeGaps([])).toBe("cov: 100% line, 100% branch, 100% region");
   });
 
-  test("lists every file that misses coverage", () => {
+  test("reports only line and branch gaps while any remain", () => {
     expect(
       describeGaps([
-        { file: "a.rs", lines: 2, branches: 0, regions: 0 },
-        { file: "b.rs", lines: 0, branches: 1, regions: 3 },
+        { file: "a.rs", lines: 2, branches: 1, regions: 4 },
+        { file: "b.rs", lines: 0, branches: 0, regions: 3 },
+        { file: "c.rs", lines: 0, branches: 2, regions: 0 },
       ]),
-    ).toBe(
-      "a.rs: 2 line(s), 0 branch(es), 0 region(s) uncovered\nb.rs: 0 line(s), 1 branch(es), 3 region(s) uncovered",
-    );
+    ).toBe("a.rs: 2 line(s), 1 branch(es) uncovered\nc.rs: 0 line(s), 2 branch(es) uncovered");
+  });
+
+  test("reports region gaps once lines and branches are full", () => {
+    expect(
+      describeGaps([
+        { file: "b.rs", lines: 0, branches: 0, regions: 3 },
+        { file: "d.rs", lines: 0, branches: 0, regions: 1 },
+      ]),
+    ).toBe("b.rs: 3 region(s) uncovered\nd.rs: 1 region(s) uncovered");
+  });
+});
+
+describe("instrumentationProblem", () => {
+  const crates = ["entities", "usecases", "adapters", "frameworks"];
+
+  test("accepts a report covering every crate with branches", () => {
+    const rows: Row[] = crates.map((crate) => [`/repo/${crate}/src/lib.rs`, 1, 1, 2, 2, 1, 1]);
+    expect(instrumentationProblem(report(rows), "/repo")).toBeNull();
+  });
+
+  test("names the crates missing from the report", () => {
+    const rows: Row[] = [["/repo/entities/src/lib.rs", 1, 1, 2, 2, 1, 1]];
+    expect(instrumentationProblem(report(rows), "/repo")).toContain("usecases, adapters, frameworks");
+  });
+
+  test("rejects a report without any branch counter", () => {
+    const rows: Row[] = crates.map((crate) => [`/repo/${crate}/src/lib.rs`, 1, 1, 0, 0, 1, 1]);
+    expect(instrumentationProblem(report(rows), "/repo")).toContain("branch");
+  });
+
+  test("reads windows separators", () => {
+    const rows: Row[] = crates.map((crate) => [`C:\\repo\\${crate}\\src\\lib.rs`, 1, 1, 2, 2, 1, 1]);
+    expect(instrumentationProblem(report(rows), String.raw`C:\repo`)).toBeNull();
+  });
+});
+
+describe("executablesOf", () => {
+  test("collects executables from cargo json messages", () => {
+    const lines = [
+      JSON.stringify({ reason: "compiler-artifact", executable: "/t/debug/deps/a-0123456789abcdef" }),
+      JSON.stringify({ reason: "compiler-artifact", executable: null }),
+      JSON.stringify({ reason: "build-finished", success: true }),
+      "not json",
+      "",
+    ].join("\n");
+    expect(executablesOf(lines)).toEqual(["/t/debug/deps/a-0123456789abcdef"]);
+  });
+});
+
+describe("staleObjects", () => {
+  test("drops older builds of a current executable only", () => {
+    const current = [
+      { path: "/t/debug/build/a/0123456789abcdef/out/a-0123456789abcdef", id: "1" },
+      { path: "/t/debug/pm3", id: "2" },
+    ];
+    const present = [
+      { path: "/t/debug/build/a/0123456789abcdef/out/a-0123456789abcdef", id: "1" },
+      { path: "/t/debug/build/a/fedcba9876543210/out/a-fedcba9876543210", id: "3" },
+      { path: "/t/debug/build/a/fedcba9876543210/out/a-fedcba9876543210.d", id: "4" },
+      { path: "/t/debug/deps/pm3-1111111111111111", id: "2" },
+      { path: "/t/debug/deps/pm3-3333333333333333.exe", id: "5" },
+      { path: "/t/debug/deps/serde-2222222222222222", id: "6" },
+    ];
+    expect(staleObjects(present, current)).toEqual([
+      "/t/debug/build/a/fedcba9876543210/out/a-fedcba9876543210",
+      "/t/debug/deps/pm3-3333333333333333.exe",
+    ]);
   });
 });
 

@@ -118,7 +118,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: e2e
-        run: cargo test --locked --workspace --release
+        run: cargo test --locked --workspace
         timeout-minutes: 30
 
   release:

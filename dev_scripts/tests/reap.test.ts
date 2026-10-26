@@ -28,7 +28,7 @@ function daemonRow(
 describe("parseProcessTable", () => {
   test("parses pid, ppid and args from ps output", () => {
     const text = [
-      "  2068114       1 /repo/target/release/pm3 daemon --config /tmp/.tmpX/config.yaml",
+      "  2068114       1 /repo/target/llvm-cov-target/debug/pm3 daemon --config /tmp/.tmpX/config.yaml",
       "2537958     855 /home/dev/bin/pm3 daemon --config /home/dev/.pm3/config.yaml",
       "",
       "not a process line",
@@ -38,7 +38,7 @@ describe("parseProcessTable", () => {
       {
         pid: 2068114,
         ppid: 1,
-        args: "/repo/target/release/pm3 daemon --config /tmp/.tmpX/config.yaml",
+        args: "/repo/target/llvm-cov-target/debug/pm3 daemon --config /tmp/.tmpX/config.yaml",
       },
       {
         pid: 2537958,

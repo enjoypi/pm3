@@ -6,8 +6,10 @@
 
 mod common;
 
+use std::time::Instant;
+
 use self::common::{
-    Home, app_log, daemon_pid,
+    Home, PROBE_INTERVAL, READY_BUDGET, app_log, daemon_pid,
     darwin::{BACKGROUND_BAND, STANDARD_BAND, base_priority, thread_priorities},
     home_with, shutdown_daemon, start_ok, wait_for_log, workspace_of, write_apps,
 };
@@ -28,11 +30,34 @@ fn reported(home: &Home, name: &str, key: &str) -> libc::pid_t {
         .expect("the app should print its pids")
 }
 
-fn family_priorities(home: &Home, name: &str) -> [i32; 2] {
+fn settled_priority(pid: libc::pid_t, settled: fn(i32) -> bool) -> i32 {
+    let deadline = Instant::now() + READY_BUDGET;
+    loop {
+        let priority = base_priority(pid);
+        if settled(priority) || Instant::now() >= deadline {
+            return priority;
+        }
+        std::thread::sleep(PROBE_INTERVAL);
+    }
+}
+
+fn family_priorities(home: &Home, name: &str, settled: fn(i32) -> bool) -> [i32; 2] {
     [
-        base_priority(reported(home, name, "pid=")),
-        base_priority(reported(home, name, "child=")),
+        settled_priority(reported(home, name, "pid="), settled),
+        settled_priority(reported(home, name, "child="), settled),
     ]
+}
+
+const fn is_background(priority: i32) -> bool {
+    priority == BACKGROUND_BAND
+}
+
+const fn is_standard(priority: i32) -> bool {
+    priority == STANDARD_BAND
+}
+
+const fn is_interactive(priority: i32) -> bool {
+    priority > STANDARD_BAND
 }
 
 #[test]
@@ -47,9 +72,15 @@ fn each_priority_reaches_the_service_and_its_children() {
     .concat();
     start_ok(&home, &write_apps(&home, &format!("apps:\n{apps}")));
 
-    assert_eq!(family_priorities(&home, "quiet"), [BACKGROUND_BAND; 2]);
-    assert_eq!(family_priorities(&home, "steady"), [STANDARD_BAND; 2]);
-    let snappy = family_priorities(&home, "snappy");
+    assert_eq!(
+        family_priorities(&home, "quiet", is_background),
+        [BACKGROUND_BAND; 2]
+    );
+    assert_eq!(
+        family_priorities(&home, "steady", is_standard),
+        [STANDARD_BAND; 2]
+    );
+    let snappy = family_priorities(&home, "snappy", is_interactive);
     assert!(snappy.iter().all(|pri| *pri > STANDARD_BAND), "{snappy:?}");
     shutdown_daemon(&home);
 }
@@ -63,7 +94,10 @@ fn an_app_without_a_priority_runs_in_the_background() {
     );
     start_ok(&home, &write_apps(&home, &apps));
 
-    assert_eq!(family_priorities(&home, "plain"), [BACKGROUND_BAND; 2]);
+    assert_eq!(
+        family_priorities(&home, "plain", is_background),
+        [BACKGROUND_BAND; 2]
+    );
     shutdown_daemon(&home);
 }
 
@@ -74,7 +108,7 @@ fn a_confined_app_can_run_at_interactive_priority() {
     let apps = family_app(&cwd, "boxed", "interactive");
     start_ok(&home, &write_apps(&home, &format!("apps:\n{apps}")));
 
-    let boxed = family_priorities(&home, "boxed");
+    let boxed = family_priorities(&home, "boxed", is_interactive);
     assert!(boxed.iter().all(|pri| *pri > STANDARD_BAND), "{boxed:?}");
     shutdown_daemon(&home);
 }
@@ -93,7 +127,7 @@ fn the_daemon_runs_every_thread_in_the_background() {
         threads.iter().all(|pri| *pri == BACKGROUND_BAND),
         "{threads:?}"
     );
-    let snappy = family_priorities(&home, "snappy");
+    let snappy = family_priorities(&home, "snappy", is_interactive);
     assert!(snappy.iter().all(|pri| *pri > STANDARD_BAND), "{snappy:?}");
     shutdown_daemon(&home);
 }

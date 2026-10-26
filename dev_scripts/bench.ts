@@ -2,6 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { arch, cpus, platform, release, tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runCargo, toolchain } from "./cargo_invocation.ts";
+
 const serviceCount = 8;
 const hotSamples = 50;
 const sleeperMs = 3_600_000;
@@ -287,15 +289,11 @@ async function ensureSandboxBackend(): Promise<void> {
 
 async function collect(): Promise<BenchReport> {
   await ensureSandboxBackend();
-  const build = Bun.spawn(["cargo", "build", "--locked", "--release", "-p", "frameworks"], {
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  if ((await build.exited) !== 0) {
+  if ((await runCargo([toolchain, "build", "--locked", "-p", "frameworks"])) !== 0) {
     throw new Error("cargo build 失败");
   }
   const home = await mkdtemp(join(tmpdir(), "pm3-bench-"));
-  const bin = join(process.cwd(), "target", "release", "pm3");
+  const bin = join(process.cwd(), "target", "debug", "pm3");
   const config = join(home, "config.yaml");
   try {
     await writeFile(config, configYaml(home), { mode: 0o600 });

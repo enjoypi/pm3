@@ -227,3 +227,99 @@ fn usecases_reexports_entities_selectively() {
 fn adapters_reexports_usecases_selectively() {
     assert_no_wildcard_reexport("adapters/src/lib.rs", "usecases");
 }
+
+const FORBIDDEN_SOURCE_MARKERS: &[&str] = &["#![feature(", "coverage(off)", "coverage_nightly"];
+
+fn workspace_members() -> Vec<String> {
+    let table: toml::Table = read_file_content("Cargo.toml")
+        .parse()
+        .expect("workspace Cargo.toml parses");
+    table["workspace"]["members"]
+        .as_array()
+        .expect("workspace.members is an array")
+        .iter()
+        .filter_map(toml::Value::as_str)
+        .filter(|member| *member != "arch_tests")
+        .map(str::to_string)
+        .collect()
+}
+
+fn rust_sources(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).expect("source dir is readable") {
+        let path = entry.expect("dir entry is readable").path();
+        if path.is_dir() {
+            found.extend(rust_sources(&path));
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            found.push(path);
+        }
+    }
+    found
+}
+
+fn forbidden_source_marker(content: &str) -> Option<&'static str> {
+    let compact: String = content.chars().filter(|c| !c.is_whitespace()).collect();
+    FORBIDDEN_SOURCE_MARKERS
+        .iter()
+        .copied()
+        .find(|marker| compact.contains(marker))
+}
+
+fn declares_features(cargo_toml: &str) -> bool {
+    let table: toml::Table = cargo_toml.parse().expect("Cargo.toml parses");
+    table.contains_key("features")
+}
+
+#[test]
+fn forbidden_source_marker_catches_a_spaced_coverage_off() {
+    assert_eq!(
+        forbidden_source_marker("#[coverage( off )]\nfn f() {}\n"),
+        Some("coverage(off)")
+    );
+}
+
+#[test]
+fn forbidden_source_marker_catches_a_nightly_feature_gate() {
+    assert_eq!(
+        forbidden_source_marker("#![feature(coverage_attribute)]\n"),
+        Some("#![feature(")
+    );
+}
+
+#[test]
+fn forbidden_source_marker_accepts_plain_code() {
+    assert_eq!(forbidden_source_marker("fn covered() {}\n"), None);
+}
+
+#[test]
+fn declares_features_spots_a_features_table() {
+    assert!(declares_features("[features]\nextra = []\n"));
+    assert!(!declares_features("[dependencies]\n"));
+}
+
+#[test]
+fn no_member_opts_out_of_coverage_or_uses_nightly_features() {
+    for member in workspace_members() {
+        for path in rust_sources(&workspace_root().join(&member)) {
+            let content = std::fs::read_to_string(&path).expect("source is readable");
+            let marker = forbidden_source_marker(&content);
+            assert!(
+                marker.is_none(),
+                "VIOLATION: {} uses `{}`. Coverage MUST NOT be switched off and nightly features MUST NOT be enabled: cover the code with a test or delete it",
+                path.display(),
+                marker.unwrap_or_default()
+            );
+        }
+    }
+}
+
+#[test]
+fn no_member_declares_cargo_features() {
+    for member in workspace_members() {
+        let manifest = format!("{member}/Cargo.toml");
+        assert!(
+            !declares_features(&read_file_content(&manifest)),
+            "VIOLATION: {manifest} declares [features]. Every build MUST compile one code path so coverage sees all of it"
+        );
+    }
+}

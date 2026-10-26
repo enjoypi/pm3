@@ -46,7 +46,14 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 
 ## 覆盖率
 
-- 门禁是 `just cov`（`dev_scripts/cov.ts`）：非测试代码行、分支与 region MUST 100%
+- 门禁是 `just cov`（`dev_scripts/cov.ts`）：非测试代码先 line 与 branch MUST 100%，再 region MUST 100%；有 line/branch 缺口时只报它们
+- MUST NOT 用 `#[coverage(off)]`/`coverage_nightly`、nightly `#![feature]`、成员 crate 的 `[features]`：覆盖不到的代码补测试或删掉；发布用 stable，`[features]` 让一份代码分叉成多条编译路径，门禁只看得到其中一条。由 `arch_tests` 扫源码兜底
+- 开发默认 nightly + dev profile；`--release`（stable、opt 3）只用于 release CI 与 `just install`
+- 插桩靠 cargo-llvm-cov 的 `RUSTC_WRAPPER` 注入，参数不进 cargo 指纹 ⇒ `target/llvm-cov-target` MUST 只经 `cargo_invocation.ts --cov` 写入（`just build/test/cov`），裸 cargo 写入的未插桩产物会被当 Fresh 复用 ⇒ 文件从报告消失、门禁误判通过；`cov.ts` 以「4 个业务 crate 都在报告里且 branch 计数 > 0」兜底，已混入时用 `bun dev_scripts/cargo_invocation.ts --cov llvm-cov clean --workspace` 恢复
+- `cov.ts` 只清 profraw、不清产物以复用增量编译；`report` 会扫进同名旧哈希二进制（nightly 升级、Cargo.lock 变化后残留）⇒ 跑完测试按 `--message-format=json` 的本次 executable 删除旧哈希
+- 测试跑在 cargo-nextest 上（每个测试独立进程），门禁耗时比 `cargo test` 减半
+- macOS 刚 fork 的子进程 `pti_priority` 会先读到 31，约百毫秒内才落到夹紧后的档位 ⇒ 断言优先级 MUST 轮询到稳定值（`priority.rs` 的 `settled_priority`），不能只读一次
+- `just build` 产物带插桩，手动运行会在 cwd 写 `default.profraw`；要跑真机用 `just install`
 - tracing 的 `log` 特性 MUST 保持关闭：开启后每个日志宏多展开一份「无订阅者时转发给 log crate」的分支，复用同一批字面量且永不执行 ⇒ 所有日志参数行恒为 0。它由 axum 默认特性 `tower-log` 引入，故 axum 关默认特性并显式列出其余特性
 - 日志宏只在已启用时才求值参数 ⇒ 各 lib 测试二进制 MUST 经 `ctor` 装 `test_trace`（全级别、只求值不输出），e2e 的 config MUST 用 `log_level: "trace"`
 - 同一函数在 lib 测试二进制与 `pm3` 二进制各有一份覆盖记录：line 与 branch 按合并计，region 只取覆盖最多的那一份 ⇒ 两份互补不算数，补测试要让同一份覆盖全部 region（`?` 的错误返回最常漏，通常补 lib 单测）；只有单测能走到、生产路径不可达的分支 MUST 删掉，而不是补单测

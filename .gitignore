@@ -20,3 +20,4 @@ rustc-ice-*.txt
 
 .debug/
 cov.json
+*.profraw
