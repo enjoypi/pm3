@@ -43,7 +43,7 @@ cov *args:
 
 [doc("装到真机：stable release 构建（与 CI 产物一致），有 pm3-local 身份则签名（TCC 授权跨重装稳定），再交给 pm3 install")]
 install:
-    cargo build {{ cargo_locked }} -p frameworks --release
+    cargo +stable build {{ cargo_locked }} -p frameworks --release
     src=target/release/pm3; \
     if command -v security >/dev/null 2>&1 && security find-identity -p codesigning | rg -q pm3-local; then \
     src=target/release/pm3.signed; \

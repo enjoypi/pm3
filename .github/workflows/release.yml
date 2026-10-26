@@ -39,7 +39,7 @@ jobs:
 
       - name: build
         run: |
-          cargo build --locked --release -p frameworks
+          cargo +stable build --locked --release -p frameworks
           strip target/release/pm3
 
       - name: sign the macOS binary with the stable pm3-local identity
@@ -92,7 +92,7 @@ jobs:
           }
 
       - name: build
-        run: cargo build --locked --release -p frameworks
+        run: cargo +stable build --locked --release -p frameworks
 
       - name: package
         run: |
@@ -113,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
 
       - uses: Swatinem/rust-cache@v2
 

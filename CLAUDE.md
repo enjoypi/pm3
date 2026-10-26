@@ -48,7 +48,7 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 
 - 门禁是 `just cov`（`dev_scripts/cov.ts`）：非测试代码先 line 与 branch MUST 100%，再 region MUST 100%；有 line/branch 缺口时只报它们
 - MUST NOT 用 `#[coverage(off)]`/`coverage_nightly`、nightly `#![feature]`、成员 crate 的 `[features]`：覆盖不到的代码补测试或删掉；发布用 stable，`[features]` 让一份代码分叉成多条编译路径，门禁只看得到其中一条。由 `arch_tests` 扫源码兜底
-- 开发默认 nightly + dev profile；`--release`（stable、opt 3）只用于 release CI 与 `just install`
+- `rust-toolchain.toml` 把仓内默认工具链定为 nightly（含 rust-analyzer 与裸 cargo）；`--release` 只用于 release CI 与 `just install`，二者 MUST 写 `cargo +stable`：toolchain 文件压过 rustup 默认与 `dtolnay/rust-toolchain@stable`
 - 插桩靠 cargo-llvm-cov 的 `RUSTC_WRAPPER` 注入，参数不进 cargo 指纹 ⇒ `target/llvm-cov-target` MUST 只经 `cargo_invocation.ts --cov` 写入（`just build/test/cov`），裸 cargo 写入的未插桩产物会被当 Fresh 复用 ⇒ 文件从报告消失、门禁误判通过；`cov.ts` 以「4 个业务 crate 都在报告里且 branch 计数 > 0」兜底，已混入时用 `bun dev_scripts/cargo_invocation.ts --cov llvm-cov clean --workspace` 恢复
 - `cov.ts` 只清 profraw、不清产物以复用增量编译；`report` 会扫进同名旧哈希二进制（nightly 升级、Cargo.lock 变化后残留）⇒ 跑完测试按 `--message-format=json` 的本次 executable 删除旧哈希
 - 测试跑在 cargo-nextest 上（每个测试独立进程），门禁耗时比 `cargo test` 减半
@@ -77,6 +77,6 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
   - lib 单测里 `current_exe` 是测试二进制，跳板由 `platform::trampoline_program` 的 sh 替身顶替
   - 观测：读 `proc_pidinfo` 的 `pti_priority`/`pth_priority`（`getpriority` 恒为 0）；e2e MUST NOT 用 `taskpolicy` 模拟后台父进程（它设的 ext darwinbg 无法解除）
 - `windows-e2e` 不在 release 的 `needs` 里 ⇒ 红叉不影响产物。CI runner 是管理员 ⇒ 只有非管理员才触发的权限缺陷（如 schtasks 缺 `UserId`）在 CI 上永远绿，MUST 在本机非管理员账户跑一遍才算验证
-- Windows：Bash hook 的 `env -i` 会剥掉 `PROGRAMDATA`/`TMP`/`TEMP`/`USERNAME` ⇒ rustc 找不到 VS，回退到 Git 自带的 GNU `link`（报 `extra operand`）；`link.exe` 把临时文件写到 `C:\WINDOWS`（LNK1104）；schtasks 的 e2e 拿不到账户 ⇒ cargo 命令 MUST 显式传入这四个变量。rustup default host 为 gnu 时，`+nightly` 会解析到 gnu 工具链 ⇒ MUST `rustup set default-host x86_64-pc-windows-msvc`
+- Windows：Bash hook 的 `env -i` 会剥掉 `PROGRAMDATA`/`TMP`/`TEMP`/`USERNAME` ⇒ rustc 找不到 VS，回退到 Git 自带的 GNU `link`（报 `extra operand`）；`link.exe` 把临时文件写到 `C:\WINDOWS`（LNK1104）；schtasks 的 e2e 拿不到账户 ⇒ cargo 命令 MUST 显式传入这四个变量。rustup default host 为 gnu 时，`rust-toolchain.toml` 的 nightly 会解析到 gnu 工具链 ⇒ MUST `rustup set default-host x86_64-pc-windows-msvc`
 - Windows 覆盖率：`std::process::exit`（含 clap 的 `--version`/`--help`/解析失败）直接 `ExitProcess`，不跑 CRT atexit ⇒ 子进程 profraw 不落盘，这些路径在 Windows 门禁里恒为 0 命中；只有 `main` 返回 `ExitCode` 的路径计入。`frameworks/tests/` 25 个 e2e 里 24 个是 `cfg(unix)` ⇒ Windows 的 frameworks 覆盖率只能靠逐个移植 e2e 补
 - `target/llvm-cov-target` 出现 `os error 1392`（文件或目录损坏）或 `ls` 报 `File exists` 时，门禁数字不可信（子进程计数丢失），MUST 先 `mv` 走该目录重跑，再对该盘跑 `chkdsk`

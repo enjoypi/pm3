@@ -1,6 +1,5 @@
 import { join } from "node:path";
 
-export const toolchain = "+nightly";
 const covFlag = "--cov";
 const exportLine = /^export ([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
 
@@ -43,7 +42,7 @@ export function splitCovFlag(argv: readonly string[]): { cov: boolean; args: str
 
 export async function coverageEnv(root: string): Promise<Record<string, string>> {
   const target = { CARGO_TARGET_DIR: covTargetDir(root) };
-  const shown = Bun.spawn(["cargo", toolchain, "llvm-cov", "show-env", "--branch", "--sh"], {
+  const shown = Bun.spawn(["cargo", "llvm-cov", "show-env", "--branch", "--sh"], {
     env: { ...Bun.env, ...target },
     stderr: "ignore",
     stdout: "pipe",
@@ -84,5 +83,5 @@ export async function captureCargo(
 if (import.meta.main) {
   const { cov, args } = splitCovFlag(Bun.argv.slice(2));
   const env = cov ? await coverageEnv(process.cwd()) : {};
-  process.exit(await runCargo([toolchain, ...args], env));
+  process.exit(await runCargo(args, env));
 }

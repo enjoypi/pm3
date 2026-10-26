@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { arch, cpus, platform, release, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runCargo, toolchain } from "./cargo_invocation.ts";
+import { runCargo } from "./cargo_invocation.ts";
 
 const serviceCount = 8;
 const hotSamples = 50;
@@ -289,7 +289,7 @@ async function ensureSandboxBackend(): Promise<void> {
 
 async function collect(): Promise<BenchReport> {
   await ensureSandboxBackend();
-  if ((await runCargo([toolchain, "build", "--locked", "-p", "frameworks"])) !== 0) {
+  if ((await runCargo(["build", "--locked", "-p", "frameworks"])) !== 0) {
     throw new Error("cargo build 失败");
   }
   const home = await mkdtemp(join(tmpdir(), "pm3-bench-"));

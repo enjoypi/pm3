@@ -6,7 +6,6 @@ import {
   coverageEnv,
   covTargetDir,
   runCargo,
-  toolchain,
 } from "./cargo_invocation.ts";
 import { reapOrphanedDaemons } from "./reap.ts";
 
@@ -146,7 +145,7 @@ async function identify(paths: readonly string[]): Promise<ObjectFile[]> {
 
 async function pruneStale(env: Record<string, string>): Promise<number> {
   const built = await captureCargo(
-    [toolchain, "test", ...testArgs, "--no-run", "--message-format=json"],
+    ["test", ...testArgs, "--no-run", "--message-format=json"],
     env,
   );
   if (built.code !== 0) {
@@ -164,13 +163,13 @@ async function pruneStale(env: Record<string, string>): Promise<number> {
 }
 
 async function runTests(env: Record<string, string>): Promise<number> {
-  const cleaned = await runCargo([toolchain, "llvm-cov", "clean", "--profraw-only"], env);
+  const cleaned = await runCargo(["llvm-cov", "clean", "--profraw-only"], env);
   if (cleaned !== 0) {
     return cleaned;
   }
   await reap();
   const tested = await runCargo(
-    [toolchain, "nextest", "run", ...testArgs, ...Bun.argv.slice(2)],
+    ["nextest", "run", ...testArgs, ...Bun.argv.slice(2)],
     env,
   );
   await reap();
@@ -181,7 +180,6 @@ async function readReport(env: Record<string, string>): Promise<CoverageReport |
   await mkdir(dirname(reportPath), { recursive: true });
   const reported = await runCargo(
     [
-      toolchain,
       "llvm-cov",
       "report",
       "--branch",
