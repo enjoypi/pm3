@@ -41,10 +41,9 @@ pub async fn read_tail(
     count: usize,
     max_bytes: u64,
 ) -> Result<Vec<String>, LogReadError> {
-    let mut file = File::open(path)
+    let (mut file, mut start) = open_at_end(path)
         .await
         .map_err(|e| read_error(path, &e.to_string()))?;
-    let mut start = seek_to_end(&mut file).await;
     let mut buffer = Vec::new();
     while start > 0 && line_breaks(&buffer) <= count && (buffer.len() as u64) < max_bytes {
         let budget = max_bytes.saturating_sub(buffer.len() as u64);
@@ -69,10 +68,10 @@ pub async fn read_tail(
         .collect())
 }
 
-async fn seek_to_end(file: &mut File) -> u64 {
-    file.seek(SeekFrom::End(0))
-        .await
-        .expect("internal error: seeking to the end of an open log cannot overflow")
+async fn open_at_end(path: &Path) -> std::io::Result<(File, u64)> {
+    let mut file = File::open(path).await?;
+    let end = file.seek(SeekFrom::End(0)).await?;
+    Ok((file, end))
 }
 
 async fn read_chunk_at(file: &mut File, start: u64, step: u64) -> std::io::Result<Vec<u8>> {
@@ -101,12 +100,11 @@ impl LogFollower {
         path: &Path,
         max_pending_bytes: u64,
     ) -> Result<Option<Self>, LogReadError> {
-        let mut file = match File::open(path).await {
-            Ok(file) => file,
+        let (file, offset) = match open_at_end(path).await {
+            Ok(opened) => opened,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(read_error(path, &error.to_string())),
         };
-        let offset = seek_to_end(&mut file).await;
         Ok(Some(Self {
             path: path.to_path_buf(),
             file,

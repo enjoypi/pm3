@@ -15,6 +15,11 @@ fn temp_log(content: &[u8]) -> (TempDir, std::path::PathBuf) {
     (dir, path)
 }
 
+fn disk_dir() -> TempDir {
+    tempfile::tempdir_in(concat!(env!("CARGO_MANIFEST_DIR"), "/../target"))
+        .expect("create a directory off tmpfs, where seeking a directory fails")
+}
+
 async fn append(path: &Path, content: &[u8]) {
     let mut file = tokio::fs::OpenOptions::new()
         .append(true)
@@ -174,7 +179,7 @@ async fn following_reports_a_missing_log() {
 
 #[tokio::test]
 async fn read_tail_reports_a_log_path_it_cannot_read() {
-    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir = disk_dir();
     let err = read_tail(dir.path(), 5, MAX_READ)
         .await
         .unwrap_err()
@@ -275,11 +280,32 @@ async fn following_keeps_a_multi_byte_character_split_across_two_polls() {
 #[cfg(unix)]
 #[tokio::test]
 async fn following_reports_a_log_it_cannot_read() {
-    let dir = tempfile::tempdir().expect("temp dir");
+    let dir = disk_dir();
     let mut follower = LogFollower::start_at_end(dir.path(), MAX_PENDING)
         .await
         .expect("a directory opens like a file on linux");
     let err = follower.poll_appended().await.unwrap_err().to_string();
+    assert!(err.contains("cannot read log file"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn read_tail_reports_a_log_it_cannot_seek() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let fifo = dir.path().join("web-out.log");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("run mkfifo");
+    assert!(made.success(), "mkfifo failed");
+    let writer_path = fifo.clone();
+    let writer =
+        std::thread::spawn(move || std::fs::OpenOptions::new().write(true).open(writer_path));
+    let err = read_tail(&fifo, 5, MAX_READ).await.unwrap_err().to_string();
+    writer
+        .join()
+        .expect("join writer")
+        .expect("open the writer end");
     assert!(err.contains("cannot read log file"), "got: {err}");
 }
 
