@@ -30,6 +30,8 @@ const EMPTY_SAMPLE: ResourceSample = ResourceSample {
 };
 const LOCALE_VARIABLE: &str = "LC_ALL";
 const FIXED_LOCALE: &str = "C";
+const ZONE_VARIABLE: &str = "TZ";
+const FIXED_ZONE: &str = "UTC0";
 
 #[derive(Clone, Debug)]
 pub struct PsProcessProbe {
@@ -81,9 +83,7 @@ impl PsProcessProbe {
 
     async fn ask_every_process(&self, format: &str, label: &str, action: &str) -> Option<String> {
         let mut command = Command::new(&self.program);
-        command
-            .args([WIDE_FLAG, EVERY_PROCESS_FLAG, FORMAT_FLAG, format])
-            .env(LOCALE_VARIABLE, FIXED_LOCALE);
+        command.args([WIDE_FLAG, EVERY_PROCESS_FLAG, FORMAT_FLAG, format]);
         self.read_ps(command, label, action).await
     }
 
@@ -91,8 +91,7 @@ impl PsProcessProbe {
         let mut command = Command::new(&self.program);
         command
             .args([WIDE_FLAG, FORMAT_FLAG, format, PID_FLAG])
-            .arg(joined)
-            .env(LOCALE_VARIABLE, FIXED_LOCALE);
+            .arg(joined);
         self.read_ps(command, joined, action).await
     }
 
@@ -104,7 +103,10 @@ impl PsProcessProbe {
         Some(count_group_members(&stdout, pgid) == 0)
     }
 
-    async fn read_ps(&self, command: Command, joined: &str, action: &str) -> Option<String> {
+    async fn read_ps(&self, mut command: Command, joined: &str, action: &str) -> Option<String> {
+        command
+            .env(LOCALE_VARIABLE, FIXED_LOCALE)
+            .env(ZONE_VARIABLE, FIXED_ZONE);
         let timed = capture_timed(command, self.timeout_ms).await;
         let duration_ms = timed.duration_ms;
         let output = match timed.outcome {

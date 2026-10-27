@@ -148,6 +148,21 @@ async fn the_probe_asks_ps_for_the_start_time_of_one_pid_under_a_fixed_locale() 
 }
 
 #[tokio::test]
+async fn the_identity_is_read_in_utc_whatever_zone_the_daemon_runs_in() {
+    let (_dir, probe) = probe_with("echo \"4242 $TZ\"");
+    assert_eq!(
+        probe.identity(4242).await,
+        Liveness::Alive("UTC0".to_string())
+    );
+}
+
+#[tokio::test]
+async fn resource_sampling_reads_ps_in_utc_too() {
+    let (_dir, probe) = probe_with("[ \"$TZ\" = UTC0 ] && echo '7 7 100 1.0'");
+    assert_eq!(probe.resident_memory(&[7]).await.get(&7), Some(&100));
+}
+
+#[tokio::test]
 async fn probing_nothing_asks_ps_nothing() {
     let (_dir, probe) = probe_with("exit 2");
     assert!(probe.identities(&[]).await.is_empty());
