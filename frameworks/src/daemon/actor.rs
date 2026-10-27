@@ -38,6 +38,7 @@ impl Daemon {
                 kill_timeout_ms,
                 specs.config.ready_timeout_ms,
                 specs.config.ready_poll_interval_ms.max(1),
+                specs.config.notify.cooldown_ms,
             ),
             board: TaskBoard::new(events.clone(), Arc::clone(&ports)),
             ports,

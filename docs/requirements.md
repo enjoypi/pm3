@@ -97,6 +97,17 @@ OpenBSD-style random syntax `~` is supported: `~` picks a random value for that 
 
 The `next` column of `pm3 list` shows the next trigger's local time; when this column is empty the service really is stopped — there is no pm2-style ambiguity of "the service is stopped but the timer is still running."
 
+## Failure notifications
+
+When a service fails, the daemon raises a desktop notification (`osascript` on macOS, `notify-send` on Linux; Windows does not notify). Failures that notify:
+
+- A one-shot or scheduled job exits non-zero or is killed by a signal; a service the breaker gives up on, including a taken-over one that vanishes without pm3 seeing its exit code
+- A ready probe fails; the notification names the queued services cancelled with it
+- A liveness failure or memory breach makes pm3 restart the service
+- pm3 cannot launch a service it restarts, schedules or releases from the queue on its own
+
+What you ask for yourself never notifies: `stop`, `delete`, `stop all`, and a failed manual `start`/`restart`, which the CLI already reports. The same failure of one service notifies at most once per `pm3.notify.cooldown_ms` (default one hour); a clean exit or an operator `stop`/`delete` re-arms it. Titles and messages come from `pm3.notify` in the configuration; `enabled: false` turns notifications off.
+
 ## Who may issue commands
 
 The command channel is an entry point in the filesystem, readable and writable by the owner only, in a directory open to the owner only. On top of that, the daemon checks which user is actually on the other end of each incoming connection; if it is not itself, it disconnects directly and logs a line — giving the other side no chance to speak. Requests also have a size limit, so one malformed request cannot jam command processing.

@@ -74,6 +74,10 @@ pub fn valid_pm3_config() -> Pm3Config {
         restart: valid_restart_config(),
         sandbox: valid_sandbox_config(),
         service: valid_service_config(),
+        notify: crate::NotifyConfig {
+            enabled: false,
+            ..crate::NotifyConfig::default()
+        },
     }
 }
 

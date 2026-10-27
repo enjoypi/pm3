@@ -1,14 +1,14 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use adapters::{
-    AdoptedWatch, Clock, CommandWrapper, CopyTruncateRotator, CronScheduler, DumpContents,
-    DumpError, DumpStore, ExitOutcome, FingerprintError, Fingerprinter, HostProcessProbe,
-    HostReadyProber, HostSandbox, KillSignaler, LaunchError, LaunchSpec, LaunchedProcess, Liveness,
-    LogRotateError, LogRotator, PollCadence, Ports, ProcessLauncher, ProcessProbe, ProcessRecord,
-    Readiness, ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxCommandWrapper,
-    SandboxError, SandboxPolicy, Scheduler, Sha256Fingerprinter, SignalError, SignalScope,
-    Signaler, SpecSource, SystemClock, TokioProcessLauncher, WrappedCommand, YamlDumpStore,
-    wait_for_exit,
+    AdoptedWatch, Alert, Clock, CommandWrapper, CopyTruncateRotator, CronScheduler,
+    DesktopNotifier, DumpContents, DumpError, DumpStore, ExitOutcome, FingerprintError,
+    Fingerprinter, HostProcessProbe, HostReadyProber, HostSandbox, KillSignaler, LaunchError,
+    LaunchSpec, LaunchedProcess, Liveness, LogRotateError, LogRotator, PollCadence, Ports,
+    ProcessLauncher, ProcessProbe, ProcessRecord, Readiness, ReadyProbe, ReadyProber,
+    ResourceSample, RotatedLog, SandboxCommandWrapper, SandboxError, SandboxPolicy, Scheduler,
+    Sha256Fingerprinter, SignalError, SignalScope, Signaler, SpecSource, SystemClock,
+    TokioProcessLauncher, WrappedCommand, YamlDumpStore, wait_for_exit,
 };
 
 #[cfg(all(target_os = "macos", test))]
@@ -33,6 +33,7 @@ pub struct DaemonPorts {
     cadence: PollCadence,
     rotator: CopyTruncateRotator,
     prober: HostReadyProber,
+    notifier: DesktopNotifier,
     #[cfg(target_os = "macos")]
     executable: PathBuf,
 }
@@ -46,6 +47,7 @@ impl DaemonPorts {
         let poll_interval_ms = specs.config.daemon_poll_interval_ms;
         let minimal_read_roots = specs.config.sandbox.minimal_read_roots.clone();
         let search_path = specs.config.search_path.clone();
+        let notifier = crate::notifier::desktop_notifier(&specs.config);
         let cadence = PollCadence {
             interval_ms: specs.config.daemon_poll_interval_ms,
             max_interval_ms: specs.config.daemon_poll_max_interval_ms,
@@ -70,6 +72,7 @@ impl DaemonPorts {
             cadence,
             rotator: CopyTruncateRotator,
             prober: HostReadyProber::new(command_timeout_ms, search_path),
+            notifier,
             #[cfg(target_os = "macos")]
             executable: trampoline_program(),
         }
@@ -85,6 +88,10 @@ impl DaemonPorts {
             self.cadence,
         )
         .await
+    }
+
+    pub async fn notify(&self, alert: &Alert) {
+        self.notifier.notify(alert).await;
     }
 }
 

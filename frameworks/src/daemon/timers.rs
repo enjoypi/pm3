@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use adapters::{ExitOutcome, Readiness, ReadyProbe, ReadyProber as _, SupervisionEffect};
+use adapters::{Alert, ExitOutcome, Readiness, ReadyProbe, ReadyProber as _, SupervisionEffect};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 use super::{events::DaemonEvent, ports::DaemonPorts};
@@ -71,6 +71,7 @@ impl TaskBoard {
                 interval_ms,
             } => self.await_ready(name, generation, probe, timeout_ms, interval_ms),
             Se::CancelReady { name } => abort(self.ready.remove(&name)),
+            Se::Notify(alert) => self.notify(alert),
         }
     }
 
@@ -100,6 +101,13 @@ impl TaskBoard {
                 })
                 .await
                 .ok();
+        });
+    }
+
+    fn notify(&self, alert: Alert) {
+        let ports = Arc::clone(&self.ports);
+        tokio::spawn(async move {
+            ports.notify(&alert).await;
         });
     }
 

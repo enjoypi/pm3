@@ -2,8 +2,8 @@ use entities::ReadyProbe;
 use thiserror::Error;
 
 use crate::{
-    UsecaseError, ports::SpecResolveError, record::ProcessView, selector::AppSelector,
-    start::StartOutcome,
+    UsecaseError, alert::Alert, ports::SpecResolveError, record::ProcessView,
+    selector::AppSelector, start::StartOutcome,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -168,4 +168,5 @@ pub enum SupervisionEffect {
     CancelReady {
         name: String,
     },
+    Notify(Alert),
 }

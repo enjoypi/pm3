@@ -1,5 +1,6 @@
 use crate::{
     Ports,
+    alert::AlertKind,
     persist::save_table,
     query::{hand_to_the_breaker, liveness_watch_list, record_liveness, settle_stability},
     supervision::SupervisionEffect,
@@ -30,6 +31,11 @@ impl Supervisor {
             let tripped = record_liveness(record, &verdict, threshold);
             if tripped {
                 log_liveness_failure(&watch.name, threshold);
+                effects.extend(self.alerts.fire(
+                    &watch.name,
+                    AlertKind::LivenessKilled,
+                    ports.now_ms(),
+                ));
                 self.restart_now(&watch.name, ports, &mut effects).await;
                 hand_to_the_breaker(
                     self.table
@@ -56,6 +62,9 @@ impl Supervisor {
     }
 }
 
+#[cfg(test)]
+#[path = "tests/supervisor_alert_tests.rs"]
+mod alert_tests;
 #[cfg(test)]
 #[path = "tests/supervisor_liveness_tests.rs"]
 mod tests;

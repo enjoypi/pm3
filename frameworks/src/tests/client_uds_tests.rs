@@ -158,7 +158,10 @@ async fn a_daemon_reply_that_is_not_text_is_reported() {
     .unwrap_err()
     .to_string();
     server.await.expect("join");
-    assert!(err.contains("valid UTF-8"), "got: {err}");
+    assert!(
+        err.contains("cannot read the pm3 daemon reply") && err.to_lowercase().contains("utf-8"),
+        "got: {err}"
+    );
 }
 
 #[tokio::test]

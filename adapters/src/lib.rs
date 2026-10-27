@@ -5,6 +5,7 @@ mod fs_util;
 mod http;
 mod install;
 mod logs;
+mod notify;
 mod paths;
 mod persistence;
 mod presenter;
@@ -21,15 +22,15 @@ mod workspace;
 
 use thiserror::Error;
 pub use usecases::{
-    AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError, DumpStore, EnvOrigin,
-    ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec, LaunchedProcess,
-    Liveness, LogRotateError, LogRotator, LogStream, Ports, Priority, ProcessLauncher,
-    ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView, ReadScope, Readiness,
-    ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxError, SandboxMode, SandboxPolicy,
-    Scheduler, SignalError, SignalScope, Signaler, SpecError, StartKind, StartOutcome,
-    StartSettlement, SupervisionEffect, SupervisionOutcome, SupervisionReply, SupervisionRequest,
-    Supervisor, WrappedCommand, compare_handover, describe_handover, log_path, settle_start,
-    validate_app_name,
+    Alert, AlertKind, AppSelector, AppSpec, Clock, CommandWrapper, DumpContents, DumpError,
+    DumpStore, EnvOrigin, ExitOutcome, FingerprintError, Fingerprinter, LaunchError, LaunchSpec,
+    LaunchedProcess, Liveness, LogRotateError, LogRotator, LogStream, Ports, Priority,
+    ProcessLauncher, ProcessProbe, ProcessRecord, ProcessRuntime, ProcessStatus, ProcessView,
+    ReadScope, Readiness, ReadyProbe, ReadyProber, ResourceSample, RotatedLog, SandboxError,
+    SandboxMode, SandboxPolicy, Scheduler, SignalError, SignalScope, Signaler, SpecError,
+    StartKind, StartOutcome, StartSettlement, SupervisionEffect, SupervisionOutcome,
+    SupervisionReply, SupervisionRequest, Supervisor, WrappedCommand, compare_handover,
+    describe_handover, log_path, settle_start, validate_app_name,
 };
 
 pub use self::{
@@ -38,9 +39,9 @@ pub use self::{
         SpecSource, decryptor_env, load_global_env, service_file_of, warn_misplaced_global_env,
     },
     config::{
-        AppConfig, DEFAULT_CONFIG, LOG_FORMAT_PRETTY, Pm3Config, RestartConfig, STOP_SIGNAL_TERM,
-        SandboxConfig, ServiceConfig, TelemetryConfig, check_config, load_and_parse_config,
-        load_config_file, show_config,
+        AppConfig, DEFAULT_CONFIG, LOG_FORMAT_PRETTY, NotifyConfig, NotifyMessages, Pm3Config,
+        RestartConfig, STOP_SIGNAL_TERM, SandboxConfig, ServiceConfig, TelemetryConfig,
+        check_config, load_and_parse_config, load_config_file, show_config,
     },
     fs_util::remove_if_present,
     http::{
@@ -53,6 +54,7 @@ pub use self::{
         destination_of, replace_binary,
     },
     logs::{CopyTruncateRotator, LogClearError, LogFollower, LogReadError, clear_log, read_tail},
+    notify::{DesktopNotifier, NotifyBackend, render_alert},
     paths::{
         CONFIG_FILE, PathError, Pm3Paths, Pm3Roots, RUNTIME_DIR_VARIABLE, RuntimeSources,
         check_socket_length, default_config_path, expand_home, portable_path, portable_real_path,

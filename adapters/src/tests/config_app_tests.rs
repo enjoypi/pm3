@@ -82,7 +82,17 @@ fn parse_config_defaults_the_settings_a_config_written_before_them_lacks() {
     );
     assert_eq!(cfg.pm3.liveness_poll_interval_ms, 30000);
     assert_eq!(cfg.pm3.liveness_failure_threshold, 3);
+    assert_eq!(cfg.pm3.notify, crate::NotifyConfig::default());
     assert!(validate_config(&cfg).is_ok());
+}
+
+#[test]
+fn the_embedded_config_spells_out_the_notify_defaults() {
+    let resolved = crate::config::substitute_env_vars(crate::DEFAULT_CONFIG).expect("substitute");
+
+    let cfg = parse_config(&resolved).expect("the embedded config should parse");
+
+    assert_eq!(cfg.pm3.notify, crate::NotifyConfig::default());
 }
 
 #[test]

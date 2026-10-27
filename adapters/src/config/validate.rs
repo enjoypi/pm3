@@ -210,6 +210,14 @@ fn validate_programs(pm3: &Pm3Config) -> Result<(), ConfigError> {
     reject_empty("pm3.service.schtasks_path", &pm3.service.schtasks_path)?;
     reject_empty("pm3.service.taskkill_path", &pm3.service.taskkill_path)?;
     reject_empty("pm3.sops_program", &pm3.sops_program)?;
+    reject_empty(
+        "pm3.notify.osascript_program",
+        &pm3.notify.osascript_program,
+    )?;
+    reject_empty(
+        "pm3.notify.notify_send_program",
+        &pm3.notify.notify_send_program,
+    )?;
     if !VALID_RESTART_CONDITIONS.contains(&pm3.service.restart_condition.as_str()) {
         return Err(ConfigError::InvalidRestartCondition(
             pm3.service.restart_condition.clone(),

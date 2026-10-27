@@ -2,6 +2,7 @@ use entities::ProcessStatus;
 
 use crate::{
     Ports, SignalScope,
+    alert::AlertKind,
     persist::save_table,
     start::{StartKind, register_one},
     supervision::SupervisionEffect,
@@ -67,7 +68,12 @@ impl Supervisor {
             log_failure("ready_timeout", name, &crate::UsecaseError::from(error));
         }
         self.schedule_force_kill(name, Some(pid), token, &mut effects);
-        self.fail_downstream(name);
+        let downstream = self.fail_downstream(name);
+        effects.extend(self.alerts.fire(
+            name,
+            AlertKind::ReadyFailed { downstream },
+            ports.now_ms(),
+        ));
         if let Err(error) = save_table(&self.table, ports).await {
             log_failure("ready_timeout", name, &error);
         }
@@ -139,6 +145,10 @@ impl Supervisor {
             Err(_error) => {
                 self.mark_errored_if_settled(waiter);
                 self.fail_downstream(waiter);
+                effects.extend(
+                    self.alerts
+                        .fire(waiter, AlertKind::LaunchFailed, ports.now_ms()),
+                );
                 false
             }
         };
@@ -159,7 +169,8 @@ impl Supervisor {
             .is_some_and(|record| record.runtime.status == ProcessStatus::Online)
     }
 
-    pub(crate) fn fail_downstream(&mut self, name: &str) {
+    pub(crate) fn fail_downstream(&mut self, name: &str) -> Vec<String> {
+        let mut failed = Vec::new();
         let mut dead = self.waiters.remove(name).unwrap_or_default();
         while let Some(doomed) = dead.pop() {
             self.forget_waiter(&doomed);
@@ -167,7 +178,9 @@ impl Supervisor {
             if let Some(downstream) = self.waiters.remove(&doomed) {
                 dead.extend(downstream);
             }
+            failed.push(doomed);
         }
+        failed
     }
 
     fn mark_errored_if_settled(&mut self, name: &str) {

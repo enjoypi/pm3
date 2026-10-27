@@ -27,6 +27,7 @@ pub const SERVICE_LABEL: &str = "pm3-e2e-never-installed";
 pub const READY_BUDGET: Duration = Duration::from_secs(15);
 pub const PROBE_INTERVAL: Duration = Duration::from_millis(50);
 pub const START_TIMEOUT_MS: u64 = 8000;
+pub const NOTIFIER: &str = "notifier";
 
 pub struct Home {
     pub dir: tempfile::TempDir,
@@ -188,6 +189,7 @@ pub fn config_yaml(
     let log_rotate_max_bytes = tunables.log_rotate_max_bytes;
     let log_rotate_interval_ms = tunables.log_rotate_interval_ms;
     let service = service_yaml();
+    let notify = notify_yaml(home);
     format!(
         r#"pm3:
   home: '{home}'
@@ -238,6 +240,7 @@ pub fn config_yaml(
       - "/etc"
       - "/usr"
 {service}
+{notify}
 
 telemetry:
   service_name: "pm3"
@@ -261,6 +264,14 @@ fn service_yaml() -> String {
     loginctl_path: "/usr/bin/loginctl"
     schtasks_path: "schtasks"
     taskkill_path: "taskkill""#
+    )
+}
+
+fn notify_yaml(home: &str) -> String {
+    format!(
+        r"  notify:
+    osascript_program: '{home}/{NOTIFIER}'
+    notify_send_program: '{home}/{NOTIFIER}'"
     )
 }
 

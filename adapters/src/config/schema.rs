@@ -185,6 +185,8 @@ pub struct Pm3Config {
     pub restart: RestartConfig,
     pub sandbox: SandboxConfig,
     pub service: ServiceConfig,
+    #[serde(default)]
+    pub notify: NotifyConfig,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
@@ -222,6 +224,56 @@ pub struct ServiceConfig {
     pub taskkill_path: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct NotifyConfig {
+    pub enabled: bool,
+    pub cooldown_ms: u64,
+    pub osascript_program: String,
+    pub notify_send_program: String,
+    pub title: String,
+    pub messages: NotifyMessages,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct NotifyMessages {
+    pub exited_code: String,
+    pub exited_signal: String,
+    pub ready_failed: String,
+    pub ready_failed_downstream: String,
+    pub liveness_killed: String,
+    pub memory_killed: String,
+    pub launch_failed: String,
+}
+
+impl Default for NotifyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cooldown_ms: DEFAULT_NOTIFY_COOLDOWN_MS,
+            osascript_program: DEFAULT_OSASCRIPT_PROGRAM.to_string(),
+            notify_send_program: DEFAULT_NOTIFY_SEND_PROGRAM.to_string(),
+            title: DEFAULT_NOTIFY_TITLE.to_string(),
+            messages: NotifyMessages::default(),
+        }
+    }
+}
+
+impl Default for NotifyMessages {
+    fn default() -> Self {
+        Self {
+            exited_code: "异常退出，退出码 {code}".to_string(),
+            exited_signal: "被信号终止或异常消失".to_string(),
+            ready_failed: "就绪检查失败".to_string(),
+            ready_failed_downstream: "就绪检查失败，下游未启动：{downstream}".to_string(),
+            liveness_killed: "存活检查连续失败，已重启".to_string(),
+            memory_killed: "内存超限，已重启".to_string(),
+            launch_failed: "自动启动失败".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TelemetryConfig {
     pub service_name: String,
@@ -233,6 +285,10 @@ pub const DEFAULT_LOG_READ_MAX_BYTES: u64 = 4 * 1024 * 1024;
 pub const DEFAULT_LIVENESS_POLL_INTERVAL_MS: u64 = 30000;
 pub const DEFAULT_LIVENESS_FAILURE_THRESHOLD: u32 = 3;
 pub const DEFAULT_SOPS_TIMEOUT_MS: u64 = 30000;
+pub const DEFAULT_NOTIFY_COOLDOWN_MS: u64 = 3_600_000;
+pub const DEFAULT_OSASCRIPT_PROGRAM: &str = "/usr/bin/osascript";
+pub const DEFAULT_NOTIFY_SEND_PROGRAM: &str = "notify-send";
+pub const DEFAULT_NOTIFY_TITLE: &str = "pm3: {name}";
 
 fn default_sops_program() -> String {
     crate::apps_file::SOPS_PROGRAM.to_string()

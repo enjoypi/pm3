@@ -1,3 +1,4 @@
+pub mod alert;
 pub mod delete;
 pub mod fingerprint;
 pub mod handover;
@@ -34,6 +35,7 @@ pub use entities::{
 use thiserror::Error;
 
 pub use self::{
+    alert::{Alert, AlertKind},
     delete::delete_app,
     handover::{ServiceSnapshot, compare_handover, describe_handover},
     log_paths::{LogStream, log_path},

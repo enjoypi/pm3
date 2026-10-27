@@ -122,6 +122,28 @@ fn validate_rejects_an_empty_sops_program() {
 }
 
 #[test]
+fn validate_rejects_an_empty_osascript_program() {
+    let mut cfg = valid_config();
+    cfg.pm3.notify.osascript_program = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.notify.osascript_program"
+    );
+}
+
+#[test]
+fn validate_rejects_an_empty_notify_send_program() {
+    let mut cfg = valid_config();
+    cfg.pm3.notify.notify_send_program = String::new();
+    let err = validate_config(&cfg).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "cannot accept empty pm3.notify.notify_send_program"
+    );
+}
+
+#[test]
 fn validate_rejects_a_zero_daemon_channel_depth() {
     let mut cfg = valid_config();
     cfg.pm3.daemon_channel_depth = 0;

@@ -312,6 +312,7 @@ impl Supervisor {
         self.disarm(name, effects);
         self.cancel_restart(name, effects);
         self.cancel_ready(name, effects);
+        self.alerts.forget(name);
         self.schedule_force_kill(name, force_kill_pid, token, effects);
     }
 }

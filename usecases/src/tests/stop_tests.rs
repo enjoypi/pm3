@@ -218,6 +218,7 @@ async fn a_refused_signal_still_marks_the_service_stopping_so_its_exit_is_not_a_
         action,
         ExitAction::Settled {
             status: ProcessStatus::Stopped,
+            alarming: false,
         }
     );
 }
@@ -277,6 +278,7 @@ async fn a_stopped_service_stays_down_when_the_draining_process_finally_exits() 
         action,
         ExitAction::Settled {
             status: ProcessStatus::Stopped,
+            alarming: false,
         }
     );
 }

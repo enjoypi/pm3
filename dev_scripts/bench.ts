@@ -164,6 +164,8 @@ export function configYaml(home: string): string {
     loginctl_path: "/usr/bin/loginctl"
     schtasks_path: "schtasks"
     taskkill_path: "taskkill"
+  notify:
+    enabled: false
 
 telemetry:
   service_name: "pm3"

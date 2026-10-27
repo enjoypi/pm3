@@ -9,6 +9,7 @@ mod fd_limit;
 mod install;
 mod layout;
 mod logs;
+mod notifier;
 mod prompt;
 mod runtime;
 mod sandbox_probe;

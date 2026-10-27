@@ -7,8 +7,13 @@ use crate::{
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ExitAction {
-    RestartAfter { delay_ms: u64 },
-    Settled { status: ProcessStatus },
+    RestartAfter {
+        delay_ms: u64,
+    },
+    Settled {
+        status: ProcessStatus,
+        alarming: bool,
+    },
 }
 
 pub async fn handle_child_exit(
@@ -66,6 +71,7 @@ fn settle_without_the_breaker(
     if was_stopping || stops_on_this_code(record, outcome) {
         return Some(ExitAction::Settled {
             status: ProcessStatus::Stopped,
+            alarming: false,
         });
     }
     None
@@ -112,7 +118,10 @@ fn classify_exit(
             let status = settled_status(outcome);
             record.runtime.mark_exited(status);
             record.runtime.unstable_restarts = unstable_restarts;
-            ExitAction::Settled { status }
+            ExitAction::Settled {
+                status,
+                alarming: outcome != ExitOutcome::Code(0),
+            }
         }
     }
 }

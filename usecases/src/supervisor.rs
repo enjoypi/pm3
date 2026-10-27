@@ -4,6 +4,7 @@ use entities::ProcessStatus;
 
 use crate::{
     Ports, SignalScope,
+    alert::{AlertKind, AlertLatch},
     fingerprint::pid_was_recycled,
     ports::{ExitOutcome, SpecResolver},
     query::{
@@ -38,6 +39,7 @@ pub struct Supervisor {
     pub(crate) ready_poll_interval_ms: u64,
     pub(crate) waiters: HashMap<String, Vec<String>>,
     pub(crate) ready_failed: HashSet<String>,
+    pub(crate) alerts: AlertLatch,
 }
 
 impl Supervisor {
@@ -47,6 +49,7 @@ impl Supervisor {
         kill_timeout_ms: u64,
         ready_timeout_ms: u64,
         ready_poll_interval_ms: u64,
+        notify_cooldown_ms: u64,
     ) -> Self {
         Self {
             table: ProcessTable::new(),
@@ -57,6 +60,7 @@ impl Supervisor {
             ready_poll_interval_ms,
             waiters: HashMap::new(),
             ready_failed: HashSet::new(),
+            alerts: AlertLatch::new(notify_cooldown_ms),
         }
     }
 
@@ -174,9 +178,10 @@ impl Supervisor {
             ExitAction::RestartAfter { delay_ms } => {
                 effects.push(self.queue_restart(name, delay_ms));
             }
-            ExitAction::Settled { status } => {
+            ExitAction::Settled { status, alarming } => {
                 log_settled(name, status, outcome);
                 self.fail_downstream(name);
+                effects.extend(self.alerts.settle(name, outcome, alarming, ports.now_ms()));
             }
         }
         effects
@@ -230,6 +235,10 @@ impl Supervisor {
         let sampled = ports.resident_memory(&pids).await;
         for breach in breached_memory(&watched, &sampled) {
             log_memory_breach(&breach);
+            effects.extend(
+                self.alerts
+                    .fire(&breach.name, AlertKind::MemoryKilled, ports.now_ms()),
+            );
             self.restart_now(&breach.name, ports, &mut effects).await;
             hand_to_the_breaker(
                 self.table
@@ -320,6 +329,10 @@ impl Supervisor {
             }
             Err(error) => {
                 log_failure("restart", name, &error);
+                effects.extend(
+                    self.alerts
+                        .fire(name, AlertKind::LaunchFailed, ports.now_ms()),
+                );
                 self.arm_timer(name, ports, effects);
             }
         }

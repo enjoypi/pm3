@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use adapters::{Pm3Config, RestartConfig, SandboxConfig, ServiceConfig, UnitProgramSet};
+use adapters::{
+    NotifyConfig, Pm3Config, RestartConfig, SandboxConfig, ServiceConfig, UnitProgramSet,
+};
 
 pub const STOP_SIGNAL: &str = "TERM";
 pub const KILL_TIMEOUT_MS: u64 = 400;
@@ -96,6 +98,10 @@ pub fn pm3_config_with_home(home: &str) -> Pm3Config {
             schtasks_path: SCHTASKS_PATH.to_string(),
             taskkill_path: TASKKILL_PATH.to_string(),
         },
+        notify: NotifyConfig {
+            enabled: false,
+            ..NotifyConfig::default()
+        },
     }
 }
 
@@ -153,6 +159,8 @@ pub fn config_yaml(home: &str) -> String {
     loginctl_path: "{LOGINCTL_PATH}"
     schtasks_path: "{SCHTASKS_PATH}"
     taskkill_path: "{TASKKILL_PATH}"
+  notify:
+    enabled: false
 
 telemetry:
   service_name: "pm3"

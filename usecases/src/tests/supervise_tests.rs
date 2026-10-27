@@ -50,6 +50,7 @@ async fn repeated_fast_crashes_trip_the_breaker_into_errored() {
         second,
         ExitAction::Settled {
             status: ProcessStatus::Errored,
+            alarming: true,
         }
     );
     let record = table.find(&AppSelector::Id(1)).expect("record present");
@@ -70,6 +71,7 @@ async fn a_clean_exit_without_autorestart_settles_as_stopped() {
         action,
         ExitAction::Settled {
             status: ProcessStatus::Stopped,
+            alarming: false,
         }
     );
 }
@@ -87,6 +89,7 @@ async fn a_crash_without_autorestart_settles_as_errored() {
         action,
         ExitAction::Settled {
             status: ProcessStatus::Errored,
+            alarming: true,
         }
     );
 }
@@ -104,6 +107,7 @@ async fn an_exit_pm3_could_not_observe_settles_as_stopped_not_errored() {
         action,
         ExitAction::Settled {
             status: ProcessStatus::Stopped,
+            alarming: true,
         }
     );
 }
@@ -121,6 +125,7 @@ async fn a_signalled_child_without_autorestart_settles_as_errored() {
         action,
         ExitAction::Settled {
             status: ProcessStatus::Errored,
+            alarming: true,
         }
     );
 }
@@ -136,6 +141,7 @@ async fn an_operator_stop_settles_without_restarting() {
         action,
         ExitAction::Settled {
             status: ProcessStatus::Stopped,
+            alarming: false,
         }
     );
     let record = table.find(&AppSelector::Id(1)).expect("record present");
@@ -203,6 +209,7 @@ async fn a_listed_exit_code_settles_as_a_clean_stop() {
         action,
         ExitAction::Settled {
             status: ProcessStatus::Stopped,
+            alarming: false,
         }
     );
     let record = table.find(&AppSelector::Id(1)).expect("record present");
@@ -256,6 +263,7 @@ async fn a_supervised_restart_answers_to_the_breaker() {
         action,
         ExitAction::Settled {
             status: ProcessStatus::Errored,
+            alarming: true,
         },
         "a breached breaker must not be bypassed by a supervised restart"
     );

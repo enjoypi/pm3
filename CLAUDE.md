@@ -42,6 +42,7 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 
 - `unstable_restarts` (what the breaker judges) is recomputed only when a process exits, so a service that has been healthy for hours keeps a stale tally. The liveness tick clears it through `usecases::query::settle_stability` once the record has been up past its `min_uptime_ms`. That function MUST stay a **non-generic** function in `query.rs`: written inside `Supervisor::on_*` its regions split across the `impl Ports` instantiations and no amount of tests fills them
 - `pm_id` starts at **1** and reuses the gaps deleted services leave (`ProcessTable::lowest_free_pm_id`). `ProcessTable` therefore keeps no `next_pm_id` cursor — the records are the only source of truth, so a sparse `dump.yaml` cannot push new ids to the far end
+- 异常通知（`pm3.notify`）缺省即启用 ⇒ 测试用 config MUST 显式写 `notify` 段：lib fixture 写 `enabled: false`，e2e 把两个 program 指向 home 下的替身 `notifier`（不存在时只记 warn），否则跑测试会真弹桌面通知
 - liveness watching MUST skip `autorestart: false` services: the failure path is stop → breaker → `GiveUp` → `Errored`, so watching a service the operator asked pm3 not to heal only kills it
 
 ## 覆盖率
@@ -66,6 +67,7 @@ pm3: a minimal pm2 with strict sandbox isolation. One binary is both the CLI and
 - Linux：Ubuntu 24.04+ 默认 `kernel.apparmor_restrict_unprivileged_userns=1`，只装 bubblewrap 不够，bwrap 报 `setting up uid map: Permission denied` ⇒ 被管服务起不来，沙箱 e2e 只表现为「日志里等不到 done」。MUST 给 `/usr/bin/bwrap` 加带 `userns,` 的 AppArmor profile（`/etc/apparmor.d/bwrap`，`flags=(unconfined)`）并 `apparmor_parser -r`
 - macOS：ld 自动加的 ad-hoc 签名在 TCC 眼里按 cdhash 记账 ⇒ 任何 rebuild 后 `just install` 都静默吊销既有授权（含完全磁盘访问，设置面板勾选仍在但对新二进制无效），被管服务访问云盘/文档目录时弹窗反复出现且归账到 daemon（responsible process，如 gdrive 服务跑 Google Drive 本体 ⇒ 弹窗挂在「pm3」头上）⇒ `just install` 与 release CI MUST 用同一把 `pm3-local` 自签证书（`just signing-identity` 生成并导入 login keychain，CI 侧配 secrets `PM3_CODESIGN_P12`/`PM3_CODESIGN_P12_PASSWORD`）把 binary 签成稳定身份，TCC 改按证书记账，跨重装稳定；本机与 CI 各生成一把同名证书 = 两个身份，授权照样失效
 - macOS `self_responsible`：负责进程在进程诞生时定死，后代继承 ⇒ 跳板 `pm3 __disclaim` MUST 在 argv 最外层并用 `POSIX_SPAWN_SETEXEC`（pid、`ps lstart` 身份不变），故只许 `danger-full-access`（受限服务最外层是 `sandbox-exec`）。exec 成功后跳板进程的 profraw 不落盘 ⇒ `disclaim::exec_disclaimed` MUST 保持无分支直线代码，由失败用例覆盖全部行。该字段不进启动指纹：改它不该让 daemon 重启时连带重启 sshd 断开会话。tmux server 归属取决于首个启动它的会话。服务的 `script` MUST 直接写需要授权的程序，MUST NOT 用 `sh -c 'exec …'` 包一层：TCC 按 disclaim 时被启动的程序记账（同系统 sshd 要给 `sshd-keygen-wrapper` 授权），包一层就得给 `/bin/sh` 授权，所有 sh 脚本跟着获权
+- macOS 异常通知：`osascript` 发出的通知归账到「脚本编辑器」，且不论是否显示都返回 0 ⇒ daemon 日志里的 `action: notify` 成功不代表用户看到了。真机 MUST 先在「系统设置 → 通知 → 脚本编辑器」允许通知并把「显示预览」设为「始终」：未授权时静默丢弃，预览为「默认」且全局不是「始终」时只弹出不带正文的空通知
 - macOS `priority`：
   - 机制：apptype 与 QoS 夹紧在 spawn 时设定并遗传给全部后代 ⇒ macOS 上每个服务都经跳板 `pm3 __disclaim --disclaim <0|1> --process-type <N> --qos-clamp <N>` 启动，三个 setter 无条件调用，0 表示继承
   - 默认值：clap 默认 `--disclaim 1`、其余为 0，MUST 保持，使旧形态 `__disclaim -- prog` 语义不变。原因：`just install` 换完二进制、交接之前，旧 daemon 会用新二进制拉起服务

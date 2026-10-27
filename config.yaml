@@ -74,6 +74,20 @@ pm3:
     loginctl_path: "${PM3_LOGINCTL_PATH:-/usr/bin/loginctl}"
     schtasks_path: "${PM3_SCHTASKS_PATH:-schtasks}"
     taskkill_path: "${PM3_TASKKILL_PATH:-taskkill}"
+  notify:
+    enabled: true
+    cooldown_ms: 3600000
+    osascript_program: "${PM3_OSASCRIPT_PROGRAM:-/usr/bin/osascript}"
+    notify_send_program: "${PM3_NOTIFY_SEND_PROGRAM:-notify-send}"
+    title: "pm3: {name}"
+    messages:
+      exited_code: "异常退出，退出码 {code}"
+      exited_signal: "被信号终止或异常消失"
+      ready_failed: "就绪检查失败"
+      ready_failed_downstream: "就绪检查失败，下游未启动：{downstream}"
+      liveness_killed: "存活检查连续失败，已重启"
+      memory_killed: "内存超限，已重启"
+      launch_failed: "自动启动失败"
 
 telemetry:
   service_name: "pm3"
