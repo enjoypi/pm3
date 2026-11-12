@@ -12,6 +12,11 @@ use self::common::{
 };
 
 const OUTSIDE_TARGET: &str = "/pm3-sandbox-escape-probe";
+const DOCUMENTATION_HOST: &str = "192.0.2.1";
+#[cfg(target_os = "macos")]
+const REFUSED_BY_SANDBOX: &str = "Operation not permitted";
+#[cfg(not(target_os = "macos"))]
+const REFUSED_BY_SANDBOX: &str = "Network is unreachable";
 
 fn shell_app(home: &Home, name: &str, script: &str) -> std::path::PathBuf {
     let cwd = workspace_of(home);
@@ -57,16 +62,16 @@ fn a_confined_app_cannot_write_outside_its_working_directory() {
 fn a_confined_app_cannot_reach_the_network() {
     let home = home_with("workspace-write", false);
     let script = format!(
-        "{} -z -w 2 1.1.1.1 443 && echo reached || echo blocked",
+        "{} -v -z -w 2 {DOCUMENTATION_HOST} 9 2>&1; echo attempted",
         netcat()
     );
     let apps = shell_app(&home, "dialer", &script);
     common::start_ok(&home, &apps);
 
-    let seen = wait_for_log(&app_log(&home, "dialer"), "blocked");
+    let seen = wait_for_log(&app_log(&home, "dialer"), "attempted");
     assert!(
-        !seen.contains("reached"),
-        "the sandbox must deny outbound connections: {seen}"
+        seen.contains(REFUSED_BY_SANDBOX),
+        "the sandbox itself must refuse the connection: {seen}"
     );
     shutdown_daemon(&home);
 }

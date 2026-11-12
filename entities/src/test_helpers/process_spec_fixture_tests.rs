@@ -6,6 +6,7 @@ pub fn confined_policy() -> SandboxPolicy {
         mode: SandboxMode::WorkspaceWrite,
         read: ReadScope::Minimal,
         network: false,
+        listen_ports: Vec::new(),
         writable_roots: Vec::new(),
         readable_roots: Vec::new(),
         derived_readable_roots: Vec::new(),

@@ -270,6 +270,46 @@ fn resolve_specs_honours_an_explicit_sandbox_network_flag() {
 }
 
 #[test]
+fn resolve_specs_opens_no_listen_port_by_default() {
+    let spec = resolve_one(&defaults(), &minimal_entry());
+    assert_eq!(spec.sandbox.listen_ports, Vec::<u16>::new());
+}
+
+#[test]
+fn resolve_specs_honours_declared_listen_ports() {
+    let entry = AppEntry {
+        sandbox: Some(SandboxEntry {
+            listen: Some(vec![8089]),
+            ..sandbox_entry()
+        }),
+        ..minimal_entry()
+    };
+    let spec = resolve_one(&defaults(), &entry);
+    assert_eq!(spec.sandbox.listen_ports, vec![8089]);
+}
+
+#[test]
+fn a_service_file_declares_listen_ports_as_numbers() {
+    let entry = parse_service_file(
+        "name: \"web\"\nscript: \"/bin/true\"\nsandbox:\n  listen:\n    - 8089\n",
+    )
+    .expect("a port list should parse");
+    assert_eq!(
+        entry.sandbox.and_then(|section| section.listen),
+        Some(vec![8089])
+    );
+}
+
+#[test]
+fn a_service_file_refuses_a_listen_port_past_the_tcp_range() {
+    let err = parse_service_file(
+        "name: \"web\"\nscript: \"/bin/true\"\nsandbox:\n  listen:\n    - 70000\n",
+    )
+    .unwrap_err();
+    assert!(matches!(err, AppsFileError::Parse(_)), "got: {err}");
+}
+
+#[test]
 fn resolve_specs_rejects_an_unknown_sandbox_mode() {
     let entry = AppEntry {
         sandbox: Some(SandboxEntry {

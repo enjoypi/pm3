@@ -41,16 +41,21 @@ impl CommandWrapper for SandboxCommandWrapper {
                 app: app.to_string(),
             });
         };
-        Ok(match host.backend {
-            SandboxBackend::Seatbelt => seatbelt_argv(&host.program, policy, program, args),
-            SandboxBackend::Bwrap => bwrap_argv(
+        match host.backend {
+            SandboxBackend::Seatbelt => Ok(seatbelt_argv(&host.program, policy, program, args)),
+            SandboxBackend::Bwrap if !policy.listen_ports.is_empty() => {
+                Err(SandboxError::ListenUnsupported {
+                    app: app.to_string(),
+                })
+            }
+            SandboxBackend::Bwrap => Ok(bwrap_argv(
                 &host.program,
                 &self.minimal_read_roots,
                 policy,
                 program,
                 args,
-            ),
-        })
+            )),
+        }
     }
 }
 

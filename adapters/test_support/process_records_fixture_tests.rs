@@ -13,6 +13,7 @@ pub fn sandbox_policy(
         mode,
         read,
         network,
+        listen_ports: Vec::new(),
         writable_roots: writable_roots
             .iter()
             .map(|root| (*root).to_string())

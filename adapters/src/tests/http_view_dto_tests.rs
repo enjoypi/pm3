@@ -93,3 +93,22 @@ fn an_app_without_values_omits_the_environment_field() {
     let json = serde_json::to_string(&dto).expect("serialize");
     assert!(!json.contains("env_masked"), "got: {json}");
 }
+
+#[test]
+fn the_dto_carries_the_listen_ports() {
+    let mut view = running_view(7, "web");
+    view.sandbox_listen = vec![8089];
+    let dto = ProcessViewDto::from(&view);
+    assert_eq!(dto.sandbox_listen, vec![8089]);
+    let json = serde_json::to_string(&dto).expect("serialize");
+    assert!(json.contains("\"sandbox_listen\":[8089]"), "got: {json}");
+}
+
+#[test]
+fn a_dto_without_listen_ports_keeps_the_old_wire_shape() {
+    let dto = ProcessViewDto::from(&running_view(7, "web"));
+    let json = serde_json::to_string(&dto).expect("serialize");
+    assert!(!json.contains("sandbox_listen"), "got: {json}");
+    let read_back: ProcessViewDto = serde_json::from_str(&json).expect("an old daemon's reply");
+    assert_eq!(read_back.sandbox_listen, Vec::<u16>::new());
+}

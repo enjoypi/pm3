@@ -17,6 +17,7 @@ fn unconfined_policy() -> SandboxPolicy {
         mode: SandboxMode::DangerFullAccess,
         read: ReadScope::Full,
         network: true,
+        listen_ports: Vec::new(),
         writable_roots: Vec::new(),
         readable_roots: Vec::new(),
         derived_readable_roots: Vec::new(),

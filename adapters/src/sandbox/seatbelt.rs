@@ -16,6 +16,7 @@ const READ_ACTION: &str = "allow file-read* file-test-existence";
 const ANCESTOR_ACTION: &str = "allow file-read-metadata";
 const WRITE_ACTION: &str = "allow file-read* file-test-existence file-write*";
 const HIDE_ACTION: &str = "deny file-read* file-test-existence file-write*";
+const LISTEN_ACTION: &str = "allow network-inbound";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SeatbeltProfile {
@@ -55,6 +56,7 @@ pub fn seatbelt_profile(policy: &SandboxPolicy, program: &str) -> SeatbeltProfil
     if policy.network {
         profile.push_str(NETWORK_POLICY);
     }
+    profile.push_str(&listen_rules(&policy.listen_ports));
     let parameters = named(READABLE_PARAMETER, &readable)
         .chain(named(WRITABLE_PARAMETER, &writable))
         .chain(named(HIDDEN_PARAMETER, &hidden))
@@ -80,6 +82,13 @@ const fn read_policy_of(policy: &SandboxPolicy) -> &'static str {
     } else {
         FULL_READ_POLICY
     }
+}
+
+fn listen_rules(ports: &[u16]) -> String {
+    ports.iter().fold(String::new(), |mut text, port| {
+        let _ = writeln!(text, "\n({LISTEN_ACTION} (local tcp \"localhost:{port}\"))");
+        text
+    })
 }
 
 fn hidden_denies(hidden: &[&str]) -> String {
@@ -137,6 +146,9 @@ fn named<'r>(
     })
 }
 
+#[cfg(test)]
+#[path = "../tests/sandbox_seatbelt_listen_tests.rs"]
+mod listen_tests;
 #[cfg(test)]
 #[path = "../tests/sandbox_seatbelt_tests.rs"]
 mod tests;

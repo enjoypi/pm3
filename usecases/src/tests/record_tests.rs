@@ -73,3 +73,11 @@ fn view_carries_how_many_values_were_declared() {
     let declared = candidate.view(5000).env_declared;
     assert_eq!(declared, 2, "got: {declared}");
 }
+
+#[test]
+fn view_projects_the_sandbox_listen_ports() {
+    let mut candidate = record("api", 3);
+    assert_eq!(candidate.view(5000).sandbox_listen, Vec::<u16>::new());
+    candidate.spec.sandbox.listen_ports = vec![8089];
+    assert_eq!(candidate.view(5000).sandbox_listen, vec![8089]);
+}

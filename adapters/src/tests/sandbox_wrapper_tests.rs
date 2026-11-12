@@ -151,3 +151,38 @@ fn bwrap_accepts_a_writable_root_that_a_seatbelt_profile_cannot_render() {
         wrapped.args
     );
 }
+
+fn listening_policy() -> SandboxPolicy {
+    SandboxPolicy {
+        listen_ports: vec![8089],
+        ..policy(SandboxMode::WorkspaceWrite, &[])
+    }
+}
+
+#[test]
+fn a_bwrap_backend_refuses_listen_ports() {
+    let sandbox = wrapper(Some(host(SandboxBackend::Bwrap)));
+    let err = sandbox
+        .wrap("api", &listening_policy(), "/usr/bin/node", &[])
+        .unwrap_err();
+    assert!(
+        matches!(err, SandboxError::ListenUnsupported { ref app } if app == "api"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_seatbelt_backend_opens_the_listen_ports() {
+    let sandbox = wrapper(Some(host(SandboxBackend::Seatbelt)));
+    let wrapped = sandbox
+        .wrap("api", &listening_policy(), "/usr/bin/node", &[])
+        .expect("seatbelt opens a port");
+    assert!(
+        wrapped
+            .args
+            .iter()
+            .any(|arg| arg.contains("localhost:8089")),
+        "got: {:?}",
+        wrapped.args
+    );
+}

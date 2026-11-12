@@ -268,6 +268,7 @@ fn fully_declared_entry() -> AppEntry {
             mode: Some(SandboxMode::WorkspaceWrite.as_str().to_string()),
             read: Some(ReadScope::Minimal.as_str().to_string()),
             network: Some(false),
+            listen: Some(vec![8089, 8090]),
             writable_roots: Some(vec!["/srv".to_string()]),
             readable_roots: Some(vec!["/opt/data".to_string()]),
         }),
@@ -286,6 +287,7 @@ fn a_fully_declared_app_encodes_every_field() {
         "max_restart_delay_ms: 60000",
         "mode: \"workspace-write\"",
         "network: false",
+        "  listen:\n    - 8089\n    - 8090\n",
         "writable_roots:",
         "self_responsible: true",
         "priority: \"interactive\"",
@@ -303,6 +305,10 @@ fn a_fully_declared_app_reads_back_unchanged() {
     assert_eq!(reparsed.max_restarts, Some(7));
     assert!(reparsed.self_responsible);
     assert_eq!(reparsed.priority.as_deref(), Some("interactive"));
+    assert_eq!(
+        reparsed.sandbox.and_then(|section| section.listen),
+        Some(vec![8089, 8090])
+    );
 }
 
 #[test]
@@ -312,6 +318,7 @@ fn an_empty_sandbox_section_is_omitted() {
         mode: None,
         read: None,
         network: None,
+        listen: None,
         writable_roots: None,
         readable_roots: None,
     });

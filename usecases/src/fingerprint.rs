@@ -12,6 +12,7 @@ const READ_LABEL: &str = "read";
 const NETWORK_LABEL: &str = "network";
 const ROOT_LABEL: &str = "root";
 const READABLE_ROOT_LABEL: &str = "readable_root";
+const LISTEN_LABEL: &str = "listen";
 const NETWORK_ALLOWED: &str = "allowed";
 const NETWORK_DENIED: &str = "denied";
 
@@ -65,6 +66,12 @@ pub fn render_identity(spec: &AppSpec) -> String {
                 .readable_roots
                 .iter()
                 .map(|root| field(READABLE_ROOT_LABEL, root)),
+        )
+        .chain(
+            sandbox
+                .listen_ports
+                .iter()
+                .map(|port| field(LISTEN_LABEL, &port.to_string())),
         )
         .chain(
             ordered_env

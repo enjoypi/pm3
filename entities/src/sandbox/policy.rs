@@ -20,6 +20,7 @@ pub struct SandboxPolicy {
     pub mode: SandboxMode,
     pub read: ReadScope,
     pub network: bool,
+    pub listen_ports: Vec<u16>,
     pub writable_roots: Vec<String>,
     pub readable_roots: Vec<String>,
     pub derived_readable_roots: Vec<String>,
@@ -61,6 +62,19 @@ pub enum PolicyError {
         "cannot accept sandbox writable root '{0}': pm3.sandbox.forbidden_writable_roots refuses it because granting it would leave the sandbox with nothing to enforce"
     )]
     ForbiddenWritableRoot(String),
+
+    #[error(
+        "cannot accept sandbox listen ports under danger-full-access: the service is not confined, so there is nothing to open"
+    )]
+    ListenPortsWithoutConfinement,
+
+    #[error(
+        "cannot accept sandbox listen ports together with network: true: the whole network is already open"
+    )]
+    ListenPortsWithNetwork,
+
+    #[error("cannot accept sandbox listen port 0: name the port the service binds, 1-65535")]
+    ZeroListenPort,
 }
 
 impl SandboxMode {
@@ -168,7 +182,24 @@ pub fn validate_policy(policy: &SandboxPolicy) -> Result<(), PolicyError> {
         || PolicyError::EmptyReadableRoot,
         PolicyError::RelativeReadableRoot,
     )?;
-    validate_hidden_roots_stay_hidden(policy)
+    validate_hidden_roots_stay_hidden(policy)?;
+    validate_listen_ports(policy)
+}
+
+fn validate_listen_ports(policy: &SandboxPolicy) -> Result<(), PolicyError> {
+    if policy.listen_ports.is_empty() {
+        return Ok(());
+    }
+    if policy.mode.is_unconfined() {
+        return Err(PolicyError::ListenPortsWithoutConfinement);
+    }
+    if policy.network {
+        return Err(PolicyError::ListenPortsWithNetwork);
+    }
+    if policy.listen_ports.contains(&0) {
+        return Err(PolicyError::ZeroListenPort);
+    }
+    Ok(())
 }
 
 pub fn validate_forbidden_roots(

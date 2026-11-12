@@ -86,6 +86,7 @@ fn row_of(view: &ProcessViewDto, listing: Listing) -> Vec<String> {
         &view.sandbox_mode,
         &view.sandbox_read,
         view.sandbox_network,
+        &view.sandbox_listen,
     ));
     cells.push(format_notice(view));
     cells

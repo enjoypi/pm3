@@ -24,6 +24,8 @@ pub struct ProcessViewDto {
     pub sandbox_mode: String,
     pub sandbox_read: String,
     pub sandbox_network: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sandbox_listen: Vec<u16>,
     pub env_origin: String,
     pub env_declared: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -64,6 +66,7 @@ impl From<&ProcessView> for ProcessViewDto {
             sandbox_mode: view.sandbox_mode.clone(),
             sandbox_read: view.sandbox_read.clone(),
             sandbox_network: view.sandbox_network,
+            sandbox_listen: view.sandbox_listen.clone(),
             env_origin: view.env_origin.as_str().to_string(),
             env_declared: view.env_declared,
             env_masked: view.env.iter().map(EnvDisplayDto::from).collect(),

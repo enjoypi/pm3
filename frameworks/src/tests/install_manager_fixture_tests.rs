@@ -76,11 +76,21 @@ pub fn fake_manager(dir: &Path, body: &str) -> String {
 }
 
 #[cfg(unix)]
+const LAUNCHER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/test_support/sourcing-launcher"
+);
+#[cfg(unix)]
+const BODY_SUFFIX: &str = "body";
+
+#[cfg(unix)]
 pub fn write_manager(path: &Path, dump: Option<&Path>, body: &str) {
-    use std::os::unix::fs::PermissionsExt as _;
     let prelude = dump.map_or_else(String::new, |dump| format!("PM3_DUMP={}\n", dump.display()));
-    std::fs::write(path, format!("#!/bin/sh\n{prelude}{body}\n")).expect("write the fake manager");
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let script = format!("{}.{BODY_SUFFIX}", path.display());
+    std::fs::write(script, format!("{prelude}{body}\n")).expect("write the fake manager");
+    if path.symlink_metadata().is_err() {
+        std::os::unix::fs::symlink(LAUNCHER, path).expect("link the fake manager");
+    }
 }
 
 #[cfg(windows)]

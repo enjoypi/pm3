@@ -65,7 +65,11 @@ fn describe_rows(view: &ProcessView) -> Vec<(&'static str, String)> {
         ("depends on", format_list(&view.depends_on)),
         (
             "sandbox",
-            format_sandbox(&view.sandbox_mode, view.sandbox_network),
+            format_sandbox(
+                &view.sandbox_mode,
+                view.sandbox_network,
+                &view.sandbox_listen,
+            ),
         ),
         ("writable roots", format_list(&view.writable_roots)),
         (

@@ -25,6 +25,7 @@ pub fn running_view(pm_id: u32, name: &str) -> ProcessView {
         sandbox_mode: "workspace-write".to_string(),
         sandbox_read: "minimal".to_string(),
         sandbox_network: false,
+        sandbox_listen: Vec::new(),
         script: "/usr/bin/node".to_string(),
         args: vec!["server.js".to_string(), "--port=8080".to_string()],
         cwd: "/srv/web".to_string(),

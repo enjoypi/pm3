@@ -203,6 +203,14 @@ fn a_confined_app_without_network_uses_an_empty_network_flag() {
 }
 
 #[test]
+fn a_listening_app_shows_the_listen_flag() {
+    let mut view = online(7, "web");
+    view.sandbox_network = false;
+    view.sandbox_listen = vec![8089];
+    assert_eq!(compact_box(view), "W/-/L");
+}
+
+#[test]
 fn a_full_read_scope_sets_the_read_flag() {
     let mut view = online(7, "web");
     view.sandbox_read = "full".to_string();

@@ -35,6 +35,15 @@ fn reported_pid(home: &Home, name: &str) -> libc::pid_t {
         .expect("the app should print its pid")
 }
 
+fn answers_for_itself(pid: libc::pid_t) -> bool {
+    responsible_pid(pid) == pid
+}
+
+fn launched_without_a_responsible_process(daemon: libc::pid_t) -> bool {
+    let runner = libc::pid_t::try_from(std::process::id()).expect("a pid fits");
+    answers_for_itself(runner) && answers_for_itself(daemon)
+}
+
 #[test]
 fn a_self_responsible_app_answers_for_itself() {
     let home = home_with("danger-full-access", false);
@@ -71,7 +80,14 @@ fn an_ordinary_app_inherits_the_daemon_as_its_responsible_process() {
 
     let pid = reported_pid(&home, "inherited");
     let daemon = libc::pid_t::try_from(daemon_pid(&home)).expect("a pid fits");
-    assert_eq!(responsible_pid(pid), responsible_pid(daemon));
+    if launched_without_a_responsible_process(daemon) {
+        assert!(
+            answers_for_itself(pid),
+            "an orphaned chain leaves every process answering for itself"
+        );
+    } else {
+        assert_eq!(responsible_pid(pid), responsible_pid(daemon));
+    }
     shutdown_daemon(&home);
 }
 

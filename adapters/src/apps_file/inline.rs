@@ -34,6 +34,7 @@ pub fn inline_entry(request: &InlineStart<'_>, home: Option<&str>) -> AppEntry {
         mode: None,
         read: None,
         network: request.network.then_some(true),
+        listen: None,
         writable_roots: (!request.writable_dirs.is_empty()).then(|| request.writable_dirs.to_vec()),
         readable_roots: (!request.readable_dirs.is_empty()).then(|| request.readable_dirs.to_vec()),
     };
@@ -193,6 +194,9 @@ fn encode_sandbox(sandbox: Option<&SandboxEntry>) -> String {
     if let Some(network) = section.network {
         text.push_str(&nested("network", &network.to_string()));
     }
+    text.push_str(&encode_listen(
+        section.listen.as_deref().unwrap_or_default(),
+    ));
     text.push_str(&placeheld_sequence(
         NESTED_INDENT,
         "writable_roots",
@@ -207,6 +211,18 @@ fn encode_sandbox(sandbox: Option<&SandboxEntry>) -> String {
         return text;
     }
     format!("sandbox:\n{text}")
+}
+
+fn encode_listen(ports: &[u16]) -> String {
+    if ports.is_empty() {
+        return String::new();
+    }
+    ports
+        .iter()
+        .fold(format!("{NESTED_INDENT}listen:\n"), |mut text, port| {
+            let _ = writeln!(text, "{NESTED_INDENT}  - {port}");
+            text
+        })
 }
 
 fn scalar(key: &str, value: &str) -> String {

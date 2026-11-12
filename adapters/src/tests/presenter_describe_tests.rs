@@ -77,6 +77,13 @@ fn describe_reports_the_sandbox() {
 }
 
 #[test]
+fn describe_reports_the_listen_ports() {
+    let mut view = running_view(0, "web");
+    view.sandbox_listen = vec![8089];
+    assert_eq!(value_of(&view, "sandbox"), "workspace-write+listen 8089");
+}
+
+#[test]
 fn describe_reports_the_writable_roots() {
     assert_eq!(
         value_of(&running_view(0, "web"), "writable roots"),

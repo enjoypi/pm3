@@ -13,6 +13,11 @@ pub enum SandboxError {
         "cannot confine app '{app}': no usable sandbox backend on this platform, install bubblewrap or set sandbox mode to danger-full-access"
     )]
     NoBackend { app: String },
+
+    #[error(
+        "cannot confine app '{app}': sandbox listen ports are supported only by the macOS seatbelt backend, bubblewrap cannot open a host port without the whole network"
+    )]
+    ListenUnsupported { app: String },
 }
 
 pub trait CommandWrapper: Send + Sync {

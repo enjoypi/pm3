@@ -7,10 +7,12 @@ const FLAG_WORKSPACE: &str = "W";
 const FLAG_FULL_ACCESS: &str = "F";
 const FLAG_READ_FULL: &str = "R";
 const FLAG_NETWORK: &str = "N";
+const FLAG_LISTEN: &str = "L";
 const SANDBOX_FULL_ACCESS: &str = SandboxMode::DangerFullAccess.as_str();
 const SANDBOX_WORKSPACE_WRITE: &str = SandboxMode::WorkspaceWrite.as_str();
 const READ_SCOPE_FULL: &str = ReadScope::Full.as_str();
 pub const NETWORK_SUFFIX: &str = "+net";
+pub const LISTEN_SUFFIX: &str = "+listen ";
 
 const PLAIN_ENV: &str = EnvOrigin::Plain.as_str();
 const ENCRYPTED_ENV: &str = EnvOrigin::Encrypted.as_str();
@@ -100,11 +102,15 @@ fn format_instant(at_ms: Option<u64>, layout: &str) -> String {
     moment.format(layout).to_string()
 }
 
-pub fn format_sandbox(mode: &str, network: bool) -> String {
+pub fn format_sandbox(mode: &str, network: bool, listen: &[u16]) -> String {
     if network {
         return format!("{mode}{NETWORK_SUFFIX}");
     }
-    mode.to_string()
+    if listen.is_empty() {
+        return mode.to_string();
+    }
+    let ports: Vec<String> = listen.iter().map(ToString::to_string).collect();
+    format!("{mode}{LISTEN_SUFFIX}{}", ports.join(LIST_SEPARATOR))
 }
 
 pub fn format_env_origin(origin: EnvOrigin, declared: usize) -> String {
@@ -158,10 +164,10 @@ pub fn format_resources(rss_kib: Option<u64>, cpu_tenths: Option<u32>) -> String
     format!("{memory}/{cpu}")
 }
 
-pub fn format_sandbox_flags(mode: &str, read: &str, network: bool) -> String {
+pub fn format_sandbox_flags(mode: &str, read: &str, network: bool, listen: &[u16]) -> String {
     let write = write_flag(mode);
     let scope = read_flag(read);
-    let net = network_flag(network);
+    let net = network_flag(network, listen);
     format!("{write}/{scope}/{net}")
 }
 
@@ -180,6 +186,12 @@ fn read_flag(read: &str) -> &'static str {
     FLAG_OFF
 }
 
-const fn network_flag(network: bool) -> &'static str {
-    if network { FLAG_NETWORK } else { FLAG_OFF }
+const fn network_flag(network: bool, listen: &[u16]) -> &'static str {
+    if network {
+        return FLAG_NETWORK;
+    }
+    if listen.is_empty() {
+        return FLAG_OFF;
+    }
+    FLAG_LISTEN
 }

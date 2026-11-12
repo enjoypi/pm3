@@ -42,12 +42,37 @@ fn a_longer_uptime_is_reported_in_days() {
 
 #[test]
 fn a_confined_sandbox_shows_only_its_mode() {
-    assert_eq!(format_sandbox("read-only", false), "read-only");
+    assert_eq!(format_sandbox("read-only", false, &[]), "read-only");
+}
+
+#[test]
+fn listen_ports_are_named_on_the_sandbox() {
+    assert_eq!(
+        format_sandbox("workspace-write", false, &[8089, 9000]),
+        "workspace-write+listen 8089, 9000"
+    );
+}
+
+#[test]
+fn an_open_network_outranks_listen_ports_on_the_sandbox() {
+    assert_eq!(format_sandbox("read-only", true, &[8089]), "read-only+net");
+}
+
+#[test]
+fn the_sandbox_flags_mark_listen_ports() {
+    assert_eq!(
+        format_sandbox_flags("workspace-write", "minimal", false, &[8089]),
+        "W/-/L"
+    );
+    assert_eq!(
+        format_sandbox_flags("workspace-write", "minimal", true, &[8089]),
+        "W/-/N"
+    );
 }
 
 #[test]
 fn an_open_network_is_marked_on_the_sandbox() {
-    assert_eq!(format_sandbox("read-only", true), "read-only+net");
+    assert_eq!(format_sandbox("read-only", true, &[]), "read-only+net");
 }
 
 #[test]
@@ -149,19 +174,25 @@ fn cpu_tenths_are_rendered_as_a_percentage() {
 #[test]
 fn the_sandbox_flags_name_every_write_scope() {
     assert_eq!(
-        format_sandbox_flags("danger-full-access", "minimal", true),
+        format_sandbox_flags("danger-full-access", "minimal", true, &[]),
         "F/-/N"
     );
     assert_eq!(
-        format_sandbox_flags("workspace-write", "minimal", false),
+        format_sandbox_flags("workspace-write", "minimal", false, &[]),
         "W/-/-"
     );
-    assert_eq!(format_sandbox_flags("read-only", "minimal", false), "-/-/-");
+    assert_eq!(
+        format_sandbox_flags("read-only", "minimal", false, &[]),
+        "-/-/-"
+    );
 }
 
 #[test]
 fn the_sandbox_flags_name_a_full_read_scope() {
-    assert_eq!(format_sandbox_flags("read-only", "full", false), "-/R/-");
+    assert_eq!(
+        format_sandbox_flags("read-only", "full", false, &[]),
+        "-/R/-"
+    );
 }
 
 #[test]

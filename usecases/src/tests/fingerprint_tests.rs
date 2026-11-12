@@ -348,3 +348,44 @@ fn priority_leaves_the_identity_unchanged() {
     };
     assert_eq!(render_identity(&spec()), render_identity(&interactive));
 }
+
+#[test]
+fn the_network_field_keeps_its_recorded_spelling() {
+    let online = with_sandbox(SandboxPolicy {
+        network: true,
+        ..spec().sandbox
+    });
+    assert!(
+        render_identity(&spec()).contains("network 6 denied\n"),
+        "got: {}",
+        render_identity(&spec())
+    );
+    assert!(
+        render_identity(&online).contains("network 7 allowed\n"),
+        "got: {}",
+        render_identity(&online)
+    );
+}
+
+#[test]
+fn an_app_without_listen_ports_renders_no_listen_field() {
+    assert!(
+        !render_identity(&spec()).contains("listen"),
+        "got: {}",
+        render_identity(&spec())
+    );
+}
+
+#[test]
+fn a_listen_port_renders_after_the_recorded_fields() {
+    let listening = with_sandbox(SandboxPolicy {
+        listen_ports: vec![8089],
+        ..spec().sandbox
+    });
+    let rendered = render_identity(&listening);
+    assert!(rendered.contains("listen 4 8089\n"), "got: {rendered}");
+    assert_eq!(
+        rendered.replace("listen 4 8089\n", ""),
+        render_identity(&spec())
+    );
+}

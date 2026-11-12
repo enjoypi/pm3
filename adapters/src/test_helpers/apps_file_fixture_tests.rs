@@ -69,6 +69,7 @@ pub fn sandbox_entry() -> SandboxEntry {
         mode: None,
         read: None,
         network: None,
+        listen: None,
         writable_roots: None,
         readable_roots: None,
     }

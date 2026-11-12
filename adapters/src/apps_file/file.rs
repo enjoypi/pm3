@@ -75,6 +75,8 @@ pub struct SandboxEntry {
     #[serde(default)]
     pub network: Option<bool>,
     #[serde(default)]
+    pub listen: Option<Vec<u16>>,
+    #[serde(default)]
     pub writable_roots: Option<Vec<String>>,
     #[serde(default)]
     pub readable_roots: Option<Vec<String>>,
@@ -344,10 +346,14 @@ fn resolve_sandbox(
     let readable_roots = declared
         .and_then(|section| section.readable_roots.clone())
         .unwrap_or_default();
+    let listen_ports = declared
+        .and_then(|section| section.listen.clone())
+        .unwrap_or_default();
     Ok(SandboxPolicy {
         mode,
         read,
         network,
+        listen_ports,
         writable_roots,
         readable_roots,
         derived_readable_roots: Vec::new(),

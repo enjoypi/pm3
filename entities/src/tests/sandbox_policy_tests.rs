@@ -5,6 +5,7 @@ fn workspace_policy() -> SandboxPolicy {
         mode: SandboxMode::WorkspaceWrite,
         read: ReadScope::Minimal,
         network: false,
+        listen_ports: Vec::new(),
         writable_roots: vec!["/srv/api".to_string()],
         readable_roots: Vec::new(),
         derived_readable_roots: Vec::new(),
@@ -110,6 +111,7 @@ fn validate_accepts_read_only_without_writable_roots() {
         mode: SandboxMode::ReadOnly,
         read: ReadScope::Minimal,
         network: false,
+        listen_ports: Vec::new(),
         writable_roots: Vec::new(),
         readable_roots: Vec::new(),
         derived_readable_roots: Vec::new(),
@@ -327,4 +329,46 @@ fn validate_accepts_a_working_directory_below_a_hidden_root() {
         ..workspace_policy()
     };
     validate_policy(&policy).expect("pm3 masks the home and binds the workspace back in");
+}
+
+fn listening_policy() -> SandboxPolicy {
+    SandboxPolicy {
+        listen_ports: vec![8089],
+        ..workspace_policy()
+    }
+}
+
+#[test]
+fn validate_accepts_listen_ports_on_a_confined_app_without_network() {
+    validate_policy(&listening_policy()).expect("a confined app may open a port");
+}
+
+#[test]
+fn validate_rejects_listen_ports_on_an_unconfined_app() {
+    let policy = SandboxPolicy {
+        mode: SandboxMode::DangerFullAccess,
+        ..listening_policy()
+    };
+    let err = validate_policy(&policy).unwrap_err();
+    assert_eq!(err, PolicyError::ListenPortsWithoutConfinement);
+}
+
+#[test]
+fn validate_rejects_listen_ports_beside_an_open_network() {
+    let policy = SandboxPolicy {
+        network: true,
+        ..listening_policy()
+    };
+    let err = validate_policy(&policy).unwrap_err();
+    assert_eq!(err, PolicyError::ListenPortsWithNetwork);
+}
+
+#[test]
+fn validate_rejects_listen_port_zero() {
+    let policy = SandboxPolicy {
+        listen_ports: vec![8089, 0],
+        ..workspace_policy()
+    };
+    let err = validate_policy(&policy).unwrap_err();
+    assert_eq!(err, PolicyError::ZeroListenPort);
 }

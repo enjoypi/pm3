@@ -80,26 +80,9 @@ pub fn false_program() -> String {
 }
 
 #[cfg(target_os = "macos")]
-struct Trampoline {
-    _dir: tempfile::TempDir,
-    program: std::path::PathBuf,
-}
-
-#[cfg(target_os = "macos")]
-static TRAMPOLINE: std::sync::LazyLock<Trampoline> = std::sync::LazyLock::new(|| {
-    use std::os::unix::fs::PermissionsExt as _;
-    let dir = tempfile::tempdir().expect("create the trampoline directory");
-    let program = dir.path().join("pm3-trampoline");
-    std::fs::write(
-        &program,
-        "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n",
-    )
-    .expect("write the trampoline");
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    Trampoline { _dir: dir, program }
-});
+const TRAMPOLINE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test_support/pm3-trampoline");
 
 #[cfg(target_os = "macos")]
 pub fn trampoline_program() -> std::path::PathBuf {
-    TRAMPOLINE.program.clone()
+    std::path::PathBuf::from(TRAMPOLINE)
 }
