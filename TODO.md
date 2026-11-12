@@ -13,6 +13,5 @@ The single task list; delete entries when done. Project description in `docs/req
 
 ## 测试与 lint
 
-- [ ] `just lint` 在当前 nightly 下有 4 处报错：`entities/src/process/runtime.rs:184`、`adapters/src/schedule/cron_scheduler.rs:81`、`adapters/src/unit/spec.rs:185` 与 `:193`；修掉后 frameworks 才会被 lint 到
 - [ ] 其余新写可执行脚本的测试（`rg -l "0o755" adapters frameworks`，约 20 个文件）改用仓内固定脚本或 `sourcing-launcher` 符号链接，原因见根 `CLAUDE.md` 构建环境一节
 - [ ] `daemon::actor` 的 `a_running_service_reports_its_resource_usage` 在一轮 `just cov` 中偶发失败过一次，未复现、原因未查明

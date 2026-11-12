@@ -181,11 +181,7 @@ impl ProcessRuntime {
 
     #[must_use]
     pub const fn takes_the_breaker(&self) -> bool {
-        if self.pending_restart {
-            self.supervised_restart
-        } else {
-            false
-        }
+        self.pending_restart && self.supervised_restart
     }
 }
 

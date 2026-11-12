@@ -75,10 +75,11 @@ impl Scheduler for CronScheduler {
             if let Some(fire) = fire {
                 return Some(fire.timestamp_millis().max(0).cast_unsigned());
             }
+            let fallback = candidate + TimeDelta::seconds(1);
             cursor = window
                 .end_of(start)
                 .and_then(|end| Local.from_local_datetime(&end).earliest())
-                .unwrap_or(candidate + TimeDelta::seconds(1));
+                .unwrap_or(fallback);
             inclusive = true;
         }
     }
